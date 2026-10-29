@@ -6,6 +6,7 @@ import {
   cleanProgress,
   encodeUnb1,
   type Plan,
+  type PlayerContext,
   type ProgressBody,
   type ProgressPost,
 } from "./plan.ts";
@@ -87,6 +88,10 @@ export class Store {
         last_seen_at INTEGER
       );
     `);
+    const columns = this.db.prepare(`PRAGMA table_info(requests)`).all() as { name: string }[];
+    if (!columns.some((column) => column.name === "context_json")) {
+      this.db.exec(`ALTER TABLE requests ADD COLUMN context_json TEXT`);
+    }
   }
 
   close(): void {
@@ -260,6 +265,7 @@ export class Store {
     mode: string;
     budget: number;
     wish: string | null;
+    context?: PlayerContext | null;
     nowSeconds: number;
   }): { created: boolean; request: PlanRequest } {
     const existing = this.requestById(input.id);
@@ -267,8 +273,8 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO requests
-           (id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)`,
+           (id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?)`,
       )
       .run(
         input.id,
@@ -280,6 +286,7 @@ export class Store {
         input.wish,
         input.nowSeconds,
         input.nowSeconds,
+        input.context ? JSON.stringify(input.context) : null,
       );
     const request = this.requestById(input.id);
     if (!request) throw new Error("Could not store the request.");
@@ -289,7 +296,7 @@ export class Store {
   listRequests(status = "pending", limit = 50): PlanRequest[] {
     const rows = this.db
       .prepare(
-        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json
          FROM requests WHERE status = ? ORDER BY created_at DESC, id ASC LIMIT ?`,
       )
       .all(status, limit) as RequestRow[];
@@ -299,7 +306,7 @@ export class Store {
   requestById(id: string): PlanRequest | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json
          FROM requests WHERE id = ?`,
       )
       .get(id) as RequestRow | undefined;
@@ -309,7 +316,7 @@ export class Store {
   latestRequestForDevice(deviceId: string): PlanRequest | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json
          FROM requests WHERE device_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`,
       )
       .get(deviceId) as RequestRow | undefined;
@@ -446,6 +453,7 @@ export type PlanRequest = {
   planId: number | null;
   createdAt: number;
   updatedAt: number;
+  context: PlayerContext | null;
 };
 
 type RequestRow = {
@@ -461,7 +469,17 @@ type RequestRow = {
   plan_id: number | null;
   created_at: number;
   updated_at: number;
+  context_json: string | null;
 };
+
+function parseContext(text: string | null): PlayerContext | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as PlayerContext;
+  } catch {
+    return null;
+  }
+}
 
 function requestFromRow(row: RequestRow): PlanRequest {
   const status: RequestStatus =
@@ -479,6 +497,7 @@ function requestFromRow(row: RequestRow): PlanRequest {
     planId: row.plan_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    context: parseContext(row.context_json),
   };
 }
 
@@ -496,6 +515,7 @@ export function publicRequest(request: PlanRequest) {
     planId: request.planId,
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
+    context: request.context,
   };
 }
 

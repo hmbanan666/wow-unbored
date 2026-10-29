@@ -107,6 +107,7 @@ export function createApp(
         mode: cleaned.mode,
         budget: cleaned.budget,
         wish: cleaned.wish,
+        context: cleaned.context,
         nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
       });
       if (saved.created) {
@@ -117,6 +118,7 @@ export function createApp(
           mode: saved.request.mode,
           budget: saved.request.budget,
           wish: saved.request.wish,
+          context: saved.request.context,
         });
       }
       return c.json(publicRequest(saved.request), saved.created ? 201 : 200);

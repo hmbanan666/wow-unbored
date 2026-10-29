@@ -639,3 +639,215 @@ test("criteria tree ids map to criteriaID and index", () => {
   assert.equal(hit.criteriaIndex, 2);
   assert.throws(() => lookupCriteria(tree, achievement, 291, 100));
 });
+
+async function mcpCall(app: ReturnType<typeof createApp>["app"], name: string, args: Record<string, unknown>) {
+  const headers = {
+    authorization: `Bearer ${planner}`,
+    "content-type": "application/json",
+    accept: "application/json, text/event-stream",
+  };
+  await app.request("/mcp", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+    }),
+  });
+  const response = await app.request("/mcp", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } }),
+  });
+  const body = await json(response);
+  const result = body.result as { isError?: boolean; content: { text: string }[] };
+  return { isError: result.isError === true, value: JSON.parse(result.content[0].text) as Record<string, unknown> };
+}
+
+const context = {
+  mapID: 2248,
+  zone: "Isle of Dorn",
+  subzone: "Dornogal",
+  x: 0.4812,
+  y: 0.5521,
+  level: 80,
+  faction: "Horde",
+  class: "Mage",
+  classFile: "MAGE",
+  spec: "Frost",
+  specID: 64,
+  ilvl: 612.43,
+  gold: 12345,
+  skyriding: true,
+  canFly: true,
+  inInstance: false,
+  hearth: "Dornogal",
+  trackedQuests: [{ questID: 81000, title: "A quest" }, { questID: "bad" }],
+  plan: { title: "Evening", currentId: "a", step: 2, steps: 5, done: 1, skipped: 0, remaining: 4 },
+  unknownField: "dropped",
+};
+
+test("a request keeps the player context for the webhook and list_requests", async () => {
+  const hits: Record<string, unknown>[] = [];
+  const hook = createServer((req, response) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      hits.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      response.writeHead(204);
+      response.end();
+    });
+  });
+  await new Promise<void>((resolve) => hook.listen(0, "127.0.0.1", resolve));
+  const address = hook.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  const { app, close } = createApp({
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ctx-")),
+    webhook: { url: `http://127.0.0.1:${address.port}/hook`, key: "", headerName: "" },
+  });
+  try {
+    const posted = await app.request("/v1/requests", {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "req-ctx-1",
+        character: "Hero",
+        realm: "Area 52",
+        mode: "roam",
+        budget: 60,
+        wish: "маунт, без рейдов, остаться в этой зоне, ".repeat(5).trim(),
+        context,
+      }),
+    });
+    assert.equal(posted.status, 201, await posted.clone().text());
+    const saved = (await json(posted)).context as Record<string, unknown>;
+    assert.equal(saved.mapID, 2248);
+    assert.equal(saved.subzone, "Dornogal");
+    assert.equal(saved.ilvl, 612.4);
+    assert.equal(saved.hearth, "Dornogal");
+    assert.equal("unknownField" in saved, false);
+    assert.deepEqual(saved.trackedQuests, [{ questID: 81000, title: "A quest" }]);
+
+    assert.equal(hits.length, 1);
+    const hookContext = hits[0].context as Record<string, unknown>;
+    assert.equal(hookContext.zone, "Isle of Dorn");
+    assert.equal((hookContext.plan as Record<string, unknown>).step, 2);
+
+    const listed = await mcpCall(app, "list_requests", {});
+    const rows = listed.value.requests as { id: string; context: Record<string, unknown> }[];
+    assert.equal(rows[0].id, "req-ctx-1");
+    assert.equal(rows[0].context.x, 0.4812);
+
+    const plain = await app.request("/v1/requests", {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+      body: JSON.stringify({ id: "req-ctx-2", character: "Hero", realm: "", mode: "fun", budget: 30 }),
+    });
+    assert.equal(plain.status, 201);
+    assert.equal((await json(plain)).context, null);
+
+    const huge = await app.request("/v1/requests", {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "req-ctx-3",
+        character: "Hero",
+        realm: "",
+        mode: "fun",
+        budget: 30,
+        context: { zone: "x".repeat(9000) },
+      }),
+    });
+    assert.equal(huge.status, 400);
+  } finally {
+    close();
+    await new Promise<void>((resolve, reject) => hook.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
+test("plans accept a waypoint route and reject bad points", async () => {
+  const { app, close } = build();
+  try {
+    const route = {
+      ...sample,
+      tasks: [
+        {
+          id: "route:1",
+          title: "Three treasures",
+          estMinutes: 15,
+          note: "Follow the arrow.",
+          waypoints: [
+            { mapID: 2248, x: 0.41, y: 0.52, label: "Cliff chest" },
+            { mapID: 2248, x: 0.45, y: 0.6 },
+            { mapID: 2248, x: 0.5, y: 0.61, label: "Cave" },
+          ],
+        },
+      ],
+    };
+    const put = await app.request("/v1/plan", {
+      method: "PUT",
+      headers: { authorization: `Bearer ${planner}`, "content-type": "application/json" },
+      body: JSON.stringify(route),
+    });
+    assert.equal(put.status, 200);
+    const stored = await json(put);
+    const task = (stored.stored as { tasks: { waypoints: unknown[] }[] }).tasks[0];
+    assert.equal(task.waypoints.length, 3);
+    const decoded = JSON.parse(Buffer.from(String(stored.plan).slice(5), "base64").toString("utf8"));
+    assert.equal(decoded.tasks[0].waypoints[0].label, "Cliff chest");
+    assert.equal("label" in decoded.tasks[0].waypoints[1], false);
+
+    const viaMcp = await mcpCall(app, "put_plan", { plan: route });
+    assert.equal(viaMcp.isError, false);
+
+    for (const waypoints of [
+      [{ mapID: 2248, x: 41, y: 52 }],
+      [{ x: 0.1, y: 0.1 }],
+      Array.from({ length: 11 }, () => ({ mapID: 1, x: 0.1, y: 0.1 })),
+      [{ mapID: 1, x: 0.1, y: 0.1, label: "x".repeat(81) }],
+    ]) {
+      const bad = await app.request("/v1/plan", {
+        method: "PUT",
+        headers: { authorization: `Bearer ${planner}`, "content-type": "application/json" },
+        body: JSON.stringify({ ...sample, tasks: [{ id: "a", title: "A", waypoints }] }),
+      });
+      assert.equal(bad.status, 400);
+    }
+  } finally {
+    close();
+  }
+});
+
+test("an older database gains the context column", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-migrate-"));
+  const old = new DatabaseSync(path.join(dataDir, "unbored.sqlite"));
+  old.exec(`CREATE TABLE requests (
+    id TEXT PRIMARY KEY, device_id TEXT NOT NULL, character_name TEXT NOT NULL, realm TEXT NOT NULL,
+    mode TEXT NOT NULL, budget INTEGER NOT NULL, wish TEXT, status TEXT NOT NULL, reason TEXT,
+    plan_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+  old.exec(`INSERT INTO requests VALUES ('req-old', 'legacy', 'Hero', '', 'farm', 60, NULL, 'pending', NULL, NULL, 1, 1)`);
+  old.close();
+  const { store, close } = createApp({ companionToken: companion, plannerToken: planner, dataDir });
+  try {
+    assert.equal(store.requestById("req-old")?.context, null);
+    const saved = store.addRequest({
+      id: "req-new",
+      deviceId: "legacy",
+      character: "Hero",
+      realm: "",
+      mode: "roam",
+      budget: 30,
+      wish: null,
+      context: { mapID: 84 },
+      nowSeconds: 2,
+    });
+    assert.equal(saved.request.context?.mapID, 84);
+  } finally {
+    close();
+  }
+});
