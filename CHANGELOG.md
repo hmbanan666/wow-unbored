@@ -1,5 +1,21 @@
 # Changelog
 
+History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
+
+## 0.6.0
+
+- No reloads while you play (docs/adr/0012). Presets, Ask and items never reload the UI. Wisp answers locally first; the Companion prepares Full plans, Answers and Personal advice in the background, and Wisp picks them up at the next log in or after one "New stuff is ready. Refresh now?" with Refresh or Later.
+- Ask is a chat: common questions (what's here, achievements here, rares here, what to collect) are answered at once in English or Russian, in up to three bubbles. Anything else goes to the planner with "I'll have a fuller answer after a refresh".
+- Items: What is this item? is a pick mode (pick the item up, Esc cancels); picking up any item shows "Drop it on me to ask". Alt+Right-click is gone.
+- Tooltip Advice: every bag item gets one Wisp line with what to do (use, turn in, equip, sell, disenchant, keep for your profession, send to an alt by warband bank or mail). Never says delete, never sells epic or BoE items, never sends soulbound items. Personal advice from the server arrives in `Unbored_Plan/Advice.lua`.
+- Alts: Wisp remembers each character's professions and level account-wide, so advice can route items to the alt who uses them.
+- New bubble: always shows the full text, a small meta line, one row of matching icon buttons, a pill when folded, separate Wisp and bubble sizes. No glow ring. "Continue <plan> or something new?" after logging back in.
+- Minimap button on the rim, draggable around the edge.
+- Requests: item and question requests no longer fail on an empty mode. Every failure has a plain reason line (not approved, Companion offline, planner unreachable, rejected, taking long, planner failed).
+- Profile: kept up to date while you play, so a log out no longer uploads empty bags or gold; the server never overwrites good data with empty values. The server keeps per-character history linked to the account (MCP `get_player_history`, `put_item_advice`).
+- Companion 0.6.0: downloads Personal advice, says "Wisp picks it up next time you log in, or click Refresh in Wisp's bubble" instead of asking for Load.
+- Releases: notes list only this version's changes with an Install / Download section on top; README is player-first in English and Russian; technical docs moved to docs/DEVELOPMENT.md.
+
 ## 0.5.0
 
 - Everything happens in Wisp's bubble. What is this item?, Ask something, and What to do nearby? open in the bubble (Alt+Right-click an item shows it there too). The old main window is gone; Import, Export, and Build left the menu (`/unbored import` still works).
