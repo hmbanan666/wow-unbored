@@ -3,7 +3,9 @@
 # NOTES_SCOPE picks the release: "addon" leaves out companion and server
 # lines, "companion" keeps only companion lines.
 # Squash merges keep each commit as one "* type(scope): ..." line in the
-# body, so split_commits turns every line into its own entry.
+# body, so split_commits turns every line into its own entry. The
+# "chore(release)" title line is dropped in the template: a skip parser
+# would drop the whole squash commit before it is split.
 
 [changelog]
 header = ""
@@ -12,6 +14,7 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") -%}
 {% set_global shown = [] -%}
 {% for commit in commits -%}
+{% if commit.scope == "release" %}{% continue %}{% endif -%}
 {% if only == "companion" and commit.scope != "companion" %}{% continue %}{% endif -%}
 {% if only == "addon" and commit.scope in ["companion", "server"] %}{% continue %}{% endif -%}
 {% set_global shown = shown | concat(with=commit) -%}
@@ -45,6 +48,5 @@ commit_parsers = [
   { message = "^feat", group = "<!-- 0 -->Features" },
   { message = "^fix", group = "<!-- 1 -->Fixes" },
   { message = "^perf", group = "<!-- 2 -->Performance" },
-  { message = "^chore\\(release\\)", skip = true },
   { message = "^(refactor|docs|chore|test|ci|build|style|revert)", group = "<!-- 3 -->Other" },
 ]
