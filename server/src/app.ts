@@ -107,12 +107,20 @@ export function createApp(
         mode: cleaned.mode,
         budget: cleaned.budget,
         wish: cleaned.wish,
+        type: cleaned.type,
+        question: cleaned.question,
+        topic: cleaned.topic,
+        item: cleaned.item,
         context: cleaned.context,
         nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
       });
       if (saved.created) {
         await postWebhook(webhook, {
           requestId: saved.request.id,
+          type: saved.request.type,
+          question: saved.request.question,
+          topic: saved.request.topic,
+          item: saved.request.item,
           character: saved.request.character,
           realm: saved.request.realm,
           mode: saved.request.mode,
