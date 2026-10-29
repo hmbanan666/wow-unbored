@@ -299,7 +299,15 @@ function ns.Mascot:Create()
     send = ns.UI.MakeButton(bubble, ns.T("SEND"), 96, 24),
     cancel = ns.UI.MakeLink(bubble, ns.T("CANCEL")),
     back = ns.UI.MakeLink(bubble, ns.T("BACK")),
+    use = ns.UI.MakeButton(bubble, ns.T("OFFER_USE"), 96, 24),
+    keep = ns.UI.MakeLink(bubble, ns.T("OFFER_KEEP")),
   }
+  self.buttons.use:SetScript("OnClick", function()
+    ns.Session:AcceptOffer()
+  end)
+  self.buttons.keep:SetScript("OnClick", function()
+    ns.Session:DeclineOffer()
+  end)
   -- ReloadUI straight from the click: it needs the hardware event.
   self.buttons.load:SetScript("OnClick", ns.Session.LoadPlan)
   tooltip(self.buttons.load, ns.T("TIP_LOAD"))
@@ -441,8 +449,22 @@ function ns.Mascot.WantsChoice()
   return not requestOut() and ns.Session:Current() == nil
 end
 
+local function stepView(session, task)
+  local progress = session:Progress()
+  return {
+    kind = "step",
+    mood = "idle",
+    message = task.title or "",
+    sub = type(task.note) == "string" and task.note ~= "" and task.note or nil,
+    meta = ns.Tracker.CurrentMeta(task),
+    count = progress and ns.T("STEP_COUNT", progress.step, progress.steps) or nil,
+    buttons = { "done", "skip" },
+  }
+end
+
 -- What the bubble says now. One message, in this order: a request that is
--- out, the wish box, the choice (no plan, a finished plan, or "New plan"),
+-- out (a Quick plan keeps showing its step meanwhile), a Full plan on offer,
+-- the wish box, the choice (no plan, a finished plan, or "New plan"),
 -- an answer not yet read, the current step.
 function ns.Mascot.View()
   local mascot = ns.Mascot
@@ -466,6 +488,13 @@ function ns.Mascot.View()
       sub = ns.T("WAIT_STALE", math.floor(age / 60))
     end
     local planning = req.type ~= "question" and req.type ~= "item"
+    local quick = session:Current()
+    if planning and quick and session.state.quick and not mascot.wishing and not mascot.forceChoice then
+      local view = stepView(session, quick)
+      view.header = ns.T("QUICK_COOKING")
+      view.buttons = { "done", "skip", "load" }
+      return view
+    end
     return {
       kind = "waiting",
       mood = "thinking",
@@ -473,6 +502,18 @@ function ns.Mascot.View()
       message = planning and ns.T("COOKING") or ns.T("THINKING"),
       sub = sub,
       buttons = { "load", "cancel" },
+    }
+  end
+  local offer = session.Offer()
+  if offer then
+    local first = offer.plan.tasks[1]
+    return {
+      kind = "offer",
+      key = offer.requestId or offer.key,
+      mood = "happy",
+      message = ns.T("BETTER_READY"),
+      sub = first and ns.T("BETTER_FIRST", #offer.plan.tasks, first.title or "") or nil,
+      buttons = { "use", "keep" },
     }
   end
   if mascot.wishing then
@@ -519,16 +560,7 @@ function ns.Mascot.View()
       buttons = { "ok" },
     }
   end
-  local progress = session:Progress()
-  return {
-    kind = "step",
-    mood = "idle",
-    message = task.title or "",
-    sub = type(task.note) == "string" and task.note ~= "" and task.note or nil,
-    meta = ns.Tracker.CurrentMeta(task),
-    count = progress and ns.T("STEP_COUNT", progress.step, progress.steps) or nil,
-    buttons = { "done", "skip" },
-  }
+  return stepView(session, task)
 end
 
 function ns.Mascot:OnOk()
@@ -575,13 +607,14 @@ function ns.Mascot:Back()
   self:Refresh()
 end
 
--- One click: save the request and reload in the same click (ReloadUI needs
--- the hardware event). With no companion the in-game builder makes the plan.
+-- One click: a Quick plan right away, and with the companion the Request is
+-- saved and the UI reloads in the same click (ReloadUI needs the hardware
+-- event). The Full plan is offered after Load (docs/adr/0005).
 function ns.Mascot:Choose(preset)
   local budget = self.Budget()
   self:Reset()
+  ns.Session:QuickPlan(preset, budget)
   if not ns.UI.HasCompanion() then
-    ns.Session:BuildHere(preset.mode, budget)
     return
   end
   if ns.Session:Ask({ type = "plan", mode = preset.mode, budget = budget, topic = preset.id, wish = preset.wish }) then
@@ -657,7 +690,8 @@ function ns.Mascot:Refresh()
   frame:Show()
   local view = self.View()
   local key = view.kind .. ":" .. tostring(view.key or "")
-  if key ~= self.lastKey and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice") then
+  if key ~= self.lastKey and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice"
+    or view.kind == "offer") then
     saved.collapsed = false
   end
   self.lastKey = key
