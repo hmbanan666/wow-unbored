@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  luacheck:
+  addon:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,10 +15,43 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y lua5.1 lua-check
 
-      - name: Luacheck
-        run: luacheck .
+      - name: Addon checks
+        run: |
+          cd addon
+          luacheck .
+          lua5.1 tests/run.lua
+          lua5.1 tests/ui.lua
 
-      - name: Tests
-        run: lua5.1 tests/run.lua
-      - name: Window layout
-        run: lua5.1 tests/ui.lua
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Shared version and updater endpoint
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.4 --activate
+          node -e "require('./package.json')"
+          bash scripts/check-version.sh
+
+      - name: Updater feed keeps the shape installed Companions read
+        run: |
+          dir="$(mktemp -d)"
+          echo sig-nsis > "$dir/setup.sig"
+          echo sig-msi > "$dir/app.sig"
+          : > "$dir/Unbored.Companion_9.9.9_x64-setup.exe"
+          : > "$dir/Unbored.Companion_9.9.9_x64_en-US.msi"
+          bash .github/scripts/updater-json.sh 9.9.9 hmbanan666/wow-unbored \
+            "$dir/Unbored.Companion_9.9.9_x64-setup.exe" "$dir/setup.sig" \
+            "$dir/Unbored.Companion_9.9.9_x64_en-US.msi" "$dir/app.sig" > "$dir/latest.json"
+          python3 - "$dir/latest.json" <<'PY'
+          import json, sys
+          doc = json.load(open(sys.argv[1]))
+          assert set(doc) == {"version", "notes", "pub_date", "platforms"}
+          assert set(doc["platforms"]) == {"windows-x86_64", "windows-x86_64-nsis", "windows-x86_64-msi"}
+          nsis = doc["platforms"]["windows-x86_64"]
+          assert nsis["url"] == "https://github.com/hmbanan666/wow-unbored/releases/download/v9.9.9/Unbored.Companion_9.9.9_x64-setup.exe"
+          assert doc["platforms"]["windows-x86_64-nsis"]["url"] == nsis["url"]
+          assert doc["platforms"]["windows-x86_64-msi"]["url"].endswith(".msi")
+          assert nsis["signature"] == "sig-nsis"
+          print("updater json shape ok")
+          PY

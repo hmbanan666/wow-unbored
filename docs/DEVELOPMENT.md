@@ -6,9 +6,11 @@ Read [`CONTEXT.md`](../CONTEXT.md) (the words we use) and [`docs/adr/`](adr/) (t
 
 ## The pieces
 
-- **The addon** (this repository's root): Wisp, the Bubble, Quick plans from the Providers, tooltip Advice, local answers. Lua for the Retail client, no required libraries.
-- **The Companion** (`companion/`): a Windows tray app (Tauri, Rust). It installs and updates the addon, sends Requests and profiles from SavedVariables to the Server, and writes `Interface/AddOns/Unbored_Plan/Plan.lua` and `Advice.lua`. See [`companion/README.md`](../companion/README.md).
-- **The Server** (`server/`): Node, Hono and SQLite at `https://unbored.kosarev.space`. Devices, Requests, Plans, Player profiles, history, Personal advice, and the MCP tools the Planner uses. Contract: [`companion-api.md`](companion-api.md), plan format: [`plan-format.md`](plan-format.md).
+- **The addon** (`addon/`): Wisp, the Bubble, Quick plans from the Providers, tooltip Advice, local answers. Lua for the Retail client, no required libraries. It is not a JavaScript package.
+- **The Companion** (`apps/companion/`): a Windows tray app (Tauri, Rust, window in `ui/`). It installs and updates the addon, sends Requests and profiles from SavedVariables to the Server, and writes `Interface/AddOns/Unbored_Plan/Plan.lua` and `Advice.lua`. See [`apps/companion/README.md`](../apps/companion/README.md).
+- **The Server** (`apps/server/`): Node, Hono and SQLite at `https://unbored.kosarev.space`. Devices, Requests, Plans, Player profiles, history, Personal advice, and the MCP tools the Planner uses. Contract: [`companion-api.md`](companion-api.md), plan format: [`plan-format.md`](plan-format.md).
+- **Shared types** (`packages/contracts/`): Request, Plan, and Player profile types and JSON Schema. The Server and the Companion window import them. The Rust contract test reads the JSON Schema.
+- **`apps/web/`**: a placeholder for a future player website. No app yet.
 
 ## Requirements
 
@@ -18,6 +20,18 @@ Read [`CONTEXT.md`](../CONTEXT.md) (the words we use) and [`docs/adr/`](adr/) (t
 ## Layout
 
 ```
+addon/            Lua addon (Unbored.toc, Core, Data, Providers, UI, Media, tests)
+apps/companion/   Windows tray app (ui/ is the window, src-tauri/ is Rust)
+apps/server/      planner backend
+apps/web/         placeholder README for a future player website
+packages/contracts/  shared Request, Plan, and Player profile types
+docs/             ADRs, API contract, plan format
+art/              builds Media portraits and Companion icons
+```
+
+Inside `addon/`:
+
+```
 Unbored.toc
 Bindings.xml
 Core/         session, Requests, Advice, Intents, profile, codec, locale
@@ -25,9 +39,6 @@ Data/         contributor tables (Presets, Items, AdviceTable, ...)
 Providers/    one file per mode
 UI/           Wisp (Mascot.lua), the list view, item help, minimap button
 Media/        portraits and Icon*.tga (built by art/*.py)
-companion/    Windows tray app
-server/       planner backend
-docs/         ADRs, API contract, plan format
 tests/        run.lua (logic), ui.lua (Wisp against a fake frame API)
 ```
 
@@ -35,17 +46,20 @@ Every UI string is in `Core/Locale.lua`, English and Russian. The name is one st
 
 ## Checks
 
-CI runs all of these; run them before a push:
+From the repository root, with pnpm, Lua 5.1, luacheck, and Rust:
 
 ```
-luacheck .
-lua5.1 tests/run.lua
-lua5.1 tests/ui.lua
-(cd server && npm ci && npm test)
-(cd companion/src-tauri && cargo test --lib --no-default-features)
+pnpm install
+pnpm test
+pnpm lint
+pnpm build
 ```
 
-On Ubuntu the luacheck package is `lua-check`. The Windows installer is built by `.github/workflows/companion.yml` on every pull request that touches `companion/`.
+`pnpm test` runs the addon checks (`cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/ui.lua`), JavaScript tests (`vp test`: Server and `packages/contracts`), and `cargo test --lib --no-default-features` for the Companion. `pnpm lint` is `vp check` (Oxfmt and Oxlint), luacheck, `cargo fmt --check`, and clippy. `pnpm dev` starts the Server. `pnpm build` typechecks the Server and builds the Companion window. The Windows installer is built by `.github/workflows/companion.yml` on every pull request that touches `apps/companion/`.
+
+JavaScript uses Vite+ (`vp`, the `vite-plus` package). Lua stays on luacheck. Rust stays on cargo. See [ADR 0024](adr/0024-vite-plus-toolchain.md).
+
+On Ubuntu the luacheck package is `lua-check`.
 
 ## Commits and releases
 
@@ -53,14 +67,15 @@ Commits and PR titles are [Conventional Commits](https://www.conventionalcommits
 
 Release notes say only what changed in that release. `.github/scripts/release-notes.sh` prints the body: the Install / Download section from `.github/release/*-install.md`, then [git-cliff](https://git-cliff.org) output for the range since the previous tag of the same kind, grouped as Features, Fixes, Performance and Other (`cliff.toml`). Squash merges keep each commit as a `* type(scope): ...` line in the body, and every line becomes its own entry. Addon notes leave out `companion` and `server` scopes; Companion notes keep only `companion`. `CHANGELOG.md` is history and is not pasted into releases.
 
-To release, bump the version in `Unbored.toc`, `Core/Namespace.lua`, `companion/package.json`, `companion/src-tauri/Cargo.toml` and `tauri.conf.json`, and `HELPER_TOC` in `companion/src-tauri/src/plan.rs`, then push two tags from `main`:
+One tag is one release ([ADR 0026](adr/0026-one-release-tag.md)). The addon, Companion, and Server share the version in the root `package.json`. `scripts/check-version.sh` checks `addon/Unbored.toc`, `addon/Core/Namespace.lua`, `apps/companion/package.json`, `apps/companion/src-tauri/Cargo.toml`, `tauri.conf.json`, `HELPER_TOC` in `apps/companion/src-tauri/src/plan.rs`, `apps/server/package.json`, and `packages/contracts/package.json`. Do not push `companion-v*` tags.
 
 ```
-git tag v0.6.0 && git push origin v0.6.0                       # addon zip (BigWigs packager)
-git tag companion-v0.6.0 && git push origin companion-v0.6.0   # Windows installer (tauri-action)
+git tag v0.7.0 && git push origin v0.7.0
 ```
 
-`.github/workflows/release.yml` builds `Unbored-v*.zip` with the [BigWigs packager](https://warcraft.wiki.gg/wiki/Using_the_BigWigs_Packager_with_GitHub_Actions) and then replaces the body with the generated notes. `.github/workflows/companion.yml` builds and uploads the installers, points the self-updater at them, and then does the same. CurseForge and Wago ids are unset until those projects exist. To preview notes locally: `pipx install git-cliff` and `.github/scripts/release-notes.sh addon v0.6.0`.
+`.github/workflows/release.yml` builds `Unbored-v*.zip` with the [BigWigs packager](https://warcraft.wiki.gg/wiki/Using_the_BigWigs_Packager_with_GitHub_Actions) (it copies `addon/` to the checkout root for that job, because the packager only sees a TOC there), builds the Windows installer, attaches both to the tag, and writes `latest.json`. It then copies `latest.json` onto the existing `companion-updater` release, which is the URL already installed Companions read. The minisign public key in `tauri.conf.json` stays the same, so 0.5 and 0.6 can verify the new installer. If `TAURI_SIGNING_PRIVATE_KEY` is missing, the workflow builds the installer and leaves that feed alone. CurseForge and Wago ids are unset until those projects exist. To preview notes: `pipx install git-cliff` and `.github/scripts/release-notes.sh v0.6.0`.
+
+Release notes are one Install / Download section (the setup.exe, then the zip for a manual install, with `latest.json`, `.sig`, and `release.json` marked as auto-update only) and then git-cliff for every scope since the previous `vX.Y.Z` tag.
 
 ## Tooltip Advice
 

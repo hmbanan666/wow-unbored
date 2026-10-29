@@ -3,7 +3,12 @@ name: Server
 on:
   pull_request:
     paths:
-      - "server/**"
+      - "apps/server/**"
+      - "packages/contracts/**"
+      - "addon/Core/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
       - ".github/workflows/server.yml"
       - "docs/companion-api.md"
       - "docs/contract/**"
@@ -12,7 +17,12 @@ on:
     branches:
       - main
     paths:
-      - "server/**"
+      - "apps/server/**"
+      - "packages/contracts/**"
+      - "addon/Core/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
       - ".github/workflows/server.yml"
       - "docs/companion-api.md"
       - "docs/contract/**"
@@ -26,10 +36,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@10.33.4 --activate
       - name: Lua decoder used by the plan roundtrip
         run: sudo apt-get update && sudo apt-get install -y lua5.1
-      - name: Tests
-        working-directory: server
-        run: npm ci && npm test
+      - name: Install, check, and test
+        run: pnpm install --frozen-lockfile && pnpm exec vp check && pnpm exec vp test
       - name: Docker image
-        run: docker build -t unbored-server server
+        run: docker build -f apps/server/Dockerfile -t unbored-server .

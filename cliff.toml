@@ -1,7 +1,6 @@
-# Release notes for one release only (docs/adr/0022). CI runs, for example:
-#   git cliff --latest --tag-pattern '^v[0-9]' --strip all
-# NOTES_SCOPE picks the release: "addon" leaves out companion and server
-# lines, "companion" keeps only companion lines.
+# Release notes for one release only (docs/adr/0022, docs/adr/0026).
+# One tag vX.Y.Z includes every scope. NOTES_SCOPE is unused by the
+# release script; "addon" and "companion" remain for a local preview.
 # Squash merges keep each commit as one "* type(scope): ..." line in the
 # body, so split_commits turns every line into its own entry. The
 # "chore(release)" title line is dropped in the template: a skip parser

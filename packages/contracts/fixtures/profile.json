@@ -1,0 +1,11 @@
+{
+  "character": "Hero",
+  "realm": "Area 52",
+  "account": "111111#1",
+  "savedAt": 1761720000,
+  "profile": {
+    "v": 1,
+    "context": { "mapID": 2248, "gold": 18342 },
+    "bags": [{ "itemID": 6948, "count": 1 }]
+  }
+}

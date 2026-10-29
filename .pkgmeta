@@ -2,21 +2,31 @@ package-as: Unbored
 
 # CurseForge / Wago project ids are intentionally unset until the project
 # is published. The GitHub release zip still builds from a tag.
+# The release job copies addon/ to the checkout root first, because the
+# packager only sees a TOC there (docs/adr/0023). addon/ itself is ignored
+# so those files are not packed twice.
 
 ignore:
+  - addon
+  - apps
+  - packages
   - tests
   - .github
   - .luacheckrc
   - .gitignore
+  - .npmrc
   - Screenshots
-  - companion
-  - server
   - art
   - docs
+  - scripts
   - AGENTS.md
   - CONTEXT.md
   - TESTING.md
   - cliff.toml
+  - package.json
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - vite.config.ts
 
 license-output: LICENSE.txt
 

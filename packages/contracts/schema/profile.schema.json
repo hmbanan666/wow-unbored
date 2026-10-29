@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unbored.kosarev.space/schema/profile.json",
+  "title": "Player profile",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["character", "profile"],
+  "properties": {
+    "character": { "type": "string", "minLength": 1 },
+    "realm": { "type": "string" },
+    "account": { "type": "string" },
+    "savedAt": { "type": ["integer", "null"] },
+    "profile": { "type": "object" }
+  }
+}

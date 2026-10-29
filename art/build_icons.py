@@ -1,4 +1,4 @@
-"""Builds the bubble's action icons (Media/Icon*.tga), one family.
+"""Builds the bubble's action icons (addon/Media/Icon*.tga), one family.
 
     pip install pillow
     python3 art/build_icons.py
@@ -131,7 +131,7 @@ ICONS = {
 
 
 def main() -> None:
-    media = ROOT / "Media"
+    media = ROOT / "addon" / "Media"
     for name, build in ICONS.items():
         image = build().resize((SIZE, SIZE), Image.LANCZOS)
         image.save(media / f"{name}.tga", format="TGA", compression=None)

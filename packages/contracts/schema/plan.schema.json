@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unbored.kosarev.space/schema/plan.json",
+  "title": "Plan",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["v", "kind", "tasks"],
+  "properties": {
+    "v": { "const": 1 },
+    "kind": { "const": "plan" },
+    "mode": { "type": "string" },
+    "budget": { "type": "integer" },
+    "note": { "type": "string" },
+    "generatedAt": { "type": "integer" },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "estMinutes": { "type": "integer" },
+          "mapID": { "type": "integer" },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

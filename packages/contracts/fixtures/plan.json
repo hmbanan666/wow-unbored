@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "kind": "plan",
+  "mode": "custom",
+  "budget": 60,
+  "note": "evening session",
+  "tasks": [
+    {
+      "id": "mentor:fall",
+      "title": "Going Down?",
+      "estMinutes": 5,
+      "note": "просто упади",
+      "complete": { "kind": "achievement", "achievementID": 964 }
+    },
+    {
+      "id": "mentor:ashes",
+      "title": "Ashes of Al'ar",
+      "mapID": 109,
+      "x": 0.739,
+      "y": 0.637,
+      "estMinutes": 20,
+      "note": "Tempest Keep, Kael'thas.",
+      "complete": { "kind": "mount", "mountID": 183 }
+    }
+  ]
+}
