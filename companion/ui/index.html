@@ -8,34 +8,33 @@
 <body>
   <header>
     <h1>Unbored</h1>
-    <p>Writes a plan the game reads on /reload. It does not touch the game process.</p>
+    <p>Installs the addon, waits for this PC to be approved, then keeps the plan in sync.</p>
   </header>
-  <label>Retail folder <input id="wow" type="text" spellcheck="false" /></label>
-  <div class="row">
-    <button id="detect" type="button">Detect</button>
+  <p id="pairing"></p>
+  <p id="addon"></p>
+  <div id="need-path" hidden>
+    <label>Retail folder <input id="wow" type="text" spellcheck="false" placeholder="_retail_ folder" /></label>
     <button id="use-path" type="button">Use this folder</button>
-  </div>
-  <div id="installs"></div>
-  <label>Account
-    <select id="account"><option value="">All accounts</option></select>
-  </label>
-  <label>Plan string
-    <textarea id="plan" rows="5" spellcheck="false" placeholder="UNB1:..."></textarea>
-  </label>
-  <button id="write" type="button">Write plan</button>
-  <label>Planner URL <input id="url" type="url" spellcheck="false" placeholder="https://..." /></label>
-  <label>Token <input id="token" type="password" spellcheck="false" /></label>
-  <label>Poll every
-    <input id="poll" type="number" min="0" max="240" value="5" /> minutes (0 = manual)
-  </label>
-  <div class="row">
-    <button id="save-endpoint" type="button">Save endpoint</button>
-    <button id="fetch" type="button">Fetch plan</button>
   </div>
   <label class="check"><input id="autostart" type="checkbox" /> Start with Windows</label>
   <button id="rescan" type="button">Read progress</button>
   <p id="status"></p>
   <ul id="progress"></ul>
+  <details>
+    <summary>Advanced</summary>
+    <label>Planner URL
+      <input id="url" type="url" spellcheck="false" placeholder="https://unbored.kosarev.space" />
+    </label>
+    <label>Poll every
+      <input id="poll" type="number" min="0" max="240" value="5" /> minutes (0 = the automatic check only)
+    </label>
+    <button id="save-endpoint" type="button">Save</button>
+    <label>Plan string
+      <textarea id="plan" rows="4" spellcheck="false" placeholder="UNB1:..."></textarea>
+    </label>
+    <button id="write" type="button">Write plan</button>
+    <button id="fetch" type="button">Fetch plan</button>
+  </details>
   <script src="app.js"></script>
 </body>
 </html>

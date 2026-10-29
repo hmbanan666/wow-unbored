@@ -64,6 +64,14 @@ export class Store {
         saved_at INTEGER,
         body_json TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS devices (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        secret_hash TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER
+      );
     `);
   }
 
@@ -158,6 +166,89 @@ export class Store {
     return this.progressRows(limit).map((row) => this.progressFromRow(row));
   }
 
+  registerDevice(input: {
+    id: string;
+    name: string;
+    secretHash: string;
+    nowSeconds: number;
+    pendingCap: number;
+  }): RegisterDeviceResult {
+    const existing = this.deviceById(input.id);
+    if (existing) {
+      if (existing.secretHash !== input.secretHash) {
+        return { ok: false, status: 409, error: "This device id is already registered." };
+      }
+      this.touchDevice(existing.id, input.nowSeconds);
+      return { ok: true, created: false, device: { ...existing, lastSeenAt: input.nowSeconds } };
+    }
+    const hashOwner = this.deviceByHash(input.secretHash);
+    if (hashOwner) {
+      return { ok: false, status: 409, error: "This device secret is already registered." };
+    }
+    const pending = this.db
+      .prepare(`SELECT COUNT(*) AS n FROM devices WHERE status = 'pending'`)
+      .get() as { n: number };
+    if (pending.n >= input.pendingCap) {
+      return { ok: false, status: 429, error: "Too many devices are waiting for approval." };
+    }
+    this.db
+      .prepare(
+        `INSERT INTO devices (id, name, secret_hash, status, created_at, last_seen_at)
+         VALUES (?, ?, ?, 'pending', ?, ?)`,
+      )
+      .run(input.id, input.name, input.secretHash, input.nowSeconds, input.nowSeconds);
+    const device = this.deviceById(input.id);
+    if (!device) return { ok: false, status: 500, error: "Could not store the device." };
+    return { ok: true, created: true, device };
+  }
+
+  findDeviceBySecretHash(secretHash: string): Device | undefined {
+    return this.deviceByHash(secretHash);
+  }
+
+  touchDevice(id: string, nowSeconds = Math.floor(Date.now() / 1000)): void {
+    this.db
+      .prepare(`UPDATE devices SET last_seen_at = ? WHERE id = ?`)
+      .run(nowSeconds, id);
+  }
+
+  listDevices(): Device[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, name, secret_hash, status, created_at, last_seen_at
+         FROM devices ORDER BY created_at DESC, id ASC`,
+      )
+      .all() as DeviceRow[];
+    return rows.map(deviceFromRow);
+  }
+
+  setDeviceStatus(id: string, status: DeviceStatus, nowSeconds = Math.floor(Date.now() / 1000)): Device | undefined {
+    const current = this.deviceById(id);
+    if (!current) return undefined;
+    this.db
+      .prepare(`UPDATE devices SET status = ?, last_seen_at = ? WHERE id = ?`)
+      .run(status, nowSeconds, id);
+    return this.deviceById(id);
+  }
+
+  private deviceById(id: string): Device | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, name, secret_hash, status, created_at, last_seen_at FROM devices WHERE id = ?`,
+      )
+      .get(id) as DeviceRow | undefined;
+    return row ? deviceFromRow(row) : undefined;
+  }
+
+  private deviceByHash(secretHash: string): Device | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, name, secret_hash, status, created_at, last_seen_at FROM devices WHERE secret_hash = ?`,
+      )
+      .get(secretHash) as DeviceRow | undefined;
+    return row ? deviceFromRow(row) : undefined;
+  }
+
   private progressRows(limit: number): ProgressRow[] {
     return this.db
       .prepare(
@@ -198,6 +289,53 @@ export class Store {
       progress: JSON.parse(row.body_json) as ProgressBody,
     };
   }
+}
+
+export type DeviceStatus = "pending" | "approved" | "revoked";
+
+export type Device = {
+  id: string;
+  name: string;
+  secretHash: string;
+  status: DeviceStatus;
+  createdAt: number;
+  lastSeenAt: number | null;
+};
+
+export type RegisterDeviceResult =
+  | { ok: true; created: boolean; device: Device }
+  | { ok: false; status: 409 | 429 | 500; error: string };
+
+type DeviceRow = {
+  id: string;
+  name: string;
+  secret_hash: string;
+  status: string;
+  created_at: number;
+  last_seen_at: number | null;
+};
+
+function deviceFromRow(row: DeviceRow): Device {
+  const status: DeviceStatus =
+    row.status === "approved" || row.status === "revoked" ? row.status : "pending";
+  return {
+    id: row.id,
+    name: row.name,
+    secretHash: row.secret_hash,
+    status,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+  };
+}
+
+export function publicDevice(device: Device) {
+  return {
+    id: device.id,
+    name: device.name,
+    status: device.status,
+    createdAt: device.createdAt,
+    lastSeenAt: device.lastSeenAt,
+  };
 }
 
 export function sessionSummary(stored: StoredPlan) {

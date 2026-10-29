@@ -4,7 +4,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 
 import { PlanError } from "./plan.ts";
-import { sessionSummary, type Store } from "./store.ts";
+import { publicDevice, sessionSummary, type Store } from "./store.ts";
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
@@ -172,6 +172,50 @@ export function createMcpServer(store: Store): McpServer {
     async ({ limit }) => {
       const sessions = store.listPlans(limit ?? 20).map(sessionSummary);
       return text({ sessions });
+    },
+  );
+
+  server.registerTool(
+    "list_devices",
+    {
+      title: "List companion devices",
+      description:
+        "List devices that asked to pair. status is pending, approved, or revoked. The device secret is not included. Approve a pending device so that companion can read the plan and post progress.",
+    },
+    async () => text({ devices: store.listDevices().map(publicDevice) }),
+  );
+
+  server.registerTool(
+    "approve_device",
+    {
+      title: "Approve a companion device",
+      description:
+        "Mark a paired companion as approved. It can then GET /v1/plan and POST /v1/progress. It still cannot write plans. Pass the device id from list_devices.",
+      inputSchema: {
+        deviceId: z.string().describe("Device id from list_devices"),
+      },
+    },
+    async ({ deviceId }) => {
+      const device = store.setDeviceStatus(deviceId, "approved");
+      if (!device) return failure(new Error("No device with that id."));
+      return text({ device: publicDevice(device) });
+    },
+  );
+
+  server.registerTool(
+    "revoke_device",
+    {
+      title: "Revoke a companion device",
+      description:
+        "Mark a companion device as revoked. It can no longer read the plan or post progress. Pass the device id from list_devices.",
+      inputSchema: {
+        deviceId: z.string().describe("Device id from list_devices"),
+      },
+    },
+    async ({ deviceId }) => {
+      const device = store.setDeviceStatus(deviceId, "revoked");
+      if (!device) return failure(new Error("No device with that id."));
+      return text({ device: publicDevice(device) });
     },
   );
 

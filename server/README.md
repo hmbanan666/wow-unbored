@@ -23,9 +23,13 @@ The process listens on `PORT` (default `3000`) and stores SQLite at `$UNBORED_DA
 
 ## Companion
 
-In the tray app, set the planner URL to the origin only, for example `https://unbored.example`. The app calls `{url}/v1/plan` and `{url}/v1/progress`. Put `UNBORED_COMPANION_TOKEN` in the token box. The released companion does not need a new build.
+Companion 0.1.1 uses `https://unbored.kosarev.space` unless an advanced override is set. It registers itself with `POST /v1/devices/register` and shows **Waiting for approval** until `approve_device` runs. After that it sends the device secret as the bearer on `GET /v1/plan` and `POST /v1/progress`. It also installs the latest `Unbored-v*.zip` into the detected `_retail_` folder.
 
-Until a plan exists, `GET /v1/plan` is `404`. The companion shows that status and leaves the previous plan file alone.
+`UNBORED_COMPANION_TOKEN` still authenticates those two calls for an older companion build.
+
+Until a plan exists, `GET /v1/plan` is `404`. The companion leaves the previous plan file alone.
+
+MCP tools `list_devices`, `approve_device`, and `revoke_device` use the planner token. Approving a device does not let it write plans.
 
 ## Planner HTTP
 

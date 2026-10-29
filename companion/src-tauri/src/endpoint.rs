@@ -1,6 +1,8 @@
 //! The optional planner HTTP contract. See docs/companion-api.md.
 //! server/ implements these calls.
 
+pub const DEFAULT_PLANNER_URL: &str = "https://unbored.kosarev.space";
+
 use serde_json::{json, Value};
 
 use crate::savedvars::SessionProgress;

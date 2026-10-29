@@ -18,6 +18,10 @@ export function presentedBearer(header: string | undefined): string | undefined 
   return match?.[1];
 }
 
+export function sha256Hex(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
 export function requireRole(
   c: Context,
   role: Role,

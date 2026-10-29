@@ -231,7 +231,15 @@ test("mcp lists the planner tools", async () => {
     const toolsBody = await json(listed);
     const tools = (toolsBody.result as { tools: { name: string; description: string }[] }).tools;
     const names = tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, ["get_current_plan", "get_progress", "list_sessions", "put_plan"]);
+    assert.deepEqual(names, [
+      "approve_device",
+      "get_current_plan",
+      "get_progress",
+      "list_devices",
+      "list_sessions",
+      "put_plan",
+      "revoke_device",
+    ]);
     const put = tools.find((tool) => tool.name === "put_plan");
     assert.ok(put?.description.includes("0 to 1"));
     assert.ok(put?.description.includes("achievementID"));
@@ -263,6 +271,204 @@ test("mcp lists the planner tools", async () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list", params: {} }),
     });
     assert.equal(blocked.status, 401);
+  } finally {
+    close();
+  }
+});
+
+test("device pairing can read a plan only after approval", async () => {
+  const { app, close } = build();
+  try {
+    const put = await app.request("/v1/plan", {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${planner}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(sample),
+    });
+    assert.equal(put.status, 200);
+    const storedPlan = String((await json(put)).plan);
+
+    const secret = "device-secret-plain-value";
+    const registered = await app.request("/v1/devices/register", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.10" },
+      body: JSON.stringify({ deviceId: "desktop-abc12345", name: "Nick-PC", secret }),
+    });
+    assert.equal(registered.status, 201);
+    const created = await json(registered);
+    assert.equal(created.status, "pending");
+    assert.equal(JSON.stringify(created).includes(secret), false);
+
+    const early = await app.request("/v1/plan", {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    assert.equal(early.status, 401);
+
+    const write = await app.request("/v1/plan", {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${secret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(sample),
+    });
+    assert.equal(write.status, 401);
+
+    const me = await json(
+      await app.request("/v1/devices/me", {
+        headers: { authorization: `Bearer ${secret}` },
+      }),
+    );
+    assert.equal(me.status, "pending");
+
+    const headers = {
+      authorization: `Bearer ${planner}`,
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+    };
+    await app.request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "unbored-test", version: "0" },
+        },
+      }),
+    });
+    const approved = await app.request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "approve_device", arguments: { deviceId: "desktop-abc12345" } },
+      }),
+    });
+    assert.equal(approved.status, 200);
+
+    const plan = await json(
+      await app.request("/v1/plan", { headers: { authorization: `Bearer ${secret}` } }),
+    );
+    assert.equal(plan.plan, storedPlan);
+
+    const posted = await app.request("/v1/progress", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        account: "111111#1",
+        realm: "Area 52",
+        character: "Hero",
+        savedAt: 10,
+        progress: {
+          v: 1,
+          kind: "progress",
+          mode: "custom",
+          budget: 60,
+          source: "companion",
+          currentId: "mentor:fall",
+          done: [],
+          skipped: [],
+          remaining: ["mentor:fall"],
+        },
+      }),
+    });
+    assert.equal(posted.status, 200);
+
+    const revoked = await app.request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "revoke_device", arguments: { deviceId: "desktop-abc12345" } },
+      }),
+    });
+    assert.equal(revoked.status, 200);
+    const after = await app.request("/v1/plan", {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    assert.equal(after.status, 401);
+
+    const legacy = await app.request("/v1/plan", {
+      headers: { authorization: `Bearer ${companion}` },
+    });
+    assert.equal(legacy.status, 200);
+  } finally {
+    close();
+  }
+});
+
+test("registration is capped and rate limited", async () => {
+  const { app, close } = build();
+  try {
+    for (let i = 0; i < 20; i += 1) {
+      const response = await app.request("/v1/devices/register", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": `203.0.113.${i + 1}`,
+        },
+        body: JSON.stringify({
+          deviceId: `device-${i}-abcdefgh`,
+          name: `pc-${i}`,
+          secretHash: `${i.toString(16).padStart(64, "a")}`,
+        }),
+      });
+      assert.equal(response.status, 201, await response.text());
+    }
+    const capped = await app.request("/v1/devices/register", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "198.51.100.20",
+      },
+      body: JSON.stringify({
+        deviceId: "device-extra-abcdefgh",
+        name: "extra",
+        secretHash: "b".repeat(64),
+      }),
+    });
+    assert.equal(capped.status, 429);
+
+    const again = await app.request("/v1/devices/register", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "203.0.113.1",
+      },
+      body: JSON.stringify({
+        deviceId: "device-0-abcdefgh",
+        name: "pc-0",
+        secretHash: `${(0).toString(16).padStart(64, "a")}`,
+      }),
+    });
+    assert.equal(again.status, 200);
+
+    let limited = 0;
+    for (let i = 0; i < 12; i += 1) {
+      const response = await app.request("/v1/devices/register", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": "192.0.2.8",
+        },
+        body: JSON.stringify({ deviceId: "nope", name: "x", secret: "short" }),
+      });
+      limited = response.status;
+    }
+    assert.equal(limited, 429);
   } finally {
     close();
   }
