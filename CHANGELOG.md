@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Everything happens in Wisp's bubble. What is this item?, Ask something, and What to do nearby? open in the bubble (Alt+Right-click an item shows it there too). The old main window is gone; Import, Export, and Build left the menu (`/unbored import` still works).
+- Wisp always says what is going on while a request waits: the Companion still needs a one-time OK, the PC was disconnected, the planner can't be reached, or the Companion isn't running. After 10 minutes it says it is taking long and offers Try again. A failed request says so in plain words with Try again; raw errors and ids are never shown.
+- When the Companion installs a newer Wisp, she says "I've been updated! Press Load to apply." (Load or Later). If Load did not pick it up, she asks for one game restart.
+- In combat the bubble hides and Wisp dims; clicks wait until combat ends.
+- A finished plan plays a cheer and says "All done, nice work! What next?". A preset with nothing to do here says so instead of an empty plan.
+- Lua errors are caught: Wisp prints one short line, and `/unbored errors` lists the last ten for a bug report.
+- Companion 0.5.0: writes a small status block into `Unbored_Plan/Plan.lua` for Wisp (docs/companion-api.md). Finds the game and installs Wisp before the PC is approved, and without the server. Clear pairing: "Connecting...", "Waiting for a one-time OK" with the PC name, then "Connected! You're all set" and a toast. A setup checklist in the window. Friendly errors (technical text only under Advanced). Wakes up as soon as the game saves, instead of every 30 seconds. A request the planner rejects becomes a failed request in the game instead of a silent wait.
+
 ## 0.4.3
 
 - Bubble stack (docs/adr/0004): above the current bubble at most two older one-line messages ("Done: ...", "Skipped: ...", an answer you read) stay for a while and fade, so Wisp never shows more than three.

@@ -27,6 +27,7 @@ local WATCH = {
 function ns.Events.Pulse()
   if ns.Mascot and ns.Mascot.ExpireEchoes then
     ns.Mascot:ExpireEchoes()
+    ns.Mascot:CheckSlow()
   end
   if ns.IsPaused() or not ns.Session or not ns.Session.Current then
     return
@@ -76,9 +77,9 @@ function ns.Events.StartTicker()
   end
   ns.Events.ticker = C_Timer.NewTicker(0.75, function()
     local ok, err = pcall(ns.Events.Pulse)
-    if not ok and ns.Print and not ns.Events.reported then
+    if not ok and not ns.Events.reported then
       ns.Events.reported = true
-      ns.Print(tostring(err))
+      ns.ReportError(err)
     end
   end)
 end

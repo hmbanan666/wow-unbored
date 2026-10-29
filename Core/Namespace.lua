@@ -1,6 +1,8 @@
 local addonName, ns = ...
 
 ns.addon = addonName or "Unbored"
+-- Must match ## Version in Unbored.toc (tests/run.lua checks it).
+ns.VERSION = "0.5.0"
 ns.MASCOT_NAME = "Wisp"
 ns.MEDIA = "Interface\\AddOns\\Unbored\\Media\\"
 -- A plan is 3-7 steps (docs/adr/0005); the in-game builder never makes more.
@@ -61,6 +63,28 @@ function ns.Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage(line)
   else
     print("Unbored: " .. tostring(msg))
+  end
+end
+
+ns.ERRORS_MAX = 10
+
+-- A caught Lua error: kept in UnboredDB.errors for the developer, and the
+-- player gets one friendly chat line per session instead of a stack trace.
+function ns.ReportError(err)
+  local text = tostring(err)
+  if type(UnboredDB) == "table" then
+    if type(UnboredDB.errors) ~= "table" then
+      UnboredDB.errors = {}
+    end
+    local list = UnboredDB.errors
+    list[#list + 1] = { at = ns.Now and ns.Now() or 0, version = ns.VERSION, text = text:sub(1, 600) }
+    while #list > ns.ERRORS_MAX do
+      table.remove(list, 1)
+    end
+  end
+  if not ns.errorShown then
+    ns.errorShown = true
+    ns.Print(ns.T and ns.T("OOPS") or "Wisp tripped over something.")
   end
 end
 

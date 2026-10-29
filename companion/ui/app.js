@@ -18,6 +18,7 @@ const url = $("url");
 const poll = $("poll");
 const autostart = $("autostart");
 const progress = $("progress");
+const steps = $("steps");
 
 const PICTURES = {
   idle: "idle",
@@ -29,23 +30,20 @@ const PICTURES = {
   pairing: "thinking",
 };
 
-const HINTS = {
-  idle: "I'll bring your plans and answers into the game.",
-  thinking: "Keep playing. I'll tell you when it's ready.",
-  busy: "",
-  ready: "Click Load next to me in the game.",
-  pairing: "Your planner has to say yes to this PC once. Nothing to do here.",
-  setup: "I need your World of Warcraft folder to set up the addon.",
-  error: "",
-};
-
 function paint(state) {
   const phase = state.phase || "idle";
   document.body.dataset.phase = phase;
   mascot.src = `img/wisp-${PICTURES[phase] || "idle"}.png`;
   mascot.alt = state.mascot || "Wisp";
   headline.textContent = state.headline || "";
-  hint.textContent = phase === "setup" && state.status ? state.status : HINTS[phase] || "";
+  hint.textContent = phase === "setup" && state.status ? state.status : state.hint || "";
+  steps.innerHTML = "";
+  (state.steps || []).forEach((step) => {
+    const row = document.createElement("li");
+    row.textContent = step.label;
+    if (step.done) row.className = "done";
+    steps.appendChild(row);
+  });
   setup.hidden = phase !== "setup";
   document.title = state.mascot || "Unbored";
 
@@ -54,7 +52,7 @@ function paint(state) {
   poll.value = state.settings.pollMinutes ?? 5;
   autostart.checked = !!state.autostart;
   status.textContent = state.status || "";
-  $("addon").textContent = `Addon ${state.addonVersion || "not installed"}, this PC is ${state.pairing || "pending"}`;
+  $("addon").textContent = `Addon ${state.addonVersion || "not installed"}, this PC is ${state.pairing || "connecting"}`;
   $("version").textContent = `Companion ${state.version || ""}`;
 
   progress.innerHTML = "";
@@ -66,10 +64,9 @@ function paint(state) {
   });
 }
 
+// Details go under Advanced; the headline and hint stay in plain words.
 function showError(err) {
-  const text = String(err && err.message ? err.message : err);
-  status.textContent = text;
-  hint.textContent = text;
+  status.textContent = String(err && err.message ? err.message : err);
 }
 
 async function run(action) {

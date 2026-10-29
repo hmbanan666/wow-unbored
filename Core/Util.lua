@@ -247,6 +247,17 @@ function ns.ClickSound()
   end
 end
 
+-- A finished Plan: the quest-log "complete" chime.
+function ns.CheerSound()
+  if type(PlaySound) ~= "function" or type(SOUNDKIT) ~= "table" then
+    return
+  end
+  local id = SOUNDKIT.IG_QUEST_LIST_COMPLETE or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
+  if id then
+    pcall(PlaySound, id)
+  end
+end
+
 -- Cut to at most maxBytes without splitting a UTF-8 character.
 function ns.Utf8Truncate(text, maxBytes)
   if type(text) ~= "string" or #text <= maxBytes then

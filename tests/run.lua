@@ -44,7 +44,7 @@ local files = {
   "Providers/Achievements.lua",
   "Providers/Farm.lua",
   "Companion/Plan.lua",
-  "UI/Frame.lua",
+  "UI/Widgets.lua",
   "UI/Tracker.lua",
   "UI/Mascot.lua",
   "UI/Items.lua",
@@ -658,6 +658,20 @@ ns.Providers.many = { Build = function() return longPlan end }
 local capped = ns.BuildProviderPlan("many", { budget = 240 })
 check(#capped == ns.MAX_STEPS and ns.MAX_STEPS == 7, "a built plan has at most 7 steps: " .. #capped)
 ns.Providers.many = nil
+
+local tocFile = assert(io.open("Unbored.toc", "r"))
+local tocText = tocFile:read("*a")
+tocFile:close()
+local tocVersion = tocText:match("## Version:%s*(%S+)")
+check(tocVersion == ns.VERSION, "ns.VERSION matches the TOC: " .. tostring(tocVersion) .. " vs " .. ns.VERSION)
+local tocFiles = {}
+for line in tocText:gmatch("[^\r\n]+") do
+  local path = line:match("^([%w_\\]+%.lua)%s*$")
+  if path then
+    tocFiles[#tocFiles + 1] = (path:gsub("\\", "/"))
+  end
+end
+check(table.concat(tocFiles, ",") == table.concat(files, ","), "the test loads the same files as the TOC")
 
 if fails > 0 then
   io.stderr:write(fails .. " failed, " .. checks .. " checks\n")

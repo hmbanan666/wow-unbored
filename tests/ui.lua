@@ -385,7 +385,7 @@ end
 local ui = ns.UI
 local mascot = ns.Mascot
 local tracker = ns.Tracker
-check(ui.frame ~= nil, "main window exists")
+check(ui.frame == nil and _G.UnboredFrame == nil, "there is no main window, only Wisp")
 check(mascot.frame ~= nil and mascot.frame:IsShown(), "the mascot is on screen from the start")
 check(tooltipCalls[0] ~= nil, "item tooltips get a post call")
 check(hooks.HandleModifiedItemClick ~= nil, "modified item clicks are post-hooked")
@@ -411,7 +411,6 @@ end
 check(textOf(mascot.timeChips[2].label) == "1h" and gold(mascot.timeChips[2]), "1h is the default time")
 check(not gold(mascot.timeChips[1]) and not gold(mascot.timeChips[3]), "only one time is picked")
 check(not mascot.buttons.done:IsShown() and not mascot.buttons.back:IsShown(), "no step buttons in the greeting")
-check(not ui.frame:IsShown(), "no window to dig through")
 check(mascot.art.texture:find("WispIdle", 1, true) ~= nil, "idle portrait")
 check(mascot.bubble.height > (#mascot.chips + 1) * 26, "the bubble fits all chips: " .. mascot.bubble.height)
 check(not tracker.frame:IsShown(), "the list view is closed by default")
@@ -505,7 +504,12 @@ mascot:SetLocked(false)
 entry(settings.children, "Keybinds").fn()
 check(printed[#printed]:find("Keybindings", 1, true) ~= nil, "Keybinds says where to bind")
 local more = entry(settings.children, "More")
-check(#more.children >= 5 and more.children[1].text == "Show all steps", "the rest is under More")
+local moreNames = {}
+for i = 1, #more.children do
+  moreNames[i] = more.children[i].text
+end
+check(table.concat(moreNames, "|") == "Show all steps|One chat line per step|Reset position",
+  "More has no import, export, or build: " .. table.concat(moreNames, "|"))
 mascot:SetScale(100)
 check(mascot.frame.scale == 1, "size back to 100%")
 MenuUtil = nil
@@ -549,10 +553,6 @@ local echo1 = mascot.echoFrames[1]
 check(echo1:IsShown() and textOf(echo1.text):find("Done: ", 1, true) == 1, "the done step echoes above the bubble")
 check(echo1.alpha and echo1.alpha < 1, "an older message is faded")
 check(echo1.points[1][1] == "BOTTOMLEFT" and echo1.points[1][2] == mascot.bubble, "it sits right above the bubble")
-ui:Open("ask")
-check(ui.view == "waiting" and ui.primary.text == "Load", "the window waits too")
-check(ui.cancel:IsShown(), "waiting offers cancel")
-ui.frame:Hide()
 
 check(mascot.buttons.load:IsShown() and textOf(mascot.buttons.load) == "Load", "the bubble offers Load")
 mascot.buttons.load:Click()
@@ -593,7 +593,6 @@ check(ns.Session:AutoApplyExternal() == false, "the same Full plan is not offere
 mascot.buttons.use:Click()
 check(UnboredCharDB.offer == nil and ns.Session.state.source == "companion", "Switch starts the Full plan")
 check(#ns.Session.state.tasks == 3 and ns.Session.state.done[1].id == quickDone, "finished steps carry over")
-check(not ui.frame:IsShown(), "starting a plan hides the main window")
 check(mascot.view.kind == "step", "the bubble shows the step")
 check(not mascot.bob.playing, "thinking stops when the plan is in")
 check(not mascot.forceChoice and not mascot.wishing, "a new plan clears the choice")
@@ -688,7 +687,8 @@ end
 ns.Events.Pulse()
 check(#mascot.echoes == 0 and not mascot.echoFrames[1]:IsShown(), "older messages go away by themselves")
 ns.Now = realNow
-check(mascot.view.kind == "choice" and textOf(mascot.message) == "Nice! What next?", "a finished plan celebrates")
+check(mascot.view.kind == "choice" and textOf(mascot.message) == "All done, nice work! What next?",
+  "a finished plan celebrates")
 check(mascot.chips[1]:IsShown() and not mascot.buttons.back:IsShown(), "and offers the presets again")
 check(mascot.art.texture:find("WispHappy", 1, true) ~= nil, "happy portrait when done")
 
@@ -716,19 +716,23 @@ check(textOf(mascot.header):find("mount, no raids", 1, true), "the bubble shows 
 ns.Session:CancelRequest()
 check(mascot.view.kind == "choice", "cancel goes back to the presets")
 
--- Ask something.
-ui:Open("ask")
-check(ui.view == "ask" and ui.askBox:IsShown() and ui.primary.text == "Send", "Ask is one box and Send")
-ui.primary:Click()
-check(reloads == 3 and ui.hint.text == "Type your question first.", "an empty question is not sent")
-ui.ask:SetText("Where can I get a flying mount?")
-ui.primary:Click()
+-- Ask something: the same box, in the bubble.
+mascot.frame:Click("LeftButton")
+menuRow("Ask something"):Click()
+check(mascot.view.kind == "ask" and mascot.wishBox:IsShown(), "Ask is one box in the bubble")
+check(textOf(mascot.wishBox.placeholder) == "e.g. where can I get a flying mount?", "with its own hint")
+check(textOf(mascot.wishEdit) == "", "the box starts empty")
+mascot.buttons.send:Click()
+check(reloads == 3 and textOf(mascot.sub) == "Type your question first.", "an empty question is not sent")
+mascot.wishEdit:SetText("Where can I get a flying mount?")
+mascot.buttons.send:Click()
 check(reloads == 4, "Send reloads in the same click")
 req = UnboredCharDB.request
 check(req and req.type == "question" and req.question == "Where can I get a flying mount?", "the question is saved")
 check(req and req.mode == nil and req.budget == nil, "a question has no mode or budget")
 check(mascot.view.kind == "waiting" and mascot.view.header:find("flying mount", 1, true),
   "the bubble shows the question")
+check(textOf(mascot.message) == "Thinking..." and mascot.buttons.cancel:IsShown(), "thinking, with a way out")
 
 UnboredExternalPlan = {
   requestId = req.id,
@@ -753,15 +757,15 @@ check(mascot.view.kind == "step" and textOf(mascot.message) == "Rare", "after th
 mascot.buttons.done:Click()
 
 -- What to do nearby.
-ui:Open("nearby")
-check(ui.view == "nearby" and ui.askBox:IsShown(), "nearby asks for an optional wish")
-ui.primary:Click()
+ns.UI:Open("nearby")
+check(mascot.view.kind == "nearby" and mascot.wishBox:IsShown(), "nearby asks for an optional wish")
+mascot.buttons.send:Click()
 req = UnboredCharDB.request
 check(reloads == 5 and req.type == "question" and req.topic == "nearby", "nearby sends a nearby question")
 check(req.question == "What can I do nearby right now?", "nearby fills in the question")
 ns.Session:CancelRequest()
 
--- What is this item: Alt+Right-click in bags.
+-- What is this item: Alt+Right-click in bags shows it in the bubble.
 altDown = true
 hooks.HandleModifiedItemClick(HEARTH, {
   IsBagAndSlot = function()
@@ -772,16 +776,18 @@ hooks.HandleModifiedItemClick(HEARTH, {
   end,
 })
 altDown = false
-check(ui.frame:IsShown() and ui.view == "item", "Alt+Right-click opens the item screen")
-check(ui.item and ui.item.itemID == 6948 and ui.item.bag == 0 and ui.item.slot == 3, "the bag slot is kept")
-check(ui.item.count == 1 and ui.item.name == "Hearthstone", "count and name are kept")
-check(ui.itemName.text == HEARTH, "the item screen shows the item")
-check(ui.itemFacts.text:find("inn", 1, true) ~= nil, "the item screen says what we know")
-check(not ui.primary.disabled and ui.primary.text == "Ask about it", "the item can be asked about")
+check(mascot.view.kind == "item" and mascot.bubble:IsShown(), "Alt+Right-click shows the item in the bubble")
+local shown = mascot.item
+check(shown and shown.itemID == 6948 and shown.bag == 0 and shown.slot == 3, "the bag slot is kept")
+check(shown.count == 1 and shown.name == "Hearthstone", "count and name are kept")
+check(textOf(mascot.header) == HEARTH, "the bubble shows the item link")
+check(textOf(mascot.message):find("inn", 1, true) ~= nil, "and what Wisp knows about it")
+check(mascot.buttons.ask:IsShown() and mascot.buttons.back:IsShown(), "it can be asked about, or not")
 check(reloads == 5, "the click hook never reloads")
-ui.primary:Click()
+mascot.buttons.ask:Click()
 req = UnboredCharDB.request
 check(reloads == 6 and req.type == "item" and req.item.itemID == 6948 and req.item.bag == 0, "item request saved")
+check(mascot.view.kind == "waiting" and textOf(mascot.header) == HEARTH, "Wisp thinks about the item")
 
 UnboredExternalPlan = {
   requestId = req.id,
@@ -808,15 +814,16 @@ check(tooltipLines[1] and tooltipLines[1]:find("mount you don't have", 1, true),
 tooltipLines = {}
 tooltipCalls[0](GameTooltip, { id = 42 })
 check(#tooltipLines == 0, "nothing is added when there is nothing to say")
-tooltipCalls[0](ui.frame, { id = 6948 })
+tooltipCalls[0](mascot.frame, { id = 6948 })
 check(#tooltipLines == 0, "other tooltips are left alone")
 
 -- Dropping an item on the mascot.
-ui.frame:Hide()
 cursor = { itemID = 6948, link = HEARTH }
 mascot.frame:Click("LeftButton")
-check(ui.view == "item" and ui.item.itemID == 6948 and cleared == 1, "dropping an item on the mascot asks about it")
-check(ui.item.bag == 0 and ui.item.slot == 3, "a dropped item is found in the bags")
+check(mascot.view.kind == "item" and mascot.item.itemID == 6948 and cleared == 1, "dropping an item on Wisp shows it")
+check(mascot.item.bag == 0 and mascot.item.slot == 3, "a dropped item is found in the bags")
+mascot.buttons.back:Click()
+check(mascot.view.kind ~= "item", "Back leaves the item")
 
 -- A failed request.
 UnboredCharDB.request = { id = "req-x", type = "question", question = "?", createdAt = os.time() }
@@ -824,7 +831,14 @@ UnboredExternalPlan = { requestId = "req-x", requestStatus = "failed", requestRe
 ns.Session:NoteRequest()
 ns.Session:RefreshUI()
 check(mascot.view.kind == "failed" and textOf(mascot.sub) == "Nothing nearby.", "a failed request says why")
-check(ui.view == "failed" and ui.stateBody.text == "Nothing nearby.", "the window says why too")
+check(mascot.buttons.retry:IsShown() and mascot.buttons.ok:IsShown(), "with Try again and Got it")
+local before = reloads
+mascot.buttons.retry:Click()
+check(reloads == before + 1 and UnboredCharDB.request.id ~= "req-x", "Try again sends it again and reloads")
+check(UnboredCharDB.request.question == "?" and UnboredCharDB.request.type == "question", "the same question")
+UnboredCharDB.request.id = "req-x"
+ns.Session:NoteRequest()
+ns.Session:RefreshUI()
 mascot.buttons.ok:Click()
 check(UnboredCharDB.request == nil and mascot.view.kind ~= "failed", "ok clears the failure")
 
@@ -859,11 +873,12 @@ SlashCmdList.UNBORED("quests")
 check(UnboredDB.mode == "quests" and mascot.view.kind == "wish", "/unbored quests picks the mode, then the wish")
 mascot.buttons.back:Click()
 SlashCmdList.UNBORED("ask where to fish?")
-check(ui.frame:IsShown() and ui.view == "ask" and ui.ask.text == "where to fish?", "/unbored ask still asks")
+check(mascot.view.kind == "ask" and textOf(mascot.wishEdit) == "where to fish?", "/unbored ask still asks")
 ui:Open("wizard")
-check(not ui.frame:IsShown() and mascot.view.kind == "choice", "the old wizard opens the presets")
+check(mascot.view.kind == "choice", "the old wizard opens the presets")
+mascot.buttons.back:Click()
 Unbored_Toggle()
-check(ui.frame:IsShown() == false and mascot.view.kind == "choice", "the toggle key offers the presets")
+check(mascot.view.kind == "choice", "the toggle key offers the presets")
 
 -- No companion: a preset builds a plan in the game, no reload.
 local reloadsBefore = reloads
@@ -877,6 +892,131 @@ mascot.chips[1]:Click()
 check(reloads == reloadsBefore and UnboredCharDB.request == nil, "no companion: no request and no reload")
 check(mascot.view.kind ~= "waiting", "no companion: nothing to wait for: " .. mascot.view.kind)
 C_AddOns.IsAddOnLoaded = isLoaded
+
+-- Every wait says why, in plain words, and never shows ids or raw errors.
+local function bubbleText()
+  return table.concat({ textOf(mascot.header), textOf(mascot.message), textOf(mascot.sub) }, " ")
+end
+local function askNow()
+  ns.Session:CancelRequest()
+  ns.Session:Ask({ type = "question", question = "Where is the bank?" })
+  ns.Session:RefreshUI()
+end
+local now = os.time()
+UnboredExternalPlan = nil
+UnboredCompanionStatus = { v = 1, pairing = "pending", online = true, seenAt = now, addonVersion = ns.VERSION }
+askNow()
+check(mascot.view.kind == "waiting" and textOf(mascot.sub):find("one-time OK", 1, true), "waiting for approval is said")
+check(not mascot.buttons.retry:IsShown() and mascot.buttons.load:IsShown(), "no Try again while pairing")
+check(not bubbleText():find("req-", 1, true), "no request id in the bubble")
+UnboredCompanionStatus.pairing = "revoked"
+ns.Session:RefreshUI()
+check(textOf(mascot.sub):find("disconnected", 1, true), "a revoked PC is said")
+UnboredCompanionStatus.pairing = "approved"
+UnboredCompanionStatus.online = false
+ns.Session:RefreshUI()
+check(textOf(mascot.sub):find("can't reach the planner", 1, true), "an unreachable planner is said")
+UnboredCompanionStatus.online = true
+UnboredCompanionStatus.seenAt = now - 20 * 60
+ns.Session:RefreshUI()
+check(textOf(mascot.sub):find("isn't running", 1, true), "a Companion that is not running is said")
+UnboredCompanionStatus.seenAt = now
+ns.Session:RefreshUI()
+check(textOf(mascot.sub) == "Keep playing. When your PC says it's ready, press Load.", "all fine: keep playing")
+check(mascot.art.texture:find("WispThinking", 1, true) ~= nil, "and Wisp thinks")
+
+-- More than 10 minutes: Try again shows up by itself.
+UnboredCharDB.request.createdAt = now - 11 * 60
+ns.Events.Pulse()
+check(textOf(mascot.sub):find("longer than usual", 1, true), "a slow request is said")
+check(mascot.buttons.retry:IsShown() and mascot.buttons.cancel:IsShown(), "with Try again and Cancel")
+before = reloads
+local oldId = UnboredCharDB.request.id
+mascot.buttons.retry:Click()
+check(reloads == before + 1 and UnboredCharDB.request.id ~= oldId, "Try again sends a new request")
+check(UnboredCharDB.request.question == "Where is the bank?", "with the same question")
+check(not mascot.buttons.retry:IsShown(), "a fresh request is not slow")
+
+-- A slow Full plan keeps the Quick plan going, with Try again next to Load.
+ns.Session:CancelRequest()
+mascot:ShowChoice()
+mascot.chips[2]:Click()
+UnboredCharDB.request.createdAt = now - 11 * 60
+ns.Session:RefreshUI()
+check(mascot.view.kind == "step" and textOf(mascot.header):find("longer than usual", 1, true), "slow over a Quick plan")
+check(mascot.buttons.done:IsShown() and mascot.buttons.load:IsShown() and mascot.buttons.retry:IsShown(),
+  "the step stays doable, with Load and Try again")
+local rowRight = 0
+for _, name in ipairs(mascot.view.buttons) do
+  local button = mascot.buttons[name]
+  local x = button.points[1][4] or 0
+  rowRight = math.max(rowRight, x + button:GetWidth())
+end
+check(rowRight <= 260, "the button row fits the bubble: " .. rowRight)
+ns.Session:CancelRequest()
+
+-- The Companion put a newer addon on disk: Load applies it.
+UnboredCompanionStatus.addonVersion = "9.9.9"
+ns.Session:RefreshUI()
+check(mascot.view.kind == "update" and textOf(mascot.message) == "I've been updated! Press Load to apply.",
+  "an update waiting is said")
+check(mascot.buttons.load:IsShown() and mascot.buttons.later:IsShown(), "Load or Later")
+before = reloads
+mascot.buttons.load:Click()
+check(reloads == before + 1 and UnboredCharDB.updateTried == "9.9.9", "Load reloads and remembers the try")
+ns.Session:RefreshUI()
+check(mascot.view.kind == "update" and textOf(mascot.message):find("restart the game", 1, true),
+  "still old after Load: restart the game once")
+mascot.buttons.ok:Click()
+check(mascot.view.kind ~= "update", "and it can be put away")
+mascot.updateLater = nil
+UnboredCompanionStatus.addonVersion = ns.VERSION
+ns.Session:RefreshUI()
+check(mascot.view.kind ~= "update", "the same version is no update")
+check(ns.VersionNewer("0.10.0", "0.9.9") and not ns.VersionNewer("0.5.0", "0.5.0") and not ns.VersionNewer("", "1"),
+  "versions compare by number")
+
+-- Combat: Wisp steps aside and ignores clicks, then comes back.
+local fighting = true
+InCombatLockdown = function()
+  return fighting
+end
+driver.scripts.OnEvent(driver, "PLAYER_REGEN_DISABLED")
+check(not mascot.bubble:IsShown() and mascot.frame:IsShown() and mascot.frame.alpha == 0.5,
+  "in combat: just a faded portrait")
+ui.menu:Hide()
+mascot.frame:Click("LeftButton")
+check(not ui.menu:IsShown() and not mascot.bubble:IsShown(), "clicks wait until the fight is over")
+fighting = false
+driver.scripts.OnEvent(driver, "PLAYER_REGEN_ENABLED")
+check(mascot.bubble:IsShown() and mascot.frame.alpha == 1, "after combat the bubble is back")
+InCombatLockdown = nil
+
+-- No companion: the item shows what Wisp knows, without an Ask button.
+local loaded = C_AddOns.IsAddOnLoaded
+C_AddOns.IsAddOnLoaded = function()
+  return false
+end
+UnboredCompanionStatus = nil
+mascot:ShowChoice()
+mascot.chips[6]:Click()
+check(#ns.Session.state.tasks == 0 and mascot.view.kind == "choice", "an empty Quick plan offers the presets")
+check(textOf(mascot.message) == "I found nothing for that around here. Try another one?", "and says so")
+ns.UI:OpenItem({ itemID = 6948, link = HEARTH })
+check(mascot.view.kind == "item" and not mascot.buttons.ask:IsShown(), "no companion: no Ask")
+check(textOf(mascot.sub) == "Questions need Unbored Companion on your PC.", "and says why")
+mascot.buttons.back:Click()
+C_AddOns.IsAddOnLoaded = loaded
+
+-- A caught error: one friendly line, the details kept for the developer.
+local lines = #printed
+ns.ReportError("Interface/AddOns/Unbored/UI/Mascot.lua:1: boom")
+ns.ReportError("again")
+check(#printed == lines + 1 and printed[#printed]:find("tripped", 1, true), "one friendly line per session")
+check(not printed[#printed]:find("Mascot.lua", 1, true), "no stack trace in chat")
+check(#UnboredDB.errors == 2 and UnboredDB.errors[1].text:find("boom", 1, true), "the details are kept")
+SlashCmdList.UNBORED("errors")
+check(printed[#printed]:find("again", 1, true), "/unbored errors shows them")
 
 -- The player profile is written when the game saves (logout or reload).
 driver.scripts.OnEvent(driver, "PLAYER_ENTERING_WORLD", true, false)
@@ -894,9 +1034,6 @@ check(hearth == 1, "the profile counts bag items")
 check(profile and #profile.recentSteps >= 5 and profile.recentSteps[1].bucket, "the profile keeps recent steps")
 check(profile and #profile.sessions >= 1 and profile.sessions[#profile.sessions].stop, "the profile keeps sessions")
 
-local items = ui.MenuItems()
-check(#items >= 3, "gear menu has items")
-ns.UI.ShowMenu(ui.frame, items)
 
 if fails > 0 then
   io.stderr:write(fails .. " failed, " .. checks .. " checks\n")

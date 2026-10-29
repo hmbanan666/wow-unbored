@@ -65,19 +65,19 @@ function ns.OnAddonLoaded()
   if ns.UI and ns.UI.Create then
     local ok, err = pcall(ns.UI.Create)
     if not ok then
-      ns.Print(tostring(err))
+      ns.ReportError(err)
     end
   end
   if ns.Tracker and ns.Tracker.Create then
     local ok, err = pcall(ns.Tracker.Create, ns.Tracker)
     if not ok then
-      ns.Print(tostring(err))
+      ns.ReportError(err)
     end
   end
   if ns.Mascot and ns.Mascot.Create then
     local ok, err = pcall(ns.Mascot.Create, ns.Mascot)
     if not ok then
-      ns.Print(tostring(err))
+      ns.ReportError(err)
     end
   end
   if ns.Items and ns.Items.Hook then
@@ -108,7 +108,7 @@ function ns.OnEnteringWorld(initialLogin)
       ns.Session:Start()
     end)
     if not ok then
-      ns.Print(tostring(err))
+      ns.ReportError(err)
     end
   end
 end
@@ -124,9 +124,14 @@ local function slash(message)
   elseif command == "hide" then
     ns.Mascot:Hide()
   elseif command == "ask" or command == "nearby" or command == "item" then
-    ns.UI:Open(command)
-    if command == "ask" and rest ~= "" then
-      ns.UI.ask:SetText(rest)
+    ns.Mascot:ShowAsk(command, rest ~= "" and rest or nil)
+  elseif command == "errors" then
+    local list = type(ns.DB.errors) == "table" and ns.DB.errors or {}
+    if #list == 0 then
+      ns.Print(ns.T("ERRORS_NONE"))
+    end
+    for i = 1, #list do
+      ns.Print(tostring(list[i].version) .. ": " .. tostring(list[i].text))
     end
   elseif command == "tracker" or command == "list" then
     ns.Tracker:Toggle()
@@ -178,8 +183,8 @@ local function slash(message)
 end
 
 function Unbored_Toggle()
-  if ns.UI and ns.UI.Toggle then
-    ns.UI:Toggle()
+  if ns.Mascot and ns.Mascot.ShowChoice then
+    ns.Mascot:ShowChoice()
   end
 end
 
@@ -202,7 +207,11 @@ function Unbored_Waypoint()
 end
 
 function Unbored_LoadPlan()
-  ns.Session.LoadPlan()
+  if ns.Mascot and ns.Mascot.OnLoad then
+    ns.Mascot:OnLoad()
+  else
+    ns.Session.LoadPlan()
+  end
 end
 
 if SlashCmdList then

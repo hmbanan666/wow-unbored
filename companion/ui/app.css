@@ -47,6 +47,11 @@ button.big {
 }
 .actions { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 14px; }
 .actions[hidden] { display: none; }
+.steps { list-style: none; padding: 0; margin: 0 0 14px; text-align: left; }
+.steps li { margin: 4px 0; color: var(--soft); }
+.steps li::before { content: "\2022"; display: inline-block; width: 1.4em; color: #5d7a77; }
+.steps li.done { color: #e9f4f2; }
+.steps li.done::before { content: "\2713"; color: var(--teal); }
 .check { display: flex; gap: 8px; align-items: center; color: var(--soft); margin-top: 6px; }
 
 details { margin-top: 26px; color: var(--soft); font-size: 13px; user-select: text; }

@@ -13,4 +13,6 @@ Hard to reverse means things like data flow, privacy, pairing, what the addon ma
 
 Wisp's voice is warm, short, with light humour and no cringe. Plans are 3 to 7 Steps, one shown at a time, the full list on click. Every UI string goes in `Core/Locale.lua`, in English and Russian.
 
+Every state the player can be in has a line from Wisp and a way forward: no silent waits, no raw errors or ids, no slash command or manual `/reload` needed. [`TESTING.md`](TESTING.md) is the owner's live-client checklist (in Russian); update it when a player-visible flow changes.
+
 Checks that CI runs: `luacheck .`, `lua5.1 tests/run.lua`, `lua5.1 tests/ui.lua`, `npm test` in `server/`, and `cargo test --lib --no-default-features` in `companion/src-tauri/`.

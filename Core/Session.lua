@@ -123,10 +123,11 @@ function ns.Session:Finish(bucket)
   local nxt = self:Current()
   if nxt then
     self.Note(ns.T("NEXT_UP", nxt.title))
+    ns.ClickSound()
   else
     self.Note(ns.T("PLAN_DONE_CHAT"))
+    ns.CheerSound()
   end
-  ns.ClickSound()
   self:RefreshUI()
 end
 
@@ -409,7 +410,7 @@ function ns.Session:DeclineOffer()
   self:RefreshUI()
 end
 
--- The wizard only remembers the choice. Nothing is rebuilt until Get plan.
+-- Only remembers the choice. Nothing is rebuilt until a Preset or Send.
 function ns.Session.SetMode(_, mode)
   if ns.DB and ns.MODE_IDS[mode] and mode ~= "custom" then
     ns.DB.mode = mode
@@ -520,6 +521,83 @@ function ns.Session:RequestAge()
   return math.max(0, ns.Now() - created)
 end
 
+ns.SLOW_SECONDS = 10 * 60
+-- The Companion rewrites its status at least every 5 minutes while it runs.
+ns.COMPANION_STALE_SECONDS = 15 * 60
+
+function ns.Session:IsSlow()
+  local note = self.requestNote
+  if note ~= "sending" and note ~= "preparing" then
+    return false
+  end
+  local age = self:RequestAge()
+  return age ~= nil and age > ns.SLOW_SECONDS
+end
+
+-- What the Companion said about itself when it last wrote Plan.lua.
+function ns.Session.CompanionStatus()
+  local status = UnboredCompanionStatus
+  if type(status) ~= "table" then
+    return nil
+  end
+  return status
+end
+
+-- Why a Request may not have reached the Planner yet: "stopped" (the
+-- Companion is not running), "pairing", "revoked", "offline", or nil.
+function ns.Session.CompanionProblem()
+  local status = ns.Session.CompanionStatus()
+  if not status then
+    return nil
+  end
+  local seen = tonumber(status.seenAt)
+  if seen and ns.Now() - seen > ns.COMPANION_STALE_SECONDS then
+    return "stopped"
+  end
+  if status.pairing == "revoked" then
+    return "revoked"
+  end
+  if status.pairing ~= nil and status.pairing ~= "approved" then
+    return "pairing"
+  end
+  if status.online == false then
+    return "offline"
+  end
+  return nil
+end
+
+local function versionParts(text)
+  local parts = {}
+  for number in tostring(text or ""):gmatch("%d+") do
+    parts[#parts + 1] = tonumber(number)
+  end
+  return parts
+end
+
+function ns.VersionNewer(candidate, current)
+  local a, b = versionParts(candidate), versionParts(current)
+  if #a == 0 then
+    return false
+  end
+  for i = 1, math.max(#a, #b) do
+    local x, y = a[i] or 0, b[i] or 0
+    if x ~= y then
+      return x > y
+    end
+  end
+  return false
+end
+
+-- The Companion put a newer addon on disk than the one running.
+function ns.Session.UpdateWaiting()
+  local status = ns.Session.CompanionStatus()
+  local version = status and status.addonVersion
+  if type(version) == "string" and ns.VersionNewer(version, ns.VERSION) then
+    return version
+  end
+  return nil
+end
+
 -- Saves the request into SavedVariables. The caller reloads the UI right
 -- after, inside the same click, so the game writes the file for the companion.
 -- ask: { type = "plan" | "question" | "item", wish, question, topic, item }
@@ -583,6 +661,23 @@ function ns.Session:Ask(ask)
   self:NoteRequest()
   self:RefreshUI()
   return id
+end
+
+-- Sends the pending Request again as a new one. The caller reloads.
+function ns.Session:Retry()
+  local req = self:PendingRequest()
+  if not req then
+    return nil
+  end
+  return self:Ask({
+    type = req.type,
+    mode = req.mode,
+    budget = req.budget,
+    topic = req.topic,
+    wish = req.wish,
+    question = req.question,
+    item = req.item,
+  })
 end
 
 function ns.Session:RequestPlan(wish)
@@ -738,13 +833,13 @@ function ns.Session:AutoApplyExternal()
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
   end
-  local plan, err
+  local plan
   if type(external.tasks) == "table" then
-    plan, err = ns.ValidatePlan(external, true)
+    plan = ns.ValidatePlan(external, true)
     if not plan and not answer then
       if req then
         self.requestNote = "failed"
-        self.requestReason = err
+        self.requestReason = nil
       end
       return false
     end
