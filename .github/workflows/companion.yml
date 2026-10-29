@@ -45,7 +45,8 @@ jobs:
             echo "updater=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. Building without updater artifacts; installed companions will not self-update to this build."
-            echo "args=--bundles msi,nsis --config ${GITHUB_WORKSPACE}/companion/src-tauri/tauri.unsigned.conf.json" >> "$GITHUB_OUTPUT"
+            root="${GITHUB_WORKSPACE//\\//}"
+            echo "args=--bundles msi,nsis --config ${root}/companion/src-tauri/tauri.unsigned.conf.json" >> "$GITHUB_OUTPUT"
             echo "updater=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Build installer
