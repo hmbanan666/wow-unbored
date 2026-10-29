@@ -7,7 +7,9 @@ name: Release
 on:
   push:
     tags:
-      - "**"
+      # Addon releases only. companion-v* is the tray app and must not
+      # publish an addon zip onto that same GitHub release.
+      - "v*"
   workflow_dispatch:
 
 permissions:

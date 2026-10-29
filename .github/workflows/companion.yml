@@ -42,10 +42,11 @@ jobs:
           projectPath: companion
           tauriScript: npx --no-install tauri
           args: --bundles msi,nsis
-          # Tag releases upload the installer. Pull requests only compile it.
-          releaseDraft: true
-          releaseName: "Unbored Companion v__VERSION__"
+          # The action does not read github.ref. Without tagName it builds and skips the upload.
+          tagName: ${{ github.ref_name }}
+          releaseName: "Unbored Companion ${{ github.ref_name }}"
           releaseBody: "Windows installer is unsigned. SmartScreen will warn; More info, then Run anyway. See companion/README.md."
+          releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
         if: startsWith(github.ref, 'refs/tags/companion-v')
