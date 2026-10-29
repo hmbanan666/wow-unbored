@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- Starting a plan is all Wisp. With no plan Wisp greets "Hi! What shall we do?" and shows big preset chips in the bubble: Stay here, do stuff nearby; Get a mount; Collect stuff nearby; Grind / level / renown; Farm gold / mats; Surprise me. One click saves the request and reloads, and Wisp says "Got it, cooking a plan..." until Load. Small 30m / 1h / 2h chips are optional (1h by default). Something else... is one text box in the bubble.
+- The presets are one table, `Data/Presets.lua`. A preset request carries `topic` (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`) so the planner knows which chip it was.
+- A finished plan: Wisp celebrates ("Nice! What next?") and offers the chips again.
+- The menu puts the step first when a plan is running: What next?, Skip this step, Show route on map, then New plan, What is this item?, Ask something, Settings. Settings are basic (Size, Lock position, Hide, Keybinds); the rest is under More.
+- The old wizard (mode cards, time buttons, wish box) is gone. `/unbored`, `/unbored roam|quests|events|fun|farm`, `/unbored 30|60|120`, and the other slash commands still work.
+
 ## 0.4.0
 
 - Wisp, a teal glowing spirit with a compass and a backpack, is the whole in-game UI: a round portrait you can move and lock, with one chat bubble beside it. The bubble shows the current step as written, its note, the route point, a small `2/5`, and ✓ Done / ➜ Skip. Text wraps and the bubble grows; − folds it to the portrait. It opens toward the middle of the screen.

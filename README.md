@@ -29,37 +29,38 @@ CurseForge, Wago, and WowUp are not wired up yet. A git tag builds a zip through
 - the current step, as the plan wrote it ("Fly to Dalaran. Portal is next to you in Orgrimmar."), its note, the route point and distance, and a small `2/5`. The ✓ icon is Done, the arrow is Skip;
 - "Thinking..." while a request is out, with Wisp bobbing and glowing, and one **Load** button;
 - an answer, shown as written, with a ✓ to say you read it;
-- "All done" with **New plan** when the plan is finished, or a hello when there is nothing yet.
+- "Hi! What shall we do?" with big preset chips when there is no plan, and "Nice! What next?" with the same chips when a plan is finished.
 
 Text wraps and the bubble grows; nothing is cut. The − in the bubble folds it down to the portrait. Drag the portrait to move it (Settings → Lock position to stop that). The position is saved, and the bubble opens toward the middle of the screen.
 
-**Click Wisp** for the menu: New plan, What is this item?, What to do nearby?, Ask something, Settings, Hide. The menu is the game's own context menu.
+**Starting a plan** happens in the bubble, with no settings to open. Each chip is one click: Stay here, do stuff nearby; Get a mount; Collect stuff nearby (pets, toys, transmog, achievements in this zone); Grind / level / renown; Farm gold / mats; Surprise me. Small time chips under them (30m, 1h, 2h) are optional; 1h is the default. **Something else...** opens one text box in the bubble for your own words, and **Send**. After a click Wisp says "Got it, cooking a plan..." and the UI reloads in the same click. The chips are one table in `Data/Presets.lua` (id, label, mode, and the words sent to the planner), so they are easy to edit.
 
-- **New plan** opens the main window, where Wisp asks three things: what you feel like doing (Roam, Quests, Events, Fun achievements, or Farm, each card says what it means), how much time you have (30m, 1h, 2h), and anything special (optional free text, such as "mount, no raids, stay in this zone"). Then one button.
+**Click Wisp** with no plan and it offers the chips. Otherwise a click (or a right-click any time) opens the game's own context menu. With a plan running it starts with the step: What next?, Skip this step, Show route on map. Then New plan, What is this item?, Ask something, and Settings last.
+
 - **Ask something** is one text box and **Send**.
 - **What to do nearby?** is the same box, optional, and asks the planner for something around you.
 - **What is this item?** has a slot. Drop an item on it, drop an item on Wisp, or Alt+Right-click the item in your bags. It shows what Unbored already knows and offers **Ask about it**.
-- **Hide** hides Wisp. The minimap button (left-click) or `/unbored` brings it back.
+- **Settings** is basic: Size (80–150%), Lock position, Hide, Keybinds, and More. Hide hides Wisp; the minimap button (left-click) or `/unbored` brings it back.
 
-With the companion installed, every send (**Get plan**, **Send**, **Ask about it**) saves the request and reloads the UI in the same click, so the companion can read it. The companion pops a Windows toast from Wisp when the answer arrives. **Load** reloads, and the plan starts, or the answer appears in the bubble. Any other reload or login picks it up too. Without the companion the wizard button is **Build plan** and the list is made in game; What to do nearby? builds a Roam list; questions and item questions say they need the companion.
+With the companion installed, every send (a preset chip, **Send**, **Ask about it**) saves the request and reloads the UI in the same click, so the companion can read it. The companion pops a Windows toast from Wisp when the answer arrives. **Load** reloads, and the plan starts, or the answer appears in the bubble. Any other reload or login picks it up too. Without the companion a chip builds the list in game with that chip's mode; What to do nearby? (`/unbored nearby`) builds a Roam list; questions and item questions say they need the companion.
 
 **Item tooltips** get one short Wisp line when there is something to say: an answer the planner gave about that item, a note from `Data/Items.lua` (Hearthstone, cloth, food, keystone, and a few more), "Needed for your plan" when an active step is about it, and whether a mount, pet, or toy is still missing from your collection. Nothing is added otherwise.
 
-**Show all steps** (Settings) opens the full list in the quest-tracker style: step count, minutes left, the next steps dimmed (click one to read its note), collapse, and its own saved position.
+**Show all steps** (Settings → More) opens the full list in the quest-tracker style: step count, minutes left, the next steps dimmed (click one to read its note), collapse, and its own saved position.
 
-Settings also holds the rarely used things: point the arrow again, the TomTom arrow, chat lines (off by default), build here instead, import a plan string, export progress, and reset position. The gear in the main window opens the same list.
+Settings → More holds the rarely used things: point the arrow again, the TomTom arrow, chat lines (off by default), build here instead, import a plan string, export progress, and reset position. The gear in the main window opens the same list.
 
 The name is one string, `ns.MASCOT_NAME` in `Core/Namespace.lua`. Every UI string is in `Core/Locale.lua`, English by default with a Russian table; text from plans and answers is shown as written.
 
 Keybinds (Esc → Options → Keybindings → AddOns → Unbored), so a gamepad / ConsolePort can reach them:
 
-- Toggle window
+- Pick a new plan (the preset chips)
 - Done
 - Skip
 - Waypoint (point the arrow again)
 - Load plan (reloads the UI; a keypress counts as the click Blizzard requires)
 
-Nothing in the normal flow needs a slash command. They exist anyway: `/unbored show|hide`, `/unbored ask [text]|nearby|item`, `/unbored list|lock|reset`, `/unbored build`, `/unbored roam|quests|events|fun|farm`, `/unbored 30|60|120`, `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the companion file again), and `/unbored where` (map id and 0–100 coordinates, for people adding data).
+Nothing in the normal flow needs a slash command. They exist anyway: `/unbored show|hide`, `/unbored ask [text]|nearby|item`, `/unbored list|lock|reset`, `/unbored build`, `/unbored` (the chips), `/unbored roam|quests|events|fun|farm` (pick the mode, then type a wish), `/unbored 30|60|120` (pick the time), `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the companion file again), and `/unbored where` (map id and 0–100 coordinates, for people adding data).
 
 ### What the modes suggest
 
