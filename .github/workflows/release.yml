@@ -66,7 +66,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm exec tauri build ${{ steps.sign.outputs.args }}
       - name: Upload the installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: companion-bundle
           if-no-files-found: error
@@ -78,7 +78,7 @@ jobs:
       - name: Remember whether this build is signed
         shell: bash
         run: echo "${{ steps.sign.outputs.signed }}" > signed.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: companion-signed
           path: signed.txt
