@@ -5,8 +5,9 @@ import { presentedBearer, requireRole, sha256Hex, tokenMatches } from "./auth.ts
 import type { Config } from "./config.ts";
 import { clientIp, cleanRegistration, PENDING_CAP, RegisterLimiter } from "./devices.ts";
 import { handleMcp } from "./mcp.ts";
-import { PlanError } from "./plan.ts";
-import { publicDevice, sessionSummary, Store } from "./store.ts";
+import { cleanPlanRequest, PlanError } from "./plan.ts";
+import { publicDevice, publicRequest, sessionSummary, Store } from "./store.ts";
+import { postWebhook, webhookFromEnv, type WebhookConfig } from "./webhook.ts";
 
 function limitOf(value: string | undefined, fallback: number): number {
   const parsed = Number(value ?? fallback);
@@ -14,20 +15,25 @@ function limitOf(value: string | undefined, fallback: number): number {
   return Math.min(100, Math.max(1, parsed));
 }
 
-export function createApp(config: Pick<Config, "companionToken" | "plannerToken" | "dataDir">) {
+export function createApp(
+  config: Pick<Config, "companionToken" | "plannerToken" | "dataDir"> & {
+    webhook?: WebhookConfig;
+  },
+) {
   const store = new Store(config.dataDir);
   const tokens = { companion: config.companionToken, planner: config.plannerToken };
   const registerLimiter = new RegisterLimiter();
+  const webhook = config.webhook ?? webhookFromEnv();
   const app = new Hono();
 
   const allowCompanion = (c: Parameters<typeof requireRole>[0]) => {
     const presented = presentedBearer(c.req.header("authorization"));
     if (!presented) return c.json({ error: "Unauthorized" }, 401);
-    if (tokenMatches(presented, tokens.companion)) return undefined;
+    if (tokenMatches(presented, tokens.companion)) return { deviceId: "legacy" };
     const device = store.findDeviceBySecretHash(sha256Hex(presented));
     if (!device || device.status !== "approved") return c.json({ error: "Unauthorized" }, 401);
     store.touchDevice(device.id);
-    return undefined;
+    return { deviceId: device.id };
   };
 
   app.use(
@@ -82,17 +88,67 @@ export function createApp(config: Pick<Config, "companionToken" | "plannerToken"
     return c.json(publicDevice(fresh));
   });
 
+  app.post("/v1/requests", async (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "The request must be JSON." }, 400);
+    }
+    try {
+      const cleaned = cleanPlanRequest(body);
+      const saved = store.addRequest({
+        id: cleaned.id,
+        deviceId: access.deviceId,
+        character: cleaned.character,
+        realm: cleaned.realm,
+        mode: cleaned.mode,
+        budget: cleaned.budget,
+        wish: cleaned.wish,
+        nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
+      });
+      if (saved.created) {
+        await postWebhook(webhook, {
+          requestId: saved.request.id,
+          character: saved.request.character,
+          realm: saved.request.realm,
+          mode: saved.request.mode,
+          budget: saved.request.budget,
+          wish: saved.request.wish,
+        });
+      }
+      return c.json(publicRequest(saved.request), saved.created ? 201 : 200);
+    } catch (error) {
+      if (error instanceof PlanError) return c.json({ error: error.message }, 400);
+      throw error;
+    }
+  });
+
+  app.get("/v1/requests/latest", (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    const request = store.latestRequestForDevice(access.deviceId);
+    if (!request) return c.json({ error: "No request yet." }, 404);
+    const plan = request.planId ? store.planById(request.planId) : undefined;
+    return c.json({
+      ...publicRequest(request),
+      plan: plan?.unb1 ?? null,
+    });
+  });
+
   app.get("/v1/plan", (c) => {
-    const denied = allowCompanion(c);
-    if (denied) return denied;
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
     const stored = store.latestPlan();
     if (!stored) return c.json({ error: "No plan yet." }, 404);
     return c.json({ plan: stored.unb1 });
   });
 
   app.post("/v1/progress", async (c) => {
-    const denied = allowCompanion(c);
-    if (denied) return denied;
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
     let body: unknown;
     try {
       body = await c.req.json();
@@ -118,12 +174,18 @@ export function createApp(config: Pick<Config, "companionToken" | "plannerToken"
       return c.json({ error: "The plan must be JSON." }, 400);
     }
     try {
-      const stored = store.putPlan(body);
+      const requestId = requestIdOf(body);
+      if (requestId && !store.requestById(requestId)) {
+        return c.json({ error: "No request with that id." }, 404);
+      }
+      const stored = store.putPlan(stripRequestId(body));
+      const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
       return c.json({
         id: stored.id,
         createdAt: stored.createdAt,
         plan: stored.unb1,
         stored: stored.plan,
+        request: request ? publicRequest(request) : null,
       });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
@@ -159,8 +221,21 @@ export function createApp(config: Pick<Config, "companionToken" | "plannerToken"
   app.all("/mcp", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
-    return handleMcp(c, store);
+    return handleMcp(c, store, config.dataDir);
   });
 
   return { app, store, close: () => store.close() };
+}
+
+function requestIdOf(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+  const value = (body as Record<string, unknown>).requestId;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stripRequestId(body: unknown): unknown {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return body;
+  const copy = { ...(body as Record<string, unknown>) };
+  delete copy.requestId;
+  return copy;
 }

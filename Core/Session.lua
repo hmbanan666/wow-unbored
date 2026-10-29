@@ -318,9 +318,91 @@ function ns.Session.ExternalKey(plan)
   return "ids:" .. table.concat(ids, ",")
 end
 
+function ns.Session.PendingRequest()
+  local saved = UnboredCharDB
+  local req = type(saved) == "table" and saved.request or nil
+  if type(req) ~= "table" or type(req.id) ~= "string" or req.id == "" then
+    return nil
+  end
+  return req
+end
+
+function ns.Session:NoteRequest()
+  self.requestNote = nil
+  self.requestReason = nil
+  local req = self:PendingRequest()
+  if not req then
+    return
+  end
+  local plan = UnboredExternalPlan
+  if type(plan) ~= "table" or plan.requestId ~= req.id then
+    self.requestNote = "waiting"
+    return
+  end
+  if plan.requestStatus == "failed" then
+    self.requestNote = "failed"
+    self.requestReason = type(plan.requestReason) == "string" and plan.requestReason or ""
+    return
+  end
+  if plan.requestStatus == "pending" or type(plan.tasks) ~= "table" then
+    self.requestNote = "preparing"
+    return
+  end
+  self.requestNote = "ready"
+end
+
+function ns.Session:RequestPlan(wish)
+  local mode = self:Mode()
+  if mode ~= "roam" and mode ~= "quests" and mode ~= "events" and mode ~= "fun" and mode ~= "farm" then
+    mode = "roam"
+  end
+  local budget = tonumber(self:Budget()) or 60
+  if budget < 5 or budget > 240 then
+    budget = 60
+  end
+  local name = UnitName and UnitName("player") or nil
+  local realm = GetRealmName and GetRealmName() or nil
+  if type(name) ~= "string" or name == "" then
+    name = "player"
+  end
+  if type(realm) ~= "string" then
+    realm = ""
+  end
+  if type(wish) ~= "string" then
+    wish = ""
+  end
+  wish = ns.Trim(wish)
+  if #wish > 200 then
+    wish = wish:sub(1, 200)
+  end
+  if type(UnboredCharDB) ~= "table" then
+    UnboredCharDB = {}
+  end
+  local id = string.format("req-%d-%04d", ns.Now(), math.random(0, 9999))
+  UnboredCharDB.request = {
+    id = id,
+    createdAt = ns.Now(),
+    character = name,
+    realm = realm,
+    mode = mode,
+    budget = budget,
+    wish = wish ~= "" and wish or nil,
+  }
+  self:NoteRequest()
+  self:RefreshUI()
+end
+
 function ns.Session:ConsiderExternal()
   self.offered = nil
+  self:NoteRequest()
+  local req = self:PendingRequest()
   if type(UnboredExternalPlan) ~= "table" or type(UnboredExternalPlan.tasks) ~= "table" then
+    return
+  end
+  if req and UnboredExternalPlan.requestId ~= req.id then
+    return
+  end
+  if self.requestNote == "waiting" or self.requestNote == "preparing" or self.requestNote == "failed" then
     return
   end
   local plan = ns.ValidatePlan(UnboredExternalPlan, true)

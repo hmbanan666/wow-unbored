@@ -70,6 +70,28 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 
 Unbored reads the global `UnboredExternalPlan` from that addon on load and asks before it replaces the current list.
 
+## Plan requests
+
+`POST {base}/v1/requests` with the companion bearer (device secret or `UNBORED_COMPANION_TOKEN`):
+
+```json
+{
+  "id": "req-1761720000-1234",
+  "createdAt": 1761720000,
+  "character": "Hero",
+  "realm": "Area 52",
+  "mode": "farm",
+  "budget": 60,
+  "wish": "mount"
+}
+```
+
+`mode` is `roam`, `quests`, `events`, `fun`, or `farm`. The same id posted again does not send another webhook.
+
+`GET {base}/v1/requests/latest` returns that request plus `"plan": "UNB1:..."` when it has been fulfilled, or `"plan": null` while it is pending or failed. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed.
+
+If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, character, realm, mode, budget, wish }` to that URL. `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
+
 ## Device pairing
 
 `POST {base}/v1/devices/register` with no bearer token:

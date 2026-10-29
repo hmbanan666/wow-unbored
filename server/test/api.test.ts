@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { createServer } from "node:http";
+
 import { createApp } from "../src/app.ts";
+import { lookupCriteria } from "../src/criteria.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -233,11 +236,14 @@ test("mcp lists the planner tools", async () => {
     const names = tools.map((tool) => tool.name).sort();
     assert.deepEqual(names, [
       "approve_device",
+      "fail_request",
       "get_current_plan",
       "get_progress",
       "list_devices",
+      "list_requests",
       "list_sessions",
       "put_plan",
+      "resolve_criteria",
       "revoke_device",
     ]);
     const put = tools.find((tool) => tool.name === "put_plan");
@@ -472,4 +478,164 @@ test("registration is capped and rate limited", async () => {
   } finally {
     close();
   }
+});
+
+test("a device request is webhooked, fulfilled, and can fail", async () => {
+  const hits: { authorization?: string; extra?: string; body: Record<string, unknown> }[] = [];
+  const hook = createServer((req, response) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      hits.push({
+        authorization: req.headers.authorization,
+        extra: req.headers["x-unbored-key"] as string | undefined,
+        body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+      });
+      response.writeHead(hits.length === 1 ? 500 : 204);
+      response.end();
+    });
+  });
+  await new Promise<void>((resolve) => hook.listen(0, "127.0.0.1", resolve));
+  const address = hook.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  const { app, close } = createApp({
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-hook-")),
+    webhook: {
+      url: `http://127.0.0.1:${address.port}/hook`,
+      key: "hook-secret",
+      headerName: "X-Unbored-Key",
+    },
+  });
+  try {
+    const secret = "request-device-secret";
+    const registered = await app.request("/v1/devices/register", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.50" },
+      body: JSON.stringify({ deviceId: "req-device-1", name: "PC", secret }),
+    });
+    assert.equal(registered.status, 201);
+    const headers = {
+      authorization: `Bearer ${planner}`,
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+    };
+    await app.request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "t", version: "0" },
+        },
+      }),
+    });
+    await app.request("/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "approve_device", arguments: { deviceId: "req-device-1" } },
+      }),
+    });
+    const posted = await app.request("/v1/requests", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        id: "req-100",
+        character: "Hero",
+        realm: "Area 52",
+        mode: "farm",
+        budget: 60,
+        wish: "mount",
+      }),
+    });
+    assert.equal(posted.status, 201);
+    assert.equal(hits.length >= 2, true);
+    assert.equal(hits.at(-1)?.authorization, "Bearer hook-secret");
+    assert.equal(hits.at(-1)?.extra, "hook-secret");
+    assert.equal(hits.at(-1)?.body.requestId, "req-100");
+    assert.equal(hits.at(-1)?.body.wish, "mount");
+
+    const again = await app.request("/v1/requests", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        id: "req-100",
+        character: "Hero",
+        realm: "Area 52",
+        mode: "farm",
+        budget: 60,
+        wish: "mount",
+      }),
+    });
+    assert.equal(again.status, 200);
+    const afterDupe = hits.length;
+
+    const waiting = await json(
+      await app.request("/v1/requests/latest", {
+        headers: { authorization: `Bearer ${secret}` },
+      }),
+    );
+    assert.equal(waiting.status, "pending");
+    assert.equal(waiting.plan, null);
+
+    const fulfilled = await app.request("/v1/plan", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ ...sample, requestId: "req-100" }),
+    });
+    assert.equal(fulfilled.status, 200);
+    const ready = await json(
+      await app.request("/v1/requests/latest", {
+        headers: { authorization: `Bearer ${secret}` },
+      }),
+    );
+    assert.equal(ready.status, "fulfilled");
+    assert.equal(typeof ready.plan, "string");
+    assert.equal(hits.length, afterDupe);
+
+    const denied = await app.request("/v1/plan", {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${secret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(sample),
+    });
+    assert.equal(denied.status, 401);
+  } finally {
+    close();
+    await new Promise<void>((resolve, reject) => hook.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
+test("criteria tree ids map to criteriaID and index", () => {
+  const tree = [
+    "ID,Description_lang,Parent,Amount,Operator,CriteriaID,OrderIndex,Flags",
+    "100,root,0,0,4,0,0,0",
+    "101,first,100,1,0,5776,1,0",
+    "102,second,100,1,0,5772,2,0",
+  ].join("\n");
+  const achievement = [
+    "Description_lang,Title_lang,Reward_lang,ID,Instance_ID,Faction,Supercedes,Category,Minimum_criteria,Points,Flags,Ui_order,IconFileID,RewardItemID,Criteria_tree,Shares_criteria",
+    '"d","Pumpkins","",291,0,0,0,0,0,10,0,1,0,0,100,0',
+  ].join("\n");
+  const hit = lookupCriteria(tree, achievement, 291, 102);
+  assert.equal(hit.criteriaID, 5772);
+  assert.equal(hit.criteriaIndex, 2);
+  assert.throws(() => lookupCriteria(tree, achievement, 291, 100));
 });

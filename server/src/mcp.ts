@@ -3,8 +3,9 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Context } from "hono";
 import { z } from "zod";
 
+import { resolveCriteria } from "./criteria.ts";
 import { PlanError } from "./plan.ts";
-import { publicDevice, sessionSummary, type Store } from "./store.ts";
+import { publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
@@ -52,7 +53,7 @@ function failure(error: unknown) {
   return text({ error: message }, true);
 }
 
-export function createMcpServer(store: Store): McpServer {
+export function createMcpServer(store: Store, dataDir: string): McpServer {
   const server = new McpServer({
     name: "unbored",
     version: "0.1.0",
@@ -64,6 +65,10 @@ export function createMcpServer(store: Store): McpServer {
       title: "Put a session plan",
       description: `Store the latest session plan for the player. The companion will pick it up on its next poll.\n\n${SCHEMA}`,
       inputSchema: {
+        requestId: z
+          .string()
+          .optional()
+          .describe("When set, mark this in-game request fulfilled and attach the new plan."),
         plan: z
           .object({
             v: z.number().optional(),
@@ -94,14 +99,19 @@ export function createMcpServer(store: Store): McpServer {
           .describe("The plan object. Coordinates are 0 to 1, not 0 to 100."),
       },
     },
-    async ({ plan }) => {
+    async ({ plan, requestId }) => {
       try {
+        if (requestId && !store.requestById(requestId)) {
+          return failure(new Error("No request with that id."));
+        }
         const stored = store.putPlan(plan);
+        const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
         return text({
           id: stored.id,
           createdAt: stored.createdAt,
           plan: stored.unb1,
           stored: stored.plan,
+          request: request ? publicRequest(request) : null,
         });
       } catch (error) {
         if (error instanceof PlanError || error instanceof Error) return failure(error);
@@ -219,14 +229,69 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  server.registerTool(
+    "list_requests",
+    {
+      title: "List in-game plan requests",
+      description:
+        "List requests the player made from the Unbored window. Pending is the default. Each row has id, character, realm, mode, budget, and wish.",
+      inputSchema: {
+        status: z
+          .enum(["pending", "fulfilled", "failed"])
+          .optional()
+          .describe("Which requests to list. Defaults to pending."),
+      },
+    },
+    async ({ status }) => text({ requests: store.listRequests(status ?? "pending").map(publicRequest) }),
+  );
+
+  server.registerTool(
+    "fail_request",
+    {
+      title: "Fail an in-game plan request",
+      description:
+        "Mark a request failed. The companion writes the reason into Plan.lua and the addon shows it after /reload. Pass the request id and a short reason.",
+      inputSchema: {
+        requestId: z.string().describe("Request id from list_requests"),
+        reason: z.string().describe("Why a plan was not made, shown in game"),
+      },
+    },
+    async ({ requestId, reason }) => {
+      const request = store.failRequest(requestId, reason.slice(0, 400));
+      if (!request) return failure(new Error("No request with that id."));
+      return text({ request: publicRequest(request) });
+    },
+  );
+
+  server.registerTool(
+    "resolve_criteria",
+    {
+      title: "Resolve a criteria tree id",
+      description:
+        "Blizzard's web API returns criteria-tree ids. The addon needs Criteria.dbc criteriaID and a 1-based criteriaIndex. This looks up CriteriaTree.CriteriaID for that tree id and the leaf order under the achievement's Criteria_tree (Achievement.csv). Both files are cached from wago.tools under the data directory. criteriaID 0 means the row is a parent; use a child tree id. criteriaIndex is the position among leaf criteria (CriteriaID > 0) under that achievement.",
+      inputSchema: {
+        achievementId: z.number().int().describe("Achievement id, for example 291"),
+        criteriaTreeId: z.number().int().describe("Criteria tree id from the web API, not the criteria asset id"),
+      },
+    },
+    async ({ achievementId, criteriaTreeId }) => {
+      try {
+        const hit = await resolveCriteria(dataDir, achievementId, criteriaTreeId);
+        return text(hit);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
   return server;
 }
 
-export async function handleMcp(c: Context, store: Store): Promise<Response> {
+export async function handleMcp(c: Context, store: Store, dataDir: string): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
   });
-  const server = createMcpServer(store);
+  const server = createMcpServer(store, dataDir);
   await server.connect(transport);
   return transport.handleRequest(c.req.raw);
 }

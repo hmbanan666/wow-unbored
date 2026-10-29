@@ -68,7 +68,7 @@ function ns.UI.Create()
   if not okFrame or not frame then
     frame = CreateFrame("Frame", "UnboredFrame", UIParent)
   end
-  frame:SetSize(320, 308)
+  frame:SetSize(320, 360)
   frame:SetFrameStrata("MEDIUM")
   frame:SetClampedToScreen(true)
   frame:SetMovable(true)
@@ -218,6 +218,33 @@ function ns.UI.Create()
     ns.UI:Refresh()
   end)
 
+  local okWish, createdWish = pcall(CreateFrame, "EditBox", nil, frame, "InputBoxTemplate")
+  local wish = (okWish and createdWish) or CreateFrame("EditBox", nil, frame)
+  wish:SetSize(160, 20)
+  wish:SetPoint("BOTTOMLEFT", 16, 36)
+  wish:SetAutoFocus(false)
+  wish:SetMaxLetters(200)
+  if wish.SetFontObject then
+    pcall(wish.SetFontObject, wish, "GameFontHighlightSmall")
+  end
+  local getPlan = ns.UI.MakeButton(frame, ns.T("REQUEST"), 72, 20)
+  getPlan:SetPoint("LEFT", wish, "RIGHT", 8, 0)
+  getPlan:SetScript("OnClick", function()
+    local text = wish.GetText and wish:GetText() or ""
+    ns.Session:RequestPlan(text)
+  end)
+  local reload = ns.UI.MakeButton(frame, ns.T("REQUEST_RELOAD"), 64, 20)
+  reload:SetPoint("LEFT", getPlan, "RIGHT", 6, 0)
+  reload:Hide()
+  reload:SetScript("OnClick", function()
+    if ReloadUI then
+      ReloadUI()
+    end
+  end)
+  ns.UI.wish = wish
+  ns.UI.getPlan = getPlan
+  ns.UI.reload = reload
+
   local extraLines = {}
   for i = 1, 6 do
     local line = font(frame, "GameFontDisableSmall")
@@ -332,12 +359,39 @@ function ns.UI:Refresh()
     pcall(self.banner.SetText, self.banner, ns.T("COMBAT"))
   elseif ns.IsInstance() then
     pcall(self.banner.SetText, self.banner, ns.T("INSTANCE"))
+  elseif ns.Session and ns.Session.requestNote == "failed" then
+    local reason = ns.Session.requestReason
+    if type(reason) ~= "string" or reason == "" then
+      reason = ns.T("REQUEST_FAILED")
+    end
+    pcall(self.banner.SetText, self.banner, reason)
+  elseif ns.Session and ns.Session.requestNote == "preparing" then
+    pcall(self.banner.SetText, self.banner, ns.T("REQUEST_PREPARING"))
+  elseif ns.Session and ns.Session.requestNote == "waiting" then
+    pcall(self.banner.SetText, self.banner, ns.T("REQUESTED"))
   elseif ns.Session and ns.Session.offered and not ns.IsCombat() and not ns.IsInstance() then
     pcall(self.banner.SetText, self.banner, ns.T("OFFER_READY"))
   elseif state and state.pendingCalendar and #tasks == 0 then
     pcall(self.banner.SetText, self.banner, ns.T("CALENDAR_WAIT"))
   else
     pcall(self.banner.SetText, self.banner, "")
+  end
+  if self.reload then
+    if ns.Session and (ns.Session.requestNote == "waiting" or ns.Session.requestNote == "preparing") then
+      self.reload:Show()
+    else
+      self.reload:Hide()
+    end
+  end
+  if self.wish and self.getPlan then
+    if ns.UI.expanded then
+      self.wish:Hide()
+      self.getPlan:Hide()
+      if self.reload then self.reload:Hide() end
+    else
+      self.wish:Show()
+      self.getPlan:Show()
+    end
   end
   if self.offerUse and self.offerLater then
     if ns.Session and ns.Session.offered then

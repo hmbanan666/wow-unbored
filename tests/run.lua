@@ -511,6 +511,44 @@ check(ns.Session.offered == nil, "a dismissed plan stays quiet")
 check(ns.Session:UseExternal() == true, "slash companion applies a dismissed plan")
 check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "dismissed plan becomes current")
 
+ns.Session.state.mode = "farm"
+ns.Session.state.budget = 60
+ns.Session:RequestPlan("mount")
+local req = UnboredCharDB.request
+check(req and req.mode == "farm" and req.wish == "mount" and req.character == "player", "get plan saves a request")
+check(ns.Session.requestNote == "waiting", "a new request waits for the companion file")
+UnboredExternalPlan = {
+  v = 1,
+  kind = "plan",
+  mode = "farm",
+  budget = 60,
+  requestId = req.id,
+  requestStatus = "pending",
+}
+ns.Session.announcedOffer = nil
+ns.Session:ConsiderExternal()
+check(ns.Session.requestNote == "preparing", "pending file says the plan is being prepared")
+check(ns.Session.offered == nil, "a pending file is not offered")
+UnboredExternalPlan.requestStatus = "failed"
+UnboredExternalPlan.requestReason = "no mounts left"
+ns.Session:ConsiderExternal()
+check(ns.Session.requestNote == "failed" and ns.Session.requestReason == "no mounts left", "failure reason is kept")
+UnboredExternalPlan = {
+  v = 1,
+  kind = "plan",
+  mode = "farm",
+  budget = 60,
+  generatedAt = 11,
+  requestId = req.id,
+  requestStatus = "fulfilled",
+  tasks = {
+    { id = "req:1", title = "Mount", estMinutes = 10, complete = { kind = "manual" } },
+  },
+}
+ns.Session.announcedOffer = nil
+ns.Session:ConsiderExternal()
+check(ns.Session.offered and ns.Session.offered.tasks[1].id == "req:1", "matching request auto-offers use it")
+
 if fails > 0 then
   io.stderr:write(fails .. " failed, " .. checks .. " checks\n")
   os.exit(1)

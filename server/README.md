@@ -18,6 +18,9 @@ The process listens on `PORT` (default `3000`) and stores SQLite at `$UNBORED_DA
 | `UNBORED_PLANNER_TOKEN` | yes | Bearer token for putting plans, reading progress, and MCP. Must differ from the companion token. |
 | `PORT` | no | Listen port. Default `3000`. |
 | `UNBORED_DATA_DIR` | no | Directory for the SQLite file. Default `/data`. |
+| `UNBORED_PLANNER_WEBHOOK_URL` | no | Where a new in-game request is POSTed. Empty skips the webhook. |
+| `UNBORED_PLANNER_WEBHOOK_KEY` | no | Secret sent as `Authorization: Bearer <key>`. |
+| `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` | no | Extra header name that also receives the key. |
 
 `GET /health` needs no token. Every other route rejects a missing or wrong bearer token.
 
@@ -30,6 +33,8 @@ Companion 0.1.1 uses `https://unbored.kosarev.space` unless an advanced override
 Until a plan exists, `GET /v1/plan` is `404`. The companion leaves the previous plan file alone.
 
 MCP tools `list_devices`, `approve_device`, and `revoke_device` use the planner token. Approving a device does not let it write plans.
+
+`list_requests` lists pending requests (pass `status` for fulfilled or failed). `put_plan` accepts `requestId` and marks that request fulfilled. `fail_request` stores a reason the addon shows after `/reload`. `resolve_criteria` maps an achievement id plus a criteria-tree id to `criteriaID` and a 1-based `criteriaIndex`, using cached wago.tools CriteriaTree and Achievement CSVs in `/data/wago`. `criteriaID` is `CriteriaTree.CriteriaID`, the Criteria table id the addon wants. The first call downloads those files.
 
 ## Planner HTTP
 
