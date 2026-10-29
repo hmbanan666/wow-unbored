@@ -44,7 +44,7 @@ jobs:
           args: --bundles msi,nsis
           # The action does not read github.ref. Without tagName it builds and skips the upload.
           tagName: ${{ github.ref_name }}
-          releaseName: "Unbored Companion ${{ github.ref_name }}"
+          releaseName: "Unbored Companion v__VERSION__"
           releaseBody: "Windows installer is unsigned. SmartScreen will warn; More info, then Run anyway. See companion/README.md."
           releaseDraft: false
           prerelease: false
