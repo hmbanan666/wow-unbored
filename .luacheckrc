@@ -14,6 +14,7 @@ globals = {
   "UnboredDB",
   "UnboredCharDB",
   "UnboredCompanionPlan",
+  "UnboredExternalPlan",
   "Unbored_Toggle",
   "Unbored_Done",
   "Unbored_Skip",

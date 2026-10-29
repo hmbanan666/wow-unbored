@@ -23,4 +23,18 @@ local _, ns = ...
 --   note = "Timeless Isle rare. Skip if the sky is empty.",
 -- },
 
-ns.Data.Rares = {}
+-- Huolon, Timeless Isle. Daily tracking quest 33311 is the wowhead page
+-- "Tracking Quest - Daily - Huolon", which tells you to check
+-- C_QuestLog.IsQuestFlaggedCompleted(33311). uiMap 554 is Timeless Isle
+-- (warcraft.wiki.gg UiMapID). No pin: the spawn moves, and the only
+-- coordinates in the writeup are player comments.
+ns.Data.Rares = {
+  {
+    id = "rare-huolon",
+    fallbackTitle = "Huolon",
+    mapID = 554,
+    estMinutes = 15,
+    questID = 33311,
+    note = "Timeless Isle, by the bridge to the Blazing Way. Hidden after today's kill.",
+  },
+}

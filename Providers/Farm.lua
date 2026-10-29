@@ -13,9 +13,8 @@ function ns.LockoutMap()
   for index = 1, count do
     local results = { pcall(GetSavedInstanceInfo, index) }
     if results[1] then
-      local lockedNow = results[6]
       local instanceID = ns.AsNumber(results[15])
-      if lockedNow and instanceID then
+      if instanceID and ns.Flag(results[6]) then
         locked[instanceID] = true
       end
     end
@@ -41,7 +40,7 @@ local function collectiblesOpen(entry)
   local sawOwned = false
   for i = 1, #mounts do
     local state = ns.MountState(mounts[i])
-    if not state then
+    if not state or state.known == false then
       unresolved = true
     elseif state.collected then
       sawOwned = true
@@ -80,8 +79,8 @@ local function Build(ctx)
       local open, names = collectiblesOpen(entry)
       if open then
         local pin = pinFor(entry, ctx.faction)
-        local title = entry.fallbackTitle
-        if names[1] and names[1] ~= "" then
+        local title = entry.fallbackTitle or "Raid"
+        if type(names[1]) == "string" and names[1] ~= "" then
           title = names[1]
           if names[2] then
             title = title .. ", " .. names[2]
@@ -106,6 +105,7 @@ local function Build(ctx)
       end
     end
   end
+  ns.farmNeedsJournal = not ns.MountJournalReady()
   table.sort(tasks, function(a, b)
     if a.estMinutes ~= b.estMinutes then
       return a.estMinutes < b.estMinutes

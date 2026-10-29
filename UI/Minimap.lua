@@ -95,8 +95,11 @@ function ns.CreateMinimapButton()
       end
       local mx, my = Minimap:GetCenter()
       local cx, cy = GetCursorPosition()
-      local scale = UIParent:GetEffectiveScale()
-      if not mx or not scale or scale == 0 then
+      local scale = UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()
+      mx, my = ns.AsNumber(mx), ns.AsNumber(my)
+      cx, cy = ns.AsNumber(cx), ns.AsNumber(cy)
+      scale = ns.AsNumber(scale)
+      if not mx or not my or not cx or not cy or not scale or scale == 0 then
         return
       end
       cx, cy = cx / scale, cy / scale

@@ -20,6 +20,61 @@ local function firstOpenAchievement(ids)
   return nil
 end
 
+local function sameTitle(left, right)
+  if type(left) ~= "string" or type(right) ~= "string" then
+    return false
+  end
+  if left == "" or right == "" then
+    return false
+  end
+  return left:lower() == right:lower()
+end
+
+local function titleMatches(entry, title)
+  if sameTitle(entry.fallbackTitle, title) then
+    return true
+  end
+  if type(entry.titles) ~= "table" then
+    return false
+  end
+  for i = 1, #entry.titles do
+    if sameTitle(entry.titles[i], title) then
+      return true
+    end
+  end
+  return false
+end
+
+local function textureMatches(entry, texture)
+  texture = ns.AsNumber(texture)
+  if not texture or type(entry.textures) ~= "table" then
+    return false
+  end
+  for i = 1, #entry.textures do
+    if entry.textures[i] == texture then
+      return true
+    end
+  end
+  return false
+end
+
+local function holidayMatches(entry, holiday)
+  local ids = holidayIDs(entry)
+  for i = 1, #ids do
+    if holiday.eventID and ids[i] == holiday.eventID then
+      return true
+    end
+  end
+  if textureMatches(entry, holiday.texture) then
+    return true
+  end
+  return titleMatches(entry, holiday.title)
+end
+
+-- Calendar data is empty until OpenCalendar and CALENDAR_UPDATE_EVENT_LIST.
+-- eventID is NOT a reliable Holiday.db2 id (Hallow's End is 324 there, but
+-- live clients identify it by iconTexture 235460-235462; see
+-- HandyNotes_HallowsEnd). Match id, then texture, then the English title.
 local function activeHolidays()
   local found = {}
   if not C_DateAndTime or not C_DateAndTime.GetCurrentCalendarTime then
@@ -29,23 +84,42 @@ local function activeHolidays()
     return found, false
   end
   local okNow, now = pcall(C_DateAndTime.GetCurrentCalendarTime)
-  if not okNow or type(now) ~= "table" or not now.monthDay then
+  if not okNow or type(now) ~= "table" then
     return found, false
   end
-  local okCount, count = pcall(C_Calendar.GetNumDayEvents, 0, now.monthDay)
-  count = okCount and ns.AsNumber(count) or 0
-  if not count then
+  local day = ns.AsNumber(now.monthDay)
+  if not day or day < 1 or day > 31 then
+    return found, false
+  end
+  local okCount, count = pcall(C_Calendar.GetNumDayEvents, 0, day)
+  count = okCount and ns.AsNumber(count) or nil
+  if not count or count < 1 then
     return found, true
   end
+  if count > 40 then
+    count = 40
+  end
   for index = 1, count do
-    local okEvent, event = pcall(C_Calendar.GetDayEvent, 0, now.monthDay, index)
+    local okEvent, event = pcall(C_Calendar.GetDayEvent, 0, day, index)
     if okEvent and type(event) == "table" and event.calendarType == "HOLIDAY" then
       local id = ns.AsNumber(event.eventID)
-      local key = id or ("title:" .. tostring(event.title))
-      if not found[key] then
+      local texture = ns.AsNumber(event.iconTexture)
+      local title = type(event.title) == "string" and event.title or nil
+      if (not texture or not title) and C_Calendar.GetHolidayInfo then
+        local okInfo, info = pcall(C_Calendar.GetHolidayInfo, 0, day, index)
+        if okInfo and type(info) == "table" then
+          texture = texture or ns.AsNumber(info.texture)
+          if type(info.name) == "string" and info.name ~= "" then
+            title = title or info.name
+          end
+        end
+      end
+      local key = id or texture or title
+      if key and not found[key] then
         found[key] = {
           eventID = id,
-          title = type(event.title) == "string" and event.title or nil,
+          texture = texture,
+          title = title,
         }
       end
     end
@@ -100,13 +174,17 @@ local function Build()
   local matched = {}
   for i = 1, #ns.Data.Holidays do
     local entry = ns.Data.Holidays[i]
-    local ids = holidayIDs(entry)
     local holiday
-    for d = 1, #ids do
-      if active[ids[d]] then
-        holiday = active[ids[d]]
-        matched[ids[d]] = true
+    local matchedKey
+    for key, candidate in pairs(active) do
+      if type(candidate) == "table" and holidayMatches(entry, candidate) then
+        holiday = candidate
+        matchedKey = key
+        break
       end
+    end
+    if matchedKey ~= nil then
+      matched[matchedKey] = true
     end
     if holiday then
       local holidayTitle = holiday.title or entry.fallbackTitle
@@ -137,7 +215,7 @@ local function Build()
     if a.estMinutes ~= b.estMinutes then
       return a.estMinutes < b.estMinutes
     end
-    return a.id < b.id
+    return tostring(a.id) < tostring(b.id)
   end)
   return tasks
 end

@@ -1,10 +1,13 @@
 local _, ns = ...
 
--- holidayID is the id we expect on C_Calendar.GetDayEvent(...).eventID
--- for calendarType "HOLIDAY". The numbers are the long-stable Holiday
--- ids (Brewfest 372, Hallow's End 324, and so on). Please confirm in game
--- during a holiday; if they do not match, the calendar still shows the
--- holiday by its live title and these achievement rows stay hidden.
+-- A row matches a live calendar holiday if ANY of these hit:
+--   holidayID / holidayIDs  (Holiday.db2 id; NOT reliable as event.eventID)
+--   textures                (CalendarDayEvent.iconTexture file IDs)
+--   fallbackTitle / titles  (exact title, case-insensitive; English client)
+-- Hallow's End textures 235460, 235461, 235462 are the ids HandyNotes
+-- checks on C_Calendar.GetDayEvent().iconTexture (they replaced the old
+-- "Calendar_HallowsEnd" string). Other holidays do not have a file ID
+-- confirmed from a primary source here, so they fall back to title.
 -- Faction-specific achievements are listed as pairs. The first one that
 -- exists and is still open is used.
 -- Mount ids: https://warcraft.wiki.gg/wiki/MountID (Headless Horseman 219,
@@ -14,6 +17,8 @@ local _, ns = ...
 ns.Data.Holidays = {
   {
     holidayID = 324,
+    -- iconTexture values, not Holiday.db2 324. See the file header.
+    textures = { 235460, 235461, 235462 },
     fallbackTitle = "Hallow's End",
     tasks = {
       { id = "hallows-head", achievementIDs = { 291 }, estMinutes = 20, fallbackTitle = "Check Your Head" },

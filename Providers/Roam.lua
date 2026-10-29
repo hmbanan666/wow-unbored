@@ -8,6 +8,9 @@ local function explorationTasks(ctx)
     local state = ns.AchievementState(entry.achievementID)
     if state and not state.done then
       local count = ns.CriteriaCount(entry.achievementID)
+      if count > 40 then
+        count = 40
+      end
       local added = 0
       for index = 1, count do
         local info = ns.CriteriaInfo(entry.achievementID, index)
@@ -115,7 +118,11 @@ local function vignetteTasks(ctx)
   if not ok or type(list) ~= "table" then
     return tasks
   end
-  for i = 1, #list do
+  local limit = #list
+  if limit > 80 then
+    limit = 80
+  end
+  for i = 1, limit do
     if #tasks >= 6 then
       break
     end

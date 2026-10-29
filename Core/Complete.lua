@@ -24,8 +24,8 @@ function ns.AchievementState(achievementID)
   return {
     id = achievementID,
     name = name,
-    done = completed and true or false,
-    byMe = byMe and true or false,
+    done = ns.Flag(completed),
+    byMe = ns.Flag(byMe),
   }
 end
 
@@ -37,13 +37,13 @@ function ns.CriteriaDone(achievementID, index, criteriaID)
   if criteriaID and type(GetAchievementCriteriaInfoByID) == "function" then
     local results = { pcall(GetAchievementCriteriaInfoByID, achievementID, criteriaID) }
     if results[1] and results[2] ~= nil then
-      return results[4] and true or false
+      return ns.Flag(results[4])
     end
   end
   if index and type(GetAchievementCriteriaInfo) == "function" then
     local results = { pcall(GetAchievementCriteriaInfo, achievementID, index) }
     if results[1] and results[2] ~= nil then
-      return results[4] and true or false
+      return ns.Flag(results[4])
     end
   end
   return false
@@ -59,7 +59,7 @@ function ns.CriteriaInfo(achievementID, index)
   end
   return {
     text = results[2],
-    done = results[4] and true or false,
+    done = ns.Flag(results[4]),
     criteriaID = ns.AsNumber(results[11]),
   }
 end
@@ -80,8 +80,18 @@ function ns.QuestDone(questID)
   if not questID or not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then
     return false
   end
-  local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, questID)
-  return ok and done and true or false
+  local ok, done = pcall(function()
+    return C_QuestLog.IsQuestFlaggedCompleted(questID) == true
+  end)
+  return ok and done or false
+end
+
+function ns.MountJournalReady()
+  if not C_MountJournal or not C_MountJournal.GetMountIDs then
+    return false
+  end
+  local ok, ids = pcall(C_MountJournal.GetMountIDs)
+  return ok and type(ids) == "table" and #ids > 0
 end
 
 function ns.MountState(mountID)
@@ -94,9 +104,15 @@ function ns.MountState(mountID)
     return nil
   end
   -- Return 11 is isCollected, so results[12] after the pcall ok flag.
+  -- Nil here means the journal has not filled in yet, not "owned".
+  local collected = false
+  if results[12] ~= nil then
+    collected = ns.Flag(results[12])
+  end
   return {
     name = results[2],
-    collected = results[12] and true or false,
+    collected = collected,
+    known = results[12] ~= nil,
   }
 end
 
@@ -216,10 +232,13 @@ function ns.VignetteComplete(spec)
   for i = 1, #list do
     if C_VignetteInfo.GetVignetteInfo then
       local okInfo, info = pcall(C_VignetteInfo.GetVignetteInfo, list[i])
-      if okInfo and type(info) == "table" and info.vignetteID == spec.vignetteID then
-        found = true
-        if info.isDead then
-          return true
+      if okInfo and type(info) == "table" then
+        local vid = ns.AsNumber(info.vignetteID)
+        if vid and vid == spec.vignetteID then
+          found = true
+          if ns.Flag(info.isDead) then
+            return true
+          end
         end
       end
     end

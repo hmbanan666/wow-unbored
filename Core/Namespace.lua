@@ -77,6 +77,15 @@ function ns.Trim(text)
   return (text:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+-- True only for a real boolean true. A nil or Midnight secret stays false
+-- instead of throwing on login before that API has data.
+function ns.Flag(value)
+  local ok, isTrue = pcall(function()
+    return value == true
+  end)
+  return ok and isTrue or false
+end
+
 function ns.AsNumber(value)
   if value == nil then
     return nil

@@ -33,20 +33,10 @@ local function initDB()
   end
 end
 
-function ns.OnAddonLoaded()
-  initDB()
-  if ns.UI and ns.UI.Create then
-    ns.UI.Create()
-  end
-  if ns.CreateMinimapButton then
-    ns.CreateMinimapButton()
-  end
-  if ns.RegisterCompartment then
-    ns.RegisterCompartment()
-  end
-  if ns.Events and ns.Events.StartTicker then
-    ns.Events.StartTicker()
-  end
+local function askForWorldData()
+  -- Both of these are empty until the server answers. The matching
+  -- events (CALENDAR_UPDATE_EVENT_LIST, UPDATE_INSTANCE_INFO) rebuild
+  -- a list the player has not touched yet.
   if C_Calendar and C_Calendar.OpenCalendar then
     pcall(C_Calendar.OpenCalendar)
   end
@@ -55,11 +45,39 @@ function ns.OnAddonLoaded()
   end
 end
 
+function ns.OnAddonLoaded()
+  initDB()
+  if ns.UI and ns.UI.Create then
+    local ok, err = pcall(ns.UI.Create)
+    if not ok then
+      ns.Print(tostring(err))
+    end
+  end
+  if ns.CreateMinimapButton then
+    pcall(ns.CreateMinimapButton)
+  end
+  if ns.RegisterCompartment then
+    pcall(ns.RegisterCompartment)
+  end
+  if ns.Events and ns.Events.StartTicker then
+    pcall(ns.Events.StartTicker)
+  end
+  askForWorldData()
+end
+
 function ns.OnEnteringWorld()
   if ns.RegisterCompartment then
-    ns.RegisterCompartment()
+    pcall(ns.RegisterCompartment)
   end
-  ns.Session:Start()
+  askForWorldData()
+  if ns.Session and ns.Session.Start then
+    local ok, err = pcall(function()
+      ns.Session:Start()
+    end)
+    if not ok then
+      ns.Print(tostring(err))
+    end
+  end
 end
 
 local function slash(message)

@@ -311,32 +311,32 @@ function ns.UI:Refresh()
   for i = 1, #tasks do
     sum = sum + (tasks[i].estMinutes or 0)
   end
-  self.timeText:SetText(ns.T("PLANNED", sum))
+  pcall(self.timeText.SetText, self.timeText, ns.T("PLANNED", sum))
 
   if ns.IsCombat() then
-    self.banner:SetText(ns.T("COMBAT"))
+    pcall(self.banner.SetText, self.banner, ns.T("COMBAT"))
   elseif ns.IsInstance() then
-    self.banner:SetText(ns.T("INSTANCE"))
+    pcall(self.banner.SetText, self.banner, ns.T("INSTANCE"))
   elseif state and state.pendingCalendar and #tasks == 0 then
-    self.banner:SetText(ns.T("CALENDAR_WAIT"))
+    pcall(self.banner.SetText, self.banner, ns.T("CALENDAR_WAIT"))
   else
-    self.banner:SetText("")
+    pcall(self.banner.SetText, self.banner, "")
   end
 
   local paused = ns.IsPaused()
   if not current then
-    self.nowTitle:SetText(ns.T("EMPTY"))
-    self.detail:SetText("")
+    pcall(self.nowTitle.SetText, self.nowTitle, ns.T("EMPTY"))
+    pcall(self.detail.SetText, self.detail, "")
     self.done:SetEnabled(false)
     self.skip:SetEnabled(false)
     self.waypoint:SetEnabled(false)
   else
-    self.nowTitle:SetText(current.title)
+    pcall(self.nowTitle.SetText, self.nowTitle, current.title or "")
     local bits = ns.T("MINUTES", current.estMinutes or 0)
     if current.note and current.note ~= "" then
       bits = bits .. "  " .. current.note
     end
-    self.detail:SetText(bits)
+    pcall(self.detail.SetText, self.detail, bits)
     self.done:SetEnabled(true)
     self.skip:SetEnabled(true)
     local canPin = current.mapID and current.x and current.y and not paused
@@ -346,7 +346,7 @@ function ns.UI:Refresh()
   if upcoming then
     self.nextLabel:Show()
     self.nextTitle:Show()
-    self.nextTitle:SetText(upcoming.title)
+    pcall(self.nextTitle.SetText, self.nextTitle, upcoming.title or "")
   else
     self.nextLabel:Hide()
     self.nextTitle:SetText("")

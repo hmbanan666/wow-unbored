@@ -10,9 +10,9 @@ None yet. After the first in-game pass, put shots in [`Screenshots/`](Screenshot
 
 ## Requirements
 
-- Retail client **12.1.5** (The Promise of Tomorrow), Interface **120105**.
-- Checked against [Getting the current interface number](https://warcraft.wiki.gg/wiki/Getting_the_current_interface_number) and [Patch 12.1.5](https://warcraft.wiki.gg/wiki/Patch_12.1.5) (live 13 October 2026, TOC `120105`).
-- No Classic, Mists, or Forever build. `/dump select(4, GetBuildInfo())` should print `120105`. If it prints something else, the addon will refuse to load until the TOC is updated.
+- Retail client **12.1.5** (Interface **120105**) or **12.1.0** (Interface **120100**). The TOC lists both.
+- Checked against [Getting the current interface number](https://warcraft.wiki.gg/wiki/Getting_the_current_interface_number) and [Patch 12.1.5](https://warcraft.wiki.gg/wiki/Patch_12.1.5) (live 13 October 2026, TOC `120105`). `120100` is the previous 12.1.0 interface, listed so that client still loads.
+- No Classic, Mists, or Forever build. `/dump select(4, GetBuildInfo())` should print `120105` or `120100`.
 
 ## Install
 
@@ -30,7 +30,7 @@ CurseForge, Wago, and WowUp are not wired up yet. A git tag builds a zip through
 | --- | --- |
 | Mode | Roam, Quests, Events, Fun, Farm |
 | 30m / 1h / 2h | How long you want to play |
-| Done / Skip / Waypoint | Finish, drop for this session, or set the one pin |
+| Done / Skip / Waypoint | Finish, move to the end (drop on a second skip), or set the one pin |
 | Import | Paste a plan from an outside planner |
 | Refresh | Build a new list for the current mode |
 
@@ -192,11 +192,11 @@ Lint and unit tests run on every push (`.github/workflows/ci.yml`, `luacheck` an
 
 These are choices, not silent guesses. Push back if one of them is wrong.
 
-- Skip drops the task for this session. Refresh or a new mode can bring it back. It does not rotate to the bottom.
+- The first Skip moves the task to the end of the queue. The second Skip drops it for this session.
 - Proximity auto-complete defaults to 40 yards and only applies to completion kind `proximity` (treasures and explicit go-to tasks). Reaching a raid door does not finish the raid.
 - "Local events" in Quests are bonus objectives and map task pins from `C_TaskQuest.GetQuestsOnMap`, not a separate event board.
-- Holiday rows use long-stable holiday ids (Hallow's End `324`, Brewfest `372`, and the others in `Data/Holidays.lua`) as `C_Calendar.GetDayEvent(...).eventID`. If retail's calendar id differs, you still get a task named by the calendar, and the achievement rows wait until the id matches. Please `/dump` a holiday event and say what `eventID` is.
-- `Data/Rares.lua` ships empty. Tracking quest ids I could not verify are worse than none. Vignettes cover rares that are up.
+- Holiday rows match a calendar event by Holiday.db2 id, by `iconTexture`, or by the English title. Hallow's End uses textures `235460`, `235461`, and `235462` (what HandyNotes reads from `C_Calendar.GetDayEvent`). Those are not the same number as Holiday.db2 id 324, which is kept only as an extra key. Other holidays fall back to the English title until their texture ids are confirmed.
+- `Data/Rares.lua` has Huolon (Timeless Isle, daily tracking quest 33311 from the wowhead quest page). No other tracking quests are shipped.
 - Raid doors use the Wowhead entrance guide (guide 8974), converted from 0–100 to 0–1. Several of those figures are whole numbers.
 - Interface `120105` only. A 12.1.0 client (`120100`) will not load this TOC.
 - This tree was checked against the API wiki and `lua5.1 tests/run.lua`. It has not been `/reload`ed inside the 12.1.5 client.

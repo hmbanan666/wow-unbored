@@ -63,12 +63,22 @@ local function fromLog(byID)
   end
   local ok, count = pcall(C_QuestLog.GetNumQuestLogEntries)
   count = ok and ns.AsNumber(count) or 0
-  if not count then
+  if not count or count < 1 then
     return
+  end
+  if count > 200 then
+    count = 200
   end
   for index = 1, count do
     local okInfo, info = pcall(C_QuestLog.GetInfo, index)
-    if okInfo and type(info) == "table" and not info.isHeader and not info.isHidden then
+    local visible = false
+    if okInfo and type(info) == "table" then
+      local okFlags, shown = pcall(function()
+        return info.isHeader ~= true and info.isHidden ~= true
+      end)
+      visible = okFlags and shown or false
+    end
+    if visible then
       local questID = ns.AsNumber(info.questID)
       if questID and questID > 0 and not ns.QuestDone(questID) then
         local mapID, x, y = waypoint(questID)

@@ -127,11 +127,28 @@ function ns.Session:Done()
 end
 
 function ns.Session:Skip()
-  if not self:Current() then
+  local task = self:Current()
+  if not task or not self.state or type(self.state.tasks) ~= "table" then
     return
   end
-  self:Finish("skipped", "skip")
+  local skips = (tonumber(task.skipCount) or 0) + 1
+  if skips >= 2 then
+    self:Finish("skipped", "skip")
+    self:CheckCurrent()
+    return
+  end
+  task.skipCount = skips
+  if #self.state.tasks > 1 then
+    table.remove(self.state.tasks, 1)
+    self.state.tasks[#self.state.tasks + 1] = task
+    if ns.Waypoint and ns.Waypoint.ClearIfTask then
+      ns.Waypoint:ClearIfTask(task.id)
+    end
+  end
+  ns.Print(ns.T("SKIP_LATER", task.title or ""))
+  self:Save()
   self:CheckCurrent()
+  self:RefreshUI()
 end
 
 function ns.Session:Waypoint()
@@ -239,6 +256,7 @@ function ns.Session:Rebuild(mode, budget)
   self.state.pendingQuests = mode == "quests"
   self.state.pendingLockouts = mode == "farm"
   self.state.pendingCalendar = mode == "events"
+  self.state.pendingMounts = mode == "farm" and ns.farmNeedsJournal == true
   self:Save()
   self:CheckCurrent()
   self:RefreshUI()
@@ -287,10 +305,35 @@ function ns.Session:MaybeRebuild(flag)
   end
 end
 
+function ns.Session:ScheduleDataRefresh()
+  if self.dataRefreshScheduled or not C_Timer or not C_Timer.After then
+    return
+  end
+  self.dataRefreshScheduled = true
+  pcall(C_Timer.After, 2, function()
+    self.dataRefreshScheduled = false
+    pcall(function()
+      if not self.state or not self:Untouched() then
+        return
+      end
+      if self.state.pendingMounts then
+        self:MaybeRebuild("pendingMounts")
+      elseif self.state.pendingLockouts then
+        self:MaybeRebuild("pendingLockouts")
+      elseif self.state.pendingCalendar then
+        self:MaybeRebuild("pendingCalendar")
+      elseif self.state.pendingQuests then
+        self:MaybeRebuild("pendingQuests")
+      end
+    end)
+  end)
+end
+
 function ns.Session:Start()
   if self.started then
     self:CheckCurrent()
     self:RefreshUI()
+    self:ScheduleDataRefresh()
     return
   end
   self.started = true
@@ -298,6 +341,7 @@ function ns.Session:Start()
   local companion = self:ReadCompanion()
   if companion and ns.Session.CompanionIsNewer(companion, saved) then
     if self:ApplyCompanion(false) then
+      self:ScheduleDataRefresh()
       return
     end
   end
@@ -307,9 +351,11 @@ function ns.Session:Start()
     self.state.skipped = self.state.skipped or {}
     self:CheckCurrent()
     self:RefreshUI()
+    self:ScheduleDataRefresh()
     return
   end
   self:Rebuild(ns.DB and ns.DB.mode or "roam", ns.DB and ns.DB.budget or 60)
+  self:ScheduleDataRefresh()
 end
 
 function ns.Session:OnCombatEnd()
@@ -363,6 +409,10 @@ function ns.Session:OnEvent(event, ...)
   end
   if event == "UPDATE_INSTANCE_INFO" then
     self:MaybeRebuild("pendingLockouts")
+    return
+  end
+  if event == "MOUNT_JOURNAL_SEARCH_UPDATED" then
+    self:MaybeRebuild("pendingMounts")
     return
   end
   if event == "CALENDAR_UPDATE_EVENT_LIST" then

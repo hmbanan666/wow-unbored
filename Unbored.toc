@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 120105, 120100
 ## Title: Unbored
 ## Notes: A calm session planner. What do I do now?
 ## Author: Unbored contributors

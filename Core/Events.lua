@@ -36,8 +36,10 @@ end
 
 function ns.Events.Register(frame)
   for i = 1, #WATCH do
-    frame:RegisterEvent(WATCH[i])
+    -- A removed event name must not abort addon load.
+    pcall(frame.RegisterEvent, frame, WATCH[i])
   end
+  pcall(frame.RegisterEvent, frame, "MOUNT_JOURNAL_SEARCH_UPDATED")
 end
 
 function ns.Events.OnEvent(event, ...)

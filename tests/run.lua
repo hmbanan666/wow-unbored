@@ -145,9 +145,16 @@ ns.Session.state = {
   skipped = {},
 }
 ns.Session:Skip()
-check(ns.Session.state.tasks[1].id == "b", "skip advances")
-check(ns.Session.state.skipped[1].id == "a", "skip records id")
-check(type(ns.Session.state.skipped[1].at) == "number", "skip records time")
+check(ns.Session.state.tasks[1].id == "b", "first skip moves the task behind the next one")
+check(ns.Session.state.tasks[2].id == "a", "skipped task is now last")
+check(ns.Session.state.tasks[2].skipCount == 1, "first skip is remembered")
+check(#ns.Session.state.skipped == 0, "first skip does not drop the task")
+ns.Session:Skip()
+check(ns.Session.state.tasks[1].id == "a", "the new current task also moves to the end")
+ns.Session:Skip()
+check(ns.Session.state.tasks[1].id == "b", "second skip drops the task")
+check(ns.Session.state.skipped[1].id == "a", "second skip records the id")
+check(type(ns.Session.state.skipped[1].at) == "number", "second skip records time")
 ns.Session:Done()
 check(ns.Session:Current() == nil, "done clears the last task")
 check(ns.Session.state.done[1].id == "b", "done records id")
@@ -358,6 +365,41 @@ for i = 1, #events do
   end
 end
 check(sawHead, "hallows end includes Check Your Head")
+
+C_Calendar.GetDayEvent = function()
+  return {
+    calendarType = "HOLIDAY",
+    eventID = 99999,
+    title = "Something Else",
+    iconTexture = 235461,
+    sequenceType = "ONGOING",
+  }
+end
+local byTexture = ns.Providers.events.Build({})
+local sawTexture = false
+for i = 1, #byTexture do
+  if byTexture[i].complete and byTexture[i].complete.achievementID == 291 then
+    sawTexture = true
+  end
+end
+check(sawTexture, "hallows end matches calendar icon texture when the event id differs")
+
+C_Calendar.GetDayEvent = function()
+  return {
+    calendarType = "HOLIDAY",
+    eventID = 42,
+    title = "Brewfest",
+    sequenceType = "ONGOING",
+  }
+end
+local byTitle = ns.Providers.events.Build({})
+local sawBrew = false
+for i = 1, #byTitle do
+  if byTitle[i].id == "event:brew-ram" then
+    sawBrew = true
+  end
+end
+check(sawBrew, "brewfest matches the English calendar title")
 
 GetNumSavedInstances = function()
   return 1
