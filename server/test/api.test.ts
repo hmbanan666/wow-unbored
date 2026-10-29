@@ -109,7 +109,8 @@ test("put plan, companion get, addon decodes UNB1", async () => {
     assert.equal(got.status, 200);
     const body = await json(got);
     assert.equal(body.plan, stored.plan);
-    assert.deepEqual(Object.keys(body), ["plan"]);
+    assert.deepEqual(Object.keys(body).sort(), ["createdAt", "id", "plan"]);
+    assert.equal(body.id, stored.id);
 
     const root = path.resolve(import.meta.dirname, "../..");
     const decoded = execFileSync(

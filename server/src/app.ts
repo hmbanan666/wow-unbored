@@ -145,7 +145,7 @@ export function createApp(
     if (access instanceof Response) return access;
     const stored = store.latestPlan();
     if (!stored) return c.json({ error: "No plan yet." }, 404);
-    return c.json({ plan: stored.unb1 });
+    return c.json({ id: stored.id, createdAt: stored.createdAt, plan: stored.unb1 });
   });
 
   app.post("/v1/progress", async (c) => {
