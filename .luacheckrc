@@ -1,0 +1,76 @@
+std = "lua51"
+max_line_length = 120
+codes = true
+exclude_files = {
+  ".luacheckcache",
+}
+
+files["tests/run.lua"] = {
+  ignore = { "121", "122" },
+}
+
+globals = {
+  "Unbored",
+  "UnboredDB",
+  "UnboredCharDB",
+  "UnboredCompanionPlan",
+  "Unbored_Toggle",
+  "Unbored_Done",
+  "Unbored_Skip",
+  "Unbored_Waypoint",
+  "SLASH_UNBORED1",
+  "SLASH_UNBORED2",
+  "SlashCmdList",
+  "BINDING_HEADER_UNBORED",
+  "BINDING_NAME_UNBORED_TOGGLE",
+  "BINDING_NAME_UNBORED_DONE",
+  "BINDING_NAME_UNBORED_SKIP",
+  "BINDING_NAME_UNBORED_WAYPOINT",
+}
+
+read_globals = {
+  "C_AddOns",
+  "C_Calendar",
+  "C_CurrencyInfo",
+  "C_DateAndTime",
+  "C_Map",
+  "C_MountJournal",
+  "C_PetJournal",
+  "C_QuestLog",
+  "C_SuperTrack",
+  "C_TaskQuest",
+  "C_Timer",
+  "C_ToyBox",
+  "C_TransmogCollection",
+  "C_VignetteInfo",
+  "AddonCompartmentFrame",
+  "ChatFontNormal",
+  "CreateFrame",
+  "DEFAULT_CHAT_FRAME",
+  "GameFontHighlightSmall",
+  "GameTooltip",
+  "Enum",
+  "GetAchievementCriteriaInfo",
+  "GetAchievementCriteriaInfoByID",
+  "GetAchievementInfo",
+  "GetAchievementNumCriteria",
+  "GetCursorPosition",
+  "GetLocale",
+  "GetNumSavedInstances",
+  "GetSavedInstanceInfo",
+  "InCombatLockdown",
+  "IsInInstance",
+  "Minimap",
+  "PlayerHasToy",
+  "PlaySound",
+  "RequestRaidInfo",
+  "SOUNDKIT",
+  "SlashCmdList",
+  "TomTom",
+  "UIParent",
+  "UnitFactionGroup",
+  "UnitLevel",
+  "UiMapPoint",
+  "issecretvalue",
+  "time",
+}

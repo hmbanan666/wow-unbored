@@ -1,0 +1,26 @@
+name: Release
+
+# Builds a retail zip with the BigWigs packager when a tag is pushed.
+# CurseForge and Wago are left unset until those projects exist.
+# https://warcraft.wiki.gg/wiki/Using_the_BigWigs_Packager_with_GitHub_Actions
+
+on:
+  push:
+    tags:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: BigWigsMods/packager@v2
+        env:
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}

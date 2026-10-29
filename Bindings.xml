@@ -1,0 +1,14 @@
+<Bindings>
+	<Binding name="UNBORED_TOGGLE" header="UNBORED" category="Unbored">
+		Unbored_Toggle()
+	</Binding>
+	<Binding name="UNBORED_DONE" category="Unbored">
+		Unbored_Done()
+	</Binding>
+	<Binding name="UNBORED_SKIP" category="Unbored">
+		Unbored_Skip()
+	</Binding>
+	<Binding name="UNBORED_WAYPOINT" category="Unbored">
+		Unbored_Waypoint()
+	</Binding>
+</Bindings>
