@@ -103,7 +103,17 @@ pub fn registry_roots() -> Vec<PathBuf> {
 pub fn detect_installs() -> Vec<PathBuf> {
     let mut roots = registry_roots();
     roots.extend(common_roots());
+    roots.extend(battle_net_install_roots());
     find_retail_dirs(&roots)
+}
+
+fn battle_net_install_roots() -> Vec<PathBuf> {
+    crate::addon::battle_net_config_paths()
+        .into_iter()
+        .filter_map(|path| fs::read(path).ok())
+        .flat_map(|bytes| crate::addon::wow_paths_in_blob(&bytes))
+        .map(PathBuf::from)
+        .collect()
 }
 
 pub fn list_accounts(retail: &Path) -> Vec<String> {

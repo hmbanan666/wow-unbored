@@ -6,7 +6,7 @@ The base URL is whatever you type in the app, without a trailing slash. Example:
 
 Only `https://` is accepted. `http://localhost` and `http://127.0.0.1` are allowed so you can run a stub on your own machine.
 
-If the token box is not empty, every request sends `Authorization: Bearer <token>`.
+Companion 0.1.1 does not ask for a token. On first launch it registers a device and, after that device is approved, sends `Authorization: Bearer <device secret>`. The server stores only the SHA-256 of that secret. Older builds, and `UNBORED_COMPANION_TOKEN`, still authenticate the same two calls.
 
 ## GET /v1/plan
 
@@ -69,6 +69,20 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 `_retail_/Interface/AddOns/Unbored_Plan/Plan.lua`
 
 Unbored reads the global `UnboredExternalPlan` from that addon on load and asks before it replaces the current list.
+
+## Device pairing
+
+`POST {base}/v1/devices/register` with no bearer token:
+
+```json
+{ "deviceId": "desktop-abc12345", "name": "Nick-PC", "secretHash": "<64 hex chars>" }
+```
+
+`secret` (at least 16 characters) may be sent instead of `secretHash`. The server hashes it and does not store the secret. The device is `pending` until `approve_device`. At most 20 devices may wait, and one IP can register 10 times in 10 minutes.
+
+`GET {base}/v1/devices/me` with `Authorization: Bearer <device secret>` returns `{ "id", "name", "status", "createdAt", "lastSeenAt" }`. `status` is `pending`, `approved`, or `revoked`.
+
+An approved device can call `GET /v1/plan` and `POST /v1/progress` only. It cannot put a plan. Revoked and pending devices are rejected on those two calls.
 
 ## Server in this repo
 

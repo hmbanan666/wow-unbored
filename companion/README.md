@@ -6,7 +6,7 @@ The in-game addon is the other half. This folder is the desktop half.
 
 ## Install
 
-1. Download `Unbored Companion_0.1.0_x64-setup.exe` or the `.msi` from the GitHub release tagged `companion-v0.1.0` (the workflow builds it; it is not published until that tag exists).
+1. Download `Unbored Companion_0.1.1_x64-setup.exe` or the `.msi` from the GitHub release tagged `companion-v0.1.1`.
 2. Windows SmartScreen will say it prevented an unrecognized app from starting. The installer is not Authenticode-signed. Choose **More info**, then **Run anyway**. That warning is expected.
 3. The window opens. It also sits in the tray. Closing the window hides it; Quit is on the tray menu.
 4. **Start with Windows** is off until you check it. The login shortcut passes `--hidden`, so the window stays in the tray.
@@ -22,14 +22,14 @@ The installer lands in `src-tauri/target/release/bundle/`.
 
 ## Flow
 
-1. **Detect** looks at the registry (`HKLM\SOFTWARE\WOW6432Node\Blizzard Entertainment\World of Warcraft\InstallPath` and the 32-bit and HKCU twins) and at `C:\Program Files (x86)\World of Warcraft` and `C:\Program Files\World of Warcraft`. A hit is a folder that contains `_retail_\Wow.exe`, or is itself `_retail_`.
-2. You can paste the `_retail_` path if detection misses. Accounts are the directories under `WTF\Account`.
-3. Paste an `UNB1:` plan (same string as `/unbored import`, see `docs/plan-format.md`) and press **Write plan**. Or set an HTTPS planner URL and press **Fetch plan**. The URL contract is `docs/companion-api.md`. Nothing is fetched until you set a URL.
-4. The app writes `Interface\AddOns\Unbored_Plan\`, a tiny addon it owns (the TSM AppHelper pattern). It does **not** edit SavedVariables while the game is running: WoW overwrites those files on logout, so a write during a session would be thrown away or would race the client.
-5. In game, `/reload`. Enable **Unbored Plan** if the addon list asks. Unbored prints that a companion plan is ready. **Use it** in the window, or `/unbored companion`. **Not now** hides that same plan until the file changes.
-6. When you `/reload` or log out, WoW writes `WTF\Account\<account>\<realm>\<character>\SavedVariables\Unbored.lua`. The app watches that folder and refreshes the list when `Unbored.lua` changes. **Read progress** does the same on demand. If a planner URL is set, a changed file is POSTed once; the same contents are not sent again until the file or the URL changes.
+1. Launch the app. It creates a device id and secret (app data, and Windows Credential Manager when that store accepts it) and calls `POST /v1/devices/register` on `https://unbored.kosarev.space`. The window says **Waiting for approval** and asks again about every 30 seconds.
+2. The owner approves that device with the planner MCP tool `approve_device`. The app then uses the device secret as the bearer for `GET /v1/plan` and `POST /v1/progress`. It cannot write a plan.
+3. Retail is detected from the Blizzard registry (`InstallPath` under `Blizzard Entertainment\World of Warcraft`), `C:\Program Files (x86)\World of Warcraft` and `C:\Program Files\World of Warcraft`, and Battle.net's `product.db` / `Battle.net.config` when those files mention a World of Warcraft path. A hit contains `Wow.exe` or `_retail_\Wow.exe`. The folder field appears only when none of those work.
+4. The latest GitHub release asset `Unbored-v*.zip` whose tag is `v*` (not `companion-v*`) is unpacked into `_retail_\Interface\AddOns\Unbored`. A newer tag replaces it. SavedVariables are read from `WTF\Account\*\*\SavedVariables\Unbored.lua` with no account picker.
+5. The plan file is still `Interface\AddOns\Unbored_Plan\`, which this app owns. In game, `/reload`, then **Use it** or `/unbored companion`.
+6. After `/reload` or logout the app reads `Unbored.lua` and posts progress once per change.
 
-The poll interval fetches a new plan from the planner. It is the number of minutes you saved, not a fixed one-minute tick. `0` means only the buttons. The SavedVariables watch runs whether or not that poll is on, including while the window is hidden in the tray.
+Advanced settings can replace the planner URL. There is no token field. An empty URL means `https://unbored.kosarev.space`.
 
 ## Updates
 

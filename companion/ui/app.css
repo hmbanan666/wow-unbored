@@ -26,4 +26,7 @@ button:hover { border-color: #e2c56a; }
 .check { display: flex; gap: 8px; align-items: center; }
 #installs button { margin: 0 6px 6px 0; }
 #progress { padding-left: 18px; }
-#status { min-height: 2.8em; }
+#status, #pairing, #addon { min-height: 1.4em; }
+#pairing { font-weight: 600; color: #e2c56a; }
+details { margin-top: 16px; }
+details summary { cursor: pointer; color: #b7b1a4; }

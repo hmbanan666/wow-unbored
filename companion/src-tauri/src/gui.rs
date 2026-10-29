@@ -14,7 +14,9 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::endpoint::{join_url, progress_payload, validate_endpoint};
+use crate::addon::{install_addon_zip, select_addon_zip, should_update};
+use crate::device::{self, DeviceCredential};
+use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::plan::{decode_unb1, install_plan, plan_from_value, Plan};
 use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, CharacterFile};
 
@@ -24,7 +26,6 @@ struct Settings {
     wow_path: String,
     account: String,
     endpoint_url: String,
-    endpoint_token: String,
     poll_minutes: u32,
 }
 
@@ -34,7 +35,6 @@ impl Default for Settings {
             wow_path: String::new(),
             account: String::new(),
             endpoint_url: String::new(),
-            endpoint_token: String::new(),
             poll_minutes: 5,
         }
     }
@@ -63,12 +63,17 @@ struct Model {
     progress: Vec<ProgressView>,
     /// Last progress body posted for each SavedVariables path.
     posted: HashMap<String, String>,
+    approved: bool,
+    needs_wow_path: bool,
+    addon_version: String,
+    pairing: String,
 }
 
 struct AppState {
     inner: Mutex<Model>,
     /// Kept alive so the SavedVariables watch does not stop.
     watcher: Mutex<Option<RecommendedWatcher>>,
+    device: Mutex<DeviceCredential>,
 }
 
 fn now_secs() -> u64 {
@@ -137,20 +142,24 @@ fn scan_progress(settings: &Settings) -> Vec<ProgressView> {
     views
 }
 
+fn effective_url(settings: &Settings) -> String {
+    let trimmed = settings.endpoint_url.trim();
+    if trimmed.is_empty() {
+        DEFAULT_PLANNER_URL.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 fn post_progress(
     settings: &Settings,
     files: &[CharacterFile],
     posted: &mut HashMap<String, String>,
+    bearer: &str,
 ) -> Result<usize, String> {
-    let url = settings.endpoint_url.trim();
-    if url.is_empty() {
-        return Ok(0);
-    }
-    validate_endpoint(url)?;
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .map_err(|err| err.to_string())?;
+    let url = effective_url(settings);
+    validate_endpoint(&url)?;
+    let client = http_client(Duration::from_secs(20))?;
     let mut sent = 0;
     for file in files {
         let Some(progress) = read_progress(file)? else {
@@ -162,11 +171,12 @@ fn post_progress(
         if posted.get(&key).is_some_and(|have| have == &fingerprint) {
             continue;
         }
-        let mut request = client.post(join_url(url, "v1/progress")).json(&body);
-        if !settings.endpoint_token.is_empty() {
-            request = request.bearer_auth(&settings.endpoint_token);
-        }
-        let response = request.send().map_err(|err| err.to_string())?;
+        let response = client
+            .post(join_url(&url, "v1/progress"))
+            .bearer_auth(bearer)
+            .json(&body)
+            .send()
+            .map_err(|err| err.to_string())?;
         if !response.status().is_success() {
             return Err(format!(
                 "Planner returned {} for {}.",
@@ -180,7 +190,15 @@ fn post_progress(
     Ok(sent)
 }
 
-fn run_scan(model: &mut Model) -> Result<usize, String> {
+fn http_client(timeout: Duration) -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(timeout)
+        .user_agent("unbored-companion")
+        .build()
+        .map_err(|err| err.to_string())
+}
+
+fn run_scan(model: &mut Model, bearer: Option<&str>) -> Result<usize, String> {
     let settings = model.settings.clone();
     let account = if settings.account.is_empty() {
         None
@@ -191,17 +209,19 @@ fn run_scan(model: &mut Model) -> Result<usize, String> {
         .map(|retail| character_saved_variables(&retail, account))
         .unwrap_or_default();
     model.progress = scan_progress(&settings);
-    post_progress(&settings, &files, &mut model.posted)
+    if let Some(bearer) = bearer {
+        post_progress(&settings, &files, &mut model.posted, bearer)
+    } else {
+        Ok(0)
+    }
 }
 
-fn scan_status(settings: &Settings, progress_len: usize, result: Result<usize, String>) -> String {
+fn scan_status(posting: bool, progress_len: usize, result: Result<usize, String>) -> String {
     match result {
         Err(err) => err,
         Ok(sent) if sent > 0 => format!("Progress sent for {sent} character file(s)."),
         Ok(_) if progress_len == 0 => "No Unbored.lua yet. /reload once in game.".into(),
-        Ok(_) if !settings.endpoint_url.trim().is_empty() => {
-            "Progress is already on the planner.".into()
-        }
+        Ok(_) if posting => "Progress is already on the planner.".into(),
         Ok(_) => "Progress read from SavedVariables.".into(),
     }
 }
@@ -229,6 +249,10 @@ struct UiState {
     progress: Vec<ProgressView>,
     status: String,
     autostart: bool,
+    needs_wow_path: bool,
+    addon_version: String,
+    pairing: String,
+    planner_url: String,
 }
 
 fn snapshot(app: &AppHandle, model: &Model) -> UiState {
@@ -240,6 +264,10 @@ fn snapshot(app: &AppHandle, model: &Model) -> UiState {
         progress: model.progress.clone(),
         status: model.status.clone(),
         autostart,
+        needs_wow_path: model.needs_wow_path,
+        addon_version: model.addon_version.clone(),
+        pairing: model.pairing.clone(),
+        planner_url: effective_url(&model.settings),
     }
 }
 
@@ -267,10 +295,9 @@ fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, String>
     let retail = PathBuf::from(&model.settings.wow_path);
     model.accounts = list_accounts(&retail);
     model.progress = scan_progress(&model.settings);
+    model.needs_wow_path = model.settings.wow_path.trim().is_empty();
     if model.installs.is_empty() {
-        model.status = "No Retail install found. Paste the _retail_ folder.".into();
-    } else {
-        model.status = format!("Found {} Retail folder(s).", model.installs.len());
+        model.needs_wow_path = true;
     }
     let path = model.settings.wow_path.clone();
     let _ = save_settings(&app, &model.settings);
@@ -287,7 +314,12 @@ fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<
     let retail = PathBuf::from(&model.settings.wow_path);
     model.accounts = list_accounts(&retail);
     model.progress = scan_progress(&model.settings);
-    model.status = "Retail folder saved.".into();
+    model.needs_wow_path = model.settings.wow_path.trim().is_empty();
+    model.status = if model.needs_wow_path {
+        "Choose the Retail folder.".into()
+    } else {
+        "Retail folder saved.".into()
+    };
     let path = model.settings.wow_path.clone();
     let _ = save_settings(&app, &model.settings);
     drop(model);
@@ -310,16 +342,15 @@ fn set_endpoint(
     app: AppHandle,
     state: State<AppState>,
     url: String,
-    token: String,
     poll_minutes: u32,
 ) -> Result<UiState, String> {
+    let url = url.trim().to_string();
     validate_endpoint(&url)?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.settings.endpoint_url = url.trim().to_string();
-    model.settings.endpoint_token = token;
+    model.settings.endpoint_url = url;
     model.settings.poll_minutes = poll_minutes.min(240);
     model.posted.clear();
-    model.status = "Planner endpoint saved.".into();
+    model.status = "Planner address saved.".into();
     let _ = save_settings(&app, &model.settings);
     Ok(snapshot(&app, &model))
 }
@@ -346,44 +377,42 @@ fn write_plan_text(app: AppHandle, state: State<AppState>, text: String) -> Resu
 
 #[tauri::command]
 fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
-    let (url, token, settings) = {
+    let (settings, secret, approved) = {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
-        (
-            model.settings.endpoint_url.clone(),
-            model.settings.endpoint_token.clone(),
-            model.settings.clone(),
-        )
+        let device = state.device.lock().map_err(|err| err.to_string())?;
+        (model.settings.clone(), device.secret.clone(), model.approved)
     };
-    if url.trim().is_empty() {
-        return Err("Set a planner URL first.".into());
+    if !approved {
+        let model = state.inner.lock().map_err(|err| err.to_string())?;
+        return Ok(snapshot(&app, &model));
     }
-    validate_endpoint(&url)?;
-    let client = reqwest::blocking::Client::new();
-    let mut request = client.get(join_url(&url, "v1/plan"));
-    if !token.is_empty() {
-        request = request.bearer_auth(&token);
+    match pull_plan(&settings, &secret) {
+        Ok(message) => {
+            let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+            if let Some(message) = message {
+                model.status = message;
+            }
+            Ok(snapshot(&app, &model))
+        }
+        Err(err) => Err(err),
     }
-    let response = request.send().map_err(|err| err.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!("Planner returned {}.", response.status()));
-    }
-    let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
-    let mut plan = match &body["plan"] {
-        serde_json::Value::String(text) => decode_unb1(text).map_err(|err| err.0)?,
-        other if other.is_object() => plan_from_value(other.clone()).map_err(|err| err.0)?,
-        _ => return Err("Response needs a plan string or plan object.".into()),
-    };
-    let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.settings = settings;
-    model.status = write_plan(&model.settings, &mut plan)?;
-    Ok(snapshot(&app, &model))
 }
 
 #[tauri::command]
 fn rescan_progress(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    let result = run_scan(&mut model);
-    model.status = scan_status(&model.settings, model.progress.len(), result);
+    let bearer = if model.approved {
+        state
+            .device
+            .lock()
+            .ok()
+            .map(|device| device.secret.clone())
+    } else {
+        None
+    };
+    let posting = bearer.is_some();
+    let result = run_scan(&mut model, bearer.as_deref());
+    model.status = scan_status(posting, model.progress.len(), result);
     let _ = app.emit("progress", &model.progress);
     Ok(snapshot(&app, &model))
 }
@@ -416,7 +445,16 @@ fn note_saved_variables(app: &AppHandle) {
     let Ok(mut model) = state.inner.lock() else {
         return;
     };
-    let result = run_scan(&mut model);
+    let bearer = if model.approved {
+        state
+            .device
+            .lock()
+            .ok()
+            .map(|device| device.secret.clone())
+    } else {
+        None
+    };
+    let result = run_scan(&mut model, bearer.as_deref());
     match &result {
         Err(err) => model.status = err.clone(),
         Ok(sent) if *sent > 0 => {
@@ -477,6 +515,221 @@ fn arm_watch(app: &AppHandle, wow_path: &str) {
     };
 }
 
+fn machine_name() -> String {
+    let name = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "companion".into());
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        "companion".into()
+    } else {
+        trimmed.chars().take(80).collect()
+    }
+}
+
+fn pull_plan(settings: &Settings, secret: &str) -> Result<Option<String>, String> {
+    let url = effective_url(settings);
+    validate_endpoint(&url)?;
+    let client = http_client(Duration::from_secs(20))?;
+    let response = client
+        .get(join_url(&url, "v1/plan"))
+        .bearer_auth(secret)
+        .send()
+        .map_err(|err| err.to_string())?;
+    if response.status().as_u16() == 404 {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(format!("Planner returned {}.", response.status()));
+    }
+    let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
+    let mut plan = match &body["plan"] {
+        serde_json::Value::String(text) => decode_unb1(text).map_err(|err| err.0)?,
+        other if other.is_object() => plan_from_value(other.clone()).map_err(|err| err.0)?,
+        _ => return Err("Response needs a plan string or plan object.".into()),
+    };
+    if settings.wow_path.trim().is_empty() {
+        return Ok(Some("Approved. Choose the Retail folder.".into()));
+    }
+    Ok(Some(write_plan(settings, &mut plan)?))
+}
+
+fn register_device(url: &str, device: &DeviceCredential) -> Result<String, String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let response = client
+        .post(join_url(url, "v1/devices/register"))
+        .json(&serde_json::json!({
+            "deviceId": device.device_id,
+            "name": machine_name(),
+            "secretHash": device.secret_hash(),
+        }))
+        .send()
+        .map_err(|err| err.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Planner returned {}.", response.status()));
+    }
+    let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
+    Ok(body
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("pending")
+        .to_string())
+}
+
+fn device_status(url: &str, secret: &str) -> Result<String, String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let response = client
+        .get(join_url(url, "v1/devices/me"))
+        .bearer_auth(secret)
+        .send()
+        .map_err(|err| err.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Planner returned {}.", response.status()));
+    }
+    let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
+    Ok(body
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("pending")
+        .to_string())
+}
+
+fn pairing_message(status: &str, needs_path: bool) -> String {
+    let base = match status {
+        "approved" => "Approved.",
+        "revoked" => "This device was revoked.",
+        _ => "Waiting for approval",
+    };
+    if needs_path {
+        format!("{base} Choose the Retail folder.")
+    } else {
+        base.to_string()
+    }
+}
+
+fn publish_status(app: &AppHandle, status: &str) {
+    let state = app.state::<AppState>();
+    let Ok(mut model) = state.inner.lock() else {
+        return;
+    };
+    if model.status == status {
+        return;
+    }
+    model.status = status.to_string();
+    drop(model);
+    let _ = app.emit("progress", serde_json::json!({}));
+    if let Some(tray) = app.tray_by_id("unbored") {
+        let _ = tray.set_tooltip(Some(status));
+    }
+}
+
+fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<String, String> {
+    let client = http_client(Duration::from_secs(30))?;
+    let response = client
+        .get("https://api.github.com/repos/hmbanan666/wow-unbored/releases?per_page=20")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .map_err(|err| err.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("GitHub returned {}.", response.status()));
+    }
+    let body = response.text().map_err(|err| err.to_string())?;
+    let Some(release) = select_addon_zip(&body)? else {
+        return Ok("No addon release found.".into());
+    };
+    let installed = fs::read_to_string(version_file).ok().map(|text| text.trim().to_string());
+    let toc = retail.join("Interface").join("AddOns").join("Unbored").join("Unbored.toc");
+    if toc.is_file() && !should_update(installed.as_deref(), &release.version) {
+        if let Ok(mut model) = app.state::<AppState>().inner.lock() {
+            model.addon_version = release.version.clone();
+        }
+        return Ok(format!("Addon {} is installed.", release.version));
+    }
+    let bytes = client
+        .get(&release.url)
+        .send()
+        .map_err(|err| err.to_string())?
+        .bytes()
+        .map_err(|err| err.to_string())?;
+    install_addon_zip(&bytes, retail)?;
+    if let Some(parent) = version_file.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(version_file, &release.version).map_err(|err| err.to_string())?;
+    if let Ok(mut model) = app.state::<AppState>().inner.lock() {
+        model.addon_version = release.version.clone();
+    }
+    Ok(format!("Installed addon {}.", release.version))
+}
+
+fn sync_once(app: &AppHandle, addon_checked: &mut Option<std::time::Instant>) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let (settings, secret, _) = {
+        let model = state.inner.lock().map_err(|err| err.to_string())?;
+        let device = state.device.lock().map_err(|err| err.to_string())?;
+        (model.settings.clone(), device.secret.clone(), model.approved)
+    };
+    let url = effective_url(&settings);
+    let device = DeviceCredential {
+        device_id: state.device.lock().map_err(|err| err.to_string())?.device_id.clone(),
+        secret: secret.clone(),
+    };
+    let status = match device_status(&url, &secret) {
+        Ok(status) => status,
+        Err(err) if err.contains("401") => register_device(&url, &device)?,
+        Err(err) => return Err(err),
+    };
+    let needs_path = settings.wow_path.trim().is_empty();
+    let pairing_changed = {
+        let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+        let changed = model.pairing != status;
+        model.pairing = status.clone();
+        model.approved = status == "approved";
+        model.needs_wow_path = needs_path;
+        changed
+    };
+    if pairing_changed || status != "approved" {
+        publish_status(app, &pairing_message(&status, needs_path));
+    }
+    if status == "approved" && !needs_path {
+        if let Some(message) = pull_plan(&settings, &secret)? {
+            publish_status(app, &message);
+        }
+        let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+        let _ = run_scan(&mut model, Some(&secret));
+    }
+    let due = addon_checked
+        .map(|at| at.elapsed() >= Duration::from_secs(30 * 60))
+        .unwrap_or(true);
+    if due {
+        if let Some(retail) = retail_path(&settings) {
+            let version_file = app
+                .path()
+                .app_config_dir()
+                .map_err(|err| err.to_string())?
+                .join("addon-version.txt");
+            if let Err(err) = ensure_addon(app, &retail, &version_file) {
+                if let Ok(mut model) = state.inner.lock() {
+                    model.addon_version = err;
+                }
+            }
+            *addon_checked = Some(std::time::Instant::now());
+        }
+    }
+    let _ = app.emit("progress", serde_json::json!({}));
+    Ok(())
+}
+
+fn sync_loop(app: AppHandle) {
+    let mut addon_checked = None;
+    loop {
+        if let Err(err) = sync_once(&app, &mut addon_checked) {
+            publish_status(&app, &err);
+        }
+        std::thread::sleep(Duration::from_secs(30));
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -507,18 +760,34 @@ pub fn run() {
             let accounts = list_accounts(&PathBuf::from(&settings.wow_path));
             let progress = scan_progress(&settings);
             let wow_path = settings.wow_path.clone();
+            let needs_wow_path = settings.wow_path.trim().is_empty();
+            let device = device::load_or_create(&settings_path(app.handle())?.with_file_name("device.json"))?;
             app.manage(AppState {
                 inner: Mutex::new(Model {
                     settings,
-                    status: "Ready.".into(),
+                    status: if needs_wow_path {
+                        "Waiting for approval. Choose the Retail folder.".into()
+                    } else {
+                        "Waiting for approval".into()
+                    },
                     installs,
                     accounts,
                     progress,
                     posted: HashMap::new(),
+                    approved: false,
+                    needs_wow_path,
+                    addon_version: String::new(),
+                    pairing: "pending".into(),
                 }),
                 watcher: Mutex::new(None),
+                device: Mutex::new(device),
             });
             arm_watch(app.handle(), &wow_path);
+            let handle = app.handle().clone();
+            std::thread::Builder::new()
+                .name("unbored-sync".into())
+                .spawn(move || sync_loop(handle))
+                .map_err(|err| err.to_string())?;
 
             let open = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
