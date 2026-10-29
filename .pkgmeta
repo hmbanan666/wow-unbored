@@ -1,0 +1,19 @@
+package-as: Unbored
+
+# CurseForge / Wago project ids are intentionally unset until the project
+# is published. The GitHub release zip still builds from a tag.
+
+ignore:
+  - tests
+  - .github
+  - .luacheckrc
+  - .gitignore
+  - Screenshots
+
+license-output: LICENSE.txt
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+enable-nolib-creation: no
