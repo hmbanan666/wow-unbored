@@ -57,6 +57,27 @@ Limits: 40 tasks, titles up to 240 bytes, notes up to 400 bytes, the whole paste
 
 `id` may contain letters, numbers, `:`, `.`, `_`, and `-`.
 
+### Waypoint routes
+
+A task may carry an optional route instead of, or as well as, its single pin:
+
+```json
+{
+  "id": "route:dorn",
+  "title": "Ride the coast",
+  "estMinutes": 15,
+  "waypoints": [
+    { "mapID": 2248, "x": 0.412, "y": 0.735, "label": "Dornogal gate" },
+    { "mapID": 2248, "x": 0.552, "y": 0.617, "label": "Rare: Kronolith" },
+    { "mapID": 2248, "x": 0.668, "y": 0.444 }
+  ]
+}
+```
+
+Up to 10 points. `mapID` and fractional `x`/`y` are required; `label` is optional, up to 80 bytes. When the step becomes current the first point gets the native waypoint and is super-tracked, plus a TomTom arrow if TomTom is loaded. Within 30 yards of a point the arrow moves to the next one, and the tracker shows `Point 2/3: Rare: Kronolith`. Reaching the last point does not finish the step unless `complete` says so. A plan without `waypoints` behaves as before.
+
+Start the route near the player. A request carries the player's `context` (see [companion-api.md](companion-api.md)).
+
 The line below is that JSON, compact, then base64. Paste it in game to try the window:
 
 ```
@@ -113,7 +134,7 @@ Pasting a progress string into Import is an error. It does not replace the list.
 
 ## Companion file
 
-The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). Unbored offers that plan on load; it does not apply it by itself. See `companion/README.md`.
+The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). On load, a plan whose `requestId` matches this character's pending Get plan request starts at once, with no prompt. A plan without a `requestId` starts once per character, and only when no request is pending. `/unbored companion` applies the file again. See `companion/README.md`.
 
 The older seam is still read: a Lua table in `Companion/Plan.lua`:
 
@@ -130,4 +151,4 @@ UnboredCompanionPlan = {
 
 or in account SavedVariables as `UnboredDB.companionPlan`. On login, a `generatedAt` newer than the saved session replaces it. `/unbored companion` applies it even when it is older.
 
-Import from a string is immediate and does not need a reload. Changing mode, budget, or Refresh drops the imported list and builds one from the in-game providers.
+Import from a string is immediate and does not need a reload. Building a plan in game (when no companion is installed) replaces the imported list.
