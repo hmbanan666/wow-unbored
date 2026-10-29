@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- A plan written by Unbored Companion (`Unbored_Plan`) is offered on load. Use it, or Not now.
 - Load on Interface 120105 and 120100.
 - Hallow's End matches calendar icon textures, not only the holiday id. Other holidays also match the English calendar title.
 - The first Skip moves a task to the end. The second Skip drops it.

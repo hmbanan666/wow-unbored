@@ -113,7 +113,9 @@ Pasting a progress string into Import is an error. It does not replace the list.
 
 ## Companion file
 
-Same task objects, as a Lua table, either in `Companion/Plan.lua`:
+The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). Unbored offers that plan on load; it does not apply it by itself. See `companion/README.md`.
+
+The older seam is still read: a Lua table in `Companion/Plan.lua`:
 
 ```lua
 UnboredCompanionPlan = {

@@ -305,6 +305,103 @@ function ns.Session:MaybeRebuild(flag)
   end
 end
 
+function ns.Session.ExternalKey(plan)
+  local stamp = tonumber(plan and plan.generatedAt)
+  if stamp and stamp > 0 then
+    return "t:" .. tostring(stamp)
+  end
+  local ids = {}
+  local tasks = plan and plan.tasks or {}
+  for i = 1, #tasks do
+    ids[#ids + 1] = (tasks[i] and tasks[i].id) or ""
+  end
+  return "ids:" .. table.concat(ids, ",")
+end
+
+function ns.Session:ConsiderExternal()
+  self.offered = nil
+  if type(UnboredExternalPlan) ~= "table" or type(UnboredExternalPlan.tasks) ~= "table" then
+    return
+  end
+  local plan = ns.ValidatePlan(UnboredExternalPlan, true)
+  if not plan then
+    return
+  end
+  local key = ns.Session.ExternalKey(plan)
+  local saved = UnboredCharDB or {}
+  if saved.acceptedExternalKey == key or saved.dismissedExternalKey == key then
+    return
+  end
+  self.offered = plan
+  self.offerKey = key
+  if self.announcedOffer ~= key then
+    self.announcedOffer = key
+    ns.Print(ns.T("OFFER_CHAT"))
+  end
+end
+
+function ns.Session:ActivateOffered()
+  local plan = self.offered
+  if not plan then
+    return false
+  end
+  local key = self.offerKey or ns.Session.ExternalKey(plan)
+  if type(UnboredCharDB) ~= "table" then
+    UnboredCharDB = {}
+  end
+  UnboredCharDB.acceptedExternalKey = key
+  self.offered = nil
+  self:ApplyPlan(plan, "companion", false)
+  if self.state then
+    self.state.externalKey = key
+  end
+  self:Save()
+  return true
+end
+
+function ns.Session:UseExternal()
+  self:ConsiderExternal()
+  if self:ActivateOffered() then
+    return true
+  end
+  if type(UnboredExternalPlan) ~= "table" then
+    return self:ApplyCompanion(true)
+  end
+  local plan = ns.ValidatePlan(UnboredExternalPlan, true)
+  if not plan then
+    return self:ApplyCompanion(true)
+  end
+  local key = self.offerKey or ns.Session.ExternalKey(plan)
+  if UnboredCharDB and UnboredCharDB.acceptedExternalKey == key then
+    return true
+  end
+  if type(UnboredCharDB) ~= "table" then
+    UnboredCharDB = {}
+  end
+  UnboredCharDB.acceptedExternalKey = key
+  UnboredCharDB.dismissedExternalKey = nil
+  self.offered = nil
+  self.offerKey = key
+  self:ApplyPlan(plan, "companion", false)
+  if self.state then
+    self.state.externalKey = key
+  end
+  self:Save()
+  return true
+end
+
+function ns.Session:DismissOffered()
+  if not self.offered then
+    return
+  end
+  if type(UnboredCharDB) ~= "table" then
+    UnboredCharDB = {}
+  end
+  UnboredCharDB.dismissedExternalKey = self.offerKey or ns.Session.ExternalKey(self.offered)
+  self.offered = nil
+  self:RefreshUI()
+end
+
 function ns.Session:ScheduleDataRefresh()
   if self.dataRefreshScheduled or not C_Timer or not C_Timer.After then
     return
@@ -331,6 +428,7 @@ end
 
 function ns.Session:Start()
   if self.started then
+    self:ConsiderExternal()
     self:CheckCurrent()
     self:RefreshUI()
     self:ScheduleDataRefresh()
@@ -341,6 +439,8 @@ function ns.Session:Start()
   local companion = self:ReadCompanion()
   if companion and ns.Session.CompanionIsNewer(companion, saved) then
     if self:ApplyCompanion(false) then
+      self:ConsiderExternal()
+      self:RefreshUI()
       self:ScheduleDataRefresh()
       return
     end
@@ -349,12 +449,15 @@ function ns.Session:Start()
     self.state = saved
     self.state.done = self.state.done or {}
     self.state.skipped = self.state.skipped or {}
+    self:ConsiderExternal()
     self:CheckCurrent()
     self:RefreshUI()
     self:ScheduleDataRefresh()
     return
   end
   self:Rebuild(ns.DB and ns.DB.mode or "roam", ns.DB and ns.DB.budget or 60)
+  self:ConsiderExternal()
+  self:RefreshUI()
   self:ScheduleDataRefresh()
 end
 

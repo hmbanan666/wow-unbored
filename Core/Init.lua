@@ -107,8 +107,10 @@ local function slash(message)
     ns.MinimapSetShown(hide and true or false)
     ns.Print(hide and ns.T("MINIMAP_ON") or ns.T("MINIMAP_OFF"))
   elseif command == "companion" then
-    ns.Session:ApplyCompanion(true)
-    ns.UI:Show()
+    ns.Session:UseExternal()
+    if ns.UI and ns.UI.Show then
+      ns.UI:Show()
+    end
   elseif command == "where" then
     local mapID, x, y = ns.PlayerPosition()
     if not mapID or not x or not y then

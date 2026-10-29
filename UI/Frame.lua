@@ -145,8 +145,21 @@ function ns.UI.Create()
 
   local banner = font(frame, "GameFontDisableSmall")
   banner:SetPoint("TOPLEFT", 14, -80)
-  banner:SetPoint("TOPRIGHT", -14, -80)
+  banner:SetPoint("TOPRIGHT", -160, -80)
   banner:SetJustifyH("LEFT")
+
+  local offerUse = ns.UI.MakeButton(frame, ns.T("OFFER_USE"), 70, 18)
+  offerUse:SetPoint("TOPRIGHT", -78, -78)
+  offerUse:Hide()
+  offerUse:SetScript("OnClick", function()
+    ns.Session:ActivateOffered()
+  end)
+  local offerLater = ns.UI.MakeButton(frame, ns.T("OFFER_LATER"), 70, 18)
+  offerLater:SetPoint("TOPRIGHT", -4, -78)
+  offerLater:Hide()
+  offerLater:SetScript("OnClick", function()
+    ns.Session:DismissOffered()
+  end)
 
   local nowLabel = font(frame, "GameFontNormal")
   nowLabel:SetPoint("TOPLEFT", 14, -98)
@@ -262,6 +275,8 @@ function ns.UI.Create()
   ns.UI.budgetButtons = budgetButtons
   ns.UI.timeText = timeText
   ns.UI.banner = banner
+  ns.UI.offerUse = offerUse
+  ns.UI.offerLater = offerLater
   ns.UI.nowTitle = nowTitle
   ns.UI.detail = detail
   ns.UI.done = done
@@ -317,10 +332,21 @@ function ns.UI:Refresh()
     pcall(self.banner.SetText, self.banner, ns.T("COMBAT"))
   elseif ns.IsInstance() then
     pcall(self.banner.SetText, self.banner, ns.T("INSTANCE"))
+  elseif ns.Session and ns.Session.offered and not ns.IsCombat() and not ns.IsInstance() then
+    pcall(self.banner.SetText, self.banner, ns.T("OFFER_READY"))
   elseif state and state.pendingCalendar and #tasks == 0 then
     pcall(self.banner.SetText, self.banner, ns.T("CALENDAR_WAIT"))
   else
     pcall(self.banner.SetText, self.banner, "")
+  end
+  if self.offerUse and self.offerLater then
+    if ns.Session and ns.Session.offered then
+      self.offerUse:Show()
+      self.offerLater:Show()
+    else
+      self.offerUse:Hide()
+      self.offerLater:Hide()
+    end
   end
 
   local paused = ns.IsPaused()

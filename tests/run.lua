@@ -482,6 +482,35 @@ ns.Session:CheckCurrent()
 check(ns.Session:Current() == nil, "auto-complete removes the finished quest")
 check(ns.Session.state.done[1].id == "quest:20", "auto-complete records the id")
 
+UnboredExternalPlan = {
+  v = 1,
+  kind = "plan",
+  generatedAt = 5000,
+  mode = "custom",
+  budget = 30,
+  tasks = {
+    { id = "ext:1", title = "From companion", estMinutes = 10, complete = { kind = "manual" } },
+  },
+}
+UnboredCharDB = {}
+ns.Session.started = false
+ns.Session.state = nil
+ns.Session.offered = nil
+ns.Session.announcedOffer = nil
+ns.Session:ConsiderExternal()
+check(ns.Session.offered and ns.Session.offered.tasks[1].id == "ext:1", "external plan is offered")
+check(ns.Session:ActivateOffered() == true, "use it activates the plan")
+check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "activated plan is current")
+ns.Session:ConsiderExternal()
+check(ns.Session.offered == nil, "the same plan is not offered again")
+UnboredCharDB.acceptedExternalKey = nil
+UnboredCharDB.dismissedExternalKey = "t:5000"
+ns.Session.announcedOffer = nil
+ns.Session:ConsiderExternal()
+check(ns.Session.offered == nil, "a dismissed plan stays quiet")
+check(ns.Session:UseExternal() == true, "slash companion applies a dismissed plan")
+check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "dismissed plan becomes current")
+
 if fails > 0 then
   io.stderr:write(fails .. " failed, " .. checks .. " checks\n")
   os.exit(1)

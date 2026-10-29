@@ -5,7 +5,7 @@
 ## Version: 0.1.0
 ## SavedVariables: UnboredDB
 ## SavedVariablesPerCharacter: UnboredCharDB
-## OptionalDeps: TomTom
+## OptionalDeps: TomTom, Unbored_Plan
 ## IconTexture: Interface\AddOns\Unbored\Media\Icon
 ## Category: Quests
 ## X-License: MIT

@@ -9,6 +9,7 @@ ignore:
   - .luacheckrc
   - .gitignore
   - Screenshots
+  - companion
 
 license-output: LICENSE.txt
 
