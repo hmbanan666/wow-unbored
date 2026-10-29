@@ -1,5 +1,6 @@
--- The main in-game UI: a small round portrait with one chat bubble beside it.
--- The bubble shows exactly one thing: what to do (preset chips) when there is
+-- The main in-game UI: a small round portrait with a short stack of chat
+-- bubbles beside it (docs/adr/0004): at most two older one-line echoes, fading,
+-- above the current bubble. The current bubble shows exactly one thing: what to do (preset chips) when there is
 -- no plan, the current step, an answer, or "Thinking..." while a request is
 -- out. Every string is measured after its width is set, so text wraps and the
 -- bubble grows instead of cutting it.
@@ -19,6 +20,11 @@ local STALE_SECONDS = 20 * 60
 local CHIP_HEIGHT = 26
 local TIME_CHIP_WIDTH = 44
 local SCALES = { 80, 100, 125, 150 }
+local ECHOES = 2
+-- TODO(owner): how long an older message stays was not decided; 90 s is a guess.
+local ECHO_SECONDS = 90
+local ECHO_BYTES = 90
+local ECHO_ALPHA = { 0.75, 0.45 }
 
 local PORTRAITS = {
   idle = "WispIdle128",
@@ -355,6 +361,19 @@ function ns.Mascot:Create()
     self.wishError = nil
   end, INNER, 64)
   self.wishBox:Hide()
+
+  self.echoFrames = {}
+  for i = 1, ECHOES do
+    local okEcho, echo = pcall(CreateFrame, "Frame", nil, frame, "BackdropTemplate")
+    if not okEcho or not echo then
+      echo = CreateFrame("Frame", nil, frame)
+    end
+    ns.UI.ApplyBackdrop(echo, { 0.03, 0.08, 0.09, 0.85 }, { TEAL[1], TEAL[2], TEAL[3], 0.5 })
+    echo.text = font(echo, "GameFontHighlightSmall")
+    echo.text:SetPoint("TOPLEFT", PAD, -6)
+    echo:Hide()
+    self.echoFrames[i] = echo
+  end
 end
 
 -- The bubble opens toward the middle of the screen, so it is never cut off.
@@ -690,6 +709,11 @@ function ns.Mascot:Refresh()
   frame:Show()
   local view = self.View()
   local key = view.kind .. ":" .. tostring(view.key or "")
+  local old = self.view
+  if key ~= self.lastKey and old and old.message
+    and (old.kind == "answer" or old.kind == "offer" or old.kind == "failed") then
+    self:Echo(old.message)
+  end
   if key ~= self.lastKey and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice"
     or view.kind == "offer") then
     saved.collapsed = false
@@ -709,6 +733,10 @@ function ns.Mascot:Refresh()
   self.otherChip:Hide()
   self.timeLabel:Hide()
   self.wishBox:Hide()
+  self:ExpireEchoes(true)
+  for i = 1, #self.echoFrames do
+    self.echoFrames[i]:Hide()
+  end
   if saved.collapsed then
     self.bubble:Hide()
     self.badge:SetShown(view.kind ~= "choice")
@@ -803,6 +831,73 @@ function ns.Mascot:Refresh()
   end
   y = y - rowHeight - PAD + 2
   bubble:SetHeight(math.ceil(-y))
+  self:LayoutEchoes()
+end
+
+-- An older message: one short line, kept for a little while above the bubble.
+function ns.Mascot:Echo(text)
+  if type(text) ~= "string" then
+    return
+  end
+  text = ns.Trim(text:match("^[^\n]*") or "")
+  if text == "" then
+    return
+  end
+  local short = ns.Utf8Truncate(text, ECHO_BYTES)
+  if short ~= text then
+    short = short .. "..."
+  end
+  self.echoes = self.echoes or {}
+  local last = self.echoes[#self.echoes]
+  if last and last.text == short then
+    last.at = ns.Now()
+    return
+  end
+  self.echoes[#self.echoes + 1] = { text = short, at = ns.Now() }
+  while #self.echoes > ECHOES do
+    table.remove(self.echoes, 1)
+  end
+end
+
+-- Drops echoes older than ECHO_SECONDS. Called by the ticker too, so they
+-- go away on their own; returns true when one went.
+function ns.Mascot:ExpireEchoes(quiet)
+  local list = self.echoes or {}
+  local now = ns.Now()
+  local dropped = false
+  for i = #list, 1, -1 do
+    if now - (tonumber(list[i].at) or 0) > ECHO_SECONDS then
+      table.remove(list, i)
+      dropped = true
+    end
+  end
+  if dropped and not quiet then
+    self:Refresh()
+  end
+  return dropped
+end
+
+function ns.Mascot:LayoutEchoes()
+  local list = self.echoes or {}
+  local right = self:OnRightHalf()
+  local below = self.bubble
+  for n = 1, math.min(#list, ECHOES) do
+    local entry = list[#list - n + 1]
+    local echo = self.echoFrames[n]
+    echo.text:SetText(entry.text)
+    local width = math.min(INNER, math.ceil(ns.AsNumber(echo.text:GetStringWidth()) or INNER) + 2)
+    local height = ns.UI.Measure(echo.text, width)
+    echo:SetSize(width + PAD * 2, height + 12)
+    echo:ClearAllPoints()
+    if right then
+      echo:SetPoint("BOTTOMRIGHT", below, "TOPRIGHT", 0, 4)
+    else
+      echo:SetPoint("BOTTOMLEFT", below, "TOPLEFT", 0, 4)
+    end
+    echo:SetAlpha(ECHO_ALPHA[n] or 0.3)
+    echo:Show()
+    below = echo
+  end
 end
 
 -- Called by the ticker: only the distance line changes.
