@@ -36,6 +36,7 @@ local files = {
   "Data/Holidays.lua",
   "Data/Farm.lua",
   "Data/Items.lua",
+  "Data/Presets.lua",
   "Providers/Roam.lua",
   "Providers/Quests.lua",
   "Providers/Events.lua",

@@ -969,6 +969,24 @@ test("item and question requests are typed, webhooked, and answered", async () =
     assert.equal((itemRow.answer as Record<string, unknown>).message, "Your hearthstone takes you home. Keep it.");
     const current = await mcpCall(app, "get_current_plan", {});
     assert.equal(current.value.id, itemRow.planId);
+
+    const preset = await post({
+      id: "ask-preset-1",
+      type: "plan",
+      topic: "mount",
+      mode: "farm",
+      budget: 60,
+      wish: "Get a mount I don't have yet, the best chance in the time I have.",
+      character: "Hero",
+      realm: "Area 52",
+      context,
+    });
+    assert.equal(preset.status, 201, await preset.clone().text());
+    const presetHit = hits[hits.length - 1];
+    assert.equal(presetHit.topic, "mount");
+    assert.equal(presetHit.mode, "farm");
+    assert.equal(presetHit.budget, 60);
+    assert.equal((await post({ id: "ask-preset-bad", type: "plan", topic: "Mount!", mode: "farm", budget: 60, character: "Hero", realm: "" })).status, 400);
   } finally {
     close();
     await new Promise<void>((resolve, reject) => hook.close((err) => (err ? reject(err) : resolve())));

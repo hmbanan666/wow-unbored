@@ -76,7 +76,7 @@ Unbored reads the global `UnboredExternalPlan` from that addon on load. A plan f
 
 ## Requests
 
-The game sends three kinds of request, all through SavedVariables and the companion: `plan` (the New plan wizard), `question` (Ask something, and What to do nearby? with `topic: "nearby"`), and `item` (What is this item?). One request is pending per character at a time.
+The game sends three kinds of request, all through SavedVariables and the companion: `plan` (a preset chip or Something else... in Wisp's bubble), `question` (Ask something, and What to do nearby? with `topic: "nearby"`), and `item` (What is this item?). One request is pending per character at a time.
 
 `POST {base}/v1/requests` with the companion bearer (device secret or `UNBORED_COMPANION_TOKEN`):
 
@@ -114,9 +114,9 @@ The game sends three kinds of request, all through SavedVariables and the compan
 }
 ```
 
-`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) and `budget` (5–240 minutes) are required; the other types leave them out. `wish` is free text up to 600 bytes.
+`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) and `budget` (5–240 minutes) are required; the other types leave them out. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`.
 
-A question carries `question` (required, up to 600 bytes) and may carry `topic`, lowercase letters only (the game sends `nearby`):
+A question carries `question` (required, up to 600 bytes) and may carry `topic`, lowercase letters, `_`, or `-` (the game sends `nearby`):
 
 ```json
 { "id": "req-1761720300-0042", "type": "question", "character": "Hero", "realm": "Area 52",
