@@ -7,6 +7,8 @@ export const PROFILE_MAX_BYTES = 512 * 1024;
 export type ProfileUpload = {
   character: string;
   realm: string;
+  /** The WoW account folder the character lives in; links Alts (docs/adr/0021). */
+  account: string;
   savedAt: number | null;
   profile: Record<string, unknown>;
 };
@@ -39,6 +41,7 @@ export function cleanProfile(body: unknown): ProfileUpload {
   return {
     character: name(raw.character, "character", true),
     realm: name(raw.realm, "realm", false),
+    account: name(raw.account, "account", false),
     savedAt: Number.isInteger(savedAt) && savedAt > 0 ? savedAt : null,
     profile: profile as Record<string, unknown>,
   };

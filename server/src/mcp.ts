@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { resolveCriteria } from "./criteria.ts";
 import { ANSWER_MAX_BYTES, cleanAnswer, PlanError } from "./plan.ts";
-import { publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
+import { HISTORY_KINDS, publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
@@ -42,7 +42,9 @@ complete.kind:
 
 Routing: a request from list_requests carries context (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). Start the first task near context.mapID / x / y, order the rest as one sensible route, and only send the player to another continent when the wish asks for it or nothing nearby fits. context.hearth is where their hearthstone goes.
 
-The server stores the plan and returns a UNB1: string. The companion polls GET /v1/plan and writes that string into the game.`;
+The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Wisp's Refresh offer. Plans are 3 to 7 steps; the game shows one at a time.`;
+
+const ADVICE_ACTIONS = ["keep", "sell", "use", "bank", "send", "disenchant", "equip", "open", "turn_in", "info"] as const;
 
 function text(value: unknown, isError = false) {
   return {
@@ -68,7 +70,7 @@ const waypointSchema = z
 export function createMcpServer(store: Store, dataDir: string): McpServer {
   const server = new McpServer({
     name: "unbored",
-    version: "0.4.0",
+    version: "0.6.0",
   });
 
   const taskSchema = z
@@ -249,7 +251,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "List in-game plan requests",
       description:
-        "List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, budget, wish; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, item.link, item.name, and item.bag/slot when picked from a bag). Every row carries context: the game snapshot taken when the player sent it (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, instanceType, hearth, trackedQuests, and the active plan's progress). The full player profile is in get_player_profile. Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
+        "List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, budget, wish; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -265,16 +267,95 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "Get the player profile",
       description:
-        "The latest player state the companion uploaded from the game, saved on every logout and reload: context (location, level, class, spec, ilvl, gold, hearth, tracked quests, active plan), bags and the last seen bank and warband bank (itemID and count), currencies, collections (mounts, pets, toys, achievement points), renown, recent sessions (start, stop, zones), and recent finished or skipped steps. Read it before planning so you need not ask for anything. Pass character (and realm) for one character; without them you get the most recently updated one plus the list of known characters. savedAt is when the game wrote it.",
+        "The latest player state the companion uploaded from the game, kept as a rolling snapshot (an empty value never overwrites a known one): context (location, level, class, spec, ilvl, gold, hearth, tracked quests, active plan), professions with skill levels, equipped items, bags, the last seen bank, reagent bank and warband bank (itemID and count), currencies, collections (mounts, pets, toys, achievement points), renown, recent sessions (start, stop, zones), recent finished or skipped steps, and unmatchedItems (item ids Wisp had no advice for). Read it before planning so you need not ask for anything. Pass character (and realm) for one character. Pass account (from list_requests or the accounts list) to get every character of that Account: use it for alt routing, e.g. an herb on one character that an Alchemist alt needs. Without arguments you get the most recently updated character, the list of known characters, and the accounts. savedAt is when the game wrote it.",
       inputSchema: {
         character: z.string().max(80).optional().describe("Character name, as in list_requests."),
         realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
+        account: z
+          .string()
+          .max(80)
+          .optional()
+          .describe("Account key from list_requests or get_player_profile; returns all its characters."),
       },
     },
-    async ({ character, realm }) => {
+    async ({ character, realm, account }) => {
+      if (account) {
+        const characters = store.profilesForAccount(account);
+        if (characters.length === 0) return failure(new Error("No characters on that account yet."));
+        return text({ account: characters[0]!.account, characters });
+      }
       const profile = store.profileFor(character || undefined, realm || undefined);
       if (!profile) return failure(new Error("No profile yet. The companion uploads one after the next reload."));
-      return text({ profile, characters: store.listProfiles() });
+      return text({ profile, characters: store.listProfiles(), accounts: store.listAccounts() });
+    },
+  );
+
+  server.registerTool(
+    "get_player_history",
+    {
+      title: "Get the player history",
+      description:
+        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), and advice (a put_item_advice batch). Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
+      inputSchema: {
+        character: z.string().max(80).optional(),
+        realm: z.string().max(80).optional(),
+        account: z.string().max(80).optional().describe("Account key; returns every character of it."),
+        kinds: z.array(z.enum(HISTORY_KINDS as [string, ...string[]])).optional().describe("Only these kinds."),
+        since: z.number().int().optional().describe("Unix seconds; only entries at or after it."),
+        limit: z.number().int().min(1).max(500).optional().describe("Default 100."),
+        includeSnapshots: z.boolean().optional().describe("Add full profile snapshots (up to 10)."),
+      },
+    },
+    async ({ character, realm, account, kinds, since, limit, includeSnapshots }) => {
+      const filter = { character: character || undefined, realm: realm || undefined, account: account || undefined };
+      const entries = store.history({
+        ...filter,
+        kinds: kinds as Parameters<Store["history"]>[0]["kinds"],
+        since,
+        limit: limit ?? 100,
+      });
+      return text({
+        entries,
+        snapshots: includeSnapshots ? store.profileSnapshots({ ...filter, limit: 10 }) : undefined,
+      });
+    },
+  );
+
+  server.registerTool(
+    "put_item_advice",
+    {
+      title: "Put personal item advice",
+      description:
+        "Store Personal advice for one character's items. The companion downloads it into the game, where it shows from the next natural load as the item tooltip line \"Wisp: <line>\". Live game rules (quest items, uncollected mounts, toys, pets and looks, upgrades) still win; your advice replaces the generic keep, sell, junk, and reagent lines. Write line as a short action, at most 60 characters, in English, and lineRu in Russian: \"Bank it: Alchemy reagent, skill 75\", \"Sell on the AH\", \"Send to Mira (Alchemy): mail\". Base it on get_player_profile with the account, so items can go to the Alt who uses them: the warband bank for warbound items, mail otherwise. Never advise sending soulbound items, never say delete, and never say vendor for epic or bind-on-equip items. action is one of keep, sell, use, bank, send, disenchant, equip, open, turn_in, info; to names the Alt for send. replace drops this character's older advice first.",
+      inputSchema: {
+        character: z.string().max(80),
+        realm: z.string().max(80),
+        account: z.string().max(80).optional(),
+        replace: z.boolean().optional(),
+        items: z
+          .array(
+            z
+              .object({
+                itemID: z.number().int().min(1),
+                action: z.enum(ADVICE_ACTIONS),
+                line: z.string().min(1).max(120),
+                lineRu: z.string().max(240).optional(),
+                to: z.string().max(80).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(500),
+      },
+    },
+    async ({ character, realm, account, replace, items }) => {
+      for (const item of items) {
+        if (/\b(delete|destroy)\b|удали/i.test(`${item.line} ${item.lineRu ?? ""}`)) {
+          return failure(new Error(`Advice for item ${item.itemID} must not say delete.`));
+        }
+      }
+      const count = store.putItemAdvice({ character, realm, account, items, replace });
+      return text({ stored: count, character, realm });
     },
   );
 
@@ -282,7 +363,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     "answer_request",
     {
       title: "Answer an in-game request",
-      description: `Reply to an item or question request (or add a message to a plan request). The mascot shows message as one chat bubble after the player presses Load, so write it like a friendly spoken reply: short sentences, no markdown, no links, at most ${ANSWER_MAX_BYTES} bytes. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for, whether it is worth keeping or selling, and what to do with it.`,
+      description: `Reply to an item or question request (or add a message to a plan request). The player already got a quick local answer; yours arrives at their next login or when they accept Wisp's Refresh offer, so make it worth the wait. Write in the request's lang, like a friendly spoken chat reply: short sentences, no markdown, no links, at most ${ANSWER_MAX_BYTES} bytes. A blank line splits the reply into up to 3 chat bubbles. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for for this character and its Alts, and what to do with it (keep, bank, sell, send to an Alt).`,
       inputSchema: {
         requestId: z.string().describe("Request id from list_requests"),
         message: z.string().describe(`The reply, at most ${ANSWER_MAX_BYTES} bytes`),
@@ -315,7 +396,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "Fail an in-game request",
       description:
-        "Mark a plan, item, or question request failed. The companion writes the reason into Plan.lua and the mascot says it after Load. Pass the request id and a short, friendly reason.",
+        "Mark a plan, item, or question request failed. The mascot says the reason at the player's next login or Refresh. Pass the request id and a short, friendly reason in the request's lang.",
       inputSchema: {
         requestId: z.string().describe("Request id from list_requests"),
         reason: z.string().describe("Why a plan was not made, shown in game"),
