@@ -5,7 +5,10 @@ import {
   cleanPlan,
   cleanProgress,
   encodeUnb1,
+  type Answer,
   type Plan,
+  type RequestItem,
+  type RequestType,
   type PlayerContext,
   type ProgressBody,
   type ProgressPost,
@@ -89,8 +92,18 @@ export class Store {
       );
     `);
     const columns = this.db.prepare(`PRAGMA table_info(requests)`).all() as { name: string }[];
-    if (!columns.some((column) => column.name === "context_json")) {
-      this.db.exec(`ALTER TABLE requests ADD COLUMN context_json TEXT`);
+    const added: [string, string][] = [
+      ["context_json", "TEXT"],
+      ["type", "TEXT NOT NULL DEFAULT 'plan'"],
+      ["question", "TEXT"],
+      ["topic", "TEXT"],
+      ["item_json", "TEXT"],
+      ["answer_json", "TEXT"],
+    ];
+    for (const [name, kind] of added) {
+      if (!columns.some((column) => column.name === name)) {
+        this.db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${kind}`);
+      }
     }
   }
 
@@ -265,6 +278,10 @@ export class Store {
     mode: string;
     budget: number;
     wish: string | null;
+    type?: RequestType;
+    question?: string | null;
+    topic?: string | null;
+    item?: RequestItem | null;
     context?: PlayerContext | null;
     nowSeconds: number;
   }): { created: boolean; request: PlanRequest } {
@@ -273,8 +290,9 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO requests
-           (id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?)`,
+           (id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at,
+            context_json, type, question, topic, item_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.id,
@@ -287,6 +305,10 @@ export class Store {
         input.nowSeconds,
         input.nowSeconds,
         input.context ? JSON.stringify(input.context) : null,
+        input.type ?? "plan",
+        input.question ?? null,
+        input.topic ?? null,
+        input.item ? JSON.stringify(input.item) : null,
       );
     const request = this.requestById(input.id);
     if (!request) throw new Error("Could not store the request.");
@@ -296,7 +318,8 @@ export class Store {
   listRequests(status = "pending", limit = 50): PlanRequest[] {
     const rows = this.db
       .prepare(
-        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
+                type, question, topic, item_json, answer_json
          FROM requests WHERE status = ? ORDER BY created_at DESC, id ASC LIMIT ?`,
       )
       .all(status, limit) as RequestRow[];
@@ -306,7 +329,8 @@ export class Store {
   requestById(id: string): PlanRequest | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
+                type, question, topic, item_json, answer_json
          FROM requests WHERE id = ?`,
       )
       .get(id) as RequestRow | undefined;
@@ -316,7 +340,8 @@ export class Store {
   latestRequestForDevice(deviceId: string): PlanRequest | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
+                type, question, topic, item_json, answer_json
          FROM requests WHERE device_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`,
       )
       .get(deviceId) as RequestRow | undefined;
@@ -330,6 +355,22 @@ export class Store {
         `UPDATE requests SET status = 'fulfilled', plan_id = ?, reason = NULL, updated_at = ? WHERE id = ?`,
       )
       .run(planId, nowSeconds, id);
+    return this.requestById(id);
+  }
+
+  answerRequest(
+    id: string,
+    answer: Answer,
+    planId: number | null,
+    nowSeconds = Math.floor(Date.now() / 1000),
+  ): PlanRequest | undefined {
+    if (!this.requestById(id)) return undefined;
+    this.db
+      .prepare(
+        `UPDATE requests SET status = 'fulfilled', answer_json = ?, plan_id = COALESCE(?, plan_id), reason = NULL,
+           updated_at = ? WHERE id = ?`,
+      )
+      .run(JSON.stringify(answer), planId, nowSeconds, id);
     return this.requestById(id);
   }
 
@@ -454,6 +495,11 @@ export type PlanRequest = {
   createdAt: number;
   updatedAt: number;
   context: PlayerContext | null;
+  type: RequestType;
+  question: string | null;
+  topic: string | null;
+  item: RequestItem | null;
+  answer: Answer | null;
 };
 
 type RequestRow = {
@@ -470,12 +516,17 @@ type RequestRow = {
   created_at: number;
   updated_at: number;
   context_json: string | null;
+  type: string | null;
+  question: string | null;
+  topic: string | null;
+  item_json: string | null;
+  answer_json: string | null;
 };
 
-function parseContext(text: string | null): PlayerContext | null {
+function parseJson<T>(text: string | null): T | null {
   if (!text) return null;
   try {
-    return JSON.parse(text) as PlayerContext;
+    return JSON.parse(text) as T;
   } catch {
     return null;
   }
@@ -497,7 +548,12 @@ function requestFromRow(row: RequestRow): PlanRequest {
     planId: row.plan_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    context: parseContext(row.context_json),
+    context: parseJson<PlayerContext>(row.context_json),
+    type: row.type === "item" || row.type === "question" ? row.type : "plan",
+    question: row.question,
+    topic: row.topic,
+    item: parseJson<RequestItem>(row.item_json),
+    answer: parseJson<Answer>(row.answer_json),
   };
 }
 
@@ -516,6 +572,11 @@ export function publicRequest(request: PlanRequest) {
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
     context: request.context,
+    type: request.type,
+    question: request.question,
+    topic: request.topic,
+    item: request.item,
+    answer: request.answer,
   };
 }
 

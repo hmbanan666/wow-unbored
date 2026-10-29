@@ -79,6 +79,20 @@ function ns.Session.RefreshUI()
   if ns.Tracker and ns.Tracker.Refresh then
     ns.Tracker:Refresh()
   end
+  if ns.Mascot and ns.Mascot.Refresh then
+    ns.Mascot:Refresh()
+  end
+end
+
+-- A finished plan stays on screen until the player says ok.
+function ns.Session:ClearFinished()
+  if self.state and type(self.state.tasks) == "table" and #self.state.tasks == 0 then
+    self.state = nil
+    if type(UnboredCharDB) == "table" then
+      UnboredCharDB.session = nil
+    end
+  end
+  self:RefreshUI()
 end
 
 -- At most one short line per step, and only when the player turned it on.
@@ -221,10 +235,10 @@ function ns.Session:ApplyPlan(plan, source, reveal)
   end
 end
 
--- A plan just became active: the tracker takes over, the main window steps aside.
+-- A plan just became active: the mascot takes over, the main window steps aside.
 function ns.Session:Started()
-  if ns.Tracker and ns.Tracker.Reveal then
-    ns.Tracker:Reveal()
+  if ns.Mascot and ns.Mascot.Reveal then
+    ns.Mascot:Reveal()
   end
   if ns.UI and ns.UI.frame and ns.UI.frame.Hide then
     ns.UI.frame:Hide()
@@ -404,7 +418,7 @@ function ns.Session:NoteRequest()
     self.requestReason = type(plan.requestReason) == "string" and plan.requestReason or ""
     return
   end
-  if plan.requestStatus == "pending" or type(plan.tasks) ~= "table" then
+  if plan.requestStatus == "pending" or (type(plan.tasks) ~= "table" and type(plan.answer) ~= "table") then
     self.requestNote = "preparing"
     return
   end
@@ -422,31 +436,67 @@ end
 
 -- Saves the request into SavedVariables. The caller reloads the UI right
 -- after, inside the same click, so the game writes the file for the companion.
-function ns.Session:RequestPlan(wish)
-  local mode = self.ChosenMode()
-  local budget = self.ChosenBudget()
+-- ask: { type = "plan" | "question" | "item", wish, question, topic, item }
+function ns.Session:Ask(ask)
+  ask = type(ask) == "table" and ask or {}
+  local kind = ask.type
+  if kind ~= "question" and kind ~= "item" then
+    kind = "plan"
+  end
   local name = ns.SafeString(ns.Call(UnitName, "player"), 80) or "player"
   local realm = ns.SafeString(ns.Call(GetRealmName), 80) or ""
-  wish = ns.Utf8Truncate(ns.Trim(type(wish) == "string" and wish or ""), 600)
+  local function text(value, limit)
+    value = ns.Utf8Truncate(ns.Trim(type(value) == "string" and value or ""), limit)
+    return value ~= "" and value or nil
+  end
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
   end
-  UnboredCharDB.lastWish = wish ~= "" and wish or nil
   local okContext, context = pcall(ns.PlayerContext)
   local id = string.format("req-%d-%04d", ns.Now(), math.random(0, 9999))
-  UnboredCharDB.request = {
+  local request = {
     id = id,
+    type = kind,
     createdAt = ns.Now(),
     character = name,
     realm = realm,
-    mode = mode,
-    budget = budget,
-    wish = wish ~= "" and wish or nil,
+    wish = text(ask.wish, 600),
+    question = text(ask.question, 600),
     context = okContext and type(context) == "table" and context or nil,
   }
+  if kind == "plan" then
+    request.mode = self.ChosenMode()
+    request.budget = self.ChosenBudget()
+    UnboredCharDB.lastWish = request.wish
+  end
+  if type(ask.topic) == "string" and ask.topic:match("^[a-z_-]+$") and #ask.topic <= 40 then
+    request.topic = ask.topic
+  end
+  if kind == "item" then
+    local item = type(ask.item) == "table" and ask.item or {}
+    local itemID = ns.AsNumber(item.itemID)
+    if not itemID then
+      return nil
+    end
+    request.item = {
+      itemID = math.floor(itemID),
+      link = ns.SafeString(item.link, 400),
+      name = ns.SafeString(item.name, 120),
+      bag = ns.AsNumber(item.bag),
+      slot = ns.AsNumber(item.slot),
+      count = ns.AsNumber(item.count),
+    }
+  elseif kind == "question" and not request.question then
+    return nil
+  end
+  UnboredCharDB.request = request
   self:NoteRequest()
   self:RefreshUI()
   return id
+end
+
+function ns.Session:RequestPlan(wish)
+  return self:Ask({ type = "plan", wish = wish })
 end
 
 function ns.Session:CancelRequest()
@@ -463,13 +513,127 @@ function ns.Session.LoadPlan()
   end
 end
 
+ns.ITEM_NOTES_MAX = 200
+
+-- Answers about an item are kept per account and shown in its tooltip.
+function ns.Session.RememberItem(itemID, message)
+  itemID = ns.AsNumber(itemID)
+  if not itemID or not ns.DB or type(message) ~= "string" or message == "" then
+    return
+  end
+  if type(ns.DB.itemNotes) ~= "table" then
+    ns.DB.itemNotes = {}
+  end
+  local notes = ns.DB.itemNotes
+  notes[itemID] = { message = message, at = ns.Now() }
+  local count, oldestID, oldestAt = 0, nil, nil
+  for id, note in pairs(notes) do
+    count = count + 1
+    local at = type(note) == "table" and tonumber(note.at) or 0
+    if not oldestAt or at < oldestAt then
+      oldestID, oldestAt = id, at
+    end
+  end
+  if count > ns.ITEM_NOTES_MAX and oldestID then
+    notes[oldestID] = nil
+  end
+end
+
+function ns.Session.ItemNote(itemID)
+  itemID = ns.AsNumber(itemID)
+  local notes = ns.DB and ns.DB.itemNotes
+  local note = itemID and type(notes) == "table" and notes[itemID]
+  if type(note) == "table" and type(note.message) == "string" then
+    return note.message
+  end
+  return nil
+end
+
+function ns.Session.UnreadAnswer()
+  local answer = type(UnboredCharDB) == "table" and UnboredCharDB.answer or nil
+  if type(answer) == "table" and not answer.seen and type(answer.message) == "string" then
+    return answer
+  end
+  return nil
+end
+
+function ns.Session:DismissAnswer()
+  local answer = self.UnreadAnswer()
+  if answer then
+    answer.seen = true
+  end
+  self:RefreshUI()
+end
+
+-- Waypoints that came with an answer become one step, put in front of the
+-- current plan so nothing the player was doing is lost.
+function ns.Session:AnswerStep(answer, requestId)
+  if type(answer.waypoints) ~= "table" or #answer.waypoints == 0 then
+    return false
+  end
+  local first = answer.waypoints[1]
+  local title = type(first) == "table" and type(first.label) == "string" and first.label or nil
+  if not title or ns.Trim(title) == "" then
+    title = ns.T("ANSWER_STEP")
+  end
+  local plan = ns.ValidatePlan({
+    v = 1,
+    kind = "plan",
+    mode = "custom",
+    tasks = {
+      {
+        id = ("answer:" .. (requestId or tostring(ns.Now()))):gsub("[^%w%-%._:]", ""),
+        title = ns.Utf8Truncate(title, 200),
+        estMinutes = 10,
+        waypoints = answer.waypoints,
+        complete = { kind = "manual" },
+      },
+    },
+  }, true)
+  if not plan then
+    return false
+  end
+  local task = ns.NormalizeTask(plan.tasks[1])
+  if not task then
+    return false
+  end
+  task.source = "answer"
+  if self.state and type(self.state.tasks) == "table" and #self.state.tasks > 0 then
+    table.insert(self.state.tasks, 1, task)
+    if ns.Waypoint and ns.Waypoint.ClearOwned then
+      ns.Waypoint:ClearOwned()
+    end
+    self:Save()
+    self:RefreshUI()
+  else
+    self:ApplyPlan(plan, "companion", false)
+  end
+  return true
+end
+
+local function cleanAnswer(raw)
+  if type(raw) ~= "table" or type(raw.message) ~= "string" then
+    return nil
+  end
+  local message = ns.Utf8Truncate(ns.Trim(raw.message), 1000)
+  if message == "" then
+    return nil
+  end
+  local waypoints = ns.CleanWaypoints(raw.waypoints, 1)
+  return { message = message, waypoints = waypoints }
+end
+
 -- Picks up the companion file on every load. A plan with a requestId is taken
 -- only when that request is pending on this character; a plan without one
 -- (put straight by the planner) is taken once per character. No prompt.
 function ns.Session:AutoApplyExternal()
   self:NoteRequest()
   local external = UnboredExternalPlan
-  if type(external) ~= "table" or type(external.tasks) ~= "table" then
+  if type(external) ~= "table" then
+    return false
+  end
+  local answer = cleanAnswer(external.answer)
+  if type(external.tasks) ~= "table" and not answer then
     return false
   end
   local req = self:PendingRequest()
@@ -481,18 +645,24 @@ function ns.Session:AutoApplyExternal()
   elseif req then
     return false
   end
-  local plan, err = ns.ValidatePlan(external, true)
-  if not plan then
-    if req then
-      self.requestNote = "failed"
-      self.requestReason = err
-    end
-    return false
-  end
-  plan.requestId = requestId
-  local key = ns.Session.ExternalKey(plan)
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
+  end
+  local plan, err
+  if type(external.tasks) == "table" then
+    plan, err = ns.ValidatePlan(external, true)
+    if not plan and not answer then
+      if req then
+        self.requestNote = "failed"
+        self.requestReason = err
+      end
+      return false
+    end
+  end
+  local key = "a:" .. tostring(requestId)
+  if plan then
+    plan.requestId = requestId
+    key = ns.Session.ExternalKey(plan)
   end
   if UnboredCharDB.acceptedExternalKey == key then
     if req then
@@ -503,10 +673,30 @@ function ns.Session:AutoApplyExternal()
   end
   UnboredCharDB.acceptedExternalKey = key
   UnboredCharDB.request = nil
-  self:ApplyPlan(plan, "companion", false)
-  if self.state then
-    self.state.externalKey = key
-    self.state.requestId = requestId
+  if answer then
+    local kind = req and req.type or (type(external.requestType) == "string" and external.requestType) or "question"
+    local item = req and type(req.item) == "table" and req.item or nil
+    UnboredCharDB.answer = {
+      requestId = requestId,
+      type = kind,
+      message = answer.message,
+      question = req and (req.question or req.wish) or nil,
+      itemID = item and item.itemID or nil,
+      itemLink = item and item.link or nil,
+      at = ns.Now(),
+    }
+    if item then
+      self.RememberItem(item.itemID, answer.message)
+    end
+  end
+  if plan then
+    self:ApplyPlan(plan, "companion", false)
+    if self.state then
+      self.state.externalKey = key
+      self.state.requestId = requestId
+    end
+  elseif answer then
+    self:AnswerStep(answer, requestId)
   end
   self:Save()
   self:NoteRequest()

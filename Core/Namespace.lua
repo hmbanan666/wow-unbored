@@ -1,6 +1,8 @@
 local addonName, ns = ...
 
 ns.addon = addonName or "Unbored"
+ns.MASCOT_NAME = "Wisp"
+ns.MEDIA = "Interface\\AddOns\\Unbored\\Media\\"
 ns.Data = {}
 ns.Providers = {}
 ns.ProviderOrder = {}

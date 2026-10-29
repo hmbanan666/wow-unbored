@@ -1,4 +1,5 @@
--- The active plan, objective-tracker style. Small, movable, lockable.
+-- The whole plan as a list, shown only on demand (the mascot bubble shows
+-- one step at a time). Small, movable, lockable.
 -- Every string is measured after its width is set, and the frame height is
 -- the sum of what was drawn, so text wraps instead of being cut.
 
@@ -204,7 +205,7 @@ function ns.Tracker:Row(index)
   return row
 end
 
-local function currentMeta(task)
+function ns.Tracker.CurrentMeta(task)
   local point, index, count = ns.Waypoint.Target(task)
   local parts = {}
   if point and count > 1 then
@@ -244,7 +245,7 @@ local function layoutRow(row, task, number, current, expanded, noNote)
   row.meta:ClearAllPoints()
   if current then
     row.meta:SetPoint("TOPLEFT", row.title, "BOTTOMLEFT", 0, -3)
-    row.meta:SetText(currentMeta(task))
+    row.meta:SetText(ns.Tracker.CurrentMeta(task))
     row.meta:SetTextColor(1, 0.82, 0)
     row.metaHeight = ns.UI.Measure(row.meta, WIDTH - PAD * 2 - INDENT)
     height = height + 3 + row.metaHeight
@@ -301,7 +302,7 @@ function ns.Tracker:Refresh()
   local waiting = note == "sending" or note == "preparing" or note == "ready"
   local progress = ns.Session:Progress()
   local finished = state and #tasks == 0 and progress and progress.steps > 0
-  if saved.hidden or (#tasks == 0 and not waiting and not finished) then
+  if not saved.open or (#tasks == 0 and not waiting and not finished) then
     frame:Hide()
     return
   end
@@ -406,7 +407,7 @@ function ns.Tracker:UpdateDistance()
   if not row or not row:IsShown() or not task or row.taskId ~= task.id then
     return
   end
-  local text = currentMeta(task)
+  local text = ns.Tracker.CurrentMeta(task)
   if text == row.meta:GetText() then
     return
   end
@@ -417,13 +418,17 @@ function ns.Tracker:UpdateDistance()
   end
 end
 
+function ns.Tracker.IsOpen()
+  return db().open == true
+end
+
 function ns.Tracker:Reveal()
-  db().hidden = false
+  db().open = true
   self:Refresh()
 end
 
 function ns.Tracker:Hide()
-  db().hidden = true
+  db().open = false
   if self.frame then
     self.frame:Hide()
   end
@@ -433,7 +438,7 @@ function ns.Tracker:Hide()
 end
 
 function ns.Tracker:Toggle()
-  if self.frame and self.frame:IsShown() then
+  if self:IsOpen() then
     self:Hide()
   else
     self:Reveal()

@@ -11,6 +11,7 @@ ignore:
   - Screenshots
   - companion
   - server
+  - art
 
 license-output: LICENSE.txt
 

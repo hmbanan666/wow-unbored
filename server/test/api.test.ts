@@ -236,6 +236,7 @@ test("mcp lists the planner tools", async () => {
     const tools = (toolsBody.result as { tools: { name: string; description: string }[] }).tools;
     const names = tools.map((tool) => tool.name).sort();
     assert.deepEqual(names, [
+      "answer_request",
       "approve_device",
       "fail_request",
       "get_current_plan",
@@ -850,5 +851,126 @@ test("an older database gains the context column", async () => {
     assert.equal(saved.request.context?.mapID, 84);
   } finally {
     close();
+  }
+});
+
+test("item and question requests are typed, webhooked, and answered", async () => {
+  const hits: Record<string, unknown>[] = [];
+  const hook = createServer((req, response) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      hits.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      response.writeHead(204);
+      response.end();
+    });
+  });
+  await new Promise<void>((resolve) => hook.listen(0, "127.0.0.1", resolve));
+  const address = hook.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  const { app, close } = createApp({
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ask-")),
+    webhook: { url: `http://127.0.0.1:${address.port}/hook`, key: "", headerName: "" },
+  });
+  const post = (body: Record<string, unknown>) =>
+    app.request("/v1/requests", {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const latest = async () =>
+    json(await app.request("/v1/requests/latest", { headers: { authorization: `Bearer ${companion}` } }));
+  try {
+    const item = await post({
+      id: "ask-item-1",
+      type: "item",
+      character: "Hero",
+      realm: "Area 52",
+      item: { itemID: 6948, link: "|cffffffff|Hitem:6948::::::::80:::::|h[Hearthstone]|h|r", name: "Hearthstone", bag: 0, slot: 3 },
+      question: "What is this?",
+      context,
+    });
+    assert.equal(item.status, 201, await item.clone().text());
+    const saved = await json(item);
+    assert.equal(saved.type, "item");
+    assert.deepEqual(saved.item, {
+      itemID: 6948,
+      link: "|cffffffff|Hitem:6948::::::::80:::::|h[Hearthstone]|h|r",
+      name: "Hearthstone",
+      bag: 0,
+      slot: 3,
+    });
+    assert.equal(saved.mode, "");
+    assert.equal(hits[0].type, "item");
+    assert.equal((hits[0].item as Record<string, unknown>).itemID, 6948);
+    assert.equal((hits[0].context as Record<string, unknown>).zone, "Isle of Dorn");
+
+    assert.equal((await post({ id: "ask-bad-1", type: "item", character: "Hero", realm: "" })).status, 400);
+    assert.equal((await post({ id: "ask-bad-2", type: "question", character: "Hero", realm: "" })).status, 400);
+    assert.equal((await post({ id: "ask-bad-3", type: "story", character: "Hero", realm: "" })).status, 400);
+
+    const question = await post({
+      id: "ask-q-1",
+      type: "question",
+      topic: "nearby",
+      character: "Hero",
+      realm: "Area 52",
+      question: "What is there to do nearby?",
+    });
+    assert.equal(question.status, 201);
+    assert.equal(hits[1].type, "question");
+    assert.equal(hits[1].topic, "nearby");
+
+    const listed = await mcpCall(app, "list_requests", {});
+    const rows = listed.value.requests as { id: string; type: string }[];
+    assert.deepEqual(
+      rows.map((row) => [row.id, row.type]).sort(),
+      [
+        ["ask-item-1", "item"],
+        ["ask-q-1", "question"],
+      ],
+    );
+
+    const tooLong = await mcpCall(app, "answer_request", { requestId: "ask-q-1", message: "x".repeat(1001) });
+    assert.equal(tooLong.isError, true);
+    const missing = await mcpCall(app, "answer_request", { requestId: "nope", message: "hi" });
+    assert.equal(missing.isError, true);
+
+    const answered = await mcpCall(app, "answer_request", {
+      requestId: "ask-q-1",
+      message: "There is a rare to the east. I put a pin on it.",
+      waypoints: [{ mapID: 2248, x: 0.6, y: 0.4, label: "Rare" }],
+    });
+    assert.equal(answered.isError, false, JSON.stringify(answered.value));
+    const request = answered.value.request as Record<string, unknown>;
+    assert.equal(request.status, "fulfilled");
+    const answer = request.answer as Record<string, unknown>;
+    assert.equal(answer.message, "There is a rare to the east. I put a pin on it.");
+    assert.deepEqual(answer.waypoints, [{ mapID: 2248, x: 0.6, y: 0.4, label: "Rare" }]);
+
+    const delivered = await latest();
+    assert.equal(delivered.id, "ask-q-1");
+    assert.equal(delivered.type, "question");
+    assert.equal((delivered.answer as Record<string, unknown>).message, answer.message);
+    assert.equal(delivered.plan, null);
+
+    const withPlan = await mcpCall(app, "answer_request", {
+      requestId: "ask-item-1",
+      message: "Your hearthstone takes you home. Keep it.",
+      plan: { tasks: [{ id: "go-home", title: "Use your hearthstone" }] },
+    });
+    assert.equal(withPlan.isError, false, JSON.stringify(withPlan.value));
+    const fulfilled = await mcpCall(app, "list_requests", { status: "fulfilled" });
+    const itemRow = (fulfilled.value.requests as Record<string, unknown>[]).find((row) => row.id === "ask-item-1");
+    assert.ok(itemRow);
+    assert.equal(typeof itemRow.planId, "number");
+    assert.equal((itemRow.answer as Record<string, unknown>).message, "Your hearthstone takes you home. Keep it.");
+    const current = await mcpCall(app, "get_current_plan", {});
+    assert.equal(current.value.id, itemRow.planId);
+  } finally {
+    close();
+    await new Promise<void>((resolve, reject) => hook.close((err) => (err ? reject(err) : resolve())));
   }
 });

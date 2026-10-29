@@ -74,7 +74,7 @@ A task may carry an optional route instead of, or as well as, its single pin:
 }
 ```
 
-Up to 10 points. `mapID` and fractional `x`/`y` are required; `label` is optional, up to 80 bytes. When the step becomes current the first point gets the native waypoint and is super-tracked, plus a TomTom arrow if TomTom is loaded. Within 30 yards of a point the arrow moves to the next one, and the tracker shows `Point 2/3: Rare: Kronolith`. Reaching the last point does not finish the step unless `complete` says so. A plan without `waypoints` behaves as before.
+Up to 10 points. `mapID` and fractional `x`/`y` are required; `label` is optional, up to 80 bytes. When the step becomes current the first point gets the native waypoint and is super-tracked, plus a TomTom arrow if TomTom is loaded. Within 30 yards of a point the arrow moves to the next one, and the bubble shows `Point 2/3: Rare: Kronolith`. Reaching the last point does not finish the step unless `complete` says so. A plan without `waypoints` behaves as before.
 
 Start the route near the player. A request carries the player's `context` (see [companion-api.md](companion-api.md)).
 
@@ -134,7 +134,24 @@ Pasting a progress string into Import is an error. It does not replace the list.
 
 ## Companion file
 
-The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). On load, a plan whose `requestId` matches this character's pending Get plan request starts at once, with no prompt. A plan without a `requestId` starts once per character, and only when no request is pending. `/unbored companion` applies the file again. See `companion/README.md`.
+The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). On load, a plan whose `requestId` matches this character's pending request starts at once, with no prompt. A plan without a `requestId` starts once per character, and only when no request is pending. `/unbored companion` applies the file again. See `companion/README.md`.
+
+Alongside `requestId`, `requestStatus` (`pending`, `fulfilled`, `failed`), and `requestReason`, the file carries `requestType` (`plan`, `question`, `item`) and, for an answered request, `answer`:
+
+```lua
+UnboredExternalPlan = {
+  requestId = "req-1761720300-0042",
+  requestStatus = "fulfilled",
+  requestType = "question",
+  answer = {
+    message = "A rare is east of you.\nI pinned it.",
+    waypoints = { { mapID = 2248, x = 0.6, y = 0.4, label = "Rare" } },
+    answeredAt = 1761720500,
+  },
+}
+```
+
+`tasks` may be there too when the answer came with a plan. The bubble shows `message` as written (up to 1,000 bytes) until the player presses ✓. `waypoints` become one step, `title` taken from the first label, put in front of the current plan. An answer to an item request is also remembered for that item and shown in its tooltip.
 
 The older seam is still read: a Lua table in `Companion/Plan.lua`:
 

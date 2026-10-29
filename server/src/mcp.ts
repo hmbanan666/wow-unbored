@@ -4,7 +4,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 
 import { resolveCriteria } from "./criteria.ts";
-import { PlanError } from "./plan.ts";
+import { ANSWER_MAX_BYTES, cleanAnswer, PlanError } from "./plan.ts";
 import { publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
@@ -56,11 +56,49 @@ function failure(error: unknown) {
   return text({ error: message }, true);
 }
 
+const waypointSchema = z
+  .object({
+    mapID: z.number(),
+    x: z.number(),
+    y: z.number(),
+    label: z.string().optional(),
+  })
+  .strict();
+
 export function createMcpServer(store: Store, dataDir: string): McpServer {
   const server = new McpServer({
     name: "unbored",
-    version: "0.3.0",
+    version: "0.4.0",
   });
+
+  const taskSchema = z
+    .object({
+      id: z.string(),
+      title: z.string(),
+      estMinutes: z.number().optional(),
+      mapID: z.number().optional(),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      note: z.string().optional(),
+      waypoints: z
+        .array(waypointSchema)
+        .max(10)
+        .optional()
+        .describe("Route points in order. Coordinates are 0 to 1."),
+      complete: z.unknown().optional(),
+    })
+    .strict();
+  const planSchema = z
+    .object({
+      v: z.number().optional(),
+      kind: z.string().optional(),
+      mode: z.string().optional(),
+      budget: z.number().optional(),
+      note: z.string().optional(),
+      generatedAt: z.number().optional(),
+      tasks: z.array(taskSchema).min(1).max(40),
+    })
+    .strict();
 
   server.registerTool(
     "put_plan",
@@ -72,47 +110,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
           .string()
           .optional()
           .describe("When set, mark this in-game request fulfilled and attach the new plan."),
-        plan: z
-          .object({
-            v: z.number().optional(),
-            kind: z.string().optional(),
-            mode: z.string().optional(),
-            budget: z.number().optional(),
-            note: z.string().optional(),
-            generatedAt: z.number().optional(),
-            tasks: z
-              .array(
-                z
-                  .object({
-                    id: z.string(),
-                    title: z.string(),
-                    estMinutes: z.number().optional(),
-                    mapID: z.number().optional(),
-                    x: z.number().optional(),
-                    y: z.number().optional(),
-                    note: z.string().optional(),
-                    waypoints: z
-                      .array(
-                        z
-                          .object({
-                            mapID: z.number(),
-                            x: z.number(),
-                            y: z.number(),
-                            label: z.string().optional(),
-                          })
-                          .strict(),
-                      )
-                      .max(10)
-                      .optional()
-                      .describe("Route points in order. Coordinates are 0 to 1."),
-                    complete: z.unknown().optional(),
-                  })
-                  .strict(),
-              )
-              .min(1)
-              .max(40),
-          })
-          .strict()
+        plan: planSchema
           .describe("The plan object. Coordinates are 0 to 1, not 0 to 100."),
       },
     },
@@ -251,7 +249,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "List in-game plan requests",
       description:
-        "List requests the player made from the Unbored window. Pending is the default. Each row has id, character, realm, mode, budget, wish, and context: the game snapshot taken when the player pressed Get plan (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, instanceType, hearth, trackedQuests, and the active plan's progress). Start the plan near that position.",
+        "List requests the player made in game, newest first. Pending is the default. type is plan (Get plan: mode, budget, wish), question (Ask something: question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, item.link, item.name, and item.bag/slot when picked from a bag). Every row carries context: the game snapshot taken when the player sent it (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, instanceType, hearth, trackedQuests, and the active plan's progress). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -263,11 +261,43 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
   );
 
   server.registerTool(
+    "answer_request",
+    {
+      title: "Answer an in-game request",
+      description: `Reply to an item or question request (or add a message to a plan request). The mascot shows message as one chat bubble after the player presses Load, so write it like a friendly spoken reply: short sentences, no markdown, no links, at most ${ANSWER_MAX_BYTES} bytes. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for, whether it is worth keeping or selling, and what to do with it.`,
+      inputSchema: {
+        requestId: z.string().describe("Request id from list_requests"),
+        message: z.string().describe(`The reply, at most ${ANSWER_MAX_BYTES} bytes`),
+        waypoints: z
+          .array(waypointSchema)
+          .max(10)
+          .optional()
+          .describe("Optional route for the reply. Coordinates are 0 to 1."),
+        plan: planSchema.optional().describe("Optional follow-up plan, same shape as put_plan."),
+      },
+    },
+    async ({ requestId, message, waypoints, plan }) => {
+      try {
+        if (!store.requestById(requestId)) return failure(new Error("No request with that id."));
+        const answer = cleanAnswer(message, waypoints, Math.floor(Date.now() / 1000));
+        const stored = plan ? store.putPlan(plan) : undefined;
+        const request = store.answerRequest(requestId, answer, stored?.id ?? null);
+        return text({
+          request: request ? publicRequest(request) : null,
+          plan: stored ? { id: stored.id, plan: stored.unb1 } : null,
+        });
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "fail_request",
     {
-      title: "Fail an in-game plan request",
+      title: "Fail an in-game request",
       description:
-        "Mark a request failed. The companion writes the reason into Plan.lua and the addon shows it after /reload. Pass the request id and a short reason.",
+        "Mark a plan, item, or question request failed. The companion writes the reason into Plan.lua and the mascot says it after Load. Pass the request id and a short, friendly reason.",
       inputSchema: {
         requestId: z.string().describe("Request id from list_requests"),
         reason: z.string().describe("Why a plan was not made, shown in game"),

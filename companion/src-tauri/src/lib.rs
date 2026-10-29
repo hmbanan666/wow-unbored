@@ -4,6 +4,7 @@
 pub mod addon;
 pub mod device;
 pub mod endpoint;
+pub mod mood;
 pub mod plan;
 pub mod savedvars;
 pub mod wow;

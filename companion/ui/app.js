@@ -6,62 +6,95 @@ const invoke = (command, args) => {
   return tauri.core.invoke(command, args);
 };
 
-const status = document.getElementById("status");
-const pairing = document.getElementById("pairing");
-const addon = document.getElementById("addon");
-const wow = document.getElementById("wow");
-const plan = document.getElementById("plan");
-const url = document.getElementById("url");
-const poll = document.getElementById("poll");
-const autostart = document.getElementById("autostart");
-const progress = document.getElementById("progress");
-const needPath = document.getElementById("need-path");
+const $ = (id) => document.getElementById(id);
+const mascot = $("mascot");
+const headline = $("headline");
+const hint = $("hint");
+const setup = $("setup");
+const status = $("status");
+const wow = $("wow");
+const plan = $("plan");
+const url = $("url");
+const poll = $("poll");
+const autostart = $("autostart");
+const progress = $("progress");
+
+const PICTURES = {
+  idle: "idle",
+  setup: "idle",
+  error: "idle",
+  ready: "happy",
+  thinking: "thinking",
+  busy: "thinking",
+  pairing: "thinking",
+};
+
+const HINTS = {
+  idle: "I'll bring your plans and answers into the game.",
+  thinking: "Keep playing. I'll tell you when it's ready.",
+  busy: "",
+  ready: "Click Load next to me in the game.",
+  pairing: "Your planner has to say yes to this PC once. Nothing to do here.",
+  setup: "I need your World of Warcraft folder to set up the addon.",
+  error: "",
+};
 
 function paint(state) {
-  if (document.activeElement !== url) {
-    url.value = state.settings.endpointUrl || "";
-  }
-  if (document.activeElement !== wow) {
-    wow.value = state.settings.wowPath || "";
-  }
+  const phase = state.phase || "idle";
+  document.body.dataset.phase = phase;
+  mascot.src = `img/wisp-${PICTURES[phase] || "idle"}.png`;
+  mascot.alt = state.mascot || "Wisp";
+  headline.textContent = state.headline || "";
+  hint.textContent = phase === "setup" && state.status ? state.status : HINTS[phase] || "";
+  setup.hidden = phase !== "setup";
+  document.title = state.mascot || "Unbored";
+
+  if (document.activeElement !== url) url.value = state.settings.endpointUrl || "";
+  if (document.activeElement !== wow) wow.value = state.settings.wowPath || "";
   poll.value = state.settings.pollMinutes ?? 5;
   autostart.checked = !!state.autostart;
   status.textContent = state.status || "";
-  const pair = state.pairing || "pending";
-  pairing.textContent = pair === "approved"
-    ? "This PC is approved."
-    : pair === "revoked"
-      ? "This PC was revoked."
-      : "Waiting for approval";
-  addon.textContent = state.addonVersion
-    ? `Addon ${state.addonVersion}`
-    : "Addon will install when the Retail folder is known.";
-  needPath.hidden = !state.needsWowPath;
+  $("addon").textContent = `Addon ${state.addonVersion || "not installed"}, this PC is ${state.pairing || "pending"}`;
+  $("version").textContent = `Companion ${state.version || ""}`;
 
   progress.innerHTML = "";
   (state.progress || []).forEach((row) => {
     const item = document.createElement("li");
     const current = row.currentId ? ` now ${row.currentId}` : "";
-    item.textContent = `${row.character} — ${row.realm}: ${row.done} done, ${row.skipped} skipped${current}`;
+    item.textContent = `${row.character} - ${row.realm}: ${row.done} done, ${row.skipped} skipped${current}`;
     progress.appendChild(item);
   });
+}
+
+function showError(err) {
+  const text = String(err && err.message ? err.message : err);
+  status.textContent = text;
+  hint.textContent = text;
 }
 
 async function run(action) {
   try {
     paint(await action());
   } catch (err) {
-    status.textContent = String(err && err.message ? err.message : err);
+    showError(err);
   }
 }
 
-document.getElementById("use-path").addEventListener("click", () =>
-  run(() => invoke("set_wow_path", { path: wow.value }))
-);
-document.getElementById("write").addEventListener("click", () =>
-  run(() => invoke("write_plan_text", { text: plan.value }))
-);
-document.getElementById("save-endpoint").addEventListener("click", () =>
+async function pickFolder() {
+  const tauri = window.__TAURI__ || {};
+  const options = { directory: true, title: "Choose your World of Warcraft folder" };
+  const picked = tauri.dialog
+    ? await tauri.dialog.open(options)
+    : await invoke("plugin:dialog|open", { options });
+  if (!picked) return invoke("get_state");
+  return invoke("set_wow_path", { path: String(picked) });
+}
+
+$("pick").addEventListener("click", () => run(pickFolder));
+$("detect").addEventListener("click", () => run(() => invoke("detect_wow")));
+$("use-path").addEventListener("click", () => run(() => invoke("set_wow_path", { path: wow.value })));
+$("write").addEventListener("click", () => run(() => invoke("write_plan_text", { text: plan.value })));
+$("save-endpoint").addEventListener("click", () =>
   run(() =>
     invoke("set_endpoint", {
       url: url.value,
@@ -69,8 +102,8 @@ document.getElementById("save-endpoint").addEventListener("click", () =>
     })
   ).then(armPoll)
 );
-document.getElementById("fetch").addEventListener("click", () => run(() => invoke("fetch_plan")));
-document.getElementById("rescan").addEventListener("click", () => run(() => invoke("rescan_progress")));
+$("fetch").addEventListener("click", () => run(() => invoke("fetch_plan")));
+$("rescan").addEventListener("click", () => run(() => invoke("rescan_progress")));
 autostart.addEventListener("change", () =>
   run(async () => {
     await invoke("set_autostart", { enabled: autostart.checked });
@@ -95,5 +128,7 @@ if (window.__TAURI__ && window.__TAURI__.event) {
     invoke("get_state").then(paint).catch(() => {});
   });
 }
+
+setInterval(() => invoke("get_state").then(paint).catch(() => {}), 30 * 1000);
 
 run(() => invoke("get_state")).then(armPoll);

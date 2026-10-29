@@ -152,6 +152,11 @@ pub struct SavedRequest {
     pub budget: u64,
     pub wish: Option<String>,
     pub context: Option<serde_json::Value>,
+    /// plan, item, or question.
+    pub kind: String,
+    pub question: Option<String>,
+    pub topic: Option<String>,
+    pub item: Option<serde_json::Value>,
 }
 
 pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, String> {
@@ -196,7 +201,24 @@ pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, 
         context: table_get(request, "context")
             .map(LuaValue::to_json)
             .filter(serde_json::Value::is_object),
+        kind: table_get(request, "type")
+            .and_then(LuaValue::as_str)
+            .filter(|kind| matches!(*kind, "plan" | "item" | "question"))
+            .unwrap_or("plan")
+            .to_string(),
+        question: text_field(request, "question"),
+        topic: text_field(request, "topic"),
+        item: table_get(request, "item")
+            .map(LuaValue::to_json)
+            .filter(serde_json::Value::is_object),
     }))
+}
+
+fn text_field(table: &LuaValue, name: &str) -> Option<String> {
+    table_get(table, name)
+        .and_then(LuaValue::as_str)
+        .map(str::to_string)
+        .filter(|text| !text.is_empty())
 }
 
 pub fn session_from_saved_variables(text: &str) -> Result<Option<SessionProgress>, String> {
@@ -569,6 +591,16 @@ UnboredCharDB = {
         assert_eq!(context["x"], 0.4512);
         assert_eq!(context["skyriding"], true);
         assert_eq!(context["trackedQuests"][0]["title"], "Q");
+        assert_eq!(request.kind, "plan");
+        let ask = request_from_saved_variables(
+            r#"UnboredCharDB = { ["request"] = { ["id"] = "ask-1", ["type"] = "item", ["question"] = "What is it?",
+                ["item"] = { ["itemID"] = 6948, ["bag"] = 0, ["slot"] = 2 } } }"#,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(ask.kind, "item");
+        assert_eq!(ask.question.as_deref(), Some("What is it?"));
+        assert_eq!(ask.item.unwrap()["itemID"], 6948);
     }
 
     #[test]

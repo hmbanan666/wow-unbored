@@ -281,14 +281,14 @@ function cleanTask(raw: unknown, index: number): Task {
   return cleaned;
 }
 
-function cleanWaypoints(raw: unknown, index: number): Waypoint[] | undefined {
+export function cleanWaypoints(raw: unknown, index: number | string): Waypoint[] | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (!Array.isArray(raw) || raw.length > MAX_WAYPOINTS) {
-    throw new PlanError(`Task ${index} waypoints must be an array of at most ${MAX_WAYPOINTS} points.`);
+    throw new PlanError(`${prefix(index)} waypoints must be an array of at most ${MAX_WAYPOINTS} points.`);
   }
   if (raw.length === 0) return undefined;
   return raw.map((item, n) => {
-    const label = `Task ${index} waypoint ${n + 1}`;
+    const label = `${prefix(index)} waypoint ${n + 1}`;
     if (typeof item !== "object" || item === null || Array.isArray(item)) {
       throw new PlanError(`${label} must be an object.`);
     }
@@ -373,16 +373,87 @@ function stamps(value: unknown, label: string): Stamp[] {
   });
 }
 
+function prefix(index: number | string): string {
+  return typeof index === "number" ? `Task ${index}` : index;
+}
+
+export type RequestType = "plan" | "item" | "question";
+export const REQUEST_TYPES = new Set<RequestType>(["plan", "item", "question"]);
+
+export type RequestItem = {
+  itemID: number;
+  link?: string;
+  name?: string;
+  bag?: number;
+  slot?: number;
+  count?: number;
+};
+
 export type PlanRequestInput = {
   id: string;
+  type: RequestType;
   character: string;
   realm: string;
   mode: string;
   budget: number;
   wish: string | null;
+  question: string | null;
+  topic: string | null;
+  item: RequestItem | null;
   createdAt: number | null;
   context: PlayerContext | null;
 };
+
+export type Answer = {
+  message: string;
+  waypoints?: Waypoint[];
+  answeredAt: number;
+};
+
+export const ANSWER_MAX_BYTES = 1000;
+
+export function cleanAnswer(message: unknown, waypoints: unknown, nowSeconds: number): Answer {
+  if (typeof message !== "string" || !message.trim()) {
+    throw new PlanError("message must be a non-empty string.");
+  }
+  const text = message.trim();
+  if (byteLength(text) > ANSWER_MAX_BYTES) {
+    throw new PlanError(`message must be at most ${ANSWER_MAX_BYTES} bytes.`);
+  }
+  const answer: Answer = { message: text, answeredAt: nowSeconds };
+  const points = cleanWaypoints(waypoints, "Answer");
+  if (points) answer.waypoints = points;
+  return answer;
+}
+
+function cleanItem(raw: unknown): RequestItem {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new PlanError("item must be an object with an itemID.");
+  }
+  const body = raw as Record<string, unknown>;
+  const itemID = integer(body.itemID, 1, 10_000_000);
+  if (itemID === undefined) throw new PlanError("item.itemID must be a whole number.");
+  const item: RequestItem = { itemID };
+  const link = shortText(body.link, 400);
+  if (link) item.link = link;
+  const name = shortText(body.name, 120);
+  if (name) item.name = name;
+  const bag = integer(body.bag, -10, 20);
+  if (bag !== undefined) item.bag = bag;
+  const slot = integer(body.slot, 0, 400);
+  if (slot !== undefined) item.slot = slot;
+  const stack = integer(body.count, 0, 1_000_000);
+  if (stack !== undefined) item.count = stack;
+  return item;
+}
+
+function optionalText(value: unknown, field: string, max: number): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || byteLength(value) > max) {
+    throw new PlanError(`${field} must be a string of at most ${max} bytes.`);
+  }
+  return value.trim() || null;
+}
 
 export type PlayerContext = {
   mapID?: number;
@@ -528,20 +599,31 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
   if (!character || character.length > 80 || realm.length > 80) {
     throw new PlanError("character is required, and realm must be at most 80 characters.");
   }
-  if (typeof body.mode !== "string" || !REQUEST_MODES.has(body.mode)) {
-    throw new PlanError("mode must be roam, quests, events, fun, or farm.");
+  const type = (body.type ?? "plan") as RequestType;
+  if (typeof type !== "string" || !REQUEST_TYPES.has(type)) {
+    throw new PlanError("type must be plan, item, or question.");
   }
-  const budget = integer(body.budget, 5, 240);
-  if (budget === undefined) {
-    throw new PlanError("budget must be a whole number of minutes from 5 to 240.");
-  }
-  let wish: string | null = null;
-  if (body.wish !== undefined && body.wish !== null && body.wish !== "") {
-    if (typeof body.wish !== "string" || Buffer.byteLength(body.wish, "utf8") > 600) {
-      throw new PlanError("wish must be a string of at most 600 bytes.");
+  let mode = "";
+  let budget = 0;
+  if (type === "plan" || body.mode !== undefined) {
+    if (typeof body.mode !== "string" || !REQUEST_MODES.has(body.mode)) {
+      throw new PlanError("mode must be roam, quests, events, fun, or farm.");
     }
-    wish = body.wish.trim() || null;
+    mode = body.mode;
   }
+  if (type === "plan" || body.budget !== undefined) {
+    const minutes = integer(body.budget, 5, 240);
+    if (minutes === undefined) {
+      throw new PlanError("budget must be a whole number of minutes from 5 to 240.");
+    }
+    budget = minutes;
+  }
+  const wish = optionalText(body.wish, "wish", 600);
+  const question = optionalText(body.question, "question", 600);
+  const topic = optionalText(body.topic, "topic", 40);
+  if (topic && !/^[a-z_-]+$/.test(topic)) throw new PlanError("topic must be lowercase letters.");
+  if (type === "question" && !question) throw new PlanError("A question request needs question text.");
+  const item = type === "item" ? cleanItem(body.item) : null;
   let createdAt: number | null = null;
   if (body.createdAt !== undefined && body.createdAt !== null) {
     createdAt = integer(body.createdAt, 0, 4_000_000_000) ?? null;
@@ -550,7 +632,7 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
     }
   }
   const context = cleanContext(body.context);
-  return { id, character, realm, mode: body.mode, budget, wish, createdAt, context };
+  return { id, type, character, realm, mode, budget, wish, question, topic, item, createdAt, context };
 }
 
 export function cleanProgress(raw: unknown): ProgressPost {

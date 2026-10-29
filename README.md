@@ -1,6 +1,6 @@
 # Unbored
 
-A calm, open-source session planner for World of Warcraft **Retail** (Midnight 12.x). You pick a mood and a time budget. It answers "what do I do now?" with one current task, the next task under it, and the rest collapsed. One map pin, for the current task only.
+A calm, open-source session planner for World of Warcraft **Retail** (Midnight 12.x). You pick a mood and a time budget. Wisp, a small glowing spirit on your screen, answers "what do I do now?" with one step at a time in a chat bubble, and answers questions about the world and your items. One map pin, for the current step only.
 
 It is not a gold-per-hour optimizer. [WhatNow](https://www.curseforge.com/wow/addons/whatnow) is a closed beta aimed at gold per minute and it wants TomTom. Unbored is MIT, has no required libraries, and would rather you fall off a cliff for an achievement than squeeze a route.
 
@@ -24,19 +24,32 @@ CurseForge, Wago, and WowUp are not wired up yet. A git tag builds a zip through
 
 ## Use
 
-There are two windows.
+**Wisp** is the whole UI: a small round portrait on the left of the screen with one chat bubble beside it. The bubble shows one message at a time:
 
-**The main window** (`/unbored`, the minimap button, or the addon compartment) only asks what you want:
+- the current step, as the plan wrote it ("Fly to Dalaran. Portal is next to you in Orgrimmar."), its note, the route point and distance, and a small `2/5`. The ✓ icon is Done, the arrow is Skip;
+- "Thinking..." while a request is out, with Wisp bobbing and glowing, and one **Load** button;
+- an answer, shown as written, with a ✓ to say you read it;
+- "All done" with **New plan** when the plan is finished, or a hello when there is nothing yet.
 
-1. What: Roam, Quests, Events, Fun achievements, or Farm. Each card says what it means.
-2. How long: 30m, 1h, or 2h.
-3. Anything else (optional): free text such as "mount, no raids, stay in this zone".
+Text wraps and the bubble grows; nothing is cut. The − in the bubble folds it down to the portrait. Drag the portrait to move it (Settings → Lock position to stop that). The position is saved, and the bubble opens toward the middle of the screen.
 
-Then one button. With the companion installed it is **Get plan**: the request is saved and the UI reloads in the same click, so the companion can read it. The window then shows "Preparing your plan" and a single **Load plan** button. The companion pops a Windows toast, "Unbored: plan ready, press Load plan", when the plan arrives. Load plan reloads, and the plan starts by itself. Any other reload or login picks it up too. Without the companion the button is **Build plan** and the list is made in game from the same mode and time.
+**Click Wisp** for the menu: New plan, What is this item?, What to do nearby?, Ask something, Settings, Hide. The menu is the game's own context menu.
 
-**The tracker** shows the active plan in the style of the quest tracker: the title, "Step 2 of 5 · ~35 min left", the current step in gold with its full note, and the next steps dimmed (click one to read its note). The ✓ and ⏭ icons are Done and Skip. Drag the header to move it, right-click it to lock, hide, or toggle the TomTom arrow, and use − to collapse it to titles. Text wraps and the height follows. The tracker stays when the main window is closed; `/unbored tracker` shows it again.
+- **New plan** opens the main window, where Wisp asks three things: what you feel like doing (Roam, Quests, Events, Fun achievements, or Farm, each card says what it means), how much time you have (30m, 1h, 2h), and anything special (optional free text, such as "mount, no raids, stay in this zone"). Then one button.
+- **Ask something** is one text box and **Send**.
+- **What to do nearby?** is the same box, optional, and asks the planner for something around you.
+- **What is this item?** has a slot. Drop an item on it, drop an item on Wisp, or Alt+Right-click the item in your bags. It shows what Unbored already knows and offers **Ask about it**.
+- **Hide** hides Wisp. The minimap button (left-click) or `/unbored` brings it back.
 
-The gear in the main window holds the rarely used things: import a plan string, export progress, lock or hide the tracker, the TomTom arrow, and chat lines (off by default).
+With the companion installed, every send (**Get plan**, **Send**, **Ask about it**) saves the request and reloads the UI in the same click, so the companion can read it. The companion pops a Windows toast from Wisp when the answer arrives. **Load** reloads, and the plan starts, or the answer appears in the bubble. Any other reload or login picks it up too. Without the companion the wizard button is **Build plan** and the list is made in game; What to do nearby? builds a Roam list; questions and item questions say they need the companion.
+
+**Item tooltips** get one short Wisp line when there is something to say: an answer the planner gave about that item, a note from `Data/Items.lua` (Hearthstone, cloth, food, keystone, and a few more), "Needed for your plan" when an active step is about it, and whether a mount, pet, or toy is still missing from your collection. Nothing is added otherwise.
+
+**Show all steps** (Settings) opens the full list in the quest-tracker style: step count, minutes left, the next steps dimmed (click one to read its note), collapse, and its own saved position.
+
+Settings also holds the rarely used things: point the arrow again, the TomTom arrow, chat lines (off by default), build here instead, import a plan string, export progress, and reset position. The gear in the main window opens the same list.
+
+The name is one string, `ns.MASCOT_NAME` in `Core/Namespace.lua`. Every UI string is in `Core/Locale.lua`, English by default with a Russian table; text from plans and answers is shown as written.
 
 Keybinds (Esc → Options → Keybindings → AddOns → Unbored), so a gamepad / ConsolePort can reach them:
 
@@ -46,7 +59,7 @@ Keybinds (Esc → Options → Keybindings → AddOns → Unbored), so a gamepad 
 - Waypoint (point the arrow again)
 - Load plan (reloads the UI; a keypress counts as the click Blizzard requires)
 
-Nothing in the normal flow needs a slash command. They exist anyway: `/unbored tracker|lock|reset`, `/unbored build`, `/unbored roam|quests|events|fun|farm`, `/unbored 30|60|120`, `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the companion file again), and `/unbored where` (map id and 0–100 coordinates, for people adding data).
+Nothing in the normal flow needs a slash command. They exist anyway: `/unbored show|hide`, `/unbored ask [text]|nearby|item`, `/unbored list|lock|reset`, `/unbored build`, `/unbored roam|quests|events|fun|farm`, `/unbored 30|60|120`, `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the companion file again), and `/unbored where` (map id and 0–100 coordinates, for people adding data).
 
 ### What the modes suggest
 
@@ -60,13 +73,17 @@ Tasks carry a rough minute estimate. The list stops when it has filled the budge
 
 ### Pins and combat
 
-When a step becomes current, Unbored sets the user waypoint (`C_Map.SetUserWaypoint`) and super-tracks it (`C_SuperTrack.SetSuperTrackedUserWaypoint`), so Blizzard's on-screen arrow and distance appear at once. If TomTom is loaded it also adds a TomTom crazy arrow; turn that off in the gear menu or with `/unbored tomtom`. A step with a `waypoints` route moves the arrow to the next point when you come within 30 yards, and the tracker shows "Point 2/4: label" with the distance. Nothing is printed to chat unless you turn chat lines on.
+When a step becomes current, Unbored sets the user waypoint (`C_Map.SetUserWaypoint`) and super-tracks it (`C_SuperTrack.SetSuperTrackedUserWaypoint`), so Blizzard's on-screen arrow and distance appear at once. If TomTom is loaded it also adds a TomTom crazy arrow; turn that off in the gear menu or with `/unbored tomtom`. A step with a `waypoints` route moves the arrow to the next point when you come within 30 yards, and the bubble shows "Point 2/4: label" with the distance. Nothing is printed to chat unless you turn chat lines on.
 
 When a step finishes, the pin Unbored set is cleared. A pin you placed yourself is left alone.
 
 In combat, and inside a dungeon, raid, arena, battleground, or scenario, the pin and the "you walked up to it" check are paused. Done and Skip still work. The window stays up so you can read the list. Midnight secret values are not stored and are not used in arithmetic; if a coordinate comes back secret, that check is skipped.
 
-Done, Skip, the queue, and a pending request are saved per character (`UnboredCharDB`). Window and tracker position, the tracker lock, and the TomTom and chat toggles are account-wide (`UnboredDB`). Both windows are built at the UI scale and use the game's own fonts.
+Done, Skip, the queue, a pending request, and the last answer are saved per character (`UnboredCharDB`). Wisp's position and lock, the window and list positions, item answers, and the TomTom and chat toggles are account-wide (`UnboredDB`). Everything is built at the UI scale and uses the game's own fonts.
+
+### Blizzard rules
+
+The addon never touches the network; the companion carries requests and answers through SavedVariables and its own `Unbored_Plan` addon. ReloadUI runs only from a click or a keybind. Bag buttons are not replaced or re-scripted: the tooltip line uses `TooltipDataProcessor.AddTooltipPostCall`, and Alt+Right-click is a `hooksecurefunc` post-hook on `HandleModifiedItemClick`, which only opens Unbored's own window. Modified clicks do not use the item, so no protected action changes.
 
 ### Auto-complete
 
@@ -82,7 +99,7 @@ An outside planner builds a line that starts with `UNB1:`. You paste it with `/u
 
 The format, the JSON schema, and a paste-ready example are in [`docs/plan-format.md`](docs/plan-format.md).
 
-The Windows tray app in `companion/` writes `Interface/AddOns/Unbored_Plan/Plan.lua`. A plan that answers this character's Get plan request starts on the next load with no prompt. A plan the planner put directly starts once per character, when no request is waiting. `/unbored companion` applies the file again. The older `Companion/Plan.lua` and `UnboredDB.companionPlan` seam is still applied on login when its `generatedAt` is newer than the saved session. The import string remains the path that does not need the desktop app.
+The Windows tray app in `companion/` writes `Interface/AddOns/Unbored_Plan/Plan.lua`. A plan or answer for this character's pending request starts on the next load with no prompt. A plan the planner put directly starts once per character, when no request is waiting. `/unbored companion` applies the file again. The older `Companion/Plan.lua` and `UnboredDB.companionPlan` seam is still applied on login when its `generatedAt` is newer than the saved session. The import string remains the path that does not need the desktop app.
 
 Build plan (without the companion) replaces an imported list with one made in game.
 

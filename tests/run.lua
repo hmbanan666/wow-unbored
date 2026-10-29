@@ -35,6 +35,7 @@ local files = {
   "Data/FunAchievements.lua",
   "Data/Holidays.lua",
   "Data/Farm.lua",
+  "Data/Items.lua",
   "Providers/Roam.lua",
   "Providers/Quests.lua",
   "Providers/Events.lua",
@@ -43,6 +44,8 @@ local files = {
   "Companion/Plan.lua",
   "UI/Frame.lua",
   "UI/Tracker.lua",
+  "UI/Mascot.lua",
+  "UI/Items.lua",
   "UI/Import.lua",
   "UI/Minimap.lua",
   "Core/Init.lua",
@@ -598,6 +601,47 @@ for i = 1, 11 do
   many[i] = { mapID = 84, x = 0.1, y = 0.1 }
 end
 check(ns.DecodeImport(waypointPlan(many)) == nil, "more than ten route points is rejected")
+
+check(ns.Session:Ask({ type = "item", item = {} }) == nil, "an item request needs an itemID")
+check(ns.Session:Ask({ type = "question", question = "  " }) == nil, "a question request needs text")
+local asked = ns.Session:Ask({ type = "question", question = "Where is the bank?", topic = "Bad Topic" })
+check(asked and UnboredCharDB.request.topic == nil, "a bad topic is dropped")
+check(UnboredCharDB.request.mode == nil, "questions carry no mode")
+
+ns.Session.state = {
+  version = 1,
+  source = "companion",
+  mode = "custom",
+  budget = 30,
+  tasks = { { id = "keep:1", title = "Keep me", estMinutes = 5, complete = { kind = "manual" } } },
+  done = {},
+  skipped = {},
+}
+UnboredExternalPlan = {
+  requestId = asked,
+  requestStatus = "fulfilled",
+  requestType = "question",
+  answer = { message = "Go here.", waypoints = { { mapID = 84, x = 0.3, y = 0.3, label = "Bank" } } },
+}
+check(ns.Session:AutoApplyExternal() == true, "an answer is applied")
+check(ns.Session:Current().title == "Bank" and ns.Session.state.tasks[2].id == "keep:1",
+  "an answer step goes in front of the plan the player had")
+check(UnboredCharDB.answer.message == "Go here." and ns.Session.UnreadAnswer() ~= nil, "the answer waits to be read")
+ns.Session:DismissAnswer()
+check(ns.Session.UnreadAnswer() == nil, "a read answer is not shown again")
+
+UnboredExternalPlan = { requestId = "req-none", requestStatus = "fulfilled", answer = { message = 5 } }
+check(ns.Session:AutoApplyExternal() == false, "a broken answer is ignored")
+
+UnboredDB.itemNotes = {}
+for i = 1, ns.ITEM_NOTES_MAX + 5 do
+  ns.Session.RememberItem(i, "note " .. i)
+end
+local kept = 0
+for _ in pairs(UnboredDB.itemNotes) do
+  kept = kept + 1
+end
+check(kept == ns.ITEM_NOTES_MAX, "remembered item answers are capped: " .. kept)
 
 check(ns.Utf8Truncate("привет", 5) == "пр", "truncate never splits a character")
 check(ns.Utf8Truncate("abc", 5) == "abc", "short text is untouched")

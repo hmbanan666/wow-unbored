@@ -1,4 +1,4 @@
-import type { PlayerContext } from "./plan.ts";
+import type { PlayerContext, RequestItem, RequestType } from "./plan.ts";
 
 export type WebhookConfig = {
   url: string;
@@ -16,6 +16,10 @@ export function webhookFromEnv(env: NodeJS.ProcessEnv = process.env): WebhookCon
 
 export type WebhookBody = {
   requestId: string;
+  type: RequestType;
+  question: string | null;
+  topic: string | null;
+  item: RequestItem | null;
   character: string;
   realm: string;
   mode: string;

@@ -16,13 +16,14 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::addon::{install_addon_zip, installed_version, select_addon_zip, should_update};
 use crate::device::{self, DeviceCredential};
+use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::plan::{
     decode_unb1, ensure_helper, install_plan, install_plan_file, pick_plan_file, plan_from_value, Plan,
     PlannerState, RequestState,
 };
 use crate::savedvars::request_from_saved_variables;
-use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, CharacterFile};
+use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, retail_dir, CharacterFile};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,6 +77,24 @@ struct Model {
     needs_wow_path: bool,
     addon_version: String,
     pairing: String,
+    busy: Option<String>,
+    error: bool,
+    ready: Option<(String, u64)>,
+    request_pending: bool,
+}
+
+impl Model {
+    fn mood(&self) -> mood::Mood {
+        mood::current(&MoodInput {
+            busy: self.busy.clone(),
+            pairing: self.pairing.clone(),
+            needs_wow_path: self.needs_wow_path,
+            error: self.error,
+            ready: self.ready.clone(),
+            request_pending: self.request_pending,
+            now: now_secs(),
+        })
+    }
 }
 
 struct AppState {
@@ -262,6 +281,10 @@ struct UiState {
     addon_version: String,
     pairing: String,
     planner_url: String,
+    phase: String,
+    headline: String,
+    mascot: String,
+    version: String,
 }
 
 fn snapshot(app: &AppHandle, model: &Model) -> UiState {
@@ -277,6 +300,10 @@ fn snapshot(app: &AppHandle, model: &Model) -> UiState {
         addon_version: model.addon_version.clone(),
         pairing: model.pairing.clone(),
         planner_url: effective_url(&model.settings),
+        phase: model.mood().phase.to_string(),
+        headline: model.mood().headline,
+        mascot: MASCOT_NAME.to_string(),
+        version: app.package_info().version.to_string(),
     }
 }
 
@@ -319,15 +346,20 @@ fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, String>
 #[tauri::command]
 fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<UiState, String> {
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.settings.wow_path = path.trim().to_string();
+    let chosen = path.trim();
+    model.settings.wow_path = retail_dir(Path::new(chosen))
+        .map(|dir| dir.display().to_string())
+        .unwrap_or_default();
     let retail = PathBuf::from(&model.settings.wow_path);
     model.accounts = list_accounts(&retail);
     model.progress = scan_progress(&model.settings);
-    model.needs_wow_path = model.settings.wow_path.trim().is_empty();
-    model.status = if model.needs_wow_path {
-        "Choose the Retail folder.".into()
+    model.needs_wow_path = model.settings.wow_path.is_empty();
+    model.status = if !model.needs_wow_path {
+        "Found it. Setting up the addon...".into()
+    } else if chosen.is_empty() {
+        "Pick your World of Warcraft folder.".into()
     } else {
-        "Retail folder saved.".into()
+        "I can't find World of Warcraft in that folder. Pick the one that has Wow.exe in it.".into()
     };
     let path = model.settings.wow_path.clone();
     let _ = save_settings(&app, &model.settings);
@@ -567,6 +599,7 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
         if let Some(plan) = decode_plan_field(&body["plan"])? {
             let id = body.get("id").and_then(|value| value.as_u64()).unwrap_or(0);
             state.latest_plan = Some((id, plan));
+            state.latest_plan_at = body.get("createdAt").and_then(|value| value.as_u64());
         }
     }
     if let Some(body) = get_json(&client, &join_url(&url, "v1/requests/latest"), secret)? {
@@ -581,6 +614,13 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
                 reason: body.get("reason").and_then(|value| value.as_str()).map(str::to_string),
                 plan_id: body.get("planId").and_then(|value| value.as_u64()),
                 plan: decode_plan_field(body.get("plan").unwrap_or(&serde_json::Value::Null))?,
+                kind: body
+                    .get("type")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("plan")
+                    .to_string(),
+                answer: body.get("answer").filter(|value| value.is_object()).cloned(),
+                updated_at: body.get("updatedAt").and_then(|value| value.as_u64()),
             });
         }
     }
@@ -609,6 +649,10 @@ fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
                 "budget": request.budget,
                 "wish": request.wish,
                 "context": request.context,
+                "type": request.kind,
+                "question": request.question,
+                "topic": request.topic,
+                "item": request.item,
             }))
             .send()
             .map_err(|err| err.to_string())?;
@@ -633,14 +677,23 @@ fn sync_plans(
     ensure_helper(&retail).map_err(|err| err.0)?;
     post_requests(settings, &retail, secret)?;
     let state = planner_state(settings, secret)?;
+    let pending = state.request.as_ref().is_some_and(|request| request.status == "pending");
+    if let Ok(mut model) = app.state::<AppState>().inner.lock() {
+        model.request_pending = pending;
+    }
     let Some(file) = pick_plan_file(&state) else {
         return Ok(None);
     };
     let written = install_plan_file(&retail, &file).map_err(|err| err.0)?;
     if let Some(id) = &file.ready_request {
         if notified.insert(id.clone()) && written.changed {
-            notify(app, "Plan ready, press Load plan");
-            return Ok(Some("Plan ready, press Load plan".into()));
+            let kind = file.ready_kind.clone().unwrap_or_else(|| "plan".into());
+            let text = mood::ready_text(&kind);
+            if let Ok(mut model) = app.state::<AppState>().inner.lock() {
+                model.ready = Some((kind, now_secs()));
+            }
+            notify(app, text);
+            return Ok(Some(text.into()));
         }
     }
     if !written.changed {
@@ -650,8 +703,8 @@ fn sync_plans(
         Some(request) if file.ready_request.is_none() && request.status == "pending" => {
             "Request sent. The planner is working on it.".into()
         }
-        Some(request) if request.status == "failed" => "The planner could not make that plan.".into(),
-        _ => "New plan written. Press Load plan in game.".into(),
+        Some(request) if request.status == "failed" => "The planner could not answer that one.".into(),
+        _ => "New plan written. Press Load in game.".into(),
     }))
 }
 
@@ -718,10 +771,28 @@ fn publish_status(app: &AppHandle, status: &str) {
     }
     model.status = status.to_string();
     drop(model);
+    refresh_view(app);
+}
+
+/// Pushes the current mood to the window and the tray tooltip.
+fn refresh_view(app: &AppHandle) {
+    let headline = app
+        .state::<AppState>()
+        .inner
+        .lock()
+        .map(|model| model.mood().headline)
+        .unwrap_or_default();
     let _ = app.emit("progress", serde_json::json!({}));
     if let Some(tray) = app.tray_by_id("unbored") {
-        let _ = tray.set_tooltip(Some(status));
+        let _ = tray.set_tooltip(Some(format!("{MASCOT_NAME}: {headline}")));
     }
+}
+
+fn set_busy(app: &AppHandle, busy: Option<&str>) {
+    if let Ok(mut model) = app.state::<AppState>().inner.lock() {
+        model.busy = busy.map(str::to_string);
+    }
+    refresh_view(app);
 }
 
 fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<String, String> {
@@ -748,13 +819,15 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
         return Ok(format!("Addon {} is installed.", release.version));
     }
     let toc_existed = toc.is_file();
-    let bytes = client
+    set_busy(app, Some("Updating addon..."));
+    let installed = client
         .get(&release.url)
         .send()
-        .map_err(|err| err.to_string())?
-        .bytes()
-        .map_err(|err| err.to_string())?;
-    install_addon_zip(&bytes, retail)?;
+        .and_then(|response| response.bytes())
+        .map_err(|err| err.to_string())
+        .and_then(|bytes| install_addon_zip(&bytes, retail));
+    set_busy(app, None);
+    installed?;
     if let Some(parent) = version_file.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -763,14 +836,14 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
         model.addon_version = release.version.clone();
     }
     if toc_existed && wow_running() {
-        notify(app, &format!("Addon updated to {}. Type /reload in game.", release.version));
+        notify(app, "I updated the addon. Type /reload in game");
     }
     Ok(format!("Installed addon {}.", release.version))
 }
 
 fn notify(app: &AppHandle, body: &str) {
     use tauri_plugin_notification::NotificationExt;
-    let _ = app.notification().builder().title("Unbored").body(body).show();
+    let _ = app.notification().builder().title(MASCOT_NAME).body(body).show();
 }
 
 #[cfg(windows)]
@@ -857,8 +930,13 @@ fn sync_loop(app: AppHandle) {
     let mut addon_checked = None;
     let mut notified = std::collections::HashSet::new();
     loop {
-        if let Err(err) = sync_once(&app, &mut addon_checked, &mut notified) {
-            publish_status(&app, &err);
+        let result = sync_once(&app, &mut addon_checked, &mut notified);
+        if let Ok(mut model) = app.state::<AppState>().inner.lock() {
+            model.error = result.is_err();
+        }
+        match result {
+            Err(err) => publish_status(&app, &err),
+            Ok(()) => refresh_view(&app),
         }
         std::thread::sleep(Duration::from_secs(30));
     }
@@ -890,10 +968,11 @@ async fn update_once(app: &AppHandle) -> Result<(), String> {
     let Some(update) = updater.check().await.map_err(|err| err.to_string())? else {
         return Ok(());
     };
-    let bytes = update
-        .download(|_, _| {}, || {})
-        .await
-        .map_err(|err| err.to_string())?;
+    set_busy(app, Some("Updating myself..."));
+    let bytes = update.download(|_, _| {}, || {}).await.map_err(|err| {
+        set_busy(app, None);
+        err.to_string()
+    })?;
     if let Some(marker) = update_marker(app) {
         let _ = fs::write(marker, &update.version);
     }
@@ -927,6 +1006,7 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let settings = load_settings(app.handle());
@@ -962,6 +1042,10 @@ pub fn run() {
                     needs_wow_path,
                     addon_version: String::new(),
                     pairing: "pending".into(),
+                    busy: None,
+                    error: false,
+                    ready: None,
+                    request_pending: false,
                 }),
                 watcher: Mutex::new(None),
                 device: Mutex::new(device),
@@ -980,7 +1064,7 @@ pub fn run() {
             TrayIconBuilder::with_id("unbored")
                 .icon(icon)
                 .menu(&menu)
-                .tooltip("Unbored Companion")
+                .tooltip(MASCOT_NAME)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show_main(app),
                     "quit" => app.exit(0),
