@@ -1,0 +1,78 @@
+{
+  "about": "Request payloads shared by the Companion and Server tests (docs/adr/0013). Each case is what the addon writes to SavedVariables and the exact JSON body the Companion posts to /v1/requests. Item and question bodies carry no mode or budget.",
+  "cases": [
+    {
+      "name": "plan",
+      "savedVariables": "plan.lua",
+      "account": "12345678#1",
+      "body": {
+        "id": "req-1793300000-0042",
+        "createdAt": 1793300000,
+        "character": "Mira",
+        "realm": "Silvermoon",
+        "type": "plan",
+        "mode": "farm",
+        "budget": 60,
+        "wish": "a mount I can get today",
+        "topic": "mount",
+        "lang": "en",
+        "account": "12345678#1",
+        "context": {
+          "mapID": 2248,
+          "zone": "Isle of Dorn",
+          "x": 0.4512,
+          "y": 0.3321,
+          "level": 80,
+          "skyriding": true
+        }
+      }
+    },
+    {
+      "name": "item",
+      "savedVariables": "item.lua",
+      "account": "12345678#1",
+      "body": {
+        "id": "req-1793300100-0007",
+        "createdAt": 1793300100,
+        "character": "Mira",
+        "realm": "Silvermoon",
+        "type": "item",
+        "question": "What is this item?",
+        "lang": "en",
+        "account": "12345678#1",
+        "item": {
+          "itemID": 210796,
+          "name": "Mycobloom",
+          "bag": 0,
+          "slot": 4,
+          "count": 12
+        },
+        "context": {
+          "mapID": 2248,
+          "zone": "Isle of Dorn",
+          "level": 80
+        }
+      }
+    },
+    {
+      "name": "question",
+      "savedVariables": "question.lua",
+      "account": "87654321#1",
+      "body": {
+        "id": "req-1793300200-1234",
+        "createdAt": 1793300200,
+        "character": "Мира",
+        "realm": "Гордунни",
+        "type": "question",
+        "question": "Какие достижения можно сделать в этой зоне?",
+        "lang": "ru",
+        "account": "87654321#1",
+        "context": {
+          "mapID": 2214,
+          "zone": "Гулкие глубины",
+          "level": 80
+        }
+      }
+    }
+  ]
+}

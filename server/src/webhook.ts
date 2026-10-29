@@ -26,6 +26,9 @@ export type WebhookBody = {
   budget: number;
   wish: string | null;
   context: PlayerContext | null;
+  /** Answer in this language ("en" or "ru"). */
+  lang: string | null;
+  account: string | null;
 };
 
 type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number }>;

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node --experimental-sqlite --experimental-strip-types src/index.ts",
-    "test": "node --experimental-sqlite --experimental-strip-types --test test/api.test.ts"
+    "test": "node --experimental-sqlite --experimental-strip-types --test test/*.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",

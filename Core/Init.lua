@@ -105,7 +105,7 @@ function ns.OnEnteringWorld(initialLogin)
   askForWorldData()
   if ns.Session and ns.Session.Start then
     local ok, err = pcall(function()
-      ns.Session:Start()
+      ns.Session:Start(initialLogin == true)
     end)
     if not ok then
       ns.ReportError(err)
@@ -206,11 +206,12 @@ function Unbored_Waypoint()
   end
 end
 
+-- The Refresh key: the same as pressing Refresh or Load on Wisp.
 function Unbored_LoadPlan()
   if ns.Mascot and ns.Mascot.OnLoad then
-    ns.Mascot:OnLoad()
+    ns.Mascot.OnLoad()
   else
-    ns.Session.LoadPlan()
+    ns.Session.RefreshNow()
   end
 end
 

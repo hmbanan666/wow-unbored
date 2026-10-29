@@ -19,9 +19,10 @@ use crate::device::{self, DeviceCredential};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::plan::{
-    decode_unb1, ensure_helper, install_plan, install_plan_file, pick_plan_file, plan_from_value,
+    decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file, pick_plan_file, plan_from_value,
     render_request_lua, write_status, CompanionStatus, Plan, PlanFile, PlannerState, RequestState,
 };
+use crate::request::{reason, request_body};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
 use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, retail_dir, CharacterFile};
 
@@ -271,7 +272,7 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
     }
     let written = install_plan(&retail, plan).map_err(|err| err.0)?;
     Ok(format!(
-        "Wrote {}. Press Load in game.",
+        "Wrote {}. Wisp picks it up next time you log in, or click Refresh in Wisp's bubble.",
         written.path.display()
     ))
 }
@@ -682,6 +683,7 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
                     .unwrap_or("pending")
                     .to_string(),
                 reason: body.get("reason").and_then(|value| value.as_str()).map(str::to_string),
+                reason_code: body.get("reasonCode").and_then(|value| value.as_str()).map(str::to_string),
                 plan_id: body.get("planId").and_then(|value| value.as_u64()),
                 plan: decode_plan_field(body.get("plan").unwrap_or(&serde_json::Value::Null))?,
                 kind: body
@@ -698,8 +700,13 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
 }
 
 /// Sends every character's pending Request. Returns the ones the planner
-/// refused outright (a 4xx other than 401), so the game can be told.
-fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Vec<RequestState>, String> {
+/// refused outright (a 4xx other than 401), so the game can be told, and the
+/// Server's reason for the Companion's own status line.
+fn post_requests(
+    settings: &Settings,
+    retail: &Path,
+    secret: &str,
+) -> Result<Vec<(RequestState, String)>, String> {
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
     let mut rejected = Vec::new();
@@ -713,30 +720,26 @@ fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Vec
         let response = client
             .post(join_url(&url, "v1/requests"))
             .bearer_auth(secret)
-            .json(&serde_json::json!({
-                "id": request.id,
-                "createdAt": request.created_at,
-                "character": request.character,
-                "realm": request.realm,
-                "mode": request.mode,
-                "budget": request.budget,
-                "wish": request.wish,
-                "context": request.context,
-                "type": request.kind,
-                "question": request.question,
-                "topic": request.topic,
-                "item": request.item,
-            }))
+            .json(&request_body(&request, Some(&file.account)))
             .send()
             .map_err(|err| err.to_string())?;
         let code = response.status();
         if code.is_client_error() && code.as_u16() != 401 {
-            rejected.push(RequestState {
-                id: request.id.clone(),
-                kind: request.kind.clone(),
-                status: "failed".into(),
-                ..Default::default()
-            });
+            let why = response
+                .json::<serde_json::Value>()
+                .ok()
+                .and_then(|body| body.get("error").and_then(|value| value.as_str()).map(str::to_string))
+                .unwrap_or_else(|| code.to_string());
+            rejected.push((
+                RequestState {
+                    id: request.id.clone(),
+                    kind: request.kind.clone(),
+                    status: "failed".into(),
+                    reason_code: Some(reason::REJECTED.into()),
+                    ..Default::default()
+                },
+                why,
+            ));
             continue;
         }
         if !code.is_success() {
@@ -770,6 +773,7 @@ fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
             .json(&serde_json::json!({
                 "character": profile.character,
                 "realm": profile.realm,
+                "account": file.account,
                 "savedAt": profile.saved_at,
                 "profile": profile.profile,
             }))
@@ -781,6 +785,16 @@ fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
         posted.lock().map_err(|err| err.to_string())?.insert(key, stamp);
     }
     Ok(())
+}
+
+/// Personal advice for this PC's characters, into Advice.lua (docs/adr/0019).
+fn sync_advice(settings: &Settings, retail: &Path, secret: &str) -> Result<bool, String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let url = join_url(&effective_url(settings), "v1/advice");
+    let Some(body) = get_json(&client, &url, secret)? else {
+        return Ok(false);
+    };
+    install_advice(retail, &body["characters"]).map_err(|err| err.0)
 }
 
 /// Sends in-game requests, then writes the one Plan.lua the game should see.
@@ -796,10 +810,11 @@ fn sync_plans(
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
     let rejected = post_requests(settings, &retail, secret)?;
-    // A profile that fails to upload must not hold back plans and answers.
+    // A profile or advice that fails must not hold back plans and answers.
     let _ = post_profiles(settings, &retail, secret);
-    if let Some(request) = rejected.first() {
-        // No reason: Wisp says its own friendly line, in the player's language.
+    let _ = sync_advice(settings, &retail, secret);
+    if let Some((request, why)) = rejected.first() {
+        // Only the Reason code goes to the game; Wisp says its own line.
         let file = PlanFile {
             body: render_request_lua(request, "failed", None),
             ready_request: None,
@@ -808,7 +823,7 @@ fn sync_plans(
         let written = install_plan_file(&retail, &file).map_err(|err| err.0)?;
         return Ok(written
             .changed
-            .then(|| "The planner could not take that request.".to_string()));
+            .then(|| format!("The planner refused a request: {why}")));
     }
     let state = planner_state(settings, secret)?;
     let pending = state.request.as_ref().is_some_and(|request| request.status == "pending");
@@ -838,7 +853,7 @@ fn sync_plans(
             "Request sent. The planner is working on it.".into()
         }
         Some(request) if request.status == "failed" => "The planner could not answer that one.".into(),
-        _ => "New plan written. Press Load in game.".into(),
+        _ => "New plan ready. Wisp picks it up next time you log in.".into(),
     }))
 }
 
@@ -974,7 +989,7 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
             if let Ok(mut model) = app.state::<AppState>().inner.lock() {
                 model.addon_updated_at = Some(now_secs());
             }
-            notify(app, "I updated Wisp. Click Load next to Wisp in the game to apply it.");
+            notify(app, "I updated Wisp. Click Load in Wisp's bubble once to finish.");
         } else {
             notify(app, "Wisp is in the game now. Restart World of Warcraft once to meet her.");
         }

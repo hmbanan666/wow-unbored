@@ -148,8 +148,9 @@ pub struct SavedRequest {
     pub created_at: Option<u64>,
     pub character: String,
     pub realm: String,
-    pub mode: String,
-    pub budget: u64,
+    /// Only plan Requests carry a mode and budget (docs/adr/0013).
+    pub mode: Option<String>,
+    pub budget: Option<u64>,
     pub wish: Option<String>,
     pub context: Option<serde_json::Value>,
     /// plan, item, or question.
@@ -157,6 +158,8 @@ pub struct SavedRequest {
     pub question: Option<String>,
     pub topic: Option<String>,
     pub item: Option<serde_json::Value>,
+    /// The language of the question, "en" or "ru".
+    pub lang: Option<String>,
 }
 
 pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, String> {
@@ -181,11 +184,8 @@ pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, 
         .and_then(LuaValue::as_str)
         .unwrap_or("")
         .to_string();
-    let mode = table_get(request, "mode")
-        .and_then(LuaValue::as_str)
-        .unwrap_or("")
-        .to_string();
-    let budget = table_get(request, "budget").and_then(LuaValue::as_u64).unwrap_or(60);
+    let mode = text_field(request, "mode");
+    let budget = table_get(request, "budget").and_then(LuaValue::as_u64);
     let wish = table_get(request, "wish")
         .and_then(LuaValue::as_str)
         .map(str::to_string)
@@ -211,6 +211,7 @@ pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, 
         item: table_get(request, "item")
             .map(LuaValue::to_json)
             .filter(serde_json::Value::is_object),
+        lang: text_field(request, "lang"),
     }))
 }
 
@@ -613,7 +614,7 @@ UnboredCharDB = {
         let request = request_from_saved_variables(text).unwrap().unwrap();
         assert_eq!(request.id, "req-1");
         assert_eq!(request.character, "Hero");
-        assert_eq!(request.mode, "farm");
+        assert_eq!(request.mode.as_deref(), Some("farm"));
         assert_eq!(request.wish.as_deref(), Some("mount"));
         let context = request.context.unwrap();
         assert_eq!(context["mapID"], 2248);
@@ -628,6 +629,8 @@ UnboredCharDB = {
         .unwrap()
         .unwrap();
         assert_eq!(ask.kind, "item");
+        assert_eq!(ask.mode, None);
+        assert_eq!(ask.budget, None);
         assert_eq!(ask.question.as_deref(), Some("What is it?"));
         assert_eq!(ask.item.unwrap()["itemID"], 6948);
     }

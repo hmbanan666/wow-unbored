@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.addon = addonName or "Unbored"
 -- Must match ## Version in Unbored.toc (tests/run.lua checks it).
-ns.VERSION = "0.5.0"
+ns.VERSION = "0.6.0"
 ns.MASCOT_NAME = "Wisp"
 ns.MEDIA = "Interface\\AddOns\\Unbored\\Media\\"
 -- A plan is 3-7 steps (docs/adr/0005); the in-game builder never makes more.
@@ -36,6 +36,20 @@ end
 
 function ns.T(key, ...)
   local text = (ns.L and ns.L[key]) or key
+  if select("#", ...) > 0 then
+    local ok, formatted = pcall(string.format, text, ...)
+    if ok then
+      return formatted
+    end
+  end
+  return text
+end
+
+-- The same string in a given language ("en" or "ru"), whatever the client
+-- runs in: an Answer follows the language of the question (docs/adr/0014).
+function ns.TL(lang, key, ...)
+  local table_ = ns.Locales and ns.Locales[lang] or nil
+  local text = (table_ and table_[key]) or (ns.L and ns.L[key]) or key
   if select("#", ...) > 0 then
     local ok, formatted = pcall(string.format, text, ...)
     if ok then

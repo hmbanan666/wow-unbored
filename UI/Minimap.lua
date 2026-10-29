@@ -1,13 +1,27 @@
+-- LibDBIcon-style minimap button (docs/adr/0017): round, gold border, on the
+-- rim outside the map, dragged around the edge; the angle is saved.
+
 local _, ns = ...
 
 local button
+-- LibDBIcon puts the button centre this far outside the map's own radius.
+local RIM_OFFSET = 10
+
+function ns.MinimapRadius()
+  local width = Minimap and ns.AsNumber(ns.Call(Minimap.GetWidth, Minimap))
+  if not width or width <= 0 then
+    return 80
+  end
+  return width / 2 + RIM_OFFSET
+end
 
 local function place(angle)
   if not button or not Minimap then
     return
   end
-  local radius = 80
+  local radius = ns.MinimapRadius()
   local rad = math.rad(angle or 210)
+  button:ClearAllPoints()
   button:SetPoint("CENTER", Minimap, "CENTER", math.cos(rad) * radius, math.sin(rad) * radius)
 end
 
@@ -47,9 +61,9 @@ function ns.RegisterCompartment()
     registerForAnyClick = true,
     func = function(_, _, mouseButton)
       if mouseButton == "RightButton" then
-        Unbored_Toggle()
+        ns.Mascot:OpenMenu(AddonCompartmentFrame)
       else
-        ns.Mascot:Toggle()
+        ns.Mascot:ToggleShown()
       end
     end,
   })
@@ -68,24 +82,32 @@ function ns.CreateMinimapButton()
   button:RegisterForDrag("LeftButton")
   button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
-  local icon = button:CreateTexture(nil, "BACKGROUND")
+  local background = button:CreateTexture(nil, "BACKGROUND")
+  background:SetSize(24, 24)
+  background:SetPoint("CENTER")
+  background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+
+  local icon = button:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(18, 18)
   icon:SetPoint("CENTER")
-  icon:SetSize(20, 20)
   icon:SetTexture("Interface\\AddOns\\Unbored\\Media\\Icon.tga")
-
-  local overlay = button:CreateTexture(nil, "OVERLAY")
-  overlay:SetPoint("TOPLEFT")
-  overlay:SetPoint("BOTTOMRIGHT")
-  local atlasOK = pcall(overlay.SetAtlas, overlay, "UI-HUD-Minimap-Button")
-  if not atlasOK then
-    pcall(overlay.SetTexture, overlay, "Interface\\Minimap\\MiniMap-TrackingBorder")
+  if icon.SetTexCoord then
+    icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
   end
+  button.icon = icon
 
-  button:SetScript("OnClick", function(_, mouseButton)
+  -- The gold ring every minimap button wears.
+  local border = button:CreateTexture(nil, "OVERLAY")
+  border:SetSize(50, 50)
+  border:SetPoint("TOPLEFT")
+  border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+  button.border = border
+
+  button:SetScript("OnClick", function(self, mouseButton)
     if mouseButton == "RightButton" then
-      ns.UI:Toggle()
+      ns.Mascot:OpenMenu(self)
     else
-      ns.Mascot:Toggle()
+      ns.Mascot:ToggleShown()
     end
   end)
   button:SetScript("OnDragStart", function(self)

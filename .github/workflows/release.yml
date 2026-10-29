@@ -26,3 +26,16 @@ jobs:
       - uses: BigWigsMods/packager@v2
         env:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+
+      # The packager pastes the whole CHANGELOG.md; a release says only what
+      # changed in it, after a short Install section (docs/adr/0022).
+      - name: Release notes for this version only
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          pipx install git-cliff==2.14.2
+          .github/scripts/release-notes.sh addon "$TAG" > notes.md
+          cat notes.md
+          gh release edit "$TAG" --notes-file notes.md

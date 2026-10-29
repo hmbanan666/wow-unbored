@@ -22,9 +22,13 @@ local WATCH = {
   "PLAYER_LOGOUT",
   "BANKFRAME_OPENED",
   "PLAYERBANKSLOTS_CHANGED",
+  "CURSOR_CHANGED",
 }
 
 function ns.Events.Pulse()
+  if ns.Profile and ns.Profile.Flush then
+    pcall(ns.Profile.Flush)
+  end
   if ns.Mascot and ns.Mascot.ExpireEchoes then
     ns.Mascot:ExpireEchoes()
     ns.Mascot:CheckSlow()
@@ -60,9 +64,21 @@ function ns.Events.Register(frame)
     pcall(frame.RegisterEvent, frame, WATCH[i])
   end
   pcall(frame.RegisterEvent, frame, "MOUNT_JOURNAL_SEARCH_UPDATED")
+  if ns.Profile and ns.Profile.Events then
+    local extra = ns.Profile.Events()
+    for i = 1, #extra do
+      pcall(frame.RegisterEvent, frame, extra[i])
+    end
+  end
 end
 
 function ns.Events.OnEvent(event, ...)
+  if event == "CURSOR_CHANGED" then
+    if ns.Mascot and ns.Mascot.OnCursorChanged then
+      pcall(ns.Mascot.OnCursorChanged, ns.Mascot)
+    end
+    return
+  end
   if ns.Profile then
     pcall(ns.Profile.OnEvent, event)
   end

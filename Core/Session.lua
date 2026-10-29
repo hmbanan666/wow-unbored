@@ -113,6 +113,7 @@ function ns.Session:Finish(bucket)
   end
   if ns.Mascot and ns.Mascot.Echo then
     ns.Mascot:Echo(ns.T(bucket == "skipped" and "ECHO_SKIPPED" or "ECHO_DONE", task.title or ""))
+    ns.Mascot:Lead(bucket == "skipped" and "OK_NEXT" or "NICE")
   end
   list[#list + 1] = { id = task.id, at = ns.Now() }
   table.remove(self.state.tasks, 1)
@@ -167,6 +168,9 @@ function ns.Session:Skip()
     return
   end
   task.skipCount = skips
+  if ns.Mascot and ns.Mascot.Lead then
+    ns.Mascot:Lead("OK_NEXT")
+  end
   table.remove(self.state.tasks, 1)
   self.state.tasks[#self.state.tasks + 1] = task
   if ns.Waypoint and ns.Waypoint.ClearOwned then
@@ -491,6 +495,7 @@ end
 function ns.Session:NoteRequest()
   self.requestNote = nil
   self.requestReason = nil
+  self.requestReasonCode = nil
   local req = self:PendingRequest()
   if not req then
     return
@@ -503,6 +508,8 @@ function ns.Session:NoteRequest()
   if plan.requestStatus == "failed" then
     self.requestNote = "failed"
     self.requestReason = type(plan.requestReason) == "string" and plan.requestReason or ""
+    local code = plan.requestReasonCode
+    self.requestReasonCode = type(code) == "string" and code:match("^[a-z_]+$") and code or "planner_failed"
     return
   end
   if plan.requestStatus == "pending" or (type(plan.tasks) ~= "table" and type(plan.answer) ~= "table") then
@@ -525,13 +532,16 @@ ns.SLOW_SECONDS = 10 * 60
 -- The Companion rewrites its status at least every 5 minutes while it runs.
 ns.COMPANION_STALE_SECONDS = 15 * 60
 
+-- The files only change at a load, so "slow" is judged at the last load: the
+-- Request was already on disk then and had waited over SLOW_SECONDS.
 function ns.Session:IsSlow()
   local note = self.requestNote
-  if note ~= "sending" and note ~= "preparing" then
+  local req = self:PendingRequest()
+  if not req or not req.onDisk or (note ~= "sending" and note ~= "preparing") then
     return false
   end
-  local age = self:RequestAge()
-  return age ~= nil and age > ns.SLOW_SECONDS
+  local created = tonumber(req.createdAt)
+  return created ~= nil and (self.loadedAt or ns.Now()) - created > ns.SLOW_SECONDS
 end
 
 -- What the Companion said about itself when it last wrote Plan.lua.
@@ -551,7 +561,7 @@ function ns.Session.CompanionProblem()
     return nil
   end
   local seen = tonumber(status.seenAt)
-  if seen and ns.Now() - seen > ns.COMPANION_STALE_SECONDS then
+  if seen and (ns.Session.loadedAt or ns.Now()) - seen > ns.COMPANION_STALE_SECONDS then
     return "stopped"
   end
   if status.pairing == "revoked" then
@@ -598,9 +608,10 @@ function ns.Session.UpdateWaiting()
   return nil
 end
 
--- Saves the request into SavedVariables. The caller reloads the UI right
--- after, inside the same click, so the game writes the file for the companion.
--- ask: { type = "plan" | "question" | "item", wish, question, topic, item }
+-- Saves the Request into SavedVariables. Nothing reloads: the game writes the
+-- file at the next Refresh or logout, the Companion prepares the Answer in the
+-- background, and it is read at the next load (docs/adr/0012).
+-- ask: { type = "plan" | "question" | "item", wish, question, topic, item, lang }
 function ns.Session:Ask(ask)
   ask = type(ask) == "table" and ask or {}
   local kind = ask.type
@@ -628,6 +639,9 @@ function ns.Session:Ask(ask)
     question = text(ask.question, 600),
     context = okContext and type(context) == "table" and context or nil,
   }
+  local lang = ask.lang or (request.question and ns.Intents.Lang(request.question))
+    or (request.wish and ns.Intents.Lang(request.wish)) or ns.LANG
+  request.lang = (lang == "ru" or lang == "en") and lang or "en"
   if kind == "plan" then
     UnboredCharDB.offer = nil
     request.mode = ns.MODE_IDS[ask.mode] and ask.mode ~= "custom" and ask.mode or self.ChosenMode()
@@ -663,7 +677,7 @@ function ns.Session:Ask(ask)
   return id
 end
 
--- Sends the pending Request again as a new one. The caller reloads.
+-- Sends the pending Request again as a new one.
 function ns.Session:Retry()
   local req = self:PendingRequest()
   if not req then
@@ -677,6 +691,7 @@ function ns.Session:Retry()
     wish = req.wish,
     question = req.question,
     item = req.item,
+    lang = req.lang,
   })
 end
 
@@ -692,10 +707,100 @@ function ns.Session:CancelRequest()
   self:RefreshUI()
 end
 
-function ns.Session.LoadPlan()
+-- Only ever called from a click on Refresh or Load (ReloadUI needs the
+-- hardware event), never per message.
+function ns.Session.RefreshNow()
   if type(ReloadUI) == "function" then
     ReloadUI()
   end
+end
+
+-- Minutes after a load before Wisp guesses the Companion has written the
+-- Answer. Nothing in the game can tell; see Friction in docs/adr/0012.
+-- TODO(owner): tune once real answer times are known.
+ns.READY_GUESS_SECONDS = 3 * 60
+
+-- The one Refresh offer (docs/adr/0012): "after" for a Request made in this
+-- session (it reaches the Companion only after a Refresh or logout), "ready"
+-- for one that was already on disk at the last load. Each is shown once;
+-- Later puts it off until the next login.
+function ns.Session:RefreshOffer()
+  local req = self:PendingRequest()
+  if not req or self.requestNote == "failed" or self.CompanionProblem() then
+    return nil
+  end
+  if not req.onDisk then
+    if req.later then
+      return nil
+    end
+    return { kind = "after", request = req }
+  end
+  if self.requestNote ~= "sending" and self.requestNote ~= "preparing" then
+    return nil
+  end
+  if (self.readyLater or {})[req.id] or self:IsSlow() then
+    return nil
+  end
+  if ns.Now() - (self.loadedAt or ns.Now()) < ns.READY_GUESS_SECONDS then
+    return nil
+  end
+  return { kind = "ready", request = req }
+end
+
+function ns.Session:Later()
+  local offer = self:RefreshOffer()
+  if offer and offer.kind == "after" then
+    offer.request.later = true
+  elseif offer then
+    self.readyLater = self.readyLater or {}
+    self.readyLater[offer.request.id] = true
+  end
+  self:RefreshUI()
+end
+
+-- A question: the local answer at once (docs/adr/0014), and with the
+-- Companion the same question goes to the Planner for a fuller one.
+function ns.Session:AskQuestion(question, topic)
+  question = ns.Utf8Truncate(ns.Trim(type(question) == "string" and question or ""), 600)
+  if question == "" then
+    return nil
+  end
+  local lang = ns.Intents.Lang(question)
+  local intent = topic == "nearby" and "here" or ns.Intents.Detect(question)
+  local found = intent and ns.Intents.Answer(intent, lang) or nil
+  local id
+  if ns.UI and ns.UI.HasCompanion() then
+    id = self:Ask({ type = "question", question = question, topic = topic, lang = lang })
+  end
+  local messages = found and found.messages or { ns.TL(lang, id and "ASK_FORWARDED" or "ASK_LOCAL_ONLY") }
+  if type(UnboredCharDB) ~= "table" then
+    UnboredCharDB = {}
+  end
+  UnboredCharDB.answer = {
+    requestId = id,
+    type = "question",
+    question = question,
+    message = table.concat(messages, "\n\n"),
+    messages = messages,
+    lang = lang,
+    tasks = found and #found.tasks > 0 and found.tasks or nil,
+    intent = intent,
+    isLocal = true,
+    at = ns.Now(),
+  }
+  self:RefreshUI()
+  return id or true
+end
+
+-- "Make it a plan" under a local answer.
+function ns.Session:AnswerPlan()
+  local answer = self.UnreadAnswer()
+  if not answer or type(answer.tasks) ~= "table" or #answer.tasks == 0 then
+    return
+  end
+  local tasks = answer.tasks
+  answer.seen = true
+  self:ApplyPlan({ mode = "roam", budget = self.ChosenBudget(), tasks = tasks }, "provider", true)
 end
 
 ns.ITEM_NOTES_MAX = 200
@@ -805,7 +910,7 @@ local function cleanAnswer(raw)
     return nil
   end
   local waypoints = ns.CleanWaypoints(raw.waypoints, 1)
-  return { message = message, waypoints = waypoints }
+  return { message = message, messages = ns.Intents.Split(message), waypoints = waypoints }
 end
 
 -- Picks up the companion file on every load. A plan with a requestId is taken
@@ -865,6 +970,8 @@ function ns.Session:AutoApplyExternal()
       requestId = requestId,
       type = kind,
       message = answer.message,
+      messages = answer.messages,
+      lang = req and req.lang or nil,
       question = req and (req.question or req.wish) or nil,
       itemID = item and item.itemID or nil,
       itemLink = item and item.link or nil,
@@ -934,7 +1041,17 @@ function ns.Session:ScheduleDataRefresh()
   end)
 end
 
-function ns.Session:Start()
+-- Everything in UnboredCharDB now was read from disk, so a pending Request is
+-- where the Companion can see it.
+function ns.Session:MarkLoaded()
+  self.loadedAt = ns.Now()
+  local req = self:PendingRequest()
+  if req then
+    req.onDisk = true
+  end
+end
+
+function ns.Session:Start(initialLogin)
   if self.started then
     self:AutoApplyExternal()
     self:CheckCurrent()
@@ -943,6 +1060,7 @@ function ns.Session:Start()
     return
   end
   self.started = true
+  self:MarkLoaded()
   local saved = UnboredCharDB and UnboredCharDB.session
   if type(saved) == "table" and saved.version == 1 and type(saved.tasks) == "table" then
     self.state = saved
@@ -953,11 +1071,37 @@ function ns.Session:Start()
   if companion and ns.Session.CompanionIsNewer(companion, saved) then
     self:ApplyCompanion(false)
   end
-  if not self:AutoApplyExternal() then
-    self:CheckCurrent()
-    self:RefreshUI()
+  if self:AutoApplyExternal() then
+    self:ScheduleDataRefresh()
+    return
   end
+  if initialLogin and self:Current() and not (UnboredCharDB and UnboredCharDB.request) then
+    self.welcomeBack = true
+  end
+  self:CheckCurrent()
+  self:RefreshUI()
   self:ScheduleDataRefresh()
+end
+
+-- "Continue <plan>" on login: what the plan is called.
+function ns.Session:PlanName()
+  local state = self.state or {}
+  local preset = state.topic and ns.Mascot and ns.Mascot.Preset(state.topic)
+  if preset then
+    return ns.T(preset.label)
+  end
+  if type(state.note) == "string" and state.note ~= "" and #state.note <= 60 then
+    return state.note
+  end
+  if state.mode and state.mode ~= "custom" then
+    return ns.ModeLabel(state.mode)
+  end
+  return ns.T("PLAN_NAME_DEFAULT")
+end
+
+function ns.Session:ContinuePlan()
+  self.welcomeBack = false
+  self:RefreshUI()
 end
 
 function ns.Session:OnCombatEnd()

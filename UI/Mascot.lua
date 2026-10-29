@@ -1,35 +1,62 @@
--- The whole in-game UI: a small round portrait with a short stack of chat
--- bubbles beside it (docs/adr/0004): at most two older one-line echoes, fading,
--- above the current bubble. The current bubble shows exactly one thing: the
--- preset chips, the wish or question box, an item, the current step, an
--- answer, or why a Request is not back yet. Every string is measured after
--- its width is set, so text wraps and the bubble grows instead of cutting it.
+-- The whole in-game UI (docs/adr/0004, 0016): a small round portrait and a
+-- bubble beside it, with at most two older messages fading above it. The
+-- bubble shows one thing: the presets, the wish or question box, an item, an
+-- Answer, the Refresh offer, or the current step. Text always shows in full:
+-- each string is measured after its width is set and the bubble grows.
+-- The portrait and the bubble have their own size settings; the bubble is
+-- parented to UIParent and only anchored to the portrait.
 
 local _, ns = ...
 
 ns.Mascot = {}
 
-local SIZE = 64
-local GLOW = 100
+local SIZE = 52
 local BUBBLE_WIDTH = 260
 local PAD = 10
 local INNER = BUBBLE_WIDTH - PAD * 2
-local ICON = 22
+local ACTION = 24
+local GLYPH = 16
+local TOP_ICON = 16
 local TEAL = { 0.37, 0.89, 0.83 }
+local MUTED = { 0.62, 0.7, 0.7 }
 local COMBAT_ALPHA = 0.5
 local CHIP_HEIGHT = 26
 local TIME_CHIP_WIDTH = 44
 local SCALES = { 80, 100, 125, 150 }
 local ECHOES = 2
--- TODO(owner): how long an older message stays was not decided; 90 s is a guess.
 local ECHO_SECONDS = 90
 local ECHO_BYTES = 90
-local ECHO_ALPHA = { 0.75, 0.45 }
+local ECHO_ALPHA = { 0.85, 0.55 }
+local LEAD_SECONDS = 8
+-- The drop hint stops once the player has handed Wisp this many items.
+local DROP_TEACH = 3
 
 local PORTRAITS = {
   idle = "WispIdle128",
   thinking = "WispThinking128",
   happy = "WispHappy128",
+}
+
+-- Every action looks the same: one frame, a glyph from Media/Icon*, and a
+-- label when a glyph alone would not be clear.
+local ACTIONS = {
+  done = { icon = "IconDone", tip = "TIP_DONE" },
+  skip = { icon = "IconSkip", tip = "TIP_SKIP" },
+  list = { icon = "IconList", tip = "TIP_LIST" },
+  send = { icon = "IconSend", tip = "SEND" },
+  ask = { icon = "IconSend", tip = "TIP_ASK" },
+  back = { icon = "IconBack", tip = "BACK" },
+  ok = { icon = "IconDone", tip = "GOT_IT" },
+  cancel = { icon = "IconClose", tip = "CANCEL_REQUEST" },
+  plan = { icon = "IconPlan", label = "INTENT_PLAN" },
+  refresh = { icon = "IconRefresh", label = "REFRESH", tip = "TIP_REFRESH" },
+  load = { icon = "IconRefresh", label = "LOAD", tip = "TIP_REFRESH" },
+  later = { label = "LATER" },
+  retry = { label = "TRY_AGAIN" },
+  use = { label = "OFFER_USE" },
+  keep = { label = "OFFER_KEEP" },
+  continue = { label = "CONTINUE" },
+  new = { label = "SOMETHING_NEW" },
 }
 
 local function db()
@@ -70,21 +97,71 @@ local function tooltip(owner, text)
   end)
 end
 
-local function iconButton(parent, texture, tip, onClick)
-  local button = CreateFrame("Button", nil, parent)
-  button:SetSize(ICON, ICON)
-  button:SetNormalTexture(texture)
+local function framed(parent)
+  local ok, frame = pcall(CreateFrame, "Button", nil, parent, "BackdropTemplate")
+  if not ok or not frame then
+    frame = CreateFrame("Button", nil, parent)
+  end
+  return frame
+end
+
+local function glyph(parent, name, size)
+  local texture = parent:CreateTexture(nil, "ARTWORK")
+  texture:SetSize(size, size)
+  texture:SetTexture(ns.MEDIA .. name)
+  texture:SetVertexColor(TEAL[1], TEAL[2], TEAL[3])
+  return texture
+end
+
+local function actionButton(parent, spec, onClick)
+  local button = framed(parent)
+  ns.UI.ApplyBackdrop(button, { 0.05, 0.16, 0.17, 0.92 }, { TEAL[1], TEAL[2], TEAL[3], 0.55 })
   button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  local width = ACTION
+  if spec.icon then
+    button.icon = glyph(button, spec.icon, GLYPH)
+  end
+  if spec.label then
+    button.label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    button.label:SetText(ns.T(spec.label))
+    local labelWidth = math.ceil(ns.AsNumber(button.label:GetStringWidth()) or 40)
+    if button.icon then
+      button.icon:SetPoint("LEFT", 5, 0)
+      button.label:SetPoint("LEFT", button.icon, "RIGHT", 3, 0)
+      width = 5 + GLYPH + 3 + labelWidth + 8
+    else
+      button.label:SetPoint("CENTER")
+      width = labelWidth + 18
+    end
+  else
+    button.icon:SetPoint("CENTER")
+  end
+  button:SetSize(math.max(ACTION, width), ACTION)
+  button:SetScript("OnClick", function(self, mouseButton)
+    if ns.ClickSound then
+      ns.ClickSound()
+    end
+    onClick(self, mouseButton)
+  end)
+  tooltip(button, ns.T(spec.tip or spec.label))
+  button:Hide()
+  return button
+end
+
+local function iconButton(parent, name, tip, onClick)
+  local button = CreateFrame("Button", nil, parent)
+  button:SetSize(TOP_ICON + 4, TOP_ICON + 4)
+  button.icon = glyph(button, name, TOP_ICON)
+  button.icon:SetPoint("CENTER")
+  button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  button:RegisterForClicks("AnyUp")
   button:SetScript("OnClick", onClick)
   tooltip(button, tip)
   return button
 end
 
 local function chip(parent, template, onClick)
-  local ok, button = pcall(CreateFrame, "Button", nil, parent, "BackdropTemplate")
-  if not ok or not button then
-    button = CreateFrame("Button", nil, parent)
-  end
+  local button = framed(parent)
   button:SetHeight(CHIP_HEIGHT)
   button:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
   button.label = font(button, template)
@@ -109,6 +186,42 @@ local function styleChip(button, selected)
   end
 end
 
+local function fadeIn(region, from, seconds)
+  if not region.CreateAnimationGroup then
+    return nil
+  end
+  local ok, group = pcall(region.CreateAnimationGroup, region)
+  if not ok or not group then
+    return nil
+  end
+  local anim = group:CreateAnimation("Alpha")
+  anim:SetFromAlpha(from)
+  anim:SetToAlpha(1)
+  anim:SetDuration(seconds)
+  if anim.SetSmoothing then
+    anim:SetSmoothing("OUT")
+  end
+  return group
+end
+
+local function bob(region)
+  if not region.CreateAnimationGroup then
+    return nil
+  end
+  local ok, group = pcall(region.CreateAnimationGroup, region)
+  if not ok or not group then
+    return nil
+  end
+  group:SetLooping("BOUNCE")
+  local anim = group:CreateAnimation("Translation")
+  anim:SetOffset(0, 4)
+  anim:SetDuration(0.9)
+  if anim.SetSmoothing then
+    anim:SetSmoothing("IN_OUT")
+  end
+  return group
+end
+
 local function cursorHoldsItem()
   if type(GetCursorInfo) ~= "function" then
     return false
@@ -122,6 +235,9 @@ local function takeCursorItem()
   end
   local item = ns.Items.FromCursor()
   if item then
+    if ns.DB then
+      ns.DB.dropsTaught = (tonumber(ns.DB.dropsTaught) or 0) + 1
+    end
     ns.Mascot:ShowItem(item)
   end
   return true
@@ -161,28 +277,30 @@ function ns.Mascot:ResetPosition()
   end
 end
 
-local function animation(region, kind, setup)
-  if not region.CreateAnimationGroup then
-    return nil
-  end
-  local ok, group = pcall(region.CreateAnimationGroup, region)
-  if not ok or not group then
-    return nil
-  end
-  group:SetLooping("BOUNCE")
-  local anim = group:CreateAnimation(kind)
-  setup(anim)
-  anim:SetDuration(0.9)
-  if anim.SetSmoothing then
-    anim:SetSmoothing("IN_OUT")
-  end
-  return group
-end
-
-function ns.Mascot:Create()
-  if self.frame then
+local function onAvatarClick(self, button, mouseButton)
+  if ns.IsCombat() then
     return
   end
+  if takeCursorItem() then
+    return
+  end
+  if GameTooltip then
+    GameTooltip:Hide()
+  end
+  if mouseButton == "RightButton" then
+    self:OpenMenu(button)
+    return
+  end
+  if self.IsHidden() or db().collapsed then
+    self:Reveal()
+  elseif self.WantsChoice() and (not self.view or self.view.kind ~= "choice") then
+    self:ShowChoice()
+  else
+    self:Collapse()
+  end
+end
+
+function ns.Mascot:CreatePortrait()
   local frame = CreateFrame("Button", "UnboredMascot", UIParent)
   frame:SetSize(SIZE, SIZE)
   frame:SetFrameStrata("MEDIUM")
@@ -196,31 +314,37 @@ function ns.Mascot:Create()
   frame:SetScale(self.Scale() / 100)
   self:Place()
 
-  self.glow = frame:CreateTexture(nil, "BACKGROUND")
-  self.glow:SetSize(GLOW, GLOW)
-  self.glow:SetPoint("CENTER")
-  self.glow:SetTexture(ns.MEDIA .. "WispGlow")
-  self.glow:SetBlendMode("ADD")
-  self.glow:SetAlpha(0.6)
-
   self.art = frame:CreateTexture(nil, "ARTWORK")
   self.art:SetSize(SIZE, SIZE)
   self.art:SetPoint("CENTER")
   self.art:SetTexture(ns.MEDIA .. PORTRAITS.idle)
+  self.bob = bob(self.art)
 
-  self.bob = animation(self.art, "Translation", function(anim)
-    anim:SetOffset(0, 5)
+  -- Collapsed: a small "..." pill beside the portrait. A click brings the bubble back.
+  local pill = framed(frame)
+  pill:SetSize(34, 18)
+  ns.UI.ApplyBackdrop(pill, { 0.03, 0.08, 0.09, 0.92 }, { TEAL[1], TEAL[2], TEAL[3], 0.9 })
+  pill:RegisterForClicks("AnyUp")
+  pill.text = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  pill.text:SetPoint("CENTER", 0, 1)
+  pill.text:SetText("...")
+  pill.text:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+  pill:SetScript("OnClick", function(button, mouseButton)
+    if mouseButton == "RightButton" then
+      self:OpenMenu(button)
+    else
+      self:Reveal()
+    end
   end)
-  self.pulse = animation(self.glow, "Alpha", function(anim)
-    anim:SetFromAlpha(0.25)
-    anim:SetToAlpha(1)
-  end)
+  tooltip(pill, ns.T("TIP_PILL"))
+  pill:Hide()
+  self.pill = pill
 
-  self.badge = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  self.badge:SetPoint("TOPRIGHT", 2, 4)
-  self.badge:SetText("...")
-  self.badge:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
-  self.badge:Hide()
+  self.dropHint = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  self.dropHint:SetPoint("TOP", frame, "BOTTOM", 0, -2)
+  self.dropHint:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+  self.dropHint:SetText(ns.T("DROP_HINT"))
+  self.dropHint:Hide()
 
   frame:SetScript("OnDragStart", function(button)
     if not self:Locked() then
@@ -233,23 +357,7 @@ function ns.Mascot:Create()
     self:Refresh()
   end)
   frame:SetScript("OnClick", function(button, mouseButton)
-    if ns.IsCombat() then
-      return
-    end
-    if takeCursorItem() then
-      return
-    end
-    if GameTooltip then
-      GameTooltip:Hide()
-    end
-    if mouseButton ~= "RightButton" and self.WantsChoice() then
-      local view = self.view
-      if db().collapsed or not view or view.kind ~= "choice" then
-        self:ShowChoice()
-        return
-      end
-    end
-    self:OpenMenu(button)
+    onAvatarClick(self, button, mouseButton)
   end)
   frame:SetScript("OnReceiveDrag", takeCursorItem)
   tooltip(frame, function()
@@ -262,96 +370,88 @@ function ns.Mascot:Create()
     return ns.MASCOT_NAME .. "\n" .. tip
   end)
 
-  local okBubble, bubble = pcall(CreateFrame, "Frame", "UnboredMascotBubble", frame, "BackdropTemplate")
+  -- Pick mode: Esc hides this frame (UISpecialFrames), which ends it.
+  local catcher = CreateFrame("Frame", "UnboredPickCatcher", UIParent)
+  catcher:Hide()
+  catcher:SetScript("OnHide", function()
+    if self.picking then
+      self:StopPick()
+    end
+  end)
+  self.catcher = catcher
+  if type(UISpecialFrames) == "table" then
+    table.insert(UISpecialFrames, "UnboredPickCatcher")
+  end
+end
+
+function ns.Mascot:CreateBubble()
+  local okBubble, bubble = pcall(CreateFrame, "Frame", "UnboredMascotBubble", UIParent, "BackdropTemplate")
   if not okBubble or not bubble then
-    bubble = CreateFrame("Frame", "UnboredMascotBubble", frame)
+    bubble = CreateFrame("Frame", "UnboredMascotBubble", UIParent)
   end
   bubble:SetWidth(BUBBLE_WIDTH)
+  bubble:SetFrameStrata("MEDIUM")
+  bubble:SetClampedToScreen(true)
+  bubble:SetScale(self.BubbleScale() / 100)
   bubble:EnableMouse(true)
   bubble:SetScript("OnReceiveDrag", takeCursorItem)
   bubble:SetScript("OnMouseUp", takeCursorItem)
   ns.UI.ApplyBackdrop(bubble, { 0.03, 0.08, 0.09, 0.92 }, { TEAL[1], TEAL[2], TEAL[3], 0.9 })
+  bubble:Hide()
   self.bubble = bubble
+  self.fade = fadeIn(bubble, 0.2, 0.25)
 
-  self.name = font(bubble, "GameFontNormalSmall")
-  self.name:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
-  self.count = bubble:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  self.count:SetJustifyH("RIGHT")
-  self.count:SetTextColor(0.7, 0.7, 0.7)
+  self.meta = font(bubble, "GameFontHighlightSmall")
+  self.tick = fadeIn(self.meta, 0.1, 0.4)
   self.header = font(bubble, "GameFontNormal")
   self.message = font(bubble, "GameFontHighlight")
   self.sub = font(bubble, "GameFontHighlightSmall")
   self.sub:SetTextColor(0.75, 0.82, 0.82)
-  self.meta = font(bubble, "GameFontNormalSmall")
+  self.where = font(bubble, "GameFontNormalSmall")
+  self.where:SetTextColor(1, 0.82, 0)
 
-  self.collapse = CreateFrame("Button", nil, bubble)
-  self.collapse:SetSize(14, 14)
-  self.collapse:SetPoint("TOPRIGHT", -6, -6)
-  self.collapse:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up")
-  self.collapse:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
-  self.collapse:SetScript("OnClick", function()
+  self.collapse = iconButton(bubble, "IconChevron", ns.T("TIP_COLLAPSE"), function()
     self:Collapse()
   end)
-  tooltip(self.collapse, ns.T("TIP_COLLAPSE"))
+  self.menuButton = iconButton(bubble, "IconMenu", ns.T("TIP_MENU"), function(button)
+    self:OpenMenu(button)
+  end)
 
-  self.buttons = {
-    done = iconButton(bubble, "Interface\\RaidFrame\\ReadyCheck-Ready", ns.T("TIP_DONE"), function()
-      ns.Session:Done()
-    end),
-    skip = iconButton(bubble, "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up", ns.T("TIP_SKIP"), function()
-      ns.Session:Skip()
-    end),
-    ok = iconButton(bubble, "Interface\\RaidFrame\\ReadyCheck-Ready", ns.T("GOT_IT"), function()
-      self:OnOk()
-    end),
-    load = ns.UI.MakeButton(bubble, ns.T("LOAD"), 96, 24),
-    send = ns.UI.MakeButton(bubble, ns.T("SEND"), 96, 24),
-    cancel = ns.UI.MakeLink(bubble, ns.T("CANCEL")),
-    back = ns.UI.MakeLink(bubble, ns.T("BACK")),
-    use = ns.UI.MakeButton(bubble, ns.T("OFFER_USE"), 96, 24),
-    keep = ns.UI.MakeLink(bubble, ns.T("OFFER_KEEP")),
-    ask = ns.UI.MakeButton(bubble, ns.T("ITEM_ASK"), 110, 24),
-    retry = ns.UI.MakeLink(bubble, ns.T("TRY_AGAIN")),
-    later = ns.UI.MakeLink(bubble, ns.T("LATER")),
+  local handlers = {
+    done = function() ns.Session:Done() end,
+    skip = function() ns.Session:Skip() end,
+    list = function() ns.Tracker:Toggle() end,
+    send = function()
+      if self.asking then
+        self:SendAsk()
+      else
+        self:SendWish()
+      end
+    end,
+    ask = function() self:AskItem() end,
+    back = function() self:Back() end,
+    ok = function() self:OnOk() end,
+    cancel = function() ns.Session:CancelRequest() end,
+    plan = function() ns.Session:AnswerPlan() end,
+    -- ReloadUI straight from the click: it needs the hardware event.
+    refresh = function() ns.Session.RefreshNow() end,
+    load = function() self.OnLoad() end,
+    later = function() self:OnLater() end,
+    retry = function() self:Retry() end,
+    use = function() ns.Session:AcceptOffer() end,
+    keep = function() ns.Session:DeclineOffer() end,
+    continue = function() ns.Session:ContinuePlan() end,
+    new = function()
+      ns.Session.welcomeBack = false
+      self:ShowChoice()
+    end,
   }
-  self.buttons.ask:SetScript("OnClick", function()
-    self:AskItem()
-  end)
-  tooltip(self.buttons.ask, ns.T("GET_PLAN_HINT"))
-  self.buttons.retry:SetScript("OnClick", function()
-    self:Retry()
-  end)
-  self.buttons.later:SetScript("OnClick", function()
-    self.updateLater = true
-    self:Refresh()
-  end)
-  self.buttons.use:SetScript("OnClick", function()
-    ns.Session:AcceptOffer()
-  end)
-  self.buttons.keep:SetScript("OnClick", function()
-    ns.Session:DeclineOffer()
-  end)
-  -- ReloadUI straight from the click: it needs the hardware event.
-  self.buttons.load:SetScript("OnClick", function()
-    self:OnLoad()
-  end)
-  tooltip(self.buttons.load, ns.T("TIP_LOAD"))
-  self.buttons.send:SetScript("OnClick", function()
-    if self.asking then
-      self:SendAsk()
-    else
-      self:SendWish()
-    end
-  end)
-  tooltip(self.buttons.send, ns.T("GET_PLAN_HINT"))
-  self.buttons.cancel:SetScript("OnClick", function()
-    ns.Session:CancelRequest()
-  end)
-  self.buttons.back:SetScript("OnClick", function()
-    self:Back()
-  end)
+  self.buttons = {}
+  for name, spec in pairs(ACTIONS) do
+    self.buttons[name] = actionButton(bubble, spec, handlers[name])
+  end
 
-  -- The choice: one chip per preset, then the time chips, then "Something else...".
+  -- The choice: one chip per preset, then "Something else...", then the time chips.
   self.chips = {}
   for i = 1, #ns.Data.Presets do
     local preset = ns.Data.Presets[i]
@@ -379,7 +479,6 @@ function ns.Mascot:Create()
     self.timeChips[i] = button
   end
 
-  -- "Something else...": the player's own words.
   self.wishBox, self.wishEdit = ns.UI.MakeTextBox(bubble, ns.T("WISH_HINT"), 300, function()
     self.wishError = nil
   end, INNER, 64)
@@ -387,9 +486,9 @@ function ns.Mascot:Create()
 
   self.echoFrames = {}
   for i = 1, ECHOES do
-    local okEcho, echo = pcall(CreateFrame, "Frame", nil, frame, "BackdropTemplate")
+    local okEcho, echo = pcall(CreateFrame, "Frame", nil, bubble, "BackdropTemplate")
     if not okEcho or not echo then
-      echo = CreateFrame("Frame", nil, frame)
+      echo = CreateFrame("Frame", nil, bubble)
     end
     ns.UI.ApplyBackdrop(echo, { 0.03, 0.08, 0.09, 0.85 }, { TEAL[1], TEAL[2], TEAL[3], 0.5 })
     echo.text = font(echo, "GameFontHighlightSmall")
@@ -399,11 +498,20 @@ function ns.Mascot:Create()
   end
 end
 
+function ns.Mascot:Create()
+  if self.frame then
+    return
+  end
+  self:CreatePortrait()
+  self:CreateBubble()
+end
+
 -- The bubble opens toward the middle of the screen, so it is never cut off.
 function ns.Mascot:OnRightHalf()
   local left = ns.AsNumber(ns.Call(self.frame.GetLeft, self.frame))
   local width = ns.AsNumber(ns.Call(UIParent.GetWidth, UIParent))
-  return left ~= nil and width ~= nil and width > 0 and left + SIZE / 2 > width / 2
+  local scale = self.Scale() / 100
+  return left ~= nil and width ~= nil and width > 0 and (left + SIZE / 2) * scale > width / 2
 end
 
 function ns.Mascot:SetMood(mood)
@@ -415,22 +523,13 @@ function ns.Mascot:SetMood(mood)
   end
   self.mood = mood
   self.art:SetTexture(ns.MEDIA .. PORTRAITS[mood])
-  if mood == "thinking" then
-    if self.bob then
-      self.bob:Play()
-    end
-    if self.pulse then
-      self.pulse:Play()
-    end
-    return
-  end
   if self.bob then
-    self.bob:Stop()
+    if mood == "thinking" then
+      self.bob:Play()
+    else
+      self.bob:Stop()
+    end
   end
-  if self.pulse then
-    self.pulse:Stop()
-  end
-  self.glow:SetAlpha(mood == "happy" and 0.95 or 0.6)
 end
 
 function ns.Mascot.RequestSummary(req)
@@ -481,26 +580,48 @@ function ns.Mascot.Budget()
   return ns.Data.PresetDefaultBudget
 end
 
-local function requestOut()
-  local note = ns.Session.requestNote
-  return note == "sending" or note == "preparing" or note == "ready" or note == "failed"
-end
-
 -- Nothing to do and nothing asked: a left click offers the presets.
 function ns.Mascot.WantsChoice()
-  return not requestOut() and ns.Session:Current() == nil
+  return ns.Session:Current() == nil and ns.Session.UnreadAnswer() == nil
 end
 
-local function stepView(session, task)
+-- "Nice!" after Done, "Ok, next:" after Skip, for a few seconds.
+function ns.Mascot:Lead(key)
+  self.lead = { text = ns.T(key), at = ns.Now() }
+end
+
+local function leadText(mascot)
+  local lead = mascot.lead
+  if lead and ns.Now() - (lead.at or 0) <= LEAD_SECONDS then
+    return lead.text
+  end
+  return nil
+end
+
+-- "1/5 · ~12 min"
+local function progressMeta(session)
   local progress = session:Progress()
+  if not progress or progress.steps == 0 or progress.remaining == 0 then
+    return nil
+  end
+  local text = ns.T("STEP_COUNT", progress.step, progress.steps)
+  if progress.minutesLeft and progress.minutesLeft > 0 then
+    text = text .. " · " .. ns.T("MINUTES", progress.minutesLeft)
+  end
+  return text
+end
+
+local function stepView(mascot, session, task)
   return {
     kind = "step",
+    key = task.id,
     mood = "idle",
+    meta = progressMeta(session),
+    header = leadText(mascot),
     message = task.title or "",
     sub = type(task.note) == "string" and task.note ~= "" and task.note or nil,
-    meta = ns.Tracker.CurrentMeta(task),
-    count = progress and ns.T("STEP_COUNT", progress.step, progress.steps) or nil,
-    buttons = { "done", "skip" },
+    where = ns.Tracker.CurrentMeta(task),
+    buttons = { "done", "skip", "list" },
   }
 end
 
@@ -511,8 +632,18 @@ local PROBLEMS = {
   offline = "COMPANION_OFFLINE",
 }
 
--- Why the Request is not back yet, in Wisp's words, and whether Try again
--- would help (it does not while the Companion itself is the problem).
+-- A Reason code from the Companion, in Wisp's words. The planner's own
+-- reason (fail_request) is written for the player, so it is shown as is.
+local REASONS = {
+  not_approved = "COMPANION_PAIRING",
+  companion_offline = "COMPANION_STOPPED",
+  server_unreachable = "COMPANION_OFFLINE",
+  rejected = "REASON_REJECTED",
+  timeout = "WAIT_SLOW",
+  planner_failed = "REASON_PLANNER_FAILED",
+}
+
+-- Why a Request that was sent is not back, and whether Try again helps.
 local function waitLine(session)
   local problem = session.CompanionProblem()
   if problem then
@@ -524,16 +655,16 @@ local function waitLine(session)
   return nil, false
 end
 
-local function choiceView(session, task, answer, busy)
+local function choiceView(session, task, answer)
   local progress = session:Progress()
   local finished = progress ~= nil and progress.steps > 0 and progress.remaining == 0
   local empty = progress ~= nil and progress.steps == 0 and session.state.quick
   local message, mood = ns.T("CHOICE_HELLO"), "idle"
   if finished then
     message, mood = ns.T("CHOICE_AGAIN"), "happy"
-  elseif empty and not busy then
+  elseif empty then
     message = ns.T("QUICK_EMPTY")
-  elseif task or answer or busy then
+  elseif task or answer then
     message = ns.T("CHOICE_NEW")
   end
   return {
@@ -542,69 +673,181 @@ local function choiceView(session, task, answer, busy)
     mood = mood,
     message = message,
     choice = true,
-    buttons = (task or answer or busy) and { "back" } or {},
+    buttons = (task or answer) and { "back" } or {},
   }
 end
 
--- The ask, nearby, and item views: things the player opened on purpose.
-local function askView(mascot, companion, busy)
+local function busy(session)
+  local note = session.requestNote
+  return note == "sending" or note == "preparing" or note == "ready"
+end
+
+-- The Refresh offer for this Request id, folded into the view it belongs to.
+local function offerFor(session, requestId, lang)
+  local req = session:PendingRequest()
+  if not requestId or not req or req.id ~= requestId then
+    return nil
+  end
+  local offer = session:RefreshOffer()
+  if offer then
+    local key = offer.kind == "ready" and "READY_OFFER" or "REFRESH_AFTER"
+    return ns.TL(lang or ns.LANG, key), { "refresh", "later" }
+  end
+  local line = waitLine(session)
+  if line then
+    return line, nil
+  end
+  if req.later then
+    return ns.TL(lang or ns.LANG, "LATER_OK"), nil
+  end
+  return nil, nil
+end
+
+local function itemView(mascot, session, companion)
+  local item = mascot.item
+  if not item then
+    return { kind = "item", mood = "idle", message = ns.T("ITEM_TITLE"), buttons = { "back" } }
+  end
+  local facts = mascot.itemFacts or {}
+  local view = {
+    kind = "item",
+    key = item.itemID,
+    mood = "idle",
+    header = item.link or item.name or ns.T("ITEM_UNKNOWN"),
+    message = #facts > 0 and table.concat(facts, "\n\n") or nil,
+    buttons = { "back" },
+  }
+  local line, actions = offerFor(session, mascot.itemAsked)
+  if mascot.itemAsked then
+    view.message = view.message or ns.T("ITEM_NOTHING")
+    view.sub = line
+    view.buttons = actions and { actions[1], actions[2], "back" } or { "back" }
+    return view
+  end
+  if not companion then
+    view.message = view.message or ns.T("ITEM_NOTHING_LOCAL")
+    view.sub = ns.T("NEED_COMPANION")
+    return view
+  end
+  view.sub = busy(session) and ns.T("BUSY_REPLACES") or nil
+  view.buttons = { "ask", "back" }
+  return view
+end
+
+local function askView(mascot, session, companion)
   local mode = mascot.asking
   if mode == "item" then
-    local item = mascot.item
-    if not item then
-      return { kind = "item", mood = "idle", message = ns.T("ITEM_TITLE"), buttons = { "back" } }
-    end
-    local facts = ns.Items.Facts(item.itemID, item.link, true)
-    local message = #facts > 0 and table.concat(facts, "\n\n")
-      or (companion and ns.T("ITEM_NOTHING") or ns.T("ITEM_NOTHING_LOCAL"))
-    local sub
-    if not companion then
-      sub = ns.T("NEED_COMPANION")
-    elseif busy then
-      sub = ns.T("BUSY_REPLACES")
-    end
-    return {
-      kind = "item",
-      key = item.itemID,
-      mood = "idle",
-      header = item.link or item.name or ns.T("ITEM_UNKNOWN"),
-      message = message,
-      sub = sub,
-      buttons = companion and { "ask", "back" } or { "back" },
-    }
+    return itemView(mascot, session, companion)
   end
   local nearby = mode == "nearby"
-  if not companion and not nearby then
-    return {
-      kind = mode,
-      mood = "idle",
-      message = ns.T("ASK_TITLE"),
-      sub = ns.T("NEED_COMPANION"),
-      buttons = { "back" },
-    }
-  end
   return {
     kind = mode,
     mood = "idle",
     message = nearby and ns.T("NEARBY_TITLE") or ns.T("ASK_TITLE"),
-    sub = mascot.wishError or (busy and companion and ns.T("BUSY_REPLACES")) or nil,
+    sub = mascot.wishError or (busy(session) and companion and ns.T("BUSY_REPLACES")) or nil,
     wish = true,
     hint = nearby and ns.T("NEARBY_HINT") or ns.T("ASK_HINT"),
     buttons = { "send", "back" },
   }
 end
 
--- What the bubble says now. One message, in this order: what the player
--- just opened (wish, question, item, the presets), a failed Request, a
--- Request that is out (a Quick plan keeps showing its step meanwhile), a
--- Full plan on offer, an addon update, an unread Answer, the presets when
--- there is nothing to do, the current step.
+local function answerView(session, answer)
+  local messages = type(answer.messages) == "table" and #answer.messages > 0 and answer.messages
+    or ns.Intents.Split(answer.message)
+  local before = {}
+  for i = 1, #messages - 1 do
+    before[i] = messages[i]
+  end
+  local header = answer.itemLink
+  if not header and type(answer.question) == "string" and answer.question ~= "" then
+    header = "\"" .. answer.question .. "\""
+  end
+  local line, actions = offerFor(session, answer.requestId, answer.lang)
+  local buttons = {}
+  if type(answer.tasks) == "table" and #answer.tasks > 0 then
+    buttons[#buttons + 1] = "plan"
+  end
+  if actions then
+    buttons[#buttons + 1] = actions[1]
+    buttons[#buttons + 1] = actions[2]
+  else
+    buttons[#buttons + 1] = "ok"
+  end
+  return {
+    kind = "answer",
+    key = (answer.isLocal and "local:" or "") .. tostring(answer.requestId or answer.at),
+    mood = "happy",
+    header = header,
+    message = messages[#messages],
+    before = before,
+    sub = line,
+    buttons = buttons,
+  }
+end
+
+-- A Request is out: over a Quick plan the step stays doable and the line
+-- goes on top; with no step it gets its own bubble until the player says ok.
+local function pendingView(mascot, session, task)
+  local req = session:PendingRequest()
+  if not req then
+    return nil
+  end
+  local offer = session:RefreshOffer()
+  local line, slow = waitLine(session)
+  local planning = req.type ~= "question" and req.type ~= "item"
+  if planning and task and session.state.quick then
+    local view = stepView(mascot, session, task)
+    if offer then
+      view.header = ns.T(offer.kind == "ready" and "READY_OFFER" or "REFRESH_AFTER_PLAN")
+      view.buttons = { "done", "skip", "list", "refresh", "later" }
+    else
+      view.header = line or view.header or ns.T("QUICK_COOKING")
+      if slow then
+        view.buttons = { "done", "skip", "list", "retry" }
+      end
+    end
+    view.slow = slow
+    return view
+  end
+  if offer and offer.kind == "ready" then
+    return {
+      kind = "ready",
+      key = req.id,
+      mood = "happy",
+      message = ns.T("READY_OFFER"),
+      buttons = { "refresh", "later" },
+    }
+  end
+  if (mascot.waitSeen or {})[req.id] then
+    return nil
+  end
+  local empty = planning and session.state and session.state.quick and not task
+  local buttons = { "ok", "cancel" }
+  if offer then
+    buttons = { "refresh", "later", "cancel" }
+  elseif slow then
+    buttons = { "retry", "cancel" }
+  end
+  return {
+    kind = "waiting",
+    key = req.id,
+    mood = line and "idle" or "thinking",
+    header = ns.Mascot.RequestSummary(req),
+    message = empty and ns.T("QUICK_EMPTY") or (planning and ns.T("COOKING") or ns.T("THINKING")),
+    sub = offer and ns.TL(req.lang or ns.LANG, "REFRESH_AFTER") or line or ns.T("WAITING_QUIET"),
+    buttons = buttons,
+    slow = slow,
+  }
+end
+
+-- What the bubble says now. In order: what the player just opened (wish,
+-- question, item, the presets), a failed Request, an unread Answer, the
+-- welcome back, a Full plan on offer, an addon update, a Request that is
+-- out, the presets when there is nothing to do, the current step.
 function ns.Mascot.View()
   local mascot = ns.Mascot
   local session = ns.Session
   local companion = ns.UI.HasCompanion()
-  local note = session.requestNote
-  local busy = note == "sending" or note == "preparing" or note == "ready"
   local task = session:Current()
   local answer = session.UnreadAnswer()
   if mascot.wishing then
@@ -619,40 +862,32 @@ function ns.Mascot.View()
     }
   end
   if mascot.asking then
-    return askView(mascot, companion, busy)
+    return askView(mascot, session, companion)
   end
   if mascot.forceChoice then
-    return choiceView(session, task, answer, busy)
+    return choiceView(session, task, answer)
   end
-  if note == "failed" then
+  if session.requestNote == "failed" then
+    local code = session.requestReasonCode
     local reason = session.requestReason
+    local planner = code == "planner_failed" and type(reason) == "string" and reason ~= ""
     return {
       kind = "failed",
       mood = "idle",
       message = ns.T("SORRY"),
-      sub = type(reason) == "string" and reason ~= "" and reason or ns.T("REQUEST_FAILED_GENERIC"),
+      sub = planner and reason or ns.T(REASONS[code] or "REQUEST_FAILED_GENERIC"),
       buttons = { "retry", "ok" },
     }
   end
-  if busy then
-    local req = session:PendingRequest() or {}
-    local line, slow = waitLine(session)
-    local planning = req.type ~= "question" and req.type ~= "item"
-    if planning and task and session.state.quick then
-      local view = stepView(session, task)
-      view.header = line or ns.T("QUICK_COOKING")
-      view.buttons = slow and { "done", "skip", "load", "retry" } or { "done", "skip", "load" }
-      view.slow = slow
-      return view
-    end
+  if answer then
+    return answerView(session, answer)
+  end
+  if session.welcomeBack and task then
     return {
-      kind = "waiting",
-      mood = line and "idle" or "thinking",
-      header = ns.Mascot.RequestSummary(req),
-      message = planning and ns.T("COOKING") or ns.T("THINKING"),
-      sub = line or ns.T("THINKING_HINT"),
-      buttons = slow and { "load", "retry", "cancel" } or { "load", "cancel" },
-      slow = slow,
+      kind = "welcome",
+      mood = "happy",
+      message = ns.T("CONTINUE_PLAN", session:PlanName()),
+      buttons = { "continue", "new" },
     }
   end
   local offer = session.Offer()
@@ -680,24 +915,14 @@ function ns.Mascot.View()
       buttons = { "load", "later" },
     }
   end
-  if answer then
-    local header = answer.itemLink
-    if not header and type(answer.question) == "string" and answer.question ~= "" then
-      header = "\"" .. answer.question .. "\""
-    end
-    return {
-      kind = "answer",
-      key = answer.requestId,
-      mood = "happy",
-      header = header,
-      message = answer.message,
-      buttons = { "ok" },
-    }
+  local pending = pendingView(mascot, session, task)
+  if pending then
+    return pending
   end
   if not task then
-    return choiceView(session, nil, nil, false)
+    return choiceView(session, nil, nil)
   end
-  return stepView(session, task)
+  return stepView(mascot, session, task)
 end
 
 function ns.Mascot:OnOk()
@@ -709,7 +934,20 @@ function ns.Mascot:OnOk()
   elseif view.kind == "update" then
     self.updateLater = true
     self:Refresh()
+  elseif view.kind == "waiting" then
+    self.waitSeen = self.waitSeen or {}
+    self.waitSeen[view.key or ""] = true
+    self:Refresh()
   end
+end
+
+function ns.Mascot:OnLater()
+  if self.view and self.view.kind == "update" then
+    self.updateLater = true
+    self:Refresh()
+    return
+  end
+  ns.Session:Later()
 end
 
 -- Load: ReloadUI in the same click. With an update waiting, it remembers
@@ -720,14 +958,12 @@ function ns.Mascot.OnLoad()
   if update and type(UnboredCharDB) == "table" then
     UnboredCharDB.updateTried = update
   end
-  ns.Session.LoadPlan()
+  ns.Session.RefreshNow()
 end
 
 function ns.Mascot:Retry()
   self:Reset()
-  if ns.Session:Retry() then
-    ns.Session.LoadPlan()
-  end
+  ns.Session:Retry()
 end
 
 function ns.Mascot:Reset()
@@ -736,10 +972,19 @@ function ns.Mascot:Reset()
   self.wishError = nil
   self.asking = nil
   self.item = nil
+  self.itemFacts = nil
+  self.itemAsked = nil
+  if self.picking then
+    self.picking = false
+    if self.catcher then
+      self.catcher:Hide()
+    end
+  end
 end
 
 function ns.Mascot:ShowChoice()
   self:Reset()
+  ns.Session.welcomeBack = false
   self.forceChoice = true
   self:Reveal()
 end
@@ -747,7 +992,7 @@ end
 -- A question ("ask"), what to do nearby ("nearby"), or an item ("item").
 function ns.Mascot:ShowAsk(mode, text)
   if mode == "item" then
-    self:ShowItem(nil)
+    self:StartPick()
     return
   end
   self:Reset()
@@ -761,10 +1006,58 @@ function ns.Mascot:ShowAsk(mode, text)
   end
 end
 
-function ns.Mascot:ShowItem(item)
+-- What is this item?: the next item picked up is read and put back.
+function ns.Mascot:StartPick()
   self:Reset()
   self.asking = "item"
+  self.picking = true
+  if self.catcher then
+    self.catcher:Show()
+  end
+  self:Reveal()
+end
+
+function ns.Mascot:StopPick()
+  self.picking = false
+  if self.catcher and self.catcher:IsShown() then
+    self.catcher:Hide()
+  end
+  if self.asking == "item" and not self.item then
+    self.asking = nil
+  end
+  self:Refresh()
+end
+
+-- The cursor picked up or dropped something.
+function ns.Mascot:OnCursorChanged()
+  local holds = cursorHoldsItem()
+  if holds and self.picking then
+    local item = ns.Items.FromCursor()
+    if item then
+      self:ShowItem(item)
+    end
+    return
+  end
+  local teach = (tonumber(ns.DB and ns.DB.dropsTaught) or 0) < DROP_TEACH
+  if self.dropHint then
+    self.dropHint:SetShown(holds and teach and self.frame:IsShown() and not ns.IsCombat())
+  end
+end
+
+-- An unknown item goes straight to the Planner (docs/adr/0015).
+function ns.Mascot:ShowItem(item)
+  self:Reset()
+  if self.dropHint then
+    self.dropHint:Hide()
+  end
+  self.asking = "item"
   self.item = item
+  if item then
+    self.itemFacts = ns.Items.Facts(item.itemID, item.link, item)
+    if #self.itemFacts == 0 and ns.UI.HasCompanion() and not busy(ns.Session) then
+      self.itemAsked = ns.Session:Ask({ type = "item", item = item })
+    end
+  end
   self:Reveal()
 end
 
@@ -773,20 +1066,13 @@ function ns.Mascot:AskItem()
   if not item then
     return
   end
-  self:Reset()
-  if ns.Session:Ask({ type = "item", item = item }) then
-    ns.Session.LoadPlan()
-  end
+  self.itemAsked = ns.Session:Ask({ type = "item", item = item })
+  self:Refresh()
 end
 
 function ns.Mascot:SendAsk()
   local nearby = self.asking == "nearby"
   local text = ns.Trim(self.wishEdit and self.wishEdit:GetText() or "")
-  if nearby and not ns.UI.HasCompanion() then
-    self:Reset()
-    ns.Session:BuildHere("roam", self.Budget())
-    return
-  end
   if text == "" and not nearby then
     self.wishError = ns.T("ASK_EMPTY")
     self:Refresh()
@@ -796,14 +1082,9 @@ function ns.Mascot:SendAsk()
   if self.wishEdit.ClearFocus then
     self.wishEdit:ClearFocus()
   end
-  local ask = { type = "question", question = text ~= "" and text or ns.T("NEARBY_QUESTION") }
-  if nearby then
-    ask.topic = "nearby"
-  end
-  if ns.Session:Ask(ask) then
-    self.wishEdit:SetText("")
-    ns.Session.LoadPlan()
-  end
+  self.wishEdit:SetText("")
+  ns.Session:AskQuestion(text ~= "" and text or ns.T("NEARBY_QUESTION"), nearby and "nearby" or nil)
+  self:Reveal()
 end
 
 function ns.Mascot:ShowWish()
@@ -821,30 +1102,30 @@ end
 
 function ns.Mascot:Back()
   if self.wishing or self.asking then
-    self.wishing = false
-    self.asking = nil
-    self.item = nil
-    self.wishError = nil
+    self:Reset()
   else
     self.forceChoice = false
   end
   self:Refresh()
 end
 
--- Called by the ticker: a Request that just got slow gets Try again.
+-- Called by the ticker: a Refresh offer that just came due, or a lead line
+-- that ran out, redraws the bubble.
 function ns.Mascot:CheckSlow()
   local view = self.view
   if not self.frame or not view or ns.IsCombat() then
     return
   end
-  if (view.kind == "waiting" or view.kind == "step") and (view.slow or false) ~= ns.Session:IsSlow() then
+  local due = ns.Session:RefreshOffer()
+  local dueKind = due and due.kind or nil
+  local lead = leadText(self) ~= nil
+  if dueKind ~= self.offerKind or lead ~= (self.leadShown or false) then
     self:Refresh()
   end
 end
 
--- One click: a Quick plan right away, and with the companion the Request is
--- saved and the UI reloads in the same click (ReloadUI needs the hardware
--- event). The Full plan is offered after Load (docs/adr/0005).
+-- One click: a Quick plan right away and, with the Companion, the Request
+-- for the Full plan. Nothing reloads (docs/adr/0005, 0012).
 function ns.Mascot:Choose(preset)
   local budget = self.Budget()
   self:Reset()
@@ -852,9 +1133,7 @@ function ns.Mascot:Choose(preset)
   if not ns.UI.HasCompanion() then
     return
   end
-  if ns.Session:Ask({ type = "plan", mode = preset.mode, budget = budget, topic = preset.id, wish = preset.wish }) then
-    ns.Session.LoadPlan()
-  end
+  ns.Session:Ask({ type = "plan", mode = preset.mode, budget = budget, topic = preset.id, wish = preset.wish })
 end
 
 function ns.Mascot:SendWish()
@@ -865,17 +1144,14 @@ function ns.Mascot:SendWish()
     return
   end
   local budget = self.Budget()
+  local mode = ns.Session.ChosenMode()
   self:Reset()
   if self.wishEdit.ClearFocus then
     self.wishEdit:ClearFocus()
   end
-  if not ns.UI.HasCompanion() then
-    ns.Session:BuildHere(ns.Session.ChosenMode(), budget)
-    return
-  end
-  if ns.Session:Ask({ type = "plan", wish = text, budget = budget }) then
+  ns.Session:QuickPlan({ id = nil, mode = mode }, budget)
+  if ns.UI.HasCompanion() and ns.Session:Ask({ type = "plan", wish = text, budget = budget }) then
     self.wishEdit:SetText("")
-    ns.Session.LoadPlan()
   end
 end
 
@@ -895,8 +1171,8 @@ function ns.Mascot.ShowRoute()
   end
 end
 
-function ns.Mascot.Scale()
-  local scale = tonumber(db().scale)
+local function scaleSetting(key)
+  local scale = tonumber(db()[key])
   for i = 1, #SCALES do
     if SCALES[i] == scale then
       return scale
@@ -905,11 +1181,52 @@ function ns.Mascot.Scale()
   return 100
 end
 
+function ns.Mascot.Scale()
+  return scaleSetting("scale")
+end
+
+function ns.Mascot.BubbleScale()
+  return scaleSetting("bubbleScale")
+end
+
 function ns.Mascot:SetScale(percent)
   db().scale = percent
   if self.frame then
     self.frame:SetScale(self.Scale() / 100)
+    self:Refresh()
   end
+end
+
+function ns.Mascot:SetBubbleScale(percent)
+  db().bubbleScale = percent
+  if self.bubble then
+    self.bubble:SetScale(self.BubbleScale() / 100)
+    self:Refresh()
+  end
+end
+
+local function hideAll(mascot)
+  mascot.bubble:Hide()
+  mascot.pill:Hide()
+  for i = 1, #mascot.echoFrames do
+    mascot.echoFrames[i]:Hide()
+  end
+end
+
+-- Everything the bubble may show starts hidden; Layout shows what the view uses.
+local function clearBubble(mascot)
+  for _, button in pairs(mascot.buttons) do
+    button:Hide()
+  end
+  for i = 1, #mascot.chips do
+    mascot.chips[i]:Hide()
+  end
+  for i = 1, #mascot.timeChips do
+    mascot.timeChips[i]:Hide()
+  end
+  mascot.otherChip:Hide()
+  mascot.timeLabel:Hide()
+  mascot.wishBox:Hide()
 end
 
 function ns.Mascot:Refresh()
@@ -920,66 +1237,92 @@ function ns.Mascot:Refresh()
   local saved = db()
   if saved.hidden then
     frame:Hide()
+    hideAll(self)
     return
   end
   frame:Show()
   if ns.IsCombat() then
     -- Out of the way in a fight; the portrait stays, faded, and ignores clicks.
     frame:SetAlpha(COMBAT_ALPHA)
-    self.bubble:Hide()
-    self.badge:Hide()
-    for i = 1, #self.echoFrames do
-      self.echoFrames[i]:Hide()
-    end
+    hideAll(self)
+    self.dropHint:Hide()
     return
   end
   frame:SetAlpha(1)
   local view = self.View()
   local key = view.kind .. ":" .. tostring(view.key or "")
   local old = self.view
-  if key ~= self.lastKey and old and old.message
+  local changed = key ~= self.lastKey
+  if changed and old and old.message
     and (old.kind == "answer" or old.kind == "offer" or old.kind == "failed") then
-    self:Echo(old.message)
+    self:Echo(old.message, old.kind == "answer")
   end
-  if key ~= self.lastKey and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice"
-    or view.kind == "offer" or view.kind == "update") then
+  if changed and type(view.before) == "table" then
+    for i = 1, #view.before do
+      self:Echo(view.before[i], true)
+    end
+  end
+  if changed and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice" or view.kind == "offer"
+    or view.kind == "update" or view.kind == "welcome" or view.kind == "ready") then
     saved.collapsed = false
   end
+  local stepped = changed and view.kind == "step" and old and old.kind == "step"
   self.lastKey = key
   self.view = view
+  local due = ns.Session:RefreshOffer()
+  self.offerKind = due and due.kind or nil
+  self.leadShown = leadText(self) ~= nil
   self:SetMood(view.mood)
-  for _, button in pairs(self.buttons) do
-    button:Hide()
-  end
-  for i = 1, #self.chips do
-    self.chips[i]:Hide()
-  end
-  for i = 1, #self.timeChips do
-    self.timeChips[i]:Hide()
-  end
-  self.otherChip:Hide()
-  self.timeLabel:Hide()
-  self.wishBox:Hide()
+  clearBubble(self)
   self:ExpireEchoes(true)
   for i = 1, #self.echoFrames do
     self.echoFrames[i]:Hide()
   end
+  local right = self:OnRightHalf()
   if saved.collapsed then
     self.bubble:Hide()
-    self.badge:SetShown(view.kind ~= "choice")
+    self.pill:ClearAllPoints()
+    if right then
+      self.pill:SetPoint("RIGHT", frame, "LEFT", -4, 0)
+    else
+      self.pill:SetPoint("LEFT", frame, "RIGHT", 4, 0)
+    end
+    self.pill:Show()
     return
   end
-  self.badge:Hide()
-  self.bubble:Show()
+  self.pill:Hide()
+  self:Layout(view, right)
+  if stepped then
+    if self.fade then
+      self.fade:Stop()
+      self.fade:Play()
+    end
+    if self.tick then
+      self.tick:Stop()
+      self.tick:Play()
+    end
+  end
+end
 
+function ns.Mascot:Layout(view, right)
   local bubble = self.bubble
+  local frame = self.frame
   bubble:ClearAllPoints()
-  if self:OnRightHalf() then
+  if right then
     bubble:SetPoint("TOPRIGHT", frame, "TOPLEFT", -8, 0)
   else
     bubble:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, 0)
   end
-  local y = -PAD
+  bubble:Show()
+  if self.collapse.icon.SetTexCoord then
+    if right then
+      self.collapse.icon:SetTexCoord(1, 0, 0, 1)
+    else
+      self.collapse.icon:SetTexCoord(0, 1, 0, 1)
+    end
+  end
+
+  local y = -PAD + 2
   local function put(fs, value, gap, width)
     if not value or value == "" then
       fs:SetText("")
@@ -994,16 +1337,21 @@ function ns.Mascot:Refresh()
     y = y - height - (gap or 4)
   end
 
-  self.count:SetText(view.count or "")
-  self.count:ClearAllPoints()
-  self.count:SetPoint("TOPRIGHT", bubble, "TOPRIGHT", -26, -PAD)
-  self.count:SetShown(view.count ~= nil)
-  put(self.name, ns.MASCOT_NAME, 4, INNER - 60)
+  -- Top row: the small muted meta on the left, menu and collapse on the right.
+  self.collapse:ClearAllPoints()
+  self.collapse:SetPoint("TOPRIGHT", bubble, "TOPRIGHT", -4, -4)
+  self.menuButton:ClearAllPoints()
+  self.menuButton:SetPoint("RIGHT", self.collapse, "LEFT", -2, 0)
+  if view.meta then
+    self.meta:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  else
+    self.meta:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+  end
+  put(self.meta, view.meta or ns.MASCOT_NAME, 6, INNER - (TOP_ICON + 4) * 2 - 4)
   put(self.header, view.header, 4)
   put(self.message, view.message, 6)
   put(self.sub, view.sub, 4)
-  self.meta:SetTextColor(1, 0.82, 0)
-  put(self.meta, view.meta, 4)
+  put(self.where, view.where, 4)
 
   local function place(region, x, height)
     region:ClearAllPoints()
@@ -1046,34 +1394,45 @@ function ns.Mascot:Refresh()
     self.wishBox.UpdatePlaceholder()
   end
 
-  y = y - 2
-  local x = PAD
-  local rowHeight = 0
-  for i = 1, #view.buttons do
-    local button = self.buttons[view.buttons[i]]
-    button:ClearAllPoints()
-    button:SetPoint("TOPLEFT", bubble, "TOPLEFT", x, y)
-    button:Show()
-    x = x + (ns.AsNumber(button:GetWidth()) or ICON) + 8
-    rowHeight = math.max(rowHeight, ns.AsNumber(button:GetHeight()) or ICON)
+  -- One action bar; a row that would not fit wraps.
+  local buttons = view.buttons or {}
+  if #buttons > 0 then
+    y = y - 2
+    local x = PAD
+    for i = 1, #buttons do
+      local button = self.buttons[buttons[i]]
+      local width = ns.AsNumber(button:GetWidth()) or ACTION
+      if x > PAD and x + width > PAD + INNER then
+        x = PAD
+        y = y - ACTION - 4
+      end
+      button:ClearAllPoints()
+      button:SetPoint("TOPLEFT", bubble, "TOPLEFT", x, y)
+      button:Show()
+      x = x + width + 6
+    end
+    y = y - ACTION
   end
-  y = y - rowHeight - PAD + 2
-  bubble:SetHeight(math.ceil(-y))
-  self:LayoutEchoes()
+  bubble:SetHeight(math.ceil(-y + PAD))
+  self:LayoutEchoes(right)
 end
 
--- An older message: one short line, kept for a little while above the bubble.
-function ns.Mascot:Echo(text)
+-- An older message, kept for a little while above the bubble. Done/Skip
+-- lines are one short line; parts of an Answer are kept whole.
+function ns.Mascot:Echo(text, full)
   if type(text) ~= "string" then
     return
   end
-  text = ns.Trim(text:match("^[^\n]*") or "")
-  if text == "" then
-    return
+  local short = ns.Trim(text)
+  if not full then
+    short = ns.Trim(text:match("^[^\n]*") or "")
+    local cut = ns.Utf8Truncate(short, ECHO_BYTES)
+    if cut ~= short then
+      short = cut .. "..."
+    end
   end
-  local short = ns.Utf8Truncate(text, ECHO_BYTES)
-  if short ~= text then
-    short = short .. "..."
+  if short == "" then
+    return
   end
   self.echoes = self.echoes or {}
   local last = self.echoes[#self.echoes]
@@ -1105,9 +1464,8 @@ function ns.Mascot:ExpireEchoes(quiet)
   return dropped
 end
 
-function ns.Mascot:LayoutEchoes()
+function ns.Mascot:LayoutEchoes(right)
   local list = self.echoes or {}
-  local right = self:OnRightHalf()
   local below = self.bubble
   for n = 1, math.min(#list, ECHOES) do
     local entry = list[#list - n + 1]
@@ -1135,8 +1493,7 @@ function ns.Mascot:UpdateDistance()
   if not self.bubble or not self.bubble:IsShown() or not view or view.kind ~= "step" or not task then
     return
   end
-  local text = ns.Tracker.CurrentMeta(task)
-  if text ~= self.meta:GetText() then
+  if ns.Tracker.CurrentMeta(task) ~= view.where then
     self:Refresh()
   end
 end
@@ -1153,31 +1510,51 @@ function ns.Mascot:Collapse()
   self:Refresh()
 end
 
-function ns.Mascot:Hide()
+function ns.Mascot:Hide(quiet)
   db().hidden = true
   if self.frame then
     self.frame:Hide()
+    hideAll(self)
   end
-  ns.Print(ns.T("HIDDEN_CHAT", ns.MASCOT_NAME))
+  if not quiet then
+    ns.Print(ns.T("HIDDEN_CHAT", ns.MASCOT_NAME))
+  end
 end
 
 function ns.Mascot.IsHidden()
   return db().hidden == true
 end
 
--- Settings stay basic: size, lock, hide, keybinds. The rest is under More.
-function ns.Mascot:SettingsTree()
-  local sizes = {}
+-- The minimap button's left click: Wisp in or out of view.
+function ns.Mascot:ToggleShown()
+  if self.IsHidden() or db().collapsed then
+    self:Reveal()
+  else
+    self:Hide(true)
+  end
+end
+
+local function sizeItems(current, set)
+  local out = {}
   for i = 1, #SCALES do
     local percent = SCALES[i]
-    sizes[i] = {
+    out[i] = {
       text = ns.T("SCALE_PCT", percent),
-      checked = function() return self.Scale() == percent end,
-      func = function() self:SetScale(percent) end,
+      checked = function() return current() == percent end,
+      func = function() set(percent) end,
     }
   end
+  return out
+end
+
+-- Settings stay basic: sizes, lock, hide, keybinds. The rest is under More.
+function ns.Mascot:SettingsTree()
   return {
-    { text = ns.T("MENU_SCALE"), children = sizes },
+    { text = ns.T("MENU_WISP_SIZE"), children = sizeItems(self.Scale, function(p) self:SetScale(p) end) },
+    {
+      text = ns.T("MENU_BUBBLE_SIZE"),
+      children = sizeItems(self.BubbleScale, function(p) self:SetBubbleScale(p) end),
+    },
     {
       text = ns.T("MENU_LOCK_MASCOT"),
       checked = function() return self:Locked() end,
@@ -1243,8 +1620,11 @@ function ns.Mascot:MenuTree()
     items[#items + 1] = { text = ns.T("MENU_ROUTE"), func = function() self.ShowRoute() end }
   end
   items[#items + 1] = { text = ns.T("NEW_PLAN"), func = function() self:ShowChoice() end }
-  items[#items + 1] = { text = ns.T("MENU_ITEM"), func = function() self:ShowItem(nil) end }
+  items[#items + 1] = { text = ns.T("MENU_ITEM"), func = function() self:StartPick() end }
   items[#items + 1] = { text = ns.T("MENU_ASK"), func = function() self:ShowAsk("ask") end }
+  if ns.Session:PendingRequest() then
+    items[#items + 1] = { text = ns.T("MENU_REFRESH"), func = function() ns.Session.RefreshNow() end }
+  end
   items[#items + 1] = { text = ns.T("MENU_SETTINGS"), children = self:SettingsTree() }
   return items
 end
@@ -1282,6 +1662,7 @@ function ns.Mascot:OpenMenu(anchor)
   ns.UI.ShowMenu(anchor, items)
 end
 
+-- The toggle key and /unbored: the presets, or the bubble back.
 function ns.Mascot:Toggle()
   if self.IsHidden() or db().collapsed then
     self:Reveal()

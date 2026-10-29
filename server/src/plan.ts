@@ -402,6 +402,10 @@ export type PlanRequestInput = {
   item: RequestItem | null;
   createdAt: number | null;
   context: PlayerContext | null;
+  /** The language of the question ("en", "ru"); the Answer uses it. */
+  lang: string | null;
+  /** The WoW account folder the character belongs to (docs/adr/0021). */
+  account: string | null;
 };
 
 export type Answer = {
@@ -605,13 +609,15 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
   }
   let mode = "";
   let budget = 0;
-  if (type === "plan" || body.mode !== undefined) {
+  // Item and question Requests carry no mode; older Companions sent "" and 60.
+  const hasMode = type === "plan" || (body.mode !== undefined && body.mode !== null && body.mode !== "");
+  if (hasMode) {
     if (typeof body.mode !== "string" || !REQUEST_MODES.has(body.mode)) {
       throw new PlanError("mode must be roam, quests, events, fun, or farm.");
     }
     mode = body.mode;
   }
-  if (type === "plan" || body.budget !== undefined) {
+  if (type === "plan" || (body.budget !== undefined && body.budget !== null)) {
     const minutes = integer(body.budget, 5, 240);
     if (minutes === undefined) {
       throw new PlanError("budget must be a whole number of minutes from 5 to 240.");
@@ -632,7 +638,10 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
     }
   }
   const context = cleanContext(body.context);
-  return { id, type, character, realm, mode, budget, wish, question, topic, item, createdAt, context };
+  const lang = optionalText(body.lang, "lang", 8);
+  if (lang && !/^[a-z]{2}$/.test(lang)) throw new PlanError("lang must be a two-letter language code.");
+  const account = optionalText(body.account, "account", 80);
+  return { id, type, character, realm, mode, budget, wish, question, topic, item, createdAt, context, lang, account };
 }
 
 export function cleanProgress(raw: unknown): ProgressPost {

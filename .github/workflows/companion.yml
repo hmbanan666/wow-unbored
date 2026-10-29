@@ -6,6 +6,7 @@ on:
       - "companion/**"
       - ".github/workflows/companion.yml"
       - "docs/companion-api.md"
+      - "docs/contract/**"
   push:
     tags:
       - "companion-v*"
@@ -77,7 +78,7 @@ jobs:
           # The action does not read github.ref. Without tagName it builds and skips the upload.
           tagName: ${{ github.ref_name }}
           releaseName: "Unbored Companion v__VERSION__"
-          releaseBody: "Windows installer is unsigned. SmartScreen will warn; More info, then Run anyway. Installed companions update themselves from here. See companion/README.md."
+          releaseBody: "Download the file ending in -setup.exe. Full notes follow in a minute."
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: ${{ steps.sign.outputs.updater == 'true' }}
@@ -107,3 +108,23 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx --no-install tauri build ${{ steps.sign.outputs.args }}
+
+  # The release says only what changed, after a short Install section
+  # (docs/adr/0022). Runs after the installer is uploaded.
+  notes:
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/companion-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Release notes for this version only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          pipx install git-cliff==2.14.2
+          .github/scripts/release-notes.sh companion "$TAG" > notes.md
+          cat notes.md
+          gh release edit "$TAG" --notes-file notes.md

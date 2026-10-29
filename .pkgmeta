@@ -16,6 +16,7 @@ ignore:
   - AGENTS.md
   - CONTEXT.md
   - TESTING.md
+  - cliff.toml
 
 license-output: LICENSE.txt
 

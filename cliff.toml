@@ -1,0 +1,52 @@
+# Release notes for one release only (docs/adr/0022). CI runs, for example:
+#   git cliff --latest --tag-pattern '^v[0-9]' --strip all
+# NOTES_SCOPE picks the release: "addon" leaves out companion and server
+# lines, "companion" keeps only companion lines.
+# Squash merges keep each commit as one "* type(scope): ..." line in the
+# body, so split_commits turns every line into its own entry. The
+# "chore(release)" title line is dropped in the template: a skip parser
+# would drop the whole squash commit before it is split.
+
+[changelog]
+header = ""
+body = """
+{% set only = get_env(name="NOTES_SCOPE", default="") -%}
+{% for group, commits in commits | group_by(attribute="group") -%}
+{% set_global shown = [] -%}
+{% for commit in commits -%}
+{% if commit.scope == "release" %}{% continue %}{% endif -%}
+{% if only == "companion" and commit.scope != "companion" %}{% continue %}{% endif -%}
+{% if only == "addon" and commit.scope in ["companion", "server"] %}{% continue %}{% endif -%}
+{% set_global shown = shown | concat(with=commit) -%}
+{% endfor -%}
+{% if shown | length > 0 %}
+### {{ group | striptags | trim }}
+{% for commit in shown %}
+- {{ commit.message | split(pat="\n") | first | trim | upper_first }} \
+([{{ commit.id | truncate(length=7, end="") }}](https://github.com/hmbanan666/wow-unbored/commit/{{ commit.id }}))
+{%- endfor %}
+{% endif -%}
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = true
+protect_breaking_commits = false
+filter_commits = true
+sort_commits = "oldest"
+tag_pattern = "^v[0-9]"
+commit_preprocessors = [
+  { pattern = '^\s*[*-]\s+', replace = "" },
+  { pattern = '\s*\(#\d+\)\s*$', replace = "" },
+]
+commit_parsers = [
+  { message = "^[A-Za-z-]+-by:", skip = true },
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Fixes" },
+  { message = "^perf", group = "<!-- 2 -->Performance" },
+  { message = "^(refactor|docs|chore|test|ci|build|style|revert)", group = "<!-- 3 -->Other" },
+]

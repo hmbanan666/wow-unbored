@@ -1,7 +1,6 @@
--- Item help: one short line in the item tooltip when there is something to
--- say, the item a player hands to the mascot, and Alt+Right-click in bags.
--- Everything here only reads game state. Bag buttons are never replaced or
--- re-scripted; the click hook is a hooksecurefunc post-hook.
+-- Item help (docs/adr/0015, 0019): the Advice line in item tooltips and the
+-- item a player hands to Wisp (dropped on it, or picked up in pick mode).
+-- Everything here only reads game state. Bag buttons are never touched.
 
 local _, ns = ...
 
@@ -114,56 +113,104 @@ function ns.Items.PlanTask(itemID, mountID)
   return nil
 end
 
-local function firstLine(text, limit)
-  local line = text:match("^[^\n]+") or text
-  if #line > limit then
-    line = ns.Utf8Truncate(line, limit - 3) .. "..."
-  end
-  return line
-end
-
--- Short lines about an item, most useful first. full adds the transmog line
--- (the game already says that one in the tooltip) and the whole answer.
-function ns.Items.Facts(itemID, link, full)
+-- What Wisp says about an item in the bubble: the Advice first, then what
+-- else is known (a planner answer, a note, the plan, collections).
+function ns.Items.Facts(itemID, link, where)
   itemID = num(itemID)
   if not itemID then
     return {}
   end
+  where = type(where) == "table" and where or {}
   local lines = {}
+  local advice = ns.Advice.For(itemID, { link = link, bag = where.bag, slot = where.slot })
+  local rule = advice and advice.rule
+  if advice then
+    lines[#lines + 1] = advice.line2 and (advice.line .. "\n" .. advice.line2) or advice.line
+  end
   local answer = ns.Session.ItemNote(itemID)
-  if answer then
-    lines[#lines + 1] = full and answer or firstLine(answer, 160)
+  if answer and rule ~= "answer" then
+    lines[#lines + 1] = answer
   end
   local key = ns.Data.ItemNotes and ns.Data.ItemNotes[itemID]
   if key then
     lines[#lines + 1] = ns.T(key)
   end
   local mountFact, mountID = ns.Items.MountFact(itemID)
-  local task = ns.Items.PlanTask(itemID, mountID)
+  local task = rule ~= 1 and ns.Items.PlanTask(itemID, mountID)
   if task then
     lines[#lines + 1] = ns.T("FACT_PLAN", task.title or "")
   end
-  local collectible = mountFact or ns.Items.PetFact(itemID) or ns.Items.ToyFact(itemID)
-  if not collectible and full then
-    collectible = ns.Items.LookFact(itemID, link)
-  end
-  if collectible then
-    lines[#lines + 1] = collectible
+  if rule ~= 5 and rule ~= 6 and rule ~= 7 then
+    local collectible = mountFact or ns.Items.PetFact(itemID) or ns.Items.ToyFact(itemID)
+    if not collectible and rule ~= 9 then
+      collectible = ns.Items.LookFact(itemID, link)
+    end
+    if collectible then
+      lines[#lines + 1] = collectible
+    end
   end
   return lines
 end
 
+local function tooltipLines(data)
+  local out = {}
+  local lines = type(data) == "table" and data.lines or nil
+  for i = 1, type(lines) == "table" and #lines or 0 do
+    local text = type(lines[i]) == "table" and lines[i].leftText
+    if type(text) == "string" then
+      out[#out + 1] = text
+    end
+  end
+  return out
+end
+
+-- Bag and slot of a bag item's tooltip, when the game says.
+local function tooltipSlot(data)
+  local guid = type(data) == "table" and data.guid or nil
+  if not guid or not C_Item or not C_Item.GetItemLocation then
+    return nil
+  end
+  local location = ns.Call(C_Item.GetItemLocation, guid)
+  if type(location) ~= "table" or not location.IsBagAndSlot then
+    return nil
+  end
+  local ok, isBag = pcall(location.IsBagAndSlot, location)
+  if not ok or not isBag then
+    return nil
+  end
+  return ns.Call(location.GetBagAndSlot, location)
+end
+
+-- One teal line in every item tooltip (two when a quest has a place).
 function ns.Items.OnTooltip(tooltip, data)
   if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then
+    return
+  end
+  if ns.IsCombat() then
     return
   end
   local itemID = type(data) == "table" and num(data.id)
   if not itemID then
     return
   end
-  local lines = ns.Items.Facts(itemID, nil, false)
-  for i = 1, math.min(#lines, 3) do
-    tooltip:AddLine(TEAL .. ns.MASCOT_NAME .. ":|r " .. lines[i], 1, 1, 1, true)
+  local link
+  if tooltip.GetItem then
+    local okItem, _, itemLink = pcall(tooltip.GetItem, tooltip)
+    link = okItem and type(itemLink) == "string" and itemLink or nil
+  end
+  local bag, slot = tooltipSlot(data)
+  local where = { link = link, bag = num(bag), slot = num(slot), lines = tooltipLines(data) }
+  local advice, why = ns.Advice.For(itemID, where)
+  local line = advice and advice.line
+  if not advice and why == "unmatched" and ns.UI.HasCompanion() then
+    line = ns.T("ADV_ASK", ns.MASCOT_NAME)
+  end
+  if not line then
+    return
+  end
+  tooltip:AddLine(TEAL .. ns.MASCOT_NAME .. ":|r " .. line, 1, 1, 1, true)
+  if advice and advice.line2 then
+    tooltip:AddLine("    " .. advice.line2, 0.8, 0.8, 0.8, true)
   end
 end
 
@@ -224,30 +271,6 @@ function ns.Items.FromCursor()
   return ns.Items.WithBagContext(item)
 end
 
-function ns.Items.OnModifiedClick(link, itemLocation)
-  if type(IsAltKeyDown) ~= "function" or not ns.Call(IsAltKeyDown) then
-    return
-  end
-  if type(GetMouseButtonClicked) == "function" and ns.Call(GetMouseButtonClicked) ~= "RightButton" then
-    return
-  end
-  local item = ns.Items.FromLink(link)
-  if not item then
-    return
-  end
-  local bag, slot
-  if type(itemLocation) == "table" and itemLocation.IsBagAndSlot then
-    local okBag, isBag = pcall(itemLocation.IsBagAndSlot, itemLocation)
-    if okBag and isBag then
-      bag, slot = ns.Call(itemLocation.GetBagAndSlot, itemLocation)
-    end
-  end
-  ns.Items.WithBagContext(item, num(bag), num(slot))
-  if ns.UI and ns.UI.OpenItem then
-    ns.UI:OpenItem(item)
-  end
-end
-
 function ns.Items.Hook()
   if ns.Items.hooked then
     return
@@ -255,8 +278,5 @@ function ns.Items.Hook()
   ns.Items.hooked = true
   if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
     pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Item, ns.Items.OnTooltip)
-  end
-  if type(hooksecurefunc) == "function" and type(HandleModifiedItemClick) == "function" then
-    pcall(hooksecurefunc, "HandleModifiedItemClick", ns.Items.OnModifiedClick)
   end
 end

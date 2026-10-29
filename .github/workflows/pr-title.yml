@@ -1,0 +1,27 @@
+name: PR title
+
+# Release notes are built from Conventional Commits (docs/adr/0022), and a
+# squash merge uses the PR title as the commit subject.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|docs|chore|test|ci)(\([a-z0-9-]+\))?!?: [^ ].*'
+          if printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "OK: $TITLE"
+          else
+            echo "::error::PR title must be a Conventional Commit, for example 'feat(addon): Wisp answers in Russian' or 'fix(companion): ...'. Types: feat, fix, perf, refactor, docs, chore, test, ci. Got: $TITLE"
+            exit 1
+          fi

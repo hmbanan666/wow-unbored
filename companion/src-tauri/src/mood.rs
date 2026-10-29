@@ -2,7 +2,7 @@
 
 pub const MASCOT_NAME: &str = "Wisp";
 
-/// How long "press Load in game" stays up after a plan or answer arrives.
+/// How long "ready in the game" stays up after a plan or answer arrives.
 pub const READY_SECONDS: u64 = 15 * 60;
 
 /// How long "Connected!" stays up after the planner approves this PC.
@@ -47,8 +47,8 @@ fn mood(phase: &'static str, headline: impl Into<String>, hint: impl Into<String
 
 pub fn ready_text(kind: &str) -> &'static str {
     match kind {
-        "plan" => "Plan ready, press Load in game",
-        _ => "I have an answer, press Load in game",
+        "plan" => "Your plan is ready in the game",
+        _ => "Your answer is ready in the game",
     }
 }
 
@@ -99,12 +99,16 @@ pub fn current(input: &MoodInput) -> Mood {
         return mood(
             "ready",
             "Wisp was updated, press Load in game",
-            "Click Load next to Wisp in the game to apply it.",
+            "Click Load in Wisp's bubble once to finish the update.",
         );
     }
     if let Some((kind, at)) = &input.ready {
         if recent(Some(*at), input.now, READY_SECONDS) {
-            return mood("ready", ready_text(kind), "Click Load next to Wisp in the game.");
+            return mood(
+                "ready",
+                ready_text(kind),
+                "Wisp picks it up next time you log in, or click Refresh in Wisp's bubble.",
+            );
         }
     }
     if recent(input.connected_at, input.now, CONNECTED_SECONDS) {
@@ -118,7 +122,7 @@ pub fn current(input: &MoodInput) -> Mood {
         return mood(
             "thinking",
             "Thinking about your request...",
-            "Keep playing. I'll tell you when it's ready.",
+            "Keep playing. I'm working on it in the background.",
         );
     }
     mood("idle", "All set, go play", "I'll bring your plans and answers into the game.")
@@ -152,9 +156,10 @@ mod tests {
         input.connected_at = Some(0);
         assert_eq!(current(&input).phase, "thinking");
         input.ready = Some(("plan".into(), 900));
-        assert_eq!(current(&input).headline, "Plan ready, press Load in game");
+        assert_eq!(current(&input).headline, "Your plan is ready in the game");
+        assert!(current(&input).hint.contains("Refresh"));
         input.ready = Some(("item".into(), 900));
-        assert_eq!(current(&input).headline, "I have an answer, press Load in game");
+        assert_eq!(current(&input).headline, "Your answer is ready in the game");
         input.addon_updated_at = Some(950);
         assert_eq!(current(&input).headline, "Wisp was updated, press Load in game");
         input.addon_updated_at = None;

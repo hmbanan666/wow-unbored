@@ -11,12 +11,13 @@ use serde_json::Value;
 pub const HELPER_TOC: &str = "\
 ## Interface: 120105, 120100
 ## Title: Unbored Plan
-## Notes: Plan file owned by Unbored Companion. The game reads it on /reload.
+## Notes: Plans, answers and item tips from Unbored Companion. Wisp reads them when you log in or press Refresh.
 ## Author: Unbored contributors
-## Version: 0.5.0
+## Version: 0.6.0
 ## LoadOnDemand: 0
 
 Plan.lua
+Advice.lua
 ";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -201,6 +202,9 @@ fn decode_b64(payload: &str) -> Result<Vec<u8>, PlanError> {
 /// the reply text, the follow-up plan, or both.
 pub fn render_request_lua(request: &RequestState, status: &str, plan: Option<&Plan>) -> String {
     let mut extras = vec![("requestType", Value::String(request.kind.clone()))];
+    if let Some(code) = request.reason_code.as_ref().filter(|_| status == "failed" && plan.is_some()) {
+        extras.push(("requestReasonCode", Value::String(code.clone())));
+    }
     if let Some(answer) = request.answer.as_ref().filter(|_| status == "fulfilled") {
         extras.push(("answer", answer.clone()));
     }
@@ -212,13 +216,16 @@ pub fn render_request_lua(request: &RequestState, status: &str, plan: Option<&Pl
         render_plan_body(&copy, &extras)
     } else {
         let mut out = String::from(
-            "-- Written by Unbored Companion. Loaded by Unbored_Plan on /reload.\n",
+            "-- Written by Unbored Companion. Read by Unbored_Plan at login or Refresh.\n",
         );
         out.push_str("UnboredExternalPlan = {\n");
         push_pair(&mut out, 1, "requestId", &Value::String(request.id.clone()));
         push_pair(&mut out, 1, "requestStatus", &Value::String(status.to_string()));
         if let Some(reason) = &request.reason {
             push_pair(&mut out, 1, "requestReason", &Value::String(reason.clone()));
+        }
+        if let Some(code) = request.reason_code.as_ref().filter(|_| status == "failed") {
+            push_pair(&mut out, 1, "requestReasonCode", &Value::String(code.clone()));
         }
         for (key, value) in &extras {
             push_pair(&mut out, 1, key, value);
@@ -230,7 +237,7 @@ pub fn render_request_lua(request: &RequestState, status: &str, plan: Option<&Pl
 
 /// Write `Interface/AddOns/Unbored_Plan`, which this app owns.
 /// WoW rewrites SavedVariables on logout, so a helper addon is the file
-/// that survives a play session and is read on the next /reload.
+/// that survives a play session and is read at the next login or Refresh.
 pub fn install_plan(retail: &Path, plan: &Plan) -> Result<Written, PlanError> {
     write_plan_lua(retail, &render_plan_lua(plan))
 }
@@ -242,6 +249,75 @@ pub struct Written {
 }
 
 const EMPTY_PLAN_LUA: &str = "-- Written by Unbored Companion. No plan yet.\n";
+const EMPTY_ADVICE_LUA: &str = "-- Written by Unbored Companion. No Personal advice yet.\n";
+
+/// Per character; the game holds all of it in memory.
+pub const MAX_ADVICE_ITEMS: usize = 500;
+const ADVICE_FIELDS: [(&str, usize); 4] = [("action", 20), ("line", 120), ("lineRu", 240), ("to", 80)];
+
+/// Advice.lua from GET /v1/advice: UnboredAdvice.characters["Realm-Name"].items[itemID]
+/// (docs/adr/0019). Only known string fields are kept; the addon checks them again.
+pub fn render_advice_lua(characters: &Value) -> String {
+    let mut out = String::from("-- Written by Unbored Companion. Personal advice, read at login or Refresh.\n");
+    out.push_str("UnboredAdvice = {\n  [\"v\"] = 1,\n  [\"characters\"] = {\n");
+    let mut rows: Vec<&Value> = characters.as_array().map(|list| list.iter().collect()).unwrap_or_default();
+    rows.sort_by_key(|row| {
+        (
+            row["realm"].as_str().unwrap_or("").to_string(),
+            row["character"].as_str().unwrap_or("").to_string(),
+        )
+    });
+    for row in rows {
+        let (Some(character), Some(realm)) = (row["character"].as_str(), row["realm"].as_str()) else {
+            continue;
+        };
+        out.push_str("    [\"");
+        push_lua_string_body(&mut out, &format!("{realm}-{character}"));
+        out.push_str("\"] = {\n");
+        if let Some(at) = row["updatedAt"].as_u64() {
+            out.push_str(&format!("      [\"updatedAt\"] = {at},\n"));
+        }
+        out.push_str("      [\"items\"] = {\n");
+        let items = row["items"].as_array().map(|list| list.as_slice()).unwrap_or_default();
+        for item in items.iter().take(MAX_ADVICE_ITEMS) {
+            let Some(id) = item["itemID"].as_u64().filter(|id| *id > 0) else {
+                continue;
+            };
+            if item["line"].as_str().map_or(true, |line| line.trim().is_empty()) {
+                continue;
+            }
+            out.push_str(&format!("        [{id}] = {{"));
+            for (field, limit) in ADVICE_FIELDS {
+                if let Some(text) = item[field].as_str() {
+                    let text: String = text.chars().take(limit).collect();
+                    out.push_str(&format!(" [\"{field}\"] = \""));
+                    push_lua_string_body(&mut out, &text);
+                    out.push_str("\",");
+                }
+            }
+            out.push_str(" },\n");
+        }
+        out.push_str("      },\n    },\n");
+    }
+    out.push_str("  },\n}\n");
+    out
+}
+
+/// Writes Advice.lua only when it changed. Returns true when it did.
+pub fn install_advice(retail: &Path, characters: &Value) -> Result<bool, PlanError> {
+    let dir = helper_dir(retail);
+    fs::create_dir_all(&dir).map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
+    write_helper_toc(&dir)?;
+    let body = render_advice_lua(characters);
+    let path = dir.join("Advice.lua");
+    if fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
+        return Ok(false);
+    }
+    let tmp = dir.join("Advice.lua.tmp");
+    fs::write(&tmp, &body).map_err(|err| PlanError(format!("Could not write the advice: {err}")))?;
+    fs::rename(&tmp, &path).map_err(|err| PlanError(format!("Could not replace the advice: {err}")))?;
+    Ok(true)
+}
 
 /// Everything after this line in Plan.lua is the Companion's own status. The
 /// plan part and the status part are written separately, so one never
@@ -336,6 +412,11 @@ pub fn ensure_helper(retail: &Path) -> Result<(), PlanError> {
         fs::write(&lua_path, EMPTY_PLAN_LUA)
             .map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
     }
+    let advice_path = dir.join("Advice.lua");
+    if !advice_path.is_file() {
+        fs::write(&advice_path, EMPTY_ADVICE_LUA)
+            .map_err(|err| PlanError(format!("Could not write the advice: {err}")))?;
+    }
     Ok(())
 }
 
@@ -371,6 +452,8 @@ pub struct RequestState {
     pub kind: String,
     pub status: String,
     pub reason: Option<String>,
+    /// A Reason code (docs/adr/0013); Wisp turns it into its own line.
+    pub reason_code: Option<String>,
     pub plan_id: Option<u64>,
     pub plan: Option<Plan>,
     pub answer: Option<Value>,
@@ -431,7 +514,7 @@ pub fn render_plan_lua(plan: &Plan) -> String {
 
 fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
     let mut out = String::from(
-        "-- Written by Unbored Companion. Loaded by Unbored_Plan on /reload.\n",
+        "-- Written by Unbored Companion. Read by Unbored_Plan at login or Refresh.\n",
     );
     out.push_str("-- Do not edit this by hand; the app replaces the file.\n");
     out.push_str("UnboredExternalPlan = {\n");
@@ -625,6 +708,42 @@ mod tests {
             crate::savedvars::table_get(second, "title")
                 .and_then(|v| v.as_str()),
             Some("Ashes \"of\" Al'ar\nline")
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn writes_personal_advice_the_parser_can_read_back() {
+        let root = std::env::temp_dir().join(format!("unbored-advice-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let retail = root.join("_retail_");
+        ensure_helper(&retail).unwrap();
+        let dir = retail.join("Interface/AddOns/Unbored_Plan");
+        assert!(fs::read_to_string(dir.join("Unbored_Plan.toc")).unwrap().contains("Advice.lua"));
+        assert!(dir.join("Advice.lua").is_file());
+        let advice = serde_json::json!([{
+            "character": "Hero",
+            "realm": "Area 52",
+            "updatedAt": 1_761_720_000u64,
+            "items": [
+                { "itemID": 2447, "action": "send", "line": "Send to \"Mira\" (Alchemy): mail", "lineRu": "Отправь Мире", "to": "Mira", "extra": "x" },
+                { "itemID": 0, "action": "keep", "line": "bad id" },
+                { "itemID": 5, "action": "keep", "line": "  " }
+            ]
+        }]);
+        assert!(install_advice(&retail, &advice).unwrap());
+        assert!(!install_advice(&retail, &advice).unwrap());
+        let text = fs::read_to_string(dir.join("Advice.lua")).unwrap();
+        assert!(!text.contains("extra") && !text.contains("bad id"));
+        let values = parse_saved_variables(&text).unwrap();
+        let chars = crate::savedvars::table_get(values.get("UnboredAdvice").unwrap(), "characters").unwrap();
+        let mine = crate::savedvars::table_get(chars, "Area 52-Hero").unwrap();
+        let items = crate::savedvars::table_get(mine, "items").unwrap();
+        let entry = crate::savedvars::array_items(items);
+        assert_eq!(entry.len(), 1);
+        assert_eq!(
+            crate::savedvars::table_get(entry[0], "line").and_then(|v| v.as_str()),
+            Some("Send to \"Mira\" (Alchemy): mail")
         );
         let _ = fs::remove_dir_all(&root);
     }

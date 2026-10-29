@@ -2,7 +2,7 @@
 
 Short records of decisions that are hard to reverse. Read them before changing how Unbored works; add the next number when you make a new one. Terms are defined in [`CONTEXT.md`](../../CONTEXT.md).
 
-- [0001. SavedVariables bridge](0001-savedvariables-bridge.md)
+- [0001. SavedVariables bridge](0001-savedvariables-bridge.md) (superseded by 0012)
 - [0002. Zero-config pairing](0002-zero-config-pairing.md)
 - [0003. All-inclusive product](0003-all-inclusive-product.md)
 - [0004. Wisp-first UI](0004-wisp-first-ui.md)
@@ -13,3 +13,16 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0009. Player data](0009-player-data.md)
 - [0010. Local first, server brain](0010-local-first-server-brain.md)
 - [0011. Server-side player profile](0011-server-side-player-profile.md)
+- [0012. Reload-free: local first, background prefetch, one Refresh offer](0012-reload-free-background-refresh.md)
+- [0013. Request contract and Reason codes](0013-request-contract-and-reason-codes.md)
+- [0014. Ask is a core feature](0014-ask-is-core.md)
+- [0015. Item input: drop on Wisp, tooltip line, pick mode](0015-item-input.md)
+- [0016. Bubble layout](0016-bubble-layout.md)
+- [0017. Minimap button](0017-minimap-button.md)
+- [0018. Glossary and wait thresholds](0018-glossary-and-waits.md)
+- [0019. Tooltip Advice](0019-tooltip-advice.md)
+- [0020. Player history on the Server](0020-player-history.md)
+- [0021. Account personalization and Alt routing](0021-account-and-alt-routing.md)
+- [0022. Releases and docs for players](0022-releases-and-docs.md)
+
+The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md).

@@ -2,6 +2,7 @@
 //! No process memory, no injection, no attachment to Wow.exe.
 
 pub mod addon;
+pub mod request;
 pub mod device;
 pub mod endpoint;
 pub mod mood;

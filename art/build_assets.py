@@ -9,7 +9,6 @@ Writes the in-game portraits (Media/*.tga), the companion icons
 
 from pathlib import Path
 
-import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -66,21 +65,6 @@ def happy(image: Image.Image) -> Image.Image:
     return rgb
 
 
-def glow(size: int) -> Image.Image:
-    """Soft teal ring for the pulse animation behind the portrait."""
-    y, x = np.mgrid[0:size, 0:size]
-    c = (size - 1) / 2
-    d = np.sqrt((x - c) ** 2 + (y - c) ** 2) / c
-    alpha = np.clip(np.exp(-((d - 0.82) ** 2) / 0.012), 0, 1)
-    alpha[d > 1] = 0
-    rgba = np.zeros((size, size, 4), dtype=np.uint8)
-    rgba[..., 0] = 120
-    rgba[..., 1] = 255
-    rgba[..., 2] = 220
-    rgba[..., 3] = (alpha * 255).astype(np.uint8)
-    return Image.fromarray(rgba, "RGBA")
-
-
 def save_tga(image: Image.Image, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path, format="TGA", compression=None)
@@ -91,10 +75,8 @@ def main() -> None:
     states = {"Idle": source, "Thinking": thinking(source), "Happy": happy(source)}
     media = ROOT / "Media"
     for name, image in states.items():
-        for size in (64, 128):
-            save_tga(portrait(size, image), media / f"Wisp{name}{size}.tga")
+        save_tga(portrait(128, image), media / f"Wisp{name}128.tga")
     save_tga(portrait(64, source), media / "Icon.tga")
-    save_tga(glow(128), media / "WispGlow.tga")
 
     icons = ROOT / "companion" / "src-tauri" / "icons"
     big = portrait(512, source)

@@ -87,11 +87,16 @@ local function font(parent, template)
 end
 
 -- Width first, then the wrapped height, so the next row never overlaps.
+-- The old height is cleared first (0 = fit the text): a height left from a
+-- shorter text would otherwise clip the new one (docs/adr/0016).
 function ns.UI.Measure(fs, width)
   fs:SetWidth(width)
+  if fs.SetMaxLines then
+    fs:SetMaxLines(0)
+  end
+  fs:SetHeight(0)
   local text = fs:GetText()
   if not text or text == "" then
-    fs:SetHeight(1)
     return 0
   end
   local height = ns.AsNumber(fs:GetStringHeight()) or 12
@@ -247,7 +252,11 @@ function ns.UI.Open(_, mode)
 end
 
 function ns.UI.OpenItem(_, item)
-  ns.Mascot:ShowItem(item)
+  if item then
+    ns.Mascot:ShowItem(item)
+  else
+    ns.Mascot:StartPick()
+  end
 end
 
 function ns.UI.Toggle()

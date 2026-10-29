@@ -21,6 +21,7 @@ const PLAYER = "self";
 export type StoredProfile = {
   character: string;
   realm: string;
+  account: string;
   deviceId: string;
   savedAt: number | null;
   updatedAt: number;
@@ -30,6 +31,7 @@ export type StoredProfile = {
 type ProfileRow = {
   character_name: string;
   realm: string;
+  account: string | null;
   device_id: string;
   saved_at: number | null;
   updated_at: number;
@@ -40,6 +42,7 @@ function profileFromRow(row: ProfileRow): StoredProfile {
   return {
     character: row.character_name,
     realm: row.realm,
+    account: row.account ?? "",
     deviceId: row.device_id,
     savedAt: row.saved_at,
     updatedAt: row.updated_at,
@@ -130,19 +133,56 @@ export class Store {
         created_at INTEGER NOT NULL,
         last_seen_at INTEGER
       );
+      CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY,
+        at INTEGER NOT NULL,
+        account TEXT NOT NULL DEFAULT '',
+        character_name TEXT NOT NULL,
+        realm TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        ref TEXT,
+        body_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS history_character ON history (character_name, realm, at);
+      CREATE INDEX IF NOT EXISTS history_account ON history (account, at);
+      CREATE TABLE IF NOT EXISTS profile_snapshots (
+        id INTEGER PRIMARY KEY,
+        at INTEGER NOT NULL,
+        account TEXT NOT NULL DEFAULT '',
+        character_name TEXT NOT NULL,
+        realm TEXT NOT NULL,
+        saved_at INTEGER,
+        body_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS snapshots_character ON profile_snapshots (character_name, realm, at);
+      CREATE TABLE IF NOT EXISTS advice (
+        character_name TEXT NOT NULL,
+        realm TEXT NOT NULL,
+        account TEXT NOT NULL DEFAULT '',
+        item_id INTEGER NOT NULL,
+        body_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (character_name, realm, item_id)
+      );
     `);
-    const columns = this.db.prepare(`PRAGMA table_info(requests)`).all() as { name: string }[];
-    const added: [string, string][] = [
+    this.addColumns("profiles", [["account", "TEXT"]]);
+    this.addColumns("requests", [
       ["context_json", "TEXT"],
       ["type", "TEXT NOT NULL DEFAULT 'plan'"],
       ["question", "TEXT"],
       ["topic", "TEXT"],
       ["item_json", "TEXT"],
       ["answer_json", "TEXT"],
-    ];
+      ["lang", "TEXT"],
+      ["account", "TEXT"],
+    ]);
+  }
+
+  private addColumns(table: string, added: [string, string][]): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
     for (const [name, kind] of added) {
       if (!columns.some((column) => column.name === name)) {
-        this.db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${kind}`);
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${kind}`);
       }
     }
   }
@@ -208,6 +248,21 @@ export class Store {
         post.savedAt,
         JSON.stringify(post.progress),
       );
+    this.addHistory({
+      at: nowSeconds,
+      account: accountKey(post.account),
+      character: post.character,
+      realm: post.realm,
+      kind: "progress",
+      ref: post.progress.currentId ?? null,
+      body: {
+        mode: post.progress.mode ?? null,
+        currentId: post.progress.currentId ?? null,
+        done: post.progress.done ?? [],
+        skipped: post.progress.skipped ?? [],
+        remaining: post.progress.remaining ?? [],
+      },
+    });
     return {
       id: Number(result.lastInsertRowid),
       createdAt: nowSeconds,
@@ -323,16 +378,21 @@ export class Store {
     topic?: string | null;
     item?: RequestItem | null;
     context?: PlayerContext | null;
+    lang?: string | null;
+    account?: string | null;
     nowSeconds: number;
   }): { created: boolean; request: PlanRequest } {
     const existing = this.requestById(input.id);
     if (existing) return { created: false, request: existing };
+    const account = input.account
+      ? accountKey(input.account)
+      : (this.profileFor(input.character, input.realm || undefined)?.account ?? "");
     this.db
       .prepare(
         `INSERT INTO requests
            (id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at,
-            context_json, type, question, topic, item_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+            context_json, type, question, topic, item_json, lang, account)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.id,
@@ -349,9 +409,21 @@ export class Store {
         input.question ?? null,
         input.topic ?? null,
         input.item ? JSON.stringify(input.item) : null,
+        input.lang ?? null,
+        account,
       );
     const request = this.requestById(input.id);
     if (!request) throw new Error("Could not store the request.");
+    this.historyFor(request, "request", {
+      type: request.type,
+      mode: request.mode || null,
+      wish: request.wish,
+      question: request.question,
+      topic: request.topic,
+      item: request.item,
+      lang: request.lang,
+      context: request.context,
+    });
     return { created: true, request };
   }
 
@@ -359,7 +431,7 @@ export class Store {
     const rows = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json
+                type, question, topic, item_json, answer_json, lang, account
          FROM requests WHERE status = ? ORDER BY created_at DESC, id ASC LIMIT ?`,
       )
       .all(status, limit) as RequestRow[];
@@ -370,7 +442,7 @@ export class Store {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json
+                type, question, topic, item_json, answer_json, lang, account
          FROM requests WHERE id = ?`,
       )
       .get(id) as RequestRow | undefined;
@@ -381,7 +453,7 @@ export class Store {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json
+                type, question, topic, item_json, answer_json, lang, account
          FROM requests WHERE device_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`,
       )
       .get(deviceId) as RequestRow | undefined;
@@ -395,7 +467,9 @@ export class Store {
         `UPDATE requests SET status = 'fulfilled', plan_id = ?, reason = NULL, updated_at = ? WHERE id = ?`,
       )
       .run(planId, nowSeconds, id);
-    return this.requestById(id);
+    const request = this.requestById(id);
+    if (request) this.historyFor(request, "plan", { planId, ...this.planSummary(planId) }, nowSeconds);
+    return request;
   }
 
   answerRequest(
@@ -411,7 +485,12 @@ export class Store {
            updated_at = ? WHERE id = ?`,
       )
       .run(JSON.stringify(answer), planId, nowSeconds, id);
-    return this.requestById(id);
+    const request = this.requestById(id);
+    if (request) {
+      this.historyFor(request, "answer", { message: answer.message, waypoints: answer.waypoints ?? null }, nowSeconds);
+      if (planId) this.historyFor(request, "plan", { planId, ...this.planSummary(planId) }, nowSeconds);
+    }
+    return request;
   }
 
   failRequest(id: string, reason: string, nowSeconds = Math.floor(Date.now() / 1000)): PlanRequest | undefined {
@@ -419,28 +498,281 @@ export class Store {
     this.db
       .prepare(`UPDATE requests SET status = 'failed', reason = ?, updated_at = ? WHERE id = ?`)
       .run(reason, nowSeconds, id);
-    return this.requestById(id);
+    const request = this.requestById(id);
+    if (request) this.historyFor(request, "failed", { reason }, nowSeconds);
+    return request;
   }
 
-  /** One row per character: the newest upload wins, an older savedAt is ignored. */
+  /**
+   * One row per character: the newest upload wins, an older savedAt is ignored,
+   * and an empty field never overwrites a good one (docs/adr/0020).
+   */
   putProfile(
     input: ProfileUpload & { deviceId: string },
     nowSeconds = Math.floor(Date.now() / 1000),
   ): { profile: StoredProfile; updated: boolean } {
-    const existing = this.profileFor(input.character, input.realm);
+    const existing = this.exactProfile(input.character, input.realm);
     if (existing && existing.savedAt && input.savedAt && input.savedAt < existing.savedAt) {
       return { profile: existing, updated: false };
     }
+    const merged = existing ? mergeProfile(existing.profile, input.profile) : input.profile;
+    const account = accountKey(input.account || existing?.account || "");
     this.db
       .prepare(
-        `INSERT INTO profiles (character_name, realm, device_id, saved_at, updated_at, body_json)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO profiles (character_name, realm, device_id, saved_at, updated_at, body_json, account)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (character_name, realm) DO UPDATE SET
            device_id = excluded.device_id, saved_at = excluded.saved_at,
-           updated_at = excluded.updated_at, body_json = excluded.body_json`,
+           updated_at = excluded.updated_at, body_json = excluded.body_json, account = excluded.account`,
       )
-      .run(input.character, input.realm, input.deviceId, input.savedAt, nowSeconds, JSON.stringify(input.profile));
-    return { profile: this.profileFor(input.character, input.realm)!, updated: true };
+      .run(input.character, input.realm, input.deviceId, input.savedAt, nowSeconds, JSON.stringify(merged), account);
+    if (!existing || existing.savedAt !== input.savedAt) {
+      this.db
+        .prepare(
+          `INSERT INTO profile_snapshots (at, account, character_name, realm, saved_at, body_json)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(nowSeconds, account, input.character, input.realm, input.savedAt, JSON.stringify(merged));
+      this.addHistory({
+        at: nowSeconds,
+        account,
+        character: input.character,
+        realm: input.realm,
+        kind: "profile",
+        ref: input.savedAt === null ? null : String(input.savedAt),
+        body: profileSummary(merged),
+      });
+    }
+    return { profile: this.exactProfile(input.character, input.realm)!, updated: true };
+  }
+
+  private exactProfile(character: string, realm: string): StoredProfile | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT character_name, realm, account, device_id, saved_at, updated_at, body_json FROM profiles
+         WHERE character_name = ? AND realm = ?`,
+      )
+      .get(character, realm) as ProfileRow | undefined;
+    return row ? profileFromRow(row) : undefined;
+  }
+
+  /** Every character of one Account (docs/adr/0021). */
+  profilesForAccount(account: string): StoredProfile[] {
+    const rows = this.db
+      .prepare(
+        `SELECT character_name, realm, account, device_id, saved_at, updated_at, body_json FROM profiles
+         WHERE account = ? ORDER BY updated_at DESC`,
+      )
+      .all(accountKey(account)) as ProfileRow[];
+    return rows.map(profileFromRow);
+  }
+
+  listAccounts(): { account: string; characters: { character: string; realm: string }[] }[] {
+    const rows = this.db
+      .prepare(`SELECT account, character_name, realm FROM profiles ORDER BY account, character_name`)
+      .all() as { account: string | null; character_name: string; realm: string }[];
+    const out = new Map<string, { character: string; realm: string }[]>();
+    for (const row of rows) {
+      const key = row.account ?? "";
+      if (!out.has(key)) out.set(key, []);
+      out.get(key)!.push({ character: row.character_name, realm: row.realm });
+    }
+    return [...out.entries()].map(([account, characters]) => ({ account, characters }));
+  }
+
+  addHistory(entry: {
+    at: number;
+    account: string;
+    character: string;
+    realm: string;
+    kind: HistoryKind;
+    ref: string | null;
+    body: unknown;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO history (at, account, character_name, realm, kind, ref, body_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(entry.at, entry.account, entry.character, entry.realm, entry.kind, entry.ref, JSON.stringify(entry.body));
+  }
+
+  private historyFor(request: PlanRequest, kind: HistoryKind, body: unknown, at = request.updatedAt): void {
+    this.addHistory({
+      at,
+      account: request.account,
+      character: request.character,
+      realm: request.realm,
+      kind,
+      ref: request.id,
+      body,
+    });
+  }
+
+  private planSummary(planId: number): Record<string, unknown> {
+    const stored = this.planById(planId);
+    if (!stored) return {};
+    return {
+      mode: stored.plan.mode,
+      note: stored.plan.note ?? null,
+      steps: stored.plan.tasks.map((task) => ({ id: task.id, title: task.title })),
+    };
+  }
+
+  /** Dated Player history, newest first (docs/adr/0020). */
+  history(filter: {
+    account?: string;
+    character?: string;
+    realm?: string;
+    kinds?: HistoryKind[];
+    since?: number;
+    limit: number;
+  }): HistoryEntry[] {
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (filter.account) {
+      where.push("account = ?");
+      args.push(accountKey(filter.account));
+    }
+    if (filter.character) {
+      where.push("character_name = ?");
+      args.push(filter.character);
+    }
+    if (filter.realm) {
+      where.push("realm = ?");
+      args.push(filter.realm);
+    }
+    if (filter.since) {
+      where.push("at >= ?");
+      args.push(filter.since);
+    }
+    if (filter.kinds?.length) {
+      where.push(`kind IN (${filter.kinds.map(() => "?").join(", ")})`);
+      args.push(...filter.kinds);
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT id, at, account, character_name, realm, kind, ref, body_json FROM history
+         ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY at DESC, id DESC LIMIT ?`,
+      )
+      .all(...args, filter.limit) as HistoryRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      at: row.at,
+      account: row.account,
+      character: row.character_name,
+      realm: row.realm,
+      kind: row.kind as HistoryKind,
+      ref: row.ref,
+      body: parseJson<unknown>(row.body_json),
+    }));
+  }
+
+  profileSnapshots(filter: { account?: string; character?: string; realm?: string; limit: number }): {
+    at: number;
+    account: string;
+    character: string;
+    realm: string;
+    savedAt: number | null;
+    profile: unknown;
+  }[] {
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (filter.account) {
+      where.push("account = ?");
+      args.push(accountKey(filter.account));
+    }
+    if (filter.character) {
+      where.push("character_name = ?");
+      args.push(filter.character);
+    }
+    if (filter.realm) {
+      where.push("realm = ?");
+      args.push(filter.realm);
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT at, account, character_name, realm, saved_at, body_json FROM profile_snapshots
+         ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY at DESC, id DESC LIMIT ?`,
+      )
+      .all(...args, filter.limit) as {
+      at: number;
+      account: string;
+      character_name: string;
+      realm: string;
+      saved_at: number | null;
+      body_json: string;
+    }[];
+    return rows.map((row) => ({
+      at: row.at,
+      account: row.account,
+      character: row.character_name,
+      realm: row.realm,
+      savedAt: row.saved_at,
+      profile: parseJson<unknown>(row.body_json),
+    }));
+  }
+
+  /** Personal advice for one character (docs/adr/0019). */
+  putItemAdvice(input: {
+    character: string;
+    realm: string;
+    account?: string;
+    items: ItemAdvice[];
+    replace?: boolean;
+    nowSeconds?: number;
+  }): number {
+    const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
+    const account = accountKey(input.account || this.exactProfile(input.character, input.realm)?.account || "");
+    if (input.replace) {
+      this.db
+        .prepare(`DELETE FROM advice WHERE character_name = ? AND realm = ?`)
+        .run(input.character, input.realm);
+    }
+    const insert = this.db.prepare(
+      `INSERT INTO advice (character_name, realm, account, item_id, body_json, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (character_name, realm, item_id) DO UPDATE SET
+         account = excluded.account, body_json = excluded.body_json, updated_at = excluded.updated_at`,
+    );
+    for (const item of input.items) {
+      const { itemID, ...body } = item;
+      insert.run(input.character, input.realm, account, itemID, JSON.stringify(body), now);
+    }
+    this.addHistory({
+      at: now,
+      account,
+      character: input.character,
+      realm: input.realm,
+      kind: "advice",
+      ref: null,
+      body: { count: input.items.length, replace: Boolean(input.replace) },
+    });
+    return input.items.length;
+  }
+
+  /** Advice for every character this device uploaded a profile for. */
+  adviceForDevice(deviceId: string): { character: string; realm: string; updatedAt: number; items: ItemAdvice[] }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT a.character_name, a.realm, a.item_id, a.body_json, a.updated_at FROM advice a
+         JOIN profiles p ON p.character_name = a.character_name AND p.realm = a.realm
+         WHERE p.device_id = ? OR ? = 'legacy' ORDER BY a.character_name, a.realm, a.item_id`,
+      )
+      .all(deviceId, deviceId) as {
+      character_name: string;
+      realm: string;
+      item_id: number;
+      body_json: string;
+      updated_at: number;
+    }[];
+    const out = new Map<string, { character: string; realm: string; updatedAt: number; items: ItemAdvice[] }>();
+    for (const row of rows) {
+      const key = `${row.realm}\0${row.character_name}`;
+      if (!out.has(key)) out.set(key, { character: row.character_name, realm: row.realm, updatedAt: 0, items: [] });
+      const entry = out.get(key)!;
+      entry.updatedAt = Math.max(entry.updatedAt, row.updated_at);
+      entry.items.push({ itemID: row.item_id, ...(parseJson<Omit<ItemAdvice, "itemID">>(row.body_json) ?? {}) } as ItemAdvice);
+    }
+    return [...out.values()];
   }
 
   /** The named character, or the most recently updated one. */
@@ -449,13 +781,13 @@ export class Store {
       character
         ? this.db
             .prepare(
-              `SELECT character_name, realm, device_id, saved_at, updated_at, body_json FROM profiles
+              `SELECT character_name, realm, account, device_id, saved_at, updated_at, body_json FROM profiles
                WHERE character_name = ? AND (? IS NULL OR realm = ?) ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC LIMIT 1`,
             )
             .get(character, realm ?? null, realm ?? null)
         : this.db
             .prepare(
-              `SELECT character_name, realm, device_id, saved_at, updated_at, body_json FROM profiles
+              `SELECT character_name, realm, account, device_id, saved_at, updated_at, body_json FROM profiles
                ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC LIMIT 1`,
             )
             .get()
@@ -466,7 +798,7 @@ export class Store {
   listProfiles(): Omit<StoredProfile, "profile">[] {
     const rows = this.db
       .prepare(
-        `SELECT character_name, realm, device_id, saved_at, updated_at, '{}' AS body_json FROM profiles
+        `SELECT character_name, realm, account, device_id, saved_at, updated_at, '{}' AS body_json FROM profiles
          ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC`,
       )
       .all() as ProfileRow[];
@@ -594,6 +926,8 @@ export type PlanRequest = {
   topic: string | null;
   item: RequestItem | null;
   answer: Answer | null;
+  lang: string | null;
+  account: string;
 };
 
 type RequestRow = {
@@ -615,6 +949,8 @@ type RequestRow = {
   topic: string | null;
   item_json: string | null;
   answer_json: string | null;
+  lang: string | null;
+  account: string | null;
 };
 
 function parseJson<T>(text: string | null): T | null {
@@ -648,6 +984,8 @@ function requestFromRow(row: RequestRow): PlanRequest {
     topic: row.topic,
     item: parseJson<RequestItem>(row.item_json),
     answer: parseJson<Answer>(row.answer_json),
+    lang: row.lang,
+    account: row.account ?? "",
   };
 }
 
@@ -662,6 +1000,7 @@ export function publicRequest(request: PlanRequest) {
     wish: request.wish,
     status: request.status,
     reason: request.reason,
+    reasonCode: request.status === "failed" ? "planner_failed" : null,
     planId: request.planId,
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
@@ -671,6 +1010,8 @@ export function publicRequest(request: PlanRequest) {
     topic: request.topic,
     item: request.item,
     answer: request.answer,
+    lang: request.lang,
+    account: request.account || null,
   };
 }
 
@@ -693,5 +1034,91 @@ export function sessionSummary(stored: StoredPlan) {
     note: stored.plan.note ?? null,
     taskCount: stored.plan.tasks.length,
     unb1: stored.unb1,
+  };
+}
+
+export type HistoryKind = "request" | "answer" | "plan" | "failed" | "progress" | "profile" | "advice";
+export const HISTORY_KINDS: HistoryKind[] = ["request", "answer", "plan", "failed", "progress", "profile", "advice"];
+
+export type HistoryEntry = {
+  id: number;
+  at: number;
+  account: string;
+  character: string;
+  realm: string;
+  kind: HistoryKind;
+  ref: string | null;
+  body: unknown;
+};
+
+type HistoryRow = {
+  id: number;
+  at: number;
+  account: string;
+  character_name: string;
+  realm: string;
+  kind: string;
+  ref: string | null;
+  body_json: string;
+};
+
+export type ItemAdvice = {
+  itemID: number;
+  /** keep, sell, use, bank, send, disenchant, equip, open, turn_in, or info. */
+  action: string;
+  /** The tooltip line after "Wisp: ", in English. */
+  line: string;
+  /** The same line in Russian. */
+  lineRu?: string;
+  /** For action "send": the Alt who should get it. */
+  to?: string;
+};
+
+/**
+ * The WoW account folder ("12345678#1") names one game license; the part before
+ * "#" is the same for every license of one Battle.net account, so it is the key.
+ */
+export function accountKey(account: string): string {
+  return account.trim().split("#")[0] ?? "";
+}
+
+function isEmpty(value: unknown): boolean {
+  if (value === undefined || value === null || value === "" || value === 0) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") return Object.keys(value as object).length === 0;
+  return false;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The new upload wins field by field, except where it is empty and the old one is not. */
+export function mergeProfile(old: Record<string, unknown>, fresh: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...old };
+  for (const [key, value] of Object.entries(fresh)) {
+    const previous = old[key];
+    if (isPlainObject(value) && isPlainObject(previous)) {
+      out[key] = mergeProfile(previous, value);
+    } else if (isEmpty(value) && !isEmpty(previous)) {
+      out[key] = previous;
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function profileSummary(profile: Record<string, unknown>): Record<string, unknown> {
+  const context = isPlainObject(profile.context) ? profile.context : {};
+  const bags = profile.bags;
+  return {
+    level: context.level ?? null,
+    ilvl: context.ilvl ?? null,
+    gold: context.gold ?? null,
+    zone: context.zone ?? null,
+    bagItems: Array.isArray(bags) ? bags.length : isPlainObject(bags) ? Object.keys(bags).length : 0,
+    collections: isPlainObject(profile.collections) ? profile.collections : null,
+    professions: profile.professions ?? null,
   };
 }
