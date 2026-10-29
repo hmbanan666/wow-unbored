@@ -22,7 +22,7 @@ use crate::plan::{
     decode_unb1, ensure_helper, install_plan, install_plan_file, pick_plan_file, plan_from_value, Plan,
     PlannerState, RequestState,
 };
-use crate::savedvars::request_from_saved_variables;
+use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
 use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, retail_dir, CharacterFile};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -663,6 +663,43 @@ fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
     Ok(())
 }
 
+/// Uploads each character's profile once per save (docs/adr/0011).
+fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
+    static POSTED: std::sync::OnceLock<Mutex<HashMap<String, u64>>> = std::sync::OnceLock::new();
+    let posted = POSTED.get_or_init(|| Mutex::new(HashMap::new()));
+    let client = http_client(Duration::from_secs(20))?;
+    let url = effective_url(settings);
+    for file in character_saved_variables(retail, None) {
+        let Ok(text) = fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let Ok(Some(profile)) = profile_from_saved_variables(&text) else {
+            continue;
+        };
+        let key = format!("{}-{}", profile.realm, profile.character);
+        let stamp = profile.saved_at.unwrap_or(0);
+        if posted.lock().map_err(|err| err.to_string())?.get(&key) == Some(&stamp) {
+            continue;
+        }
+        let response = client
+            .post(join_url(&url, "v1/profile"))
+            .bearer_auth(secret)
+            .json(&serde_json::json!({
+                "character": profile.character,
+                "realm": profile.realm,
+                "savedAt": profile.saved_at,
+                "profile": profile.profile,
+            }))
+            .send()
+            .map_err(|err| err.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("Planner returned {} for the profile.", response.status()));
+        }
+        posted.lock().map_err(|err| err.to_string())?.insert(key, stamp);
+    }
+    Ok(())
+}
+
 /// Sends in-game requests, then writes the one Plan.lua the game should see.
 /// Returns a status line when the file changed.
 fn sync_plans(
@@ -676,6 +713,8 @@ fn sync_plans(
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
     post_requests(settings, &retail, secret)?;
+    // A profile that fails to upload must not hold back plans and answers.
+    let _ = post_profiles(settings, &retail, secret);
     let state = planner_state(settings, secret)?;
     let pending = state.request.as_ref().is_some_and(|request| request.status == "pending");
     if let Ok(mut model) = app.state::<AppState>().inner.lock() {

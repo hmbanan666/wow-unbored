@@ -240,6 +240,7 @@ test("mcp lists the planner tools", async () => {
       "approve_device",
       "fail_request",
       "get_current_plan",
+      "get_player_profile",
       "get_progress",
       "list_devices",
       "list_requests",
@@ -990,5 +991,49 @@ test("item and question requests are typed, webhooked, and answered", async () =
   } finally {
     close();
     await new Promise<void>((resolve, reject) => hook.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
+test("the companion uploads a player profile the planner reads over MCP", async () => {
+  const { app, close } = build();
+  const upload = (body: unknown, bearer = companion) =>
+    app.request("/v1/profile", {
+      method: "POST",
+      headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  try {
+    const empty = await mcpCall(app, "get_player_profile", {});
+    assert.equal(empty.isError, true);
+
+    assert.equal((await upload({ character: "Hero", profile: {} }, "wrong")).status, 401);
+    assert.equal((await upload({ character: "", profile: {} })).status, 400);
+    assert.equal((await upload({ character: "Hero", profile: [] })).status, 400);
+    assert.equal((await upload({ character: "Hero", profile: { pad: "x".repeat(600 * 1024) } })).status, 400);
+
+    const first = await upload({
+      character: "Hero",
+      realm: "Area 52",
+      savedAt: 1000,
+      profile: { v: 1, context: { mapID: 2248, gold: 18342 }, bags: [{ itemID: 6948, count: 1 }] },
+    });
+    assert.equal(first.status, 200, await first.clone().text());
+    assert.equal((await json(first)).updated, true);
+    const stale = await json(await upload({ character: "Hero", realm: "Area 52", savedAt: 900, profile: { v: 1 } }));
+    assert.equal(stale.updated, false);
+    await upload({ character: "Alt", realm: "Area 52", savedAt: 1100, profile: { v: 1, context: { mapID: 84 } } });
+
+    const latest = await mcpCall(app, "get_player_profile", {});
+    assert.equal(latest.isError, false, JSON.stringify(latest.value));
+    const latestProfile = latest.value.profile as Record<string, unknown>;
+    assert.equal(latestProfile.character, "Alt");
+    assert.equal((latest.value.characters as unknown[]).length, 2);
+
+    const hero = await mcpCall(app, "get_player_profile", { character: "Hero", realm: "Area 52" });
+    const heroProfile = hero.value.profile as { savedAt: number; profile: { bags: { itemID: number }[] } };
+    assert.equal(heroProfile.savedAt, 1000);
+    assert.equal(heroProfile.profile.bags[0].itemID, 6948);
+  } finally {
+    close();
   }
 });

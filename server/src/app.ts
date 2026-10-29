@@ -6,6 +6,7 @@ import type { Config } from "./config.ts";
 import { clientIp, cleanRegistration, PENDING_CAP, RegisterLimiter } from "./devices.ts";
 import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError } from "./plan.ts";
+import { cleanProfile } from "./profile.ts";
 import { publicDevice, publicRequest, sessionSummary, Store } from "./store.ts";
 import { postWebhook, webhookFromEnv, type WebhookConfig } from "./webhook.ts";
 
@@ -168,6 +169,24 @@ export function createApp(
     try {
       const stored = store.addProgress(body);
       return c.json({ ok: true, id: stored.id });
+    } catch (error) {
+      if (error instanceof PlanError) return c.json({ error: error.message }, 400);
+      throw error;
+    }
+  });
+
+  app.post("/v1/profile", async (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "The profile must be JSON." }, 400);
+    }
+    try {
+      const saved = store.putProfile({ ...cleanProfile(body), deviceId: access.deviceId });
+      return c.json({ ok: true, updated: saved.updated, updatedAt: saved.profile.updatedAt });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
       throw error;
