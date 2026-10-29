@@ -138,5 +138,9 @@ function ns.BuildProviderPlan(mode, ctx)
       tasks[#tasks + 1] = task
     end
   end
-  return ns.FillBudget(tasks, ctx.budget)
+  tasks = ns.FillBudget(tasks, ctx.budget)
+  while #tasks > ns.MAX_STEPS do
+    table.remove(tasks)
+  end
+  return tasks
 end

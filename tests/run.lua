@@ -649,6 +649,15 @@ check(ns.Utf8Truncate("abc", 5) == "abc", "short text is untouched")
 check(ns.SafeString("  hi  ", 10) == "hi", "safe string trims")
 check(ns.Call(nil) == nil, "call tolerates a missing function")
 
+local longPlan = {}
+for i = 1, 12 do
+  longPlan[i] = { id = "many:" .. i, title = "Step " .. i, estMinutes = 1, complete = { kind = "manual" } }
+end
+ns.Providers.many = { Build = function() return longPlan end }
+local capped = ns.BuildProviderPlan("many", { budget = 240 })
+check(#capped == ns.MAX_STEPS and ns.MAX_STEPS == 7, "a built plan has at most 7 steps: " .. #capped)
+ns.Providers.many = nil
+
 if fails > 0 then
   io.stderr:write(fails .. " failed, " .. checks .. " checks\n")
   os.exit(1)

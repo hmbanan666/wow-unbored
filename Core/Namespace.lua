@@ -3,6 +3,8 @@ local addonName, ns = ...
 ns.addon = addonName or "Unbored"
 ns.MASCOT_NAME = "Wisp"
 ns.MEDIA = "Interface\\AddOns\\Unbored\\Media\\"
+-- A plan is 3-7 steps (docs/adr/0005); the in-game builder never makes more.
+ns.MAX_STEPS = 7
 ns.Data = {}
 ns.Providers = {}
 ns.ProviderOrder = {}

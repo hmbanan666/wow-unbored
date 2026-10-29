@@ -520,7 +520,8 @@ check(UnboredDB.budget == 120 and gold(mascot.timeChips[3]) and not gold(mascot.
 mascot.timeChips[2]:Click()
 check(UnboredDB.budget == 60, "and back to 1h")
 
--- One click on a preset: request saved and the UI reloads in the same click.
+-- One click on a preset: a Quick plan at once, the Request saved, and the UI
+-- reloads in the same click.
 check(reloads == 0, "nothing reloaded yet")
 mascot.chips[2]:Click()
 check(reloads == 1, "a preset click reloads in the same click")
@@ -530,18 +531,22 @@ check(req and req.budget == 60, "with the default 1h")
 check(req and req.wish and req.wish:find("mount", 1, true), "and its words for the planner")
 check(req and req.context and req.context.mapID == 84, "the request has context")
 check(UnboredCharDB.lastWish == nil, "a preset does not overwrite the player's own wish")
-check(mascot.view.kind == "waiting" and textOf(mascot.message) == "Got it, cooking a plan...", "the mascot is cooking")
-check(textOf(mascot.header):find("Get a mount", 1, true) and textOf(mascot.header):find("1h", 1, true),
-  "the bubble says which preset: " .. textOf(mascot.header))
+local quick = ns.Session.state
+check(quick and quick.quick and quick.topic == "mount" and quick.source == "provider", "a Quick plan is built here")
+check(ns.Session:Current() ~= nil and #quick.tasks <= 7, "the Quick plan has a first step, 7 at most")
+check(UnboredCharDB.session == quick, "the Quick plan is saved before the reload")
+check(mascot.view.kind == "step" and textOf(mascot.message) == ns.Session:Current().title, "Wisp shows the first step")
+check(textOf(mascot.header) == "Quick plan for now. A better one is cooking.", "and says a better one is cooking")
+check(mascot.buttons.done:IsShown() and mascot.buttons.load:IsShown(), "Done and Load while cooking")
+check(not mascot.bob.playing, "no thinking bob over a step")
+local quickDone = ns.Session:Current().id
+mascot.buttons.done:Click()
+check(#quick.done == 1 and quick.done[1].id == quickDone, "a Quick plan step can be done")
 ui:Open("ask")
 check(ui.view == "waiting" and ui.primary.text == "Load", "the window waits too")
 check(ui.cancel:IsShown(), "waiting offers cancel")
 ui.frame:Hide()
 
--- Waiting: the mascot thinks.
-check(mascot.view.kind == "waiting", "the bubble waits too")
-check(mascot.bob and mascot.bob.playing and mascot.pulse.playing, "the mascot bobs and glows while thinking")
-check(mascot.art.texture:find("WispThinking", 1, true) ~= nil, "thinking portrait")
 check(mascot.buttons.load:IsShown() and textOf(mascot.buttons.load) == "Load", "the bubble offers Load")
 mascot.buttons.load:Click()
 check(reloads == 2, "Load reloads")
@@ -568,15 +573,25 @@ UnboredExternalPlan = {
     },
     { id = "b", title = "Second", estMinutes = 10, note = "second note" },
     { id = "c", title = "Third", estMinutes = 10 },
+    { id = quickDone, title = "Already done in the Quick plan", estMinutes = 10 },
   },
 }
-check(ns.Session:AutoApplyExternal() == true, "the requested plan starts")
+check(ns.Session:AutoApplyExternal() == true, "the Full plan is taken on load")
+check(ns.Session.state == quick and UnboredCharDB.request == nil, "it does not replace the Quick plan by itself")
+check(mascot.view.kind == "offer" and textOf(mascot.message) == "Better plan's ready! Load it in?", "Wisp asks first")
+check(textOf(mascot.sub):find("4 steps. First: Fly to Dalaran", 1, true) == 1, "the offer says what it is")
+check(mascot.buttons.use:IsShown() and mascot.buttons.keep:IsShown(), "Switch or keep")
+check(mascot.art.texture:find("WispHappy", 1, true) ~= nil, "happy portrait for the offer")
+check(ns.Session:AutoApplyExternal() == false, "the same Full plan is not offered twice")
+mascot.buttons.use:Click()
+check(UnboredCharDB.offer == nil and ns.Session.state.source == "companion", "Switch starts the Full plan")
+check(#ns.Session.state.tasks == 3 and ns.Session.state.done[1].id == quickDone, "finished steps carry over")
 check(not ui.frame:IsShown(), "starting a plan hides the main window")
 check(mascot.view.kind == "step", "the bubble shows the step")
 check(not mascot.bob.playing, "thinking stops when the plan is in")
 check(not mascot.forceChoice and not mascot.wishing, "a new plan clears the choice")
 check(textOf(mascot.message):find("Fly to Dalaran", 1, true) == 1, "the bubble says the step as written")
-check(textOf(mascot.count) == "1/3", "the bubble shows small progress: " .. textOf(mascot.count))
+check(textOf(mascot.count) == "2/4", "the bubble shows small progress: " .. textOf(mascot.count))
 local noteText = textOf(mascot.sub)
 check(noteText:find("never be cut", 1, true) and #noteText > 300, "the full note is shown")
 check(mascot.sub.height >= 4 * LINE_HEIGHT, "a long note wraps to several lines")
@@ -587,6 +602,13 @@ local height = mascot.bubble.height
 check(height > mascot.sub.height + mascot.message.height, "the bubble grows with the text")
 check(C_Map.pin and C_Map.pin.uiMapID == 84 and C_SuperTrack.on == true, "the current step is pinned and super-tracked")
 check(not tracker.frame:IsShown(), "the list view stays closed")
+
+-- Keep this one: the offer goes away and the plan stays.
+UnboredCharDB.offer = { plan = { tasks = { { id = "z", title = "Other" } } }, key = "k", requestId = "req-z" }
+ns.Session:RefreshUI()
+check(mascot.view.kind == "offer", "an offer shows over the step")
+mascot.buttons.keep:Click()
+check(UnboredCharDB.offer == nil and ns.Session:Current().id == "a", "Keep this one keeps the plan")
 
 -- With a plan, the menu is about the step first.
 mascot.frame:Click("LeftButton")
@@ -621,7 +643,7 @@ check(textOf(mascot.meta):find("Point 2/2: Bridge", 1, true), "arrival moves to 
 -- The list view on demand.
 tracker:Toggle()
 check(tracker.frame:IsShown(), "the list view opens on demand")
-check(textOf(tracker.sub):find("Step 1 of 3", 1, true) ~= nil, "the list shows the step count")
+check(textOf(tracker.sub):find("Step 2 of 4", 1, true) ~= nil, "the list shows the step count")
 tracker:Toggle()
 check(not tracker.frame:IsShown(), "and closes again")
 
@@ -638,7 +660,7 @@ menuRow("Skip this step"):Click()
 check(ns.Session:Current().id == "b", "Skip this step moves on")
 mascot.buttons.done:Click()
 check(ns.Session:Current().id == "c", "Done moves to the next step")
-check(textOf(mascot.count) == "2/3", "progress follows Done")
+check(textOf(mascot.count) == "3/4", "progress follows Done")
 mascot.buttons.skip:Click()
 check(ns.Session:Current().id == "a", "Skip moves on")
 mascot.buttons.done:Click()
@@ -666,6 +688,8 @@ check(req and req.type == "plan" and req.wish == "mount, no raids" and req.topic
 check(req and req.mode == "farm" and req.budget == 120, "with the last mode and time")
 check(UnboredCharDB.lastWish == "mount, no raids", "the wish is remembered")
 check(mascot.view.kind == "waiting" and textOf(mascot.message) == "Got it, cooking a plan...", "cooking again")
+check(mascot.bob and mascot.bob.playing and mascot.pulse.playing, "the mascot bobs and glows while thinking")
+check(mascot.art.texture:find("WispThinking", 1, true) ~= nil, "thinking portrait")
 check(textOf(mascot.header):find("mount, no raids", 1, true), "the bubble shows the wish")
 ns.Session:CancelRequest()
 check(mascot.view.kind == "choice", "cancel goes back to the presets")

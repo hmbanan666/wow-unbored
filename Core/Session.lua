@@ -328,6 +328,81 @@ function ns.Session:BuildHere(mode, budget)
   end
 end
 
+-- A Quick plan: built here from the Providers at once, so the player has a
+-- step right away while the Full plan is made (docs/adr/0005).
+function ns.Session:QuickPlan(preset, budget)
+  if type(UnboredCharDB) == "table" then
+    UnboredCharDB.offer = nil
+  end
+  self:Rebuild(preset.mode, budget)
+  if self.rebuildQueued then
+    return
+  end
+  if self.state then
+    self.state.quick = true
+    self.state.topic = preset.id
+    self:Save()
+  end
+  self:Started()
+end
+
+-- The Full plan that came back while a Quick plan is running. The player
+-- chooses; it never replaces the Quick plan on its own.
+function ns.Session.Offer()
+  local offer = type(UnboredCharDB) == "table" and UnboredCharDB.offer or nil
+  if type(offer) ~= "table" or type(offer.plan) ~= "table" or type(offer.plan.tasks) ~= "table" then
+    return nil
+  end
+  return offer
+end
+
+-- Steps finished in the Quick plan stay finished: they count in the progress
+-- and the same step in the Full plan is not asked again.
+function ns.Session:ApplyFull(plan, key, requestId)
+  local old = self.state
+  local carried = old and old.quick and ns.DeepCopy(old.done or {}, 0) or nil
+  self:ApplyPlan(plan, "companion", false)
+  if not self.state then
+    return
+  end
+  self.state.externalKey = key
+  self.state.requestId = requestId
+  if carried and #carried > 0 then
+    local finished = {}
+    for i = 1, #carried do
+      finished[carried[i].id] = true
+    end
+    local kept = {}
+    for i = 1, #self.state.tasks do
+      if not finished[self.state.tasks[i].id] then
+        kept[#kept + 1] = self.state.tasks[i]
+      end
+    end
+    self.state.tasks = kept
+    self.state.done = carried
+    self:Save()
+    self:CheckCurrent()
+    self:RefreshUI()
+  end
+end
+
+function ns.Session:AcceptOffer()
+  local offer = self.Offer()
+  if not offer then
+    return
+  end
+  UnboredCharDB.offer = nil
+  self:ApplyFull(offer.plan, offer.key, offer.requestId)
+  self:Started()
+end
+
+function ns.Session:DeclineOffer()
+  if type(UnboredCharDB) == "table" then
+    UnboredCharDB.offer = nil
+  end
+  self:RefreshUI()
+end
+
 -- The wizard only remembers the choice. Nothing is rebuilt until Get plan.
 function ns.Session.SetMode(_, mode)
   if ns.DB and ns.MODE_IDS[mode] and mode ~= "custom" then
@@ -369,9 +444,13 @@ function ns.Session:MaybeRebuild(flag)
   end
   local mode = self.state.mode
   local budget = self.state.budget
+  local quick, topic = self.state.quick, self.state.topic
   self:Rebuild(mode, budget)
   if self.state then
     self.state[flag] = false
+    self.state.quick = quick
+    self.state.topic = topic
+    self:Save()
   end
 end
 
@@ -466,6 +545,7 @@ function ns.Session:Ask(ask)
     context = okContext and type(context) == "table" and context or nil,
   }
   if kind == "plan" then
+    UnboredCharDB.offer = nil
     request.mode = ns.MODE_IDS[ask.mode] and ask.mode ~= "custom" and ask.mode or self.ChosenMode()
     local budget = tonumber(ask.budget)
     request.budget = budget and budget >= 5 and budget <= 240 and math.floor(budget) or self.ChosenBudget()
@@ -693,12 +773,10 @@ function ns.Session:AutoApplyExternal()
       self.RememberItem(item.itemID, answer.message)
     end
   end
-  if plan then
-    self:ApplyPlan(plan, "companion", false)
-    if self.state then
-      self.state.externalKey = key
-      self.state.requestId = requestId
-    end
+  if plan and self.state and self.state.quick and self:Current() then
+    UnboredCharDB.offer = { plan = plan, key = key, requestId = requestId, at = ns.Now() }
+  elseif plan then
+    self:ApplyFull(plan, key, requestId)
   elseif answer then
     self:AnswerStep(answer, requestId)
   end

@@ -4,6 +4,8 @@ A calm, open-source session planner for World of Warcraft **Retail** (Midnight 1
 
 It is not a gold-per-hour optimizer. [WhatNow](https://www.curseforge.com/wow/addons/whatnow) is a closed beta aimed at gold per minute and it wants TomTom. Unbored is MIT, has no required libraries, and would rather you fall off a cliff for an achievement than squeeze a route.
 
+New here, or an agent? Read [`CONTEXT.md`](CONTEXT.md) (the words we use) and [`docs/adr/`](docs/adr/) (the decisions behind them) first; [`AGENTS.md`](AGENTS.md) says how to add one.
+
 ## Screenshots
 
 None yet. After the first in-game pass, put shots in [`Screenshots/`](Screenshots/README.md).
@@ -27,13 +29,14 @@ CurseForge, Wago, and WowUp are not wired up yet. A git tag builds a zip through
 **Wisp** is the whole UI: a small round portrait on the left of the screen with one chat bubble beside it. The bubble shows one message at a time:
 
 - the current step, as the plan wrote it ("Fly to Dalaran. Portal is next to you in Orgrimmar."), its note, the route point and distance, and a small `2/5`. The ✓ icon is Done, the arrow is Skip;
-- "Thinking..." while a request is out, with Wisp bobbing and glowing, and one **Load** button;
+- "Thinking..." while a question is out, with Wisp bobbing and glowing, and one **Load** button. While a Full plan is cooking, the Quick plan's step stays up with "A better one is cooking" and **Load**;
+- "Better plan's ready! Load it in?" with **Switch** or **Keep this one**, once the Full plan has arrived;
 - an answer, shown as written, with a ✓ to say you read it;
 - "Hi! What shall we do?" with big preset chips when there is no plan, and "Nice! What next?" with the same chips when a plan is finished.
 
 Text wraps and the bubble grows; nothing is cut. The − in the bubble folds it down to the portrait. Drag the portrait to move it (Settings → Lock position to stop that). The position is saved, and the bubble opens toward the middle of the screen.
 
-**Starting a plan** happens in the bubble, with no settings to open. Each chip is one click: Stay here, do stuff nearby; Get a mount; Collect stuff nearby (pets, toys, transmog, achievements in this zone); Grind / level / renown; Farm gold / mats; Surprise me. Small time chips under them (30m, 1h, 2h) are optional; 1h is the default. **Something else...** opens one text box in the bubble for your own words, and **Send**. After a click Wisp says "Got it, cooking a plan..." and the UI reloads in the same click. The chips are one table in `Data/Presets.lua` (id, label, mode, and the words sent to the planner), so they are easy to edit.
+**Starting a plan** happens in the bubble, with no settings to open. Each chip is one click: Stay here, do stuff nearby; Get a mount; Collect stuff nearby (pets, toys, transmog, achievements in this zone); Grind / level / renown; Farm gold / mats; Surprise me. Small time chips under them (30m, 1h, 2h) are optional; 1h is the default. **Something else...** opens one text box in the bubble for your own words, and **Send**. A click builds a **Quick plan** in game at once (up to 7 steps, from the Providers for that chip's mode), so there is a first step right away. With the companion the same click also sends the Request and reloads the UI. When the **Full plan** is back, press **Load**: Wisp asks before switching, and steps you already finished carry over. Something else... has no Quick plan; Wisp says "Got it, cooking a plan..." until Load. The chips are one table in `Data/Presets.lua` (id, label, mode, and the words sent to the planner), so they are easy to edit.
 
 **Click Wisp** with no plan and it offers the chips. Otherwise a click (or a right-click any time) opens the game's own context menu. With a plan running it starts with the step: What next?, Skip this step, Show route on map. Then New plan, What is this item?, Ask something, and Settings last.
 
@@ -42,7 +45,7 @@ Text wraps and the bubble grows; nothing is cut. The − in the bubble folds it 
 - **What is this item?** has a slot. Drop an item on it, drop an item on Wisp, or Alt+Right-click the item in your bags. It shows what Unbored already knows and offers **Ask about it**.
 - **Settings** is basic: Size (80–150%), Lock position, Hide, Keybinds, and More. Hide hides Wisp; the minimap button (left-click) or `/unbored` brings it back.
 
-With the companion installed, every send (a preset chip, **Send**, **Ask about it**) saves the request and reloads the UI in the same click, so the companion can read it. The companion pops a Windows toast from Wisp when the answer arrives. **Load** reloads, and the plan starts, or the answer appears in the bubble. Any other reload or login picks it up too. Without the companion a chip builds the list in game with that chip's mode; What to do nearby? (`/unbored nearby`) builds a Roam list; questions and item questions say they need the companion.
+With the companion installed, every send (a preset chip, **Send**, **Ask about it**) saves the request and reloads the UI in the same click, so the companion can read it. The companion pops a Windows toast from Wisp when the answer arrives. **Load** reloads, and the plan starts, or the answer appears in the bubble. Any other reload or login picks it up too. Without the companion a chip gives you just the Quick plan; What to do nearby? (`/unbored nearby`) builds a Roam list; questions and item questions say they need the companion.
 
 **Item tooltips** get one short Wisp line when there is something to say: an answer the planner gave about that item, a note from `Data/Items.lua` (Hearthstone, cloth, food, keystone, and a few more), "Needed for your plan" when an active step is about it, and whether a mount, pet, or toy is still missing from your collection. Nothing is added otherwise.
 

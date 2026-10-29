@@ -12,6 +12,9 @@ ignore:
   - companion
   - server
   - art
+  - docs
+  - AGENTS.md
+  - CONTEXT.md
 
 license-output: LICENSE.txt
 

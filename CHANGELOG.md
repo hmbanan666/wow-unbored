@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+- Quick plan, then Full plan (docs/adr/0005). A Preset click builds a Quick plan in game at once from the Providers for that chip's mode, then sends the Request and reloads in the same click. While the Full plan cooks, the Bubble shows the Quick plan's step with "A better one is cooking" and Load.
+- When the Full plan arrives, Wisp asks "Better plan's ready! Load it in?" with Switch or Keep this one, instead of replacing the Quick plan. Steps already finished carry over: they count in the progress and are dropped from the Full plan.
+- Plans built in game have at most 7 steps.
+- New docs: `CONTEXT.md` (glossary), `docs/adr/` (decisions 0001-0009), and `AGENTS.md`.
+
 ## 0.4.1
 
 - Starting a plan is all Wisp. With no plan Wisp greets "Hi! What shall we do?" and shows big preset chips in the bubble: Stay here, do stuff nearby; Get a mount; Collect stuff nearby; Grind / level / renown; Farm gold / mats; Surprise me. One click saves the request and reloads, and Wisp says "Got it, cooking a plan..." until Load. Small 30m / 1h / 2h chips are optional (1h by default). Something else... is one text box in the bubble.
