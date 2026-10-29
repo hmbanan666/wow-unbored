@@ -13,7 +13,7 @@ Hard to reverse means things like data flow, privacy, pairing, what the addon ma
 
 Wisp's voice is warm, short, with light humour and no cringe. Plans are 3 to 7 Steps, one shown at a time, the full list on click. Every UI string goes in `Core/Locale.lua`, in English and Russian.
 
-Every state the player can be in has a line from Wisp and a way forward: no silent waits, no raw errors or ids, no slash command or manual `/reload` needed. Never reload per message (ADR 0012): answer locally first, use the Clipboard bridge for the Server, and offer Refresh only for big things. Never touch protected or secure frames outside a hardware event, and add no overlays on game UI. [`TESTING.md`](TESTING.md) is the owner's live-client checklist (in Russian); update it when a player-visible flow changes.
+Every state the player can be in has a line from Wisp and a way forward: no silent waits, no raw errors or ids, no slash command or manual `/reload` needed. Never reload per message (ADR 0012): answer locally first, let the Companion prepare the rest in the background, and offer one Refresh only when something is waiting. No clipboard tricks. Never touch protected or secure frames outside a hardware event, and add no overlays on game UI. [`TESTING.md`](TESTING.md) is the owner's live-client checklist (in Russian); update it when a player-visible flow changes.
 
 Request payloads live in `docs/contract/`; the Companion and Server tests both read them, so change both sides together.
 

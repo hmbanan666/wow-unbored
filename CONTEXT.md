@@ -33,15 +33,15 @@ A detailed Plan from the Planner. Replaces the Quick plan only when the player a
 _Avoid_: server plan, AI plan, real plan.
 
 **Request**
-What the player asks for: a Plan, an item, or a question. Travels over the Clipboard bridge (or SavedVariables at the next natural load) to the Companion, then to the Server.
+What the player asks for: a Plan, an item, or a question. Saved in SavedVariables, which the game writes at a Refresh or logout; the Companion then sends it to the Server.
 _Avoid_: ticket, job, query, call.
 
 **Answer**
-The Planner's reply to an item or question Request, shown in a Bubble when the player pastes it on Wisp, or at the next natural load.
+The Planner's fuller reply to an item or question Request, after Wisp's instant Local answer. Shown in a Bubble at the next login or Refresh.
 _Avoid_: response, result, reply message.
 
 **Companion**
-The desktop app. It pairs the Device, installs and updates the addon, runs the Clipboard bridge, and moves SavedVariables to the Server.
+The desktop app. It pairs the Device, installs and updates the addon, sends Requests and profiles from SavedVariables to the Server, and writes Answers, Plans and Personal advice into the helper addon in the background.
 _Avoid_: client, launcher, agent, uploader.
 
 **Device**
@@ -53,15 +53,15 @@ Whoever fulfils Requests. Today an external agent reached by webhook; later an L
 _Avoid_: AI, bot, GPT, the server (the Server only stores and relays).
 
 **Load**
-The click that reloads the UI. Optional and never needed for normal play; Wisp asks for it in two places only: "Press Load to finish the update" after an addon update, and the Refresh offer ("New stuff is ready. Refresh now?") when the Companion has prepared something big. Both are hardware events, so they may run ReloadUI.
+The click that reloads the UI after an addon update: "Press Load to finish the update". For new data the same click is called Refresh (see Refresh offer). Both are hardware events, so they may run ReloadUI; neither is ever needed for normal play.
 _Avoid_: sync, reload button, apply (in anything the player sees).
 
-**Clipboard bridge**
-The reload-free round trip to the Server: Wisp shows a selected Request string, the player presses Ctrl+C, the Companion sends it, puts the Answer back on the clipboard only while our string is still there, and the player presses Ctrl+V on Wisp. It carries only the Request id and minimal text.
-_Avoid_: copy hack, live link, sync.
+**Refresh offer**
+The one Bubble that may reload the UI on the player's click: "New stuff is ready. Refresh now?" or, after an Ask, "I'll have a fuller answer after a refresh", with [Refresh] and [Later]. Later means the next login. Never shown per message.
+_Avoid_: reload prompt, sync, update (that word is for addon updates).
 
 **Prefetch**
-The Companion writing Full plans, Answers and Personal advice into the helper addon ahead of time, so they are there at the next natural load (login or a reload the player chose).
+The Companion writing Full plans, Answers and Personal advice into the helper addon in the background, so they are there at the next login, character switch, or Refresh. Teleports and loading screens do not read them.
 _Avoid_: cache, preload, download.
 
 **Local answer**

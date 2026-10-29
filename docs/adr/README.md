@@ -13,7 +13,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0009. Player data](0009-player-data.md)
 - [0010. Local first, server brain](0010-local-first-server-brain.md)
 - [0011. Server-side player profile](0011-server-side-player-profile.md)
-- [0012. Reload-free: local first, clipboard bridge, prefetch](0012-reload-free-clipboard-bridge.md)
+- [0012. Reload-free: local first, background prefetch, one Refresh offer](0012-reload-free-background-refresh.md)
 - [0013. Request contract and Reason codes](0013-request-contract-and-reason-codes.md)
 - [0014. Ask is a core feature](0014-ask-is-core.md)
 - [0015. Item input: drop on Wisp, tooltip line, pick mode](0015-item-input.md)
