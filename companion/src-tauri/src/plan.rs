@@ -201,6 +201,9 @@ fn decode_b64(payload: &str) -> Result<Vec<u8>, PlanError> {
 /// the reply text, the follow-up plan, or both.
 pub fn render_request_lua(request: &RequestState, status: &str, plan: Option<&Plan>) -> String {
     let mut extras = vec![("requestType", Value::String(request.kind.clone()))];
+    if let Some(code) = request.reason_code.as_ref().filter(|_| status == "failed" && plan.is_some()) {
+        extras.push(("requestReasonCode", Value::String(code.clone())));
+    }
     if let Some(answer) = request.answer.as_ref().filter(|_| status == "fulfilled") {
         extras.push(("answer", answer.clone()));
     }
@@ -219,6 +222,9 @@ pub fn render_request_lua(request: &RequestState, status: &str, plan: Option<&Pl
         push_pair(&mut out, 1, "requestStatus", &Value::String(status.to_string()));
         if let Some(reason) = &request.reason {
             push_pair(&mut out, 1, "requestReason", &Value::String(reason.clone()));
+        }
+        if let Some(code) = request.reason_code.as_ref().filter(|_| status == "failed") {
+            push_pair(&mut out, 1, "requestReasonCode", &Value::String(code.clone()));
         }
         for (key, value) in &extras {
             push_pair(&mut out, 1, key, value);
@@ -371,6 +377,8 @@ pub struct RequestState {
     pub kind: String,
     pub status: String,
     pub reason: Option<String>,
+    /// A Reason code (docs/adr/0013); Wisp turns it into its own line.
+    pub reason_code: Option<String>,
     pub plan_id: Option<u64>,
     pub plan: Option<Plan>,
     pub answer: Option<Value>,

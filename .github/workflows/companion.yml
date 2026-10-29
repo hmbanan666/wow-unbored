@@ -6,6 +6,7 @@ on:
       - "companion/**"
       - ".github/workflows/companion.yml"
       - "docs/companion-api.md"
+      - "docs/contract/**"
   push:
     tags:
       - "companion-v*"

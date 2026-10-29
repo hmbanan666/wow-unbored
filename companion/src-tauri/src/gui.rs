@@ -22,6 +22,7 @@ use crate::plan::{
     decode_unb1, ensure_helper, install_plan, install_plan_file, pick_plan_file, plan_from_value,
     render_request_lua, write_status, CompanionStatus, Plan, PlanFile, PlannerState, RequestState,
 };
+use crate::request::{reason, request_body};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
 use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, retail_dir, CharacterFile};
 
@@ -682,6 +683,7 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
                     .unwrap_or("pending")
                     .to_string(),
                 reason: body.get("reason").and_then(|value| value.as_str()).map(str::to_string),
+                reason_code: body.get("reasonCode").and_then(|value| value.as_str()).map(str::to_string),
                 plan_id: body.get("planId").and_then(|value| value.as_u64()),
                 plan: decode_plan_field(body.get("plan").unwrap_or(&serde_json::Value::Null))?,
                 kind: body
@@ -698,8 +700,13 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
 }
 
 /// Sends every character's pending Request. Returns the ones the planner
-/// refused outright (a 4xx other than 401), so the game can be told.
-fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Vec<RequestState>, String> {
+/// refused outright (a 4xx other than 401), so the game can be told, and the
+/// Server's reason for the Companion's own status line.
+fn post_requests(
+    settings: &Settings,
+    retail: &Path,
+    secret: &str,
+) -> Result<Vec<(RequestState, String)>, String> {
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
     let mut rejected = Vec::new();
@@ -713,30 +720,26 @@ fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Vec
         let response = client
             .post(join_url(&url, "v1/requests"))
             .bearer_auth(secret)
-            .json(&serde_json::json!({
-                "id": request.id,
-                "createdAt": request.created_at,
-                "character": request.character,
-                "realm": request.realm,
-                "mode": request.mode,
-                "budget": request.budget,
-                "wish": request.wish,
-                "context": request.context,
-                "type": request.kind,
-                "question": request.question,
-                "topic": request.topic,
-                "item": request.item,
-            }))
+            .json(&request_body(&request, Some(&file.account)))
             .send()
             .map_err(|err| err.to_string())?;
         let code = response.status();
         if code.is_client_error() && code.as_u16() != 401 {
-            rejected.push(RequestState {
-                id: request.id.clone(),
-                kind: request.kind.clone(),
-                status: "failed".into(),
-                ..Default::default()
-            });
+            let why = response
+                .json::<serde_json::Value>()
+                .ok()
+                .and_then(|body| body.get("error").and_then(|value| value.as_str()).map(str::to_string))
+                .unwrap_or_else(|| code.to_string());
+            rejected.push((
+                RequestState {
+                    id: request.id.clone(),
+                    kind: request.kind.clone(),
+                    status: "failed".into(),
+                    reason_code: Some(reason::REJECTED.into()),
+                    ..Default::default()
+                },
+                why,
+            ));
             continue;
         }
         if !code.is_success() {
@@ -770,6 +773,7 @@ fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
             .json(&serde_json::json!({
                 "character": profile.character,
                 "realm": profile.realm,
+                "account": file.account,
                 "savedAt": profile.saved_at,
                 "profile": profile.profile,
             }))
@@ -798,8 +802,8 @@ fn sync_plans(
     let rejected = post_requests(settings, &retail, secret)?;
     // A profile that fails to upload must not hold back plans and answers.
     let _ = post_profiles(settings, &retail, secret);
-    if let Some(request) = rejected.first() {
-        // No reason: Wisp says its own friendly line, in the player's language.
+    if let Some((request, why)) = rejected.first() {
+        // Only the Reason code goes to the game; Wisp says its own line.
         let file = PlanFile {
             body: render_request_lua(request, "failed", None),
             ready_request: None,
@@ -808,7 +812,7 @@ fn sync_plans(
         let written = install_plan_file(&retail, &file).map_err(|err| err.0)?;
         return Ok(written
             .changed
-            .then(|| "The planner could not take that request.".to_string()));
+            .then(|| format!("The planner refused a request: {why}")));
     }
     let state = planner_state(settings, secret)?;
     let pending = state.request.as_ref().is_some_and(|request| request.status == "pending");

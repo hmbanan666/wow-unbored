@@ -19,6 +19,8 @@ function limitOf(value: string | undefined, fallback: number): number {
 export function createApp(
   config: Pick<Config, "companionToken" | "plannerToken" | "dataDir"> & {
     webhook?: WebhookConfig;
+    /** One line per request (docs/adr/0013). Defaults to stdout. */
+    log?: (line: string) => void;
   },
 ) {
   const store = new Store(config.dataDir);
@@ -26,6 +28,23 @@ export function createApp(
   const registerLimiter = new RegisterLimiter();
   const webhook = config.webhook ?? webhookFromEnv();
   const app = new Hono();
+  const log = config.log ?? ((line: string) => console.log(line));
+
+  // Method, path, status, and why a request was refused. Never headers or bodies.
+  app.use("*", async (c, next) => {
+    await next();
+    if (c.req.path === "/health") return;
+    let reason = "";
+    if (c.res.status >= 400) {
+      try {
+        const body = (await c.res.clone().json()) as { error?: unknown };
+        if (typeof body.error === "string") reason = ` reason=${JSON.stringify(body.error.slice(0, 200))}`;
+      } catch {
+        // Not JSON; the status says enough.
+      }
+    }
+    log(`${c.req.method} ${c.req.path} ${c.res.status}${reason}`);
+  });
 
   const allowCompanion = (c: Parameters<typeof requireRole>[0]) => {
     const presented = presentedBearer(c.req.header("authorization"));
@@ -113,6 +132,8 @@ export function createApp(
         topic: cleaned.topic,
         item: cleaned.item,
         context: cleaned.context,
+        lang: cleaned.lang,
+        account: cleaned.account,
         nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
       });
       if (saved.created) {
@@ -128,6 +149,8 @@ export function createApp(
           budget: saved.request.budget,
           wish: saved.request.wish,
           context: saved.request.context,
+          lang: saved.request.lang,
+          account: saved.request.account || null,
         });
       }
       return c.json(publicRequest(saved.request), saved.created ? 201 : 200);
@@ -147,6 +170,13 @@ export function createApp(
       ...publicRequest(request),
       plan: plan?.unb1 ?? null,
     });
+  });
+
+  // Personal advice for this device's characters (docs/adr/0019).
+  app.get("/v1/advice", (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    return c.json({ characters: store.adviceForDevice(access.deviceId) });
   });
 
   app.get("/v1/plan", (c) => {

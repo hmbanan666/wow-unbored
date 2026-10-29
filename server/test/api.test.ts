@@ -42,7 +42,7 @@ const sample = {
 
 function build() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-server-"));
-  return createApp({ companionToken: companion, plannerToken: planner, dataDir });
+  return createApp({ companionToken: companion, plannerToken: planner, dataDir, log: () => {} });
 }
 
 async function json(response: Response) {
@@ -240,11 +240,13 @@ test("mcp lists the planner tools", async () => {
       "approve_device",
       "fail_request",
       "get_current_plan",
+      "get_player_history",
       "get_player_profile",
       "get_progress",
       "list_devices",
       "list_requests",
       "list_sessions",
+      "put_item_advice",
       "put_plan",
       "resolve_criteria",
       "revoke_device",
