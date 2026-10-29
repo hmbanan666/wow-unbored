@@ -24,5 +24,9 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0020. Player history on the Server](0020-player-history.md)
 - [0021. Account personalization and Alt routing](0021-account-and-alt-routing.md)
 - [0022. Releases and docs for players](0022-releases-and-docs.md)
+- [0023. Monorepo layout](0023-monorepo-layout.md)
+- [0024. Vite+ for JavaScript](0024-vite-plus-toolchain.md)
+- [0025. Grouped dependency updates](0025-grouped-dependency-updates.md)
+- [0026. One release tag](0026-one-release-tag.md)
 
 The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md).
