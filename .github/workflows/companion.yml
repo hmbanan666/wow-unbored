@@ -3,17 +3,15 @@ name: Companion
 on:
   pull_request:
     paths:
-      - "companion/**"
+      - "apps/companion/**"
+      - "packages/contracts/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
       - ".github/workflows/companion.yml"
       - "docs/companion-api.md"
       - "docs/contract/**"
-  push:
-    tags:
-      - "companion-v*"
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   test:
@@ -21,8 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Library tests
-        run: cargo test --manifest-path companion/src-tauri/Cargo.toml --lib --no-default-features
+      - name: Format, clippy, and library tests
+        run: |
+          cargo fmt --manifest-path apps/companion/src-tauri/Cargo.toml -- --check
+          cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features -- -D warnings
+          cargo test --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features
 
   windows:
     runs-on: windows-latest
@@ -32,99 +33,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install frontend CLI
-        working-directory: companion
-        run: npm install
+      - name: Install the workspace
+        shell: bash
+        run: corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile
       - name: Choose signing
         id: sign
         shell: bash
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          # A secret pasted with a trailing newline fails base64 decoding.
           key="$(printf '%s' "$KEY" | tr -d '[:space:]')"
           if [ -n "$key" ]; then
             echo "::add-mask::$key"
             echo "TAURI_SIGNING_PRIVATE_KEY=$key" >> "$GITHUB_ENV"
             echo "args=--bundles msi,nsis" >> "$GITHUB_OUTPUT"
-            echo "updater=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. Building without updater artifacts; installed companions will not self-update to this build."
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. Building without updater artifacts."
             root="${GITHUB_WORKSPACE//\\//}"
-            echo "args=--bundles msi,nsis --config ${root}/companion/src-tauri/tauri.unsigned.conf.json" >> "$GITHUB_OUTPUT"
-            echo "updater=false" >> "$GITHUB_OUTPUT"
+            echo "args=--bundles msi,nsis --config ${root}/apps/companion/src-tauri/tauri.unsigned.conf.json" >> "$GITHUB_OUTPUT"
           fi
-      # Deleting and re-pushing a tag turns its release into a draft, and
-      # latest.json must point at public asset URLs.
-      - name: Publish an existing draft for this tag
-        if: startsWith(github.ref, 'refs/tags/companion-v')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = "true" ]; then
-            gh release edit "$TAG" --draft=false
-          fi
-      - name: Build installer
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: companion
-          tauriScript: npx --no-install tauri
-          args: ${{ steps.sign.outputs.args }}
-          # The action does not read github.ref. Without tagName it builds and skips the upload.
-          tagName: ${{ github.ref_name }}
-          releaseName: "Unbored Companion v__VERSION__"
-          releaseBody: "Download the file ending in -setup.exe. Full notes follow in a minute."
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: ${{ steps.sign.outputs.updater == 'true' }}
-          updaterJsonPreferNsis: true
-        if: startsWith(github.ref, 'refs/tags/companion-v')
-      # The app asks one fixed URL for latest.json. GitHub's "latest release"
-      # is often an addon release, so the file lives on its own prerelease.
-      - name: Point the self-updater at this build
-        if: startsWith(github.ref, 'refs/tags/companion-v') && steps.sign.outputs.updater == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          mkdir -p updater
-          gh release download "$TAG" --pattern latest.json --dir updater --clobber
-          if ! gh release view companion-updater >/dev/null 2>&1; then
-            gh release create companion-updater --prerelease --target "$GITHUB_SHA" \
-              --title "Companion self-update feed" \
-              --notes "Holds latest.json for the companion's built-in updater. Do not delete."
-          fi
-          gh release upload companion-updater updater/latest.json --clobber
       - name: Build installer without publishing
-        if: (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && !startsWith(github.ref, 'refs/tags/companion-v')
-        working-directory: companion
+        working-directory: apps/companion
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx --no-install tauri build ${{ steps.sign.outputs.args }}
-
-  # The release says only what changed, after a short Install section
-  # (docs/adr/0022). Runs after the installer is uploaded.
-  notes:
-    needs: windows
-    if: startsWith(github.ref, 'refs/tags/companion-v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Release notes for this version only
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          pipx install git-cliff==2.14.2
-          .github/scripts/release-notes.sh companion "$TAG" > notes.md
-          cat notes.md
-          gh release edit "$TAG" --notes-file notes.md
+        run: pnpm exec tauri build ${{ steps.sign.outputs.args }}

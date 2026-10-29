@@ -6,6 +6,8 @@
 
 ## Релиз
 
+С 0.7 один тег `vX.Y.Z` содержит установщик, zip аддона и `latest.json`. Уже установленные Companion 0.5 и 0.6 по-прежнему читают `latest.json` с релиза `companion-updater`. Пункты ниже проверяют уже вышедший 0.6.0.
+
 - [ ] В релизе `companion-v0.6.0` текст начинается с «Install / Download»: какой файл скачать (`..._x64-setup.exe`), 2–3 шага, ссылка на README. `latest.json` и `.sig` подписаны как «для автообновления, не трогай».
 - [ ] Ниже — только изменения 0.6.0 (Features / Fixes / Performance / Other), а не весь CHANGELOG.
 - [ ] То же в релизе аддона `v0.6.0`: «Install / Download» про zip для ручной установки и совет брать Companion.

@@ -3,8 +3,8 @@
     pip install pillow numpy
     python3 art/build_assets.py
 
-Writes the in-game portraits (Media/*.tga), the companion icons
-(companion/src-tauri/icons) and the window images (companion/ui/img).
+Writes the in-game portraits (addon/Media/*.tga), the Companion icons
+(apps/companion/src-tauri/icons) and the window images (apps/companion/ui/img).
 """
 
 from pathlib import Path
@@ -73,12 +73,12 @@ def save_tga(image: Image.Image, path: Path) -> None:
 def main() -> None:
     source = Image.open(SOURCE).convert("RGB")
     states = {"Idle": source, "Thinking": thinking(source), "Happy": happy(source)}
-    media = ROOT / "Media"
+    media = ROOT / "addon" / "Media"
     for name, image in states.items():
         save_tga(portrait(128, image), media / f"Wisp{name}128.tga")
     save_tga(portrait(64, source), media / "Icon.tga")
 
-    icons = ROOT / "companion" / "src-tauri" / "icons"
+    icons = ROOT / "apps" / "companion" / "src-tauri" / "icons"
     big = portrait(512, source)
     big.save(icons / "icon.png")
     portrait(128, source).save(icons / "128x128.png")
@@ -87,7 +87,7 @@ def main() -> None:
     sizes = [16, 24, 32, 48, 64, 128, 256]
     portrait(256, source).save(icons / "icon.ico", sizes=[(s, s) for s in sizes])
 
-    ui = ROOT / "companion" / "ui" / "img"
+    ui = ROOT / "apps" / "companion" / "ui" / "img"
     ui.mkdir(parents=True, exist_ok=True)
     for name, image in states.items():
         portrait(256, image).save(ui / f"wisp-{name.lower()}.png")

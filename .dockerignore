@@ -1,0 +1,9 @@
+**/.git
+**/node_modules
+apps/companion/src-tauri/target
+apps/companion/dist
+addon
+art
+docs
+Screenshots
+**/*.md

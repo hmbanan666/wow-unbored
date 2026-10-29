@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unbored.kosarev.space/schema/request.json",
+  "title": "Request",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["id", "character", "realm", "type"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "integer" },
+    "character": { "type": "string", "minLength": 1 },
+    "realm": { "type": "string" },
+    "type": { "enum": ["plan", "item", "question"] },
+    "mode": { "type": "string" },
+    "budget": { "type": "integer" },
+    "wish": { "type": "string" },
+    "question": { "type": "string" },
+    "topic": { "type": "string" },
+    "lang": { "type": "string" },
+    "account": { "type": "string" },
+    "item": {
+      "type": "object",
+      "required": ["itemID"],
+      "properties": {
+        "itemID": { "type": "integer", "minimum": 1 },
+        "link": { "type": "string" },
+        "name": { "type": "string" },
+        "bag": { "type": "integer" },
+        "slot": { "type": "integer" },
+        "count": { "type": "integer" }
+      }
+    },
+    "context": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "plan" } },
+        "required": ["type"]
+      },
+      "then": { "required": ["mode", "budget"] }
+    },
+    {
+      "if": {
+        "properties": { "type": { "enum": ["item", "question"] } },
+        "required": ["type"]
+      },
+      "then": {
+        "not": {
+          "anyOf": [{ "required": ["mode"] }, { "required": ["budget"] }]
+        }
+      }
+    }
+  ]
+}

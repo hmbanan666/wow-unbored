@@ -1,6 +1,6 @@
 # Companion planner API
 
-Unbored Companion can poll an HTTPS endpoint you host. `server/` in this repo is that endpoint. The app sends the calls below and does nothing if the URL is empty.
+Unbored Companion can poll an HTTPS endpoint you host. `apps/server/` in this repo is that endpoint. The app sends the calls below and does nothing if the URL is empty.
 
 The base URL is whatever you type in the app, without a trailing slash. Example: `https://planner.example/unbored`.
 
@@ -233,4 +233,4 @@ An approved device can call `GET /v1/plan` and `POST /v1/progress` only. It cann
 
 ## Server in this repo
 
-`server/` implements the two calls above. The companion sends `Authorization: Bearer <UNBORED_COMPANION_TOKEN>`. Putting a plan, reading progress, and the MCP endpoint `/mcp` use a different bearer, `UNBORED_PLANNER_TOKEN`. Setup, the volume mount, and the planner routes are in `server/README.md`.
+`apps/server/` implements the two calls above. The companion sends `Authorization: Bearer <UNBORED_COMPANION_TOKEN>`. Putting a plan, reading progress, and the MCP endpoint `/mcp` use a different bearer, `UNBORED_PLANNER_TOKEN`. Setup, the volume mount, and the planner routes are in `apps/server/README.md`.

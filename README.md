@@ -12,7 +12,7 @@ Unbored puts Wisp, a small glowing spirit, on your screen. Tell her your mood an
 
 ## Install
 
-1. Download the **Unbored Companion** installer for Windows: open the [newest Companion release](https://github.com/hmbanan666/wow-unbored/releases?q=companion&expanded=true) and click the file ending in `-setup.exe`.
+1. Download the **Unbored Companion** installer for Windows: open the [newest release](https://github.com/hmbanan666/wow-unbored/releases/latest) and click the file ending in `-setup.exe`.
 2. Run it. Windows may warn you because the installer isn't signed yet: click **More info**, then **Run anyway**. The Companion finds World of Warcraft and puts Wisp into the game.
 3. Start the game (Retail) and click Wisp on the left of your screen.
 
@@ -53,7 +53,7 @@ Unbored добавляет на экран Виспа — маленького �
 
 ### Установка
 
-1. Скачай установщик **Unbored Companion** для Windows: открой [последний релиз Companion](https://github.com/hmbanan666/wow-unbored/releases?q=companion&expanded=true) и нажми на файл, который заканчивается на `-setup.exe`.
+1. Скачай установщик **Unbored Companion** для Windows: открой [последний релиз](https://github.com/hmbanan666/wow-unbored/releases/latest) и нажми на файл, который заканчивается на `-setup.exe`.
 2. Запусти его. Windows может предупредить, что установщик пока не подписан: нажми **Подробнее**, затем **Выполнить в любом случае**. Companion сам найдёт World of Warcraft и добавит Виспа в игру.
 3. Запусти игру (Retail) и нажми на Виспа слева на экране.
 

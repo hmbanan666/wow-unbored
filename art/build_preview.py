@@ -34,7 +34,7 @@ def font(size, bold=False):
 
 
 def media(name, size):
-    image = Image.open(ROOT / "Media" / f"{name}.tga").convert("RGBA")
+    image = Image.open(ROOT / "addon" / "Media" / f"{name}.tga").convert("RGBA")
     return image.resize((size * K, size * K), Image.LANCZOS)
 
 
