@@ -342,9 +342,9 @@ function ns.Tracker:Refresh()
     self.bannerButton:ClearAllPoints()
     self.bannerButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, y + 4)
     if waiting then
-      self.bannerButton:SetText(ns.T("LOAD_PLAN"))
+      self.bannerButton:SetText(ns.T("REFRESH"))
       self.bannerButton:SetScript("OnClick", function()
-        ns.Mascot:OnLoad()
+        ns.Session.RefreshNow()
       end)
     else
       self.bannerButton:SetText(ns.T("NEW_PLAN"))

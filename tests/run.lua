@@ -24,6 +24,8 @@ local files = {
   "Core/Util.lua",
   "Core/Context.lua",
   "Core/Profile.lua",
+  "Core/Intents.lua",
+  "Core/Advice.lua",
   "Core/Codec.lua",
   "Core/Import.lua",
   "Core/Plan.lua",
@@ -37,6 +39,7 @@ local files = {
   "Data/Holidays.lua",
   "Data/Farm.lua",
   "Data/Items.lua",
+  "Data/AdviceTable.lua",
   "Data/Presets.lua",
   "Providers/Roam.lua",
   "Providers/Quests.lua",
@@ -523,10 +526,34 @@ check(req and type(req.context) == "table" and req.context.mapID == 84, "get pla
 check(req and near(req.context.x, 0.2) and req.context.zone == "Stormwind City", "context has position and zone")
 check(type(req.context.plan) == "table", "context has the active plan progress")
 check(ns.Session.requestNote == "sending", "a new request waits for the companion file")
-ns.Session.LoadPlan()
-check(reloads == 1, "load plan reloads the UI")
+check(reloads == 0, "asking never reloads")
+check(req.lang == "en" and req.onDisk == nil, "a new request has a language and is not on disk yet")
+local offer = ns.Session:RefreshOffer()
+check(offer and offer.kind == "after", "a request made now offers one Refresh")
+ns.Session:Later()
+check(ns.Session:RefreshOffer() == nil and req.later == true, "Later puts the offer off")
+ns.Session.RefreshNow()
+check(reloads == 1, "Refresh reloads the UI")
+ns.Session:MarkLoaded()
+check(req.onDisk == true, "after a load the request is on disk")
+check(ns.Session:RefreshOffer() == nil, "right after a load there is nothing to offer yet")
+local loadedAt = ns.Session.loadedAt
+ns.Session.loadedAt = loadedAt - ns.READY_GUESS_SECONDS - 1
+offer = ns.Session:RefreshOffer()
+check(offer and offer.kind == "ready", "a while after the load: New stuff is ready")
+ns.Session:Later()
+check(ns.Session:RefreshOffer() == nil, "Later on the ready offer holds for this load")
+ns.Session.loadedAt = loadedAt
+ns.Session.readyLater = nil
 check(ns.Session:AutoApplyExternal() == false, "an old direct plan does not replace a pending request")
 check(UnboredCharDB.request ~= nil, "the request stays pending")
+UnboredCompanionStatus = { seenAt = ns.Now() - 30 * 60 }
+ns.Session.loadedAt = ns.Now() - 29 * 60
+check(ns.Session.CompanionProblem() == nil, "the Companion status is judged at the load, not by play time")
+ns.Session.loadedAt = ns.Now()
+check(ns.Session.CompanionProblem() == "stopped", "a status already old at the load means it is not running")
+UnboredCompanionStatus = nil
+ns.Session.loadedAt = loadedAt
 
 UnboredExternalPlan = {
   v = 1,

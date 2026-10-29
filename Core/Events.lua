@@ -22,6 +22,7 @@ local WATCH = {
   "PLAYER_LOGOUT",
   "BANKFRAME_OPENED",
   "PLAYERBANKSLOTS_CHANGED",
+  "CURSOR_CHANGED",
 }
 
 function ns.Events.Pulse()
@@ -72,6 +73,12 @@ function ns.Events.Register(frame)
 end
 
 function ns.Events.OnEvent(event, ...)
+  if event == "CURSOR_CHANGED" then
+    if ns.Mascot and ns.Mascot.OnCursorChanged then
+      pcall(ns.Mascot.OnCursorChanged, ns.Mascot)
+    end
+    return
+  end
   if ns.Profile then
     pcall(ns.Profile.OnEvent, event)
   end

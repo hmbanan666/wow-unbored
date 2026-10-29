@@ -45,6 +45,20 @@ function ns.T(key, ...)
   return text
 end
 
+-- The same string in a given language ("en" or "ru"), whatever the client
+-- runs in: an Answer follows the language of the question (docs/adr/0014).
+function ns.TL(lang, key, ...)
+  local table_ = ns.Locales and ns.Locales[lang] or nil
+  local text = (table_ and table_[key]) or (ns.L and ns.L[key]) or key
+  if select("#", ...) > 0 then
+    local ok, formatted = pcall(string.format, text, ...)
+    if ok then
+      return formatted
+    end
+  end
+  return text
+end
+
 function ns.ModeLabel(mode)
   for i = 1, #ns.MODES do
     if ns.MODES[i].id == mode then
