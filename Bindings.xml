@@ -11,4 +11,7 @@
 	<Binding name="UNBORED_WAYPOINT" category="Unbored">
 		Unbored_Waypoint()
 	</Binding>
+	<Binding name="UNBORED_LOAD" category="Unbored">
+		Unbored_LoadPlan()
+	</Binding>
 </Bindings>

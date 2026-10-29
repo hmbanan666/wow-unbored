@@ -22,6 +22,7 @@ local files = {
   "Core/Namespace.lua",
   "Core/Locale.lua",
   "Core/Util.lua",
+  "Core/Context.lua",
   "Core/Codec.lua",
   "Core/Import.lua",
   "Core/Plan.lua",
@@ -41,6 +42,7 @@ local files = {
   "Providers/Farm.lua",
   "Companion/Plan.lua",
   "UI/Frame.lua",
+  "UI/Tracker.lua",
   "UI/Import.lua",
   "UI/Minimap.lua",
   "Core/Init.lua",
@@ -495,28 +497,32 @@ UnboredExternalPlan = {
 UnboredCharDB = {}
 ns.Session.started = false
 ns.Session.state = nil
-ns.Session.offered = nil
-ns.Session.announcedOffer = nil
-ns.Session:ConsiderExternal()
-check(ns.Session.offered and ns.Session.offered.tasks[1].id == "ext:1", "external plan is offered")
-check(ns.Session:ActivateOffered() == true, "use it activates the plan")
-check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "activated plan is current")
-ns.Session:ConsiderExternal()
-check(ns.Session.offered == nil, "the same plan is not offered again")
-UnboredCharDB.acceptedExternalKey = nil
-UnboredCharDB.dismissedExternalKey = "t:5000"
-ns.Session.announcedOffer = nil
-ns.Session:ConsiderExternal()
-check(ns.Session.offered == nil, "a dismissed plan stays quiet")
-check(ns.Session:UseExternal() == true, "slash companion applies a dismissed plan")
-check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "dismissed plan becomes current")
+check(ns.Session:AutoApplyExternal() == true, "a direct companion plan starts on load")
+check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "the direct plan is current")
+ns.Session:Done()
+check(ns.Session:AutoApplyExternal() == false, "the same direct plan does not restart")
+check(ns.Session:UseExternal() == true, "slash companion applies it again")
+check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "the forced plan is current")
 
-ns.Session.state.mode = "farm"
-ns.Session.state.budget = 60
-ns.Session:RequestPlan("mount")
+UnboredDB.mode = "farm"
+UnboredDB.budget = 60
+local reloads = 0
+ReloadUI = function()
+  reloads = reloads + 1
+end
+ns.Session:RequestPlan("mount, stay in this zone")
 local req = UnboredCharDB.request
-check(req and req.mode == "farm" and req.wish == "mount" and req.character == "player", "get plan saves a request")
-check(ns.Session.requestNote == "waiting", "a new request waits for the companion file")
+check(req and req.mode == "farm" and req.budget == 60, "get plan saves mode and budget")
+check(req and req.wish == "mount, stay in this zone" and req.character == "player", "get plan saves the wish")
+check(req and type(req.context) == "table" and req.context.mapID == 84, "get plan saves the player context")
+check(req and near(req.context.x, 0.2) and req.context.zone == "Stormwind City", "context has position and zone")
+check(type(req.context.plan) == "table", "context has the active plan progress")
+check(ns.Session.requestNote == "sending", "a new request waits for the companion file")
+ns.Session.LoadPlan()
+check(reloads == 1, "load plan reloads the UI")
+check(ns.Session:AutoApplyExternal() == false, "an old direct plan does not replace a pending request")
+check(UnboredCharDB.request ~= nil, "the request stays pending")
+
 UnboredExternalPlan = {
   v = 1,
   kind = "plan",
@@ -525,29 +531,78 @@ UnboredExternalPlan = {
   requestId = req.id,
   requestStatus = "pending",
 }
-ns.Session.announcedOffer = nil
-ns.Session:ConsiderExternal()
+check(ns.Session:AutoApplyExternal() == false, "a pending file is not applied")
 check(ns.Session.requestNote == "preparing", "pending file says the plan is being prepared")
-check(ns.Session.offered == nil, "a pending file is not offered")
 UnboredExternalPlan.requestStatus = "failed"
 UnboredExternalPlan.requestReason = "no mounts left"
-ns.Session:ConsiderExternal()
+ns.Session:AutoApplyExternal()
 check(ns.Session.requestNote == "failed" and ns.Session.requestReason == "no mounts left", "failure reason is kept")
+
 UnboredExternalPlan = {
   v = 1,
   kind = "plan",
   mode = "farm",
   budget = 60,
   generatedAt = 11,
-  requestId = req.id,
+  requestId = "req-other",
   requestStatus = "fulfilled",
   tasks = {
-    { id = "req:1", title = "Mount", estMinutes = 10, complete = { kind = "manual" } },
+    { id = "other:1", title = "Other", estMinutes = 10, complete = { kind = "manual" } },
   },
 }
-ns.Session.announcedOffer = nil
-ns.Session:ConsiderExternal()
-check(ns.Session.offered and ns.Session.offered.tasks[1].id == "req:1", "matching request auto-offers use it")
+check(ns.Session:AutoApplyExternal() == false, "a plan for another request is ignored")
+UnboredExternalPlan.requestId = req.id
+UnboredExternalPlan.tasks = {
+  {
+    id = "req:1",
+    title = "Mount",
+    estMinutes = 10,
+    complete = { kind = "manual" },
+    waypoints = {
+      { mapID = 84, x = 0.2, y = 0.2, label = "Gate" },
+      { mapID = 84, x = 0.6, y = 0.6, label = "Bridge" },
+    },
+  },
+}
+check(ns.Session:AutoApplyExternal() == true, "the matching plan starts with no prompt")
+check(ns.Session:Current() and ns.Session:Current().id == "req:1", "the requested plan is current")
+check(UnboredCharDB.request == nil, "the request is cleared once its plan starts")
+check(ns.Session:AutoApplyExternal() == false, "the same requested plan does not restart")
+
+local routed = ns.Session:Current()
+check(#routed.waypoints == 2 and routed.waypoints[2].label == "Bridge", "route points survive normalisation")
+local point, index, count = ns.Waypoint.Target(routed)
+check(point and point.label == "Gate" and index == 1 and count == 2, "route starts at the first point")
+check(ns.Session:AdvanceRoute() == true, "standing on the first point moves to the next")
+point, index = ns.Waypoint.Target(routed)
+check(point.label == "Bridge" and index == 2, "the second point is now the target")
+check(ns.Session:AdvanceRoute() == false, "far from the last point the route stays")
+local progress2 = ns.Session:Progress()
+check(progress2 and progress2.step == 1 and progress2.steps == 1, "progress counts steps")
+
+local function waypointPlan(points)
+  return "UNB1:" .. ns.Base64Encode(ns.JSON.Encode({
+    v = 1,
+    kind = "plan",
+    tasks = { { id = "w", title = "W", waypoints = points } },
+  }))
+end
+local okRoute = ns.DecodeImport(waypointPlan({ { mapID = 84, x = 0.1, y = 0.9, label = "A" } }))
+check(okRoute and okRoute.tasks[1].waypoints[1].mapID == 84, "import keeps waypoints")
+local again2 = ns.DecodeImport(ns.EncodePlan(okRoute))
+check(again2 and again2.tasks[1].waypoints[1].label == "A", "export keeps waypoints")
+check(ns.DecodeImport(waypointPlan({ { mapID = 84, x = 50, y = 10 } })) == nil, "route in percent is rejected")
+check(ns.DecodeImport(waypointPlan({ { x = 0.1, y = 0.2 } })) == nil, "route point without a map is rejected")
+local many = {}
+for i = 1, 11 do
+  many[i] = { mapID = 84, x = 0.1, y = 0.1 }
+end
+check(ns.DecodeImport(waypointPlan(many)) == nil, "more than ten route points is rejected")
+
+check(ns.Utf8Truncate("привет", 5) == "пр", "truncate never splits a character")
+check(ns.Utf8Truncate("abc", 5) == "abc", "short text is untouched")
+check(ns.SafeString("  hi  ", 10) == "hi", "safe string trims")
+check(ns.Call(nil) == nil, "call tolerates a missing function")
 
 if fails > 0 then
   io.stderr:write(fails .. " failed, " .. checks .. " checks\n")
