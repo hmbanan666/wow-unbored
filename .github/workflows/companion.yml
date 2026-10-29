@@ -34,23 +34,62 @@ jobs:
       - name: Install frontend CLI
         working-directory: companion
         run: npm install
+      - name: Choose signing
+        id: sign
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "args=--bundles msi,nsis" >> "$GITHUB_OUTPUT"
+            echo "updater=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. Building without updater artifacts; installed companions will not self-update to this build."
+            root="${GITHUB_WORKSPACE//\\//}"
+            echo "args=--bundles msi,nsis --config ${root}/companion/src-tauri/tauri.unsigned.conf.json" >> "$GITHUB_OUTPUT"
+            echo "updater=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build installer
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: companion
           tauriScript: npx --no-install tauri
-          args: --bundles msi,nsis
+          args: ${{ steps.sign.outputs.args }}
           # The action does not read github.ref. Without tagName it builds and skips the upload.
           tagName: ${{ github.ref_name }}
           releaseName: "Unbored Companion v__VERSION__"
-          releaseBody: "Windows installer is unsigned. SmartScreen will warn; More info, then Run anyway. See companion/README.md."
+          releaseBody: "Windows installer is unsigned. SmartScreen will warn; More info, then Run anyway. Installed companions update themselves from here. See companion/README.md."
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: false
+          includeUpdaterJson: ${{ steps.sign.outputs.updater == 'true' }}
+          updaterJsonPreferNsis: true
         if: startsWith(github.ref, 'refs/tags/companion-v')
+      # The app asks one fixed URL for latest.json. GitHub's "latest release"
+      # is often an addon release, so the file lives on its own prerelease.
+      - name: Point the self-updater at this build
+        if: startsWith(github.ref, 'refs/tags/companion-v') && steps.sign.outputs.updater == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p updater
+          gh release download "$TAG" --pattern latest.json --dir updater --clobber
+          if ! gh release view companion-updater >/dev/null 2>&1; then
+            gh release create companion-updater --prerelease --target "$GITHUB_SHA" \
+              --title "Companion self-update feed" \
+              --notes "Holds latest.json for the companion's built-in updater. Do not delete."
+          fi
+          gh release upload companion-updater updater/latest.json --clobber
       - name: Build installer without publishing
         if: (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && !startsWith(github.ref, 'refs/tags/companion-v')
         working-directory: companion
-        run: npx --no-install tauri build --bundles msi,nsis
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx --no-install tauri build ${{ steps.sign.outputs.args }}

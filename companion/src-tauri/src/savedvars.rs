@@ -34,6 +34,45 @@ impl LuaValue {
             _ => None,
         }
     }
+
+    /// A table with only 1..n keys becomes an array; any other table an object.
+    pub fn to_json(&self) -> serde_json::Value {
+        use serde_json::Value;
+        match self {
+            LuaValue::Nil => Value::Null,
+            LuaValue::Bool(b) => Value::Bool(*b),
+            LuaValue::Number(n) => {
+                if n.fract() == 0.0 && n.abs() < 9.0e15 {
+                    Value::from(*n as i64)
+                } else {
+                    serde_json::Number::from_f64(*n).map(Value::Number).unwrap_or(Value::Null)
+                }
+            }
+            LuaValue::String(text) => Value::String(text.clone()),
+            LuaValue::Table(entries) => {
+                let is_array = entries.iter().all(|(key, _)| matches!(key, TableKey::Index(_)));
+                if is_array && !entries.is_empty() {
+                    let items = array_items(self);
+                    let contiguous = items.len() == entries.len()
+                        && entries.iter().all(|(key, _)| {
+                            matches!(key, TableKey::Index(i) if (*i as usize) <= entries.len())
+                        });
+                    if contiguous {
+                        return Value::Array(items.into_iter().map(LuaValue::to_json).collect());
+                    }
+                }
+                let mut map = serde_json::Map::new();
+                for (key, item) in entries {
+                    let name = match key {
+                        TableKey::Name(name) => name.clone(),
+                        TableKey::Index(i) => i.to_string(),
+                    };
+                    map.insert(name, item.to_json());
+                }
+                Value::Object(map)
+            }
+        }
+    }
 }
 
 pub fn table_get<'a>(value: &'a LuaValue, name: &str) -> Option<&'a LuaValue> {
@@ -112,6 +151,7 @@ pub struct SavedRequest {
     pub mode: String,
     pub budget: u64,
     pub wish: Option<String>,
+    pub context: Option<serde_json::Value>,
 }
 
 pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, String> {
@@ -153,6 +193,9 @@ pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, 
         mode,
         budget,
         wish,
+        context: table_get(request, "context")
+            .map(LuaValue::to_json)
+            .filter(serde_json::Value::is_object),
     }))
 }
 
@@ -504,6 +547,15 @@ UnboredCharDB = {
     ["mode"] = "farm",
     ["budget"] = 60,
     ["wish"] = "mount",
+    ["context"] = {
+      ["mapID"] = 2248,
+      ["x"] = 0.4512,
+      ["zone"] = "Isle of Dorn",
+      ["skyriding"] = true,
+      ["trackedQuests"] = {
+        { ["id"] = 81, ["title"] = "Q" },
+      },
+    },
   },
 }
 "#;
@@ -512,6 +564,11 @@ UnboredCharDB = {
         assert_eq!(request.character, "Hero");
         assert_eq!(request.mode, "farm");
         assert_eq!(request.wish.as_deref(), Some("mount"));
+        let context = request.context.unwrap();
+        assert_eq!(context["mapID"], 2248);
+        assert_eq!(context["x"], 0.4512);
+        assert_eq!(context["skyriding"], true);
+        assert_eq!(context["trackedQuests"][0]["title"], "Q");
     }
 
     #[test]

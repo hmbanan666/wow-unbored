@@ -9,6 +9,10 @@ files["tests/run.lua"] = {
   ignore = { "121", "122" },
 }
 
+files["tests/ui.lua"] = {
+  ignore = { "111", "112", "121", "122" },
+}
+
 globals = {
   "Unbored",
   "UnboredDB",
@@ -19,6 +23,7 @@ globals = {
   "Unbored_Done",
   "Unbored_Skip",
   "Unbored_Waypoint",
+  "Unbored_LoadPlan",
   "SLASH_UNBORED1",
   "SLASH_UNBORED2",
   "SlashCmdList",
@@ -27,6 +32,8 @@ globals = {
   "BINDING_NAME_UNBORED_DONE",
   "BINDING_NAME_UNBORED_SKIP",
   "BINDING_NAME_UNBORED_WAYPOINT",
+  "BINDING_NAME_UNBORED_LOAD",
+  "UnboredTracker",
 }
 
 read_globals = {
@@ -69,7 +76,6 @@ read_globals = {
   "PlaySound",
   "RequestRaidInfo",
   "SOUNDKIT",
-  "SlashCmdList",
   "TomTom",
   "UIParent",
   "UnitFactionGroup",
@@ -77,4 +83,27 @@ read_globals = {
   "UiMapPoint",
   "issecretvalue",
   "time",
+  "UISpecialFrames",
+  "GameFontNormalLarge",
+  "GameFontNormal",
+  "GameFontHighlight",
+  "GameFontDisable",
+  "GameFontDisableSmall",
+  "GameFontNormalSmall",
+  "UnitClass",
+  "GetRealZoneText",
+  "GetZoneText",
+  "GetSubZoneText",
+  "GetBindLocation",
+  "GetMoney",
+  "GetAverageItemLevel",
+  "GetSpecialization",
+  "GetSpecializationInfo",
+  "IsPlayerSpell",
+  "IsFlyableArea",
+  "IsShiftKeyDown",
+  "ToggleWorldMap",
+  "UIParentLoadAddOn",
+  "SetCursor",
+  "ResetCursor",
 }

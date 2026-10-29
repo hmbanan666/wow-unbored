@@ -211,6 +211,43 @@ local function cleanComplete(raw, index, depth)
   return nil, ns.T("ERR_COMPLETE", index, kind)
 end
 
+ns.MAX_WAYPOINTS = 10
+
+-- Returns nil, nil when the task has no route.
+function ns.CleanWaypoints(raw, index)
+  raw = plain(raw)
+  if raw == nil then
+    return nil
+  end
+  if type(raw) ~= "table" or #raw > ns.MAX_WAYPOINTS then
+    return nil, ns.T("ERR_WAYPOINTS", index)
+  end
+  local out = {}
+  for i = 1, #raw do
+    local point = plain(raw[i])
+    if type(point) ~= "table" then
+      return nil, ns.T("ERR_WAYPOINTS", index)
+    end
+    local mapID = whole(point.mapID, 1, 10000000)
+    local x = fraction(point.x)
+    local y = fraction(point.y)
+    if not mapID or not x or not y then
+      return nil, ns.T("ERR_WAYPOINTS", index)
+    end
+    local label = plain(point.label)
+    if type(label) ~= "string" or ns.Trim(label) == "" then
+      label = nil
+    else
+      label = ns.Utf8Truncate(ns.Trim(label), 80)
+    end
+    out[#out + 1] = { mapID = mapID, x = x, y = y, label = label }
+  end
+  if #out == 0 then
+    return nil
+  end
+  return out
+end
+
 function ns.ValidatePlan(raw, loose)
   if type(raw) ~= "table" then
     return nil, ns.T("ERR_JSON")
@@ -309,6 +346,10 @@ function ns.ValidatePlan(raw, loose)
     elseif #taskNote > 400 then
       taskNote = taskNote:sub(1, 400)
     end
+    local waypoints, wpErr = ns.CleanWaypoints(task.waypoints, i)
+    if wpErr then
+      return nil, wpErr
+    end
     local complete, err = cleanComplete(task.complete, i, 1)
     if not complete then
       return nil, err
@@ -321,6 +362,7 @@ function ns.ValidatePlan(raw, loose)
       y = y,
       estMinutes = est,
       note = taskNote,
+      waypoints = waypoints,
       source = "import",
       complete = complete,
     }

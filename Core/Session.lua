@@ -69,12 +69,26 @@ function ns.Session:Save()
 end
 
 function ns.Session.RefreshUI()
+  local session = ns.Session
+  if ns.Waypoint and ns.Waypoint.Sync then
+    ns.Waypoint:Sync(session:Current())
+  end
   if ns.UI and ns.UI.Refresh then
     ns.UI:Refresh()
   end
+  if ns.Tracker and ns.Tracker.Refresh then
+    ns.Tracker:Refresh()
+  end
 end
 
-function ns.Session:Finish(bucket, how)
+-- At most one short line per step, and only when the player turned it on.
+function ns.Session.Note(text)
+  if ns.DB and ns.DB.chatNotes then
+    ns.Print(text)
+  end
+end
+
+function ns.Session:Finish(bucket)
   local task = self:Current()
   if not task or not self.state then
     return
@@ -82,21 +96,15 @@ function ns.Session:Finish(bucket, how)
   local list = bucket == "skipped" and self.state.skipped or self.state.done
   list[#list + 1] = { id = task.id, at = ns.Now() }
   table.remove(self.state.tasks, 1)
-  if ns.Waypoint and ns.Waypoint.ClearIfTask then
-    ns.Waypoint:ClearIfTask(task.id)
+  if ns.Waypoint and ns.Waypoint.ClearOwned then
+    ns.Waypoint:ClearOwned()
   end
   self:Save()
-  if how == "auto" then
-    local nxt = self:Current()
-    if nxt then
-      ns.Print(ns.T("ADVANCE", nxt.title))
-    else
-      ns.Print(ns.T("SESSION_DONE"))
-    end
-  elseif how == "skip" then
-    ns.Print(ns.T("SKIPPED", task.title))
+  local nxt = self:Current()
+  if nxt then
+    self.Note(ns.T("NEXT_UP", nxt.title))
   else
-    ns.Print(ns.T("FINISHED", task.title))
+    self.Note(ns.T("PLAN_DONE_CHAT"))
   end
   ns.ClickSound()
   self:RefreshUI()
@@ -109,7 +117,7 @@ function ns.Session:CheckCurrent()
   self.checking = true
   local guard = 0
   while self:Current() and ns.IsTaskComplete(self:Current()) do
-    self:Finish("done", "auto")
+    self:Finish("done")
     guard = guard + 1
     if guard >= 40 then
       break
@@ -122,7 +130,7 @@ function ns.Session:Done()
   if not self:Current() then
     return
   end
-  self:Finish("done", "manual")
+  self:Finish("done")
   self:CheckCurrent()
 end
 
@@ -132,20 +140,18 @@ function ns.Session:Skip()
     return
   end
   local skips = (tonumber(task.skipCount) or 0) + 1
-  if skips >= 2 then
-    self:Finish("skipped", "skip")
+  if skips >= 2 or #self.state.tasks < 2 then
+    self:Finish("skipped")
     self:CheckCurrent()
     return
   end
   task.skipCount = skips
-  if #self.state.tasks > 1 then
-    table.remove(self.state.tasks, 1)
-    self.state.tasks[#self.state.tasks + 1] = task
-    if ns.Waypoint and ns.Waypoint.ClearIfTask then
-      ns.Waypoint:ClearIfTask(task.id)
-    end
+  table.remove(self.state.tasks, 1)
+  self.state.tasks[#self.state.tasks + 1] = task
+  if ns.Waypoint and ns.Waypoint.ClearOwned then
+    ns.Waypoint:ClearOwned()
   end
-  ns.Print(ns.T("SKIP_LATER", task.title or ""))
+  self.Note(ns.T("NEXT_UP", self:Current().title))
   self:Save()
   self:CheckCurrent()
   self:RefreshUI()
@@ -153,13 +159,38 @@ end
 
 function ns.Session:Waypoint()
   local task = self:Current()
-  if not task then
-    return
+  if task and ns.Waypoint then
+    ns.Waypoint:Retrack(task)
   end
-  if not ns.Waypoint then
-    return
+end
+
+-- Called by the ticker. Moves along a waypoint route by proximity.
+function ns.Session:AdvanceRoute()
+  local task = self:Current()
+  if task and ns.Waypoint and ns.Waypoint.Advance(task) then
+    self:Save()
+    self:RefreshUI()
+    return true
   end
-  ns.Waypoint:Set(task)
+  return false
+end
+
+function ns.Session:Progress()
+  local state = self.state
+  if type(state) ~= "table" or type(state.tasks) ~= "table" then
+    return nil
+  end
+  local finished = #(state.done or {}) + #(state.skipped or {})
+  local left = 0
+  for i = 1, #state.tasks do
+    left = left + (tonumber(state.tasks[i].estMinutes) or 0)
+  end
+  return {
+    step = finished + (#state.tasks > 0 and 1 or 0),
+    steps = finished + #state.tasks,
+    remaining = #state.tasks,
+    minutesLeft = left,
+  }
 end
 
 function ns.Session:ApplyPlan(plan, source, reveal)
@@ -180,14 +211,25 @@ function ns.Session:ApplyPlan(plan, source, reveal)
     ns.DB.budget = self.state.budget
   end
   self:Save()
-  if ns.Waypoint and ns.Waypoint.ClearIfOwned then
-    ns.Waypoint:ClearIfOwned()
+  if ns.Waypoint and ns.Waypoint.ClearOwned then
+    ns.Waypoint:ClearOwned()
   end
   self:CheckCurrent()
   self:RefreshUI()
-  if reveal and ns.UI and ns.UI.Show then
-    ns.UI:Show()
+  if reveal then
+    self:Started()
   end
+end
+
+-- A plan just became active: the tracker takes over, the main window steps aside.
+function ns.Session:Started()
+  if ns.Tracker and ns.Tracker.Reveal then
+    ns.Tracker:Reveal()
+  end
+  if ns.UI and ns.UI.frame and ns.UI.frame.Hide then
+    ns.UI.frame:Hide()
+  end
+  self:RefreshUI()
 end
 
 function ns.Session.ReadCompanion()
@@ -227,7 +269,6 @@ function ns.Session:ApplyCompanion(force)
     return false
   end
   self:ApplyPlan(plan, "companion", false)
-  ns.Print(ns.T("COMPANION_OK", #self.state.tasks))
   return true
 end
 
@@ -258,36 +299,50 @@ function ns.Session:Rebuild(mode, budget)
   self.state.pendingCalendar = mode == "events"
   self.state.pendingMounts = mode == "farm" and ns.farmNeedsJournal == true
   self:Save()
+  if ns.Waypoint and ns.Waypoint.ClearOwned then
+    ns.Waypoint:ClearOwned()
+  end
   self:CheckCurrent()
   self:RefreshUI()
 end
 
-function ns.Session:SetMode(mode)
-  if self.state and self.state.source ~= "provider" then
-    ns.Print(ns.T("CLEARED_IMPORT"))
+function ns.Session:BuildHere(mode, budget)
+  self:Rebuild(mode or self:Mode(), budget or self:Budget())
+  if not self.rebuildQueued then
+    self:Started()
   end
-  self:Rebuild(mode, self:Budget())
 end
 
-function ns.Session:SetBudget(minutes)
-  if self.state and self.state.source ~= "provider" then
-    ns.Print(ns.T("CLEARED_IMPORT"))
+-- The wizard only remembers the choice. Nothing is rebuilt until Get plan.
+function ns.Session.SetMode(_, mode)
+  if ns.DB and ns.MODE_IDS[mode] and mode ~= "custom" then
+    ns.DB.mode = mode
   end
-  self:Rebuild(self:Mode(), minutes)
+  ns.Session:RefreshUI()
 end
 
-function ns.Session:CycleMode()
-  local current = self:Mode()
-  local nextIndex = 1
-  for i = 1, #ns.MODES do
-    if ns.MODES[i].id == current then
-      nextIndex = i + 1
-    end
+function ns.Session.SetBudget(_, minutes)
+  minutes = tonumber(minutes)
+  if ns.DB and minutes and minutes >= 5 and minutes <= 240 then
+    ns.DB.budget = minutes
   end
-  if nextIndex > #ns.MODES then
-    nextIndex = 1
+  ns.Session:RefreshUI()
+end
+
+function ns.Session.ChosenMode()
+  local mode = ns.DB and ns.DB.mode
+  if mode == "roam" or mode == "quests" or mode == "events" or mode == "fun" or mode == "farm" then
+    return mode
   end
-  self:SetMode(ns.MODES[nextIndex].id)
+  return "roam"
+end
+
+function ns.Session.ChosenBudget()
+  local budget = tonumber(ns.DB and ns.DB.budget) or 60
+  if budget < 5 or budget > 240 then
+    return 60
+  end
+  return budget
 end
 
 function ns.Session:MaybeRebuild(flag)
@@ -306,6 +361,9 @@ function ns.Session:MaybeRebuild(flag)
 end
 
 function ns.Session.ExternalKey(plan)
+  if type(plan) == "table" and type(plan.requestId) == "string" and plan.requestId ~= "" then
+    return "r:" .. plan.requestId
+  end
   local stamp = tonumber(plan and plan.generatedAt)
   if stamp and stamp > 0 then
     return "t:" .. tostring(stamp)
@@ -327,6 +385,8 @@ function ns.Session.PendingRequest()
   return req
 end
 
+-- requestNote: nil (no request), "sending" (the companion has not answered
+-- for this id yet), "preparing", "failed", or "ready".
 function ns.Session:NoteRequest()
   self.requestNote = nil
   self.requestReason = nil
@@ -336,7 +396,7 @@ function ns.Session:NoteRequest()
   end
   local plan = UnboredExternalPlan
   if type(plan) ~= "table" or plan.requestId ~= req.id then
-    self.requestNote = "waiting"
+    self.requestNote = "sending"
     return
   end
   if plan.requestStatus == "failed" then
@@ -351,33 +411,28 @@ function ns.Session:NoteRequest()
   self.requestNote = "ready"
 end
 
+function ns.Session:RequestAge()
+  local req = self:PendingRequest()
+  local created = req and tonumber(req.createdAt)
+  if not created then
+    return nil
+  end
+  return math.max(0, ns.Now() - created)
+end
+
+-- Saves the request into SavedVariables. The caller reloads the UI right
+-- after, inside the same click, so the game writes the file for the companion.
 function ns.Session:RequestPlan(wish)
-  local mode = self:Mode()
-  if mode ~= "roam" and mode ~= "quests" and mode ~= "events" and mode ~= "fun" and mode ~= "farm" then
-    mode = "roam"
-  end
-  local budget = tonumber(self:Budget()) or 60
-  if budget < 5 or budget > 240 then
-    budget = 60
-  end
-  local name = UnitName and UnitName("player") or nil
-  local realm = GetRealmName and GetRealmName() or nil
-  if type(name) ~= "string" or name == "" then
-    name = "player"
-  end
-  if type(realm) ~= "string" then
-    realm = ""
-  end
-  if type(wish) ~= "string" then
-    wish = ""
-  end
-  wish = ns.Trim(wish)
-  if #wish > 200 then
-    wish = wish:sub(1, 200)
-  end
+  local mode = self.ChosenMode()
+  local budget = self.ChosenBudget()
+  local name = ns.SafeString(ns.Call(UnitName, "player"), 80) or "player"
+  local realm = ns.SafeString(ns.Call(GetRealmName), 80) or ""
+  wish = ns.Utf8Truncate(ns.Trim(type(wish) == "string" and wish or ""), 600)
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
   end
+  UnboredCharDB.lastWish = wish ~= "" and wish or nil
+  local okContext, context = pcall(ns.PlayerContext)
   local id = string.format("req-%d-%04d", ns.Now(), math.random(0, 9999))
   UnboredCharDB.request = {
     id = id,
@@ -387,101 +442,99 @@ function ns.Session:RequestPlan(wish)
     mode = mode,
     budget = budget,
     wish = wish ~= "" and wish or nil,
+    context = okContext and type(context) == "table" and context or nil,
   }
   self:NoteRequest()
   self:RefreshUI()
+  return id
 end
 
-function ns.Session:ConsiderExternal()
-  self.offered = nil
+function ns.Session:CancelRequest()
+  if type(UnboredCharDB) == "table" then
+    UnboredCharDB.request = nil
+  end
   self:NoteRequest()
-  local req = self:PendingRequest()
-  if type(UnboredExternalPlan) ~= "table" or type(UnboredExternalPlan.tasks) ~= "table" then
-    return
-  end
-  if req and UnboredExternalPlan.requestId ~= req.id then
-    return
-  end
-  if self.requestNote == "waiting" or self.requestNote == "preparing" or self.requestNote == "failed" then
-    return
-  end
-  local plan = ns.ValidatePlan(UnboredExternalPlan, true)
-  if not plan then
-    return
-  end
-  local key = ns.Session.ExternalKey(plan)
-  local saved = UnboredCharDB or {}
-  if saved.acceptedExternalKey == key or saved.dismissedExternalKey == key then
-    return
-  end
-  self.offered = plan
-  self.offerKey = key
-  if self.announcedOffer ~= key then
-    self.announcedOffer = key
-    ns.Print(ns.T("OFFER_CHAT"))
+  self:RefreshUI()
+end
+
+function ns.Session.LoadPlan()
+  if type(ReloadUI) == "function" then
+    ReloadUI()
   end
 end
 
-function ns.Session:ActivateOffered()
-  local plan = self.offered
-  if not plan then
+-- Picks up the companion file on every load. A plan with a requestId is taken
+-- only when that request is pending on this character; a plan without one
+-- (put straight by the planner) is taken once per character. No prompt.
+function ns.Session:AutoApplyExternal()
+  self:NoteRequest()
+  local external = UnboredExternalPlan
+  if type(external) ~= "table" or type(external.tasks) ~= "table" then
     return false
   end
-  local key = self.offerKey or ns.Session.ExternalKey(plan)
-  if type(UnboredCharDB) ~= "table" then
-    UnboredCharDB = {}
+  local req = self:PendingRequest()
+  local requestId = type(external.requestId) == "string" and external.requestId ~= "" and external.requestId or nil
+  if requestId then
+    if not req or req.id ~= requestId or self.requestNote ~= "ready" then
+      return false
+    end
+  elseif req then
+    return false
   end
-  UnboredCharDB.acceptedExternalKey = key
-  self.offered = nil
-  self:ApplyPlan(plan, "companion", false)
-  if self.state then
-    self.state.externalKey = key
-  end
-  self:Save()
-  return true
-end
-
-function ns.Session:UseExternal()
-  self:ConsiderExternal()
-  if self:ActivateOffered() then
-    return true
-  end
-  if type(UnboredExternalPlan) ~= "table" then
-    return self:ApplyCompanion(true)
-  end
-  local plan = ns.ValidatePlan(UnboredExternalPlan, true)
+  local plan, err = ns.ValidatePlan(external, true)
   if not plan then
-    return self:ApplyCompanion(true)
+    if req then
+      self.requestNote = "failed"
+      self.requestReason = err
+    end
+    return false
   end
-  local key = self.offerKey or ns.Session.ExternalKey(plan)
-  if UnboredCharDB and UnboredCharDB.acceptedExternalKey == key then
-    return true
-  end
+  plan.requestId = requestId
+  local key = ns.Session.ExternalKey(plan)
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
   end
+  if UnboredCharDB.acceptedExternalKey == key then
+    if req then
+      UnboredCharDB.request = nil
+      self:NoteRequest()
+    end
+    return false
+  end
   UnboredCharDB.acceptedExternalKey = key
-  UnboredCharDB.dismissedExternalKey = nil
-  self.offered = nil
-  self.offerKey = key
+  UnboredCharDB.request = nil
   self:ApplyPlan(plan, "companion", false)
   if self.state then
     self.state.externalKey = key
+    self.state.requestId = requestId
   end
   self:Save()
+  self:NoteRequest()
+  self:Started()
   return true
 end
 
-function ns.Session:DismissOffered()
-  if not self.offered then
-    return
+-- /unbored companion: take whatever the companion file holds, even if it was
+-- already used once.
+function ns.Session:UseExternal()
+  local external = UnboredExternalPlan
+  if type(external) == "table" and type(external.tasks) == "table" then
+    local plan = ns.ValidatePlan(external, true)
+    if plan then
+      plan.requestId = external.requestId
+      if type(UnboredCharDB) ~= "table" then
+        UnboredCharDB = {}
+      end
+      UnboredCharDB.acceptedExternalKey = ns.Session.ExternalKey(plan)
+      self:ApplyPlan(plan, "companion", true)
+      return true
+    end
   end
-  if type(UnboredCharDB) ~= "table" then
-    UnboredCharDB = {}
+  if self:ApplyCompanion(true) then
+    self:Started()
+    return true
   end
-  UnboredCharDB.dismissedExternalKey = self.offerKey or ns.Session.ExternalKey(self.offered)
-  self.offered = nil
-  self:RefreshUI()
+  return false
 end
 
 function ns.Session:ScheduleDataRefresh()
@@ -510,7 +563,7 @@ end
 
 function ns.Session:Start()
   if self.started then
-    self:ConsiderExternal()
+    self:AutoApplyExternal()
     self:CheckCurrent()
     self:RefreshUI()
     self:ScheduleDataRefresh()
@@ -518,28 +571,19 @@ function ns.Session:Start()
   end
   self.started = true
   local saved = UnboredCharDB and UnboredCharDB.session
-  local companion = self:ReadCompanion()
-  if companion and ns.Session.CompanionIsNewer(companion, saved) then
-    if self:ApplyCompanion(false) then
-      self:ConsiderExternal()
-      self:RefreshUI()
-      self:ScheduleDataRefresh()
-      return
-    end
-  end
   if type(saved) == "table" and saved.version == 1 and type(saved.tasks) == "table" then
     self.state = saved
     self.state.done = self.state.done or {}
     self.state.skipped = self.state.skipped or {}
-    self:ConsiderExternal()
+  end
+  local companion = self:ReadCompanion()
+  if companion and ns.Session.CompanionIsNewer(companion, saved) then
+    self:ApplyCompanion(false)
+  end
+  if not self:AutoApplyExternal() then
     self:CheckCurrent()
     self:RefreshUI()
-    self:ScheduleDataRefresh()
-    return
   end
-  self:Rebuild(ns.DB and ns.DB.mode or "roam", ns.DB and ns.DB.budget or 60)
-  self:ConsiderExternal()
-  self:RefreshUI()
   self:ScheduleDataRefresh()
 end
 

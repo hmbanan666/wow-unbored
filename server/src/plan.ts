@@ -11,6 +11,13 @@ export type Plan = {
   tasks: Task[];
 };
 
+export type Waypoint = {
+  mapID: number;
+  x: number;
+  y: number;
+  label?: string;
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -19,8 +26,11 @@ export type Task = {
   x?: number;
   y?: number;
   note?: string;
+  waypoints?: Waypoint[];
   complete?: Record<string, unknown>;
 };
+
+export const MAX_WAYPOINTS = 10;
 
 export class PlanError extends Error {}
 
@@ -253,6 +263,7 @@ function cleanTask(raw: unknown, index: number): Task {
     }
     note = task.note;
   }
+  const waypoints = cleanWaypoints(task.waypoints, index);
   const complete = cleanComplete(task.complete, index, 1);
   const cleaned: Task = {
     id: task.id,
@@ -266,7 +277,38 @@ function cleanTask(raw: unknown, index: number): Task {
     cleaned.y = y;
   }
   if (note !== undefined) cleaned.note = note;
+  if (waypoints) cleaned.waypoints = waypoints;
   return cleaned;
+}
+
+function cleanWaypoints(raw: unknown, index: number): Waypoint[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw) || raw.length > MAX_WAYPOINTS) {
+    throw new PlanError(`Task ${index} waypoints must be an array of at most ${MAX_WAYPOINTS} points.`);
+  }
+  if (raw.length === 0) return undefined;
+  return raw.map((item, n) => {
+    const label = `Task ${index} waypoint ${n + 1}`;
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new PlanError(`${label} must be an object.`);
+    }
+    const point = item as Record<string, unknown>;
+    const mapID = integer(point.mapID, 1, 10_000_000);
+    if (mapID === undefined) throw new PlanError(`${label} needs a mapID.`);
+    const x = fraction(point.x);
+    const y = fraction(point.y);
+    if (x === undefined || y === undefined) {
+      throw new PlanError(`${label} needs x and y from 0 to 1, not 0 to 100.`);
+    }
+    const out: Waypoint = { mapID, x, y };
+    if (point.label !== undefined && point.label !== null) {
+      if (typeof point.label !== "string" || byteLength(point.label) > 80) {
+        throw new PlanError(`${label} label must be a string of at most 80 bytes.`);
+      }
+      if (point.label.trim()) out.label = point.label.trim();
+    }
+    return out;
+  });
 }
 
 export function encodeUnb1(plan: Plan): string {
@@ -339,7 +381,138 @@ export type PlanRequestInput = {
   budget: number;
   wish: string | null;
   createdAt: number | null;
+  context: PlayerContext | null;
 };
+
+export type PlayerContext = {
+  mapID?: number;
+  zone?: string;
+  subzone?: string;
+  x?: number;
+  y?: number;
+  level?: number;
+  faction?: string;
+  class?: string;
+  classFile?: string;
+  spec?: string;
+  specID?: number;
+  ilvl?: number;
+  gold?: number;
+  skyriding?: boolean;
+  canFly?: boolean;
+  inInstance?: boolean;
+  instanceType?: string;
+  hearth?: string;
+  trackedQuests?: { questID: number; title?: string }[];
+  plan?: {
+    title?: string;
+    currentId?: string;
+    currentTitle?: string;
+    step?: number;
+    steps?: number;
+    done?: number;
+    skipped?: number;
+    remaining?: number;
+  };
+};
+
+const CONTEXT_MAX_BYTES = 8_000;
+
+function shortText(value: unknown, max = 120): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  let out = trimmed;
+  while (byteLength(out) > max) out = out.slice(0, -1);
+  return out;
+}
+
+function count(value: unknown, hi = 100_000_000): number | undefined {
+  return integer(value, 0, hi);
+}
+
+function flag(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function compact<T extends Record<string, unknown>>(record: T): T | undefined {
+  const out = {} as Record<string, unknown>;
+  for (const [key, value] of Object.entries(record)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return Object.keys(out).length ? (out as T) : undefined;
+}
+
+/**
+ * The game snapshot is advisory. Fields with the wrong type are dropped instead
+ * of failing the whole request, because a patch can change what an API returns.
+ */
+export function cleanContext(raw: unknown): PlayerContext | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new PlanError("context must be an object.");
+  }
+  if (byteLength(JSON.stringify(raw)) > CONTEXT_MAX_BYTES) {
+    throw new PlanError(`context is larger than ${CONTEXT_MAX_BYTES} bytes.`);
+  }
+  const body = raw as Record<string, unknown>;
+  const ilvl =
+    typeof body.ilvl === "number" && Number.isFinite(body.ilvl) && body.ilvl >= 0 && body.ilvl < 10_000
+      ? Math.round(body.ilvl * 10) / 10
+      : undefined;
+  let trackedQuests: PlayerContext["trackedQuests"];
+  if (Array.isArray(body.trackedQuests)) {
+    trackedQuests = body.trackedQuests
+      .slice(0, 25)
+      .map((item) => {
+        if (typeof item !== "object" || item === null) return undefined;
+        const row = item as Record<string, unknown>;
+        const questID = integer(row.questID, 1, 100_000_000);
+        if (questID === undefined) return undefined;
+        const title = shortText(row.title);
+        return title ? { questID, title } : { questID };
+      })
+      .filter((row): row is { questID: number; title?: string } => row !== undefined);
+    if (!trackedQuests.length) trackedQuests = undefined;
+  }
+  let plan: PlayerContext["plan"];
+  if (typeof body.plan === "object" && body.plan !== null && !Array.isArray(body.plan)) {
+    const row = body.plan as Record<string, unknown>;
+    plan = compact({
+      title: shortText(row.title, 240),
+      currentId: shortText(row.currentId, 80),
+      currentTitle: shortText(row.currentTitle, 240),
+      step: count(row.step, 1000),
+      steps: count(row.steps, 1000),
+      done: count(row.done, 1000),
+      skipped: count(row.skipped, 1000),
+      remaining: count(row.remaining, 1000),
+    });
+  }
+  const context = compact<PlayerContext>({
+    mapID: integer(body.mapID, 1, 10_000_000),
+    zone: shortText(body.zone),
+    subzone: shortText(body.subzone),
+    x: fraction(body.x),
+    y: fraction(body.y),
+    level: integer(body.level, 1, 1000),
+    faction: shortText(body.faction, 40),
+    class: shortText(body.class, 40),
+    classFile: shortText(body.classFile, 40),
+    spec: shortText(body.spec, 40),
+    specID: integer(body.specID, 1, 100_000),
+    ilvl,
+    gold: count(body.gold, 10_000_000_000),
+    skyriding: flag(body.skyriding),
+    canFly: flag(body.canFly),
+    inInstance: flag(body.inInstance),
+    instanceType: shortText(body.instanceType, 40),
+    hearth: shortText(body.hearth),
+    trackedQuests,
+    plan,
+  });
+  return context ?? null;
+}
 
 export function cleanPlanRequest(raw: unknown): PlanRequestInput {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -364,10 +537,10 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
   }
   let wish: string | null = null;
   if (body.wish !== undefined && body.wish !== null && body.wish !== "") {
-    if (typeof body.wish !== "string" || Buffer.byteLength(body.wish, "utf8") > 200) {
-      throw new PlanError("wish must be a string of at most 200 bytes.");
+    if (typeof body.wish !== "string" || Buffer.byteLength(body.wish, "utf8") > 600) {
+      throw new PlanError("wish must be a string of at most 600 bytes.");
     }
-    wish = body.wish.trim();
+    wish = body.wish.trim() || null;
   }
   let createdAt: number | null = null;
   if (body.createdAt !== undefined && body.createdAt !== null) {
@@ -376,7 +549,8 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
       throw new PlanError("createdAt must be a unix timestamp.");
     }
   }
-  return { id, character, realm, mode: body.mode, budget, wish, createdAt };
+  const context = cleanContext(body.context);
+  return { id, character, realm, mode: body.mode, budget, wish, createdAt, context };
 }
 
 export function cleanProgress(raw: unknown): ProgressPost {

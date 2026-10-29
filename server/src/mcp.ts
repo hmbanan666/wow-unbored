@@ -22,7 +22,8 @@ Each task:
 - estMinutes: 1 to 240 (default 15)
 - mapID: optional ui map id
 - x and y: optional, both required together, fractions of the map from 0 to 1. Wowhead 0-100 coordinates must be divided by 100.
-- note: optional, at most 400 bytes
+- note: optional, at most 400 bytes. Shown in full in the in-game tracker; say where to go and what to do.
+- waypoints: optional, 1 to 10 points [{ mapID, x, y, label }] in route order. x and y are 0 to 1, label at most 80 bytes. The addon sets the native waypoint arrow (and TomTom when installed) on point 1 and moves to the next point when the player comes within about 30 yards. Use it for a multi-stop task. Without waypoints the task's own mapID, x, y is the single point.
 - complete: how the game finishes the task. Omit it and the player presses Done.
 
 complete.kind:
@@ -38,6 +39,8 @@ complete.kind:
 - proximity with mapID, x, y, optional radiusYards 5-500 (default 40)
 - vignette with vignetteID and/or questID, optional mapID, x, y
 - any: array of 1 to 4 of the above, not nested
+
+Routing: a request from list_requests carries context (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). Start the first task near context.mapID / x / y, order the rest as one sensible route, and only send the player to another continent when the wish asks for it or nothing nearby fits. context.hearth is where their hearthstone goes.
 
 The server stores the plan and returns a UNB1: string. The companion polls GET /v1/plan and writes that string into the game.`;
 
@@ -56,7 +59,7 @@ function failure(error: unknown) {
 export function createMcpServer(store: Store, dataDir: string): McpServer {
   const server = new McpServer({
     name: "unbored",
-    version: "0.1.0",
+    version: "0.3.0",
   });
 
   server.registerTool(
@@ -88,6 +91,20 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
                     x: z.number().optional(),
                     y: z.number().optional(),
                     note: z.string().optional(),
+                    waypoints: z
+                      .array(
+                        z
+                          .object({
+                            mapID: z.number(),
+                            x: z.number(),
+                            y: z.number(),
+                            label: z.string().optional(),
+                          })
+                          .strict(),
+                      )
+                      .max(10)
+                      .optional()
+                      .describe("Route points in order. Coordinates are 0 to 1."),
                     complete: z.unknown().optional(),
                   })
                   .strict(),
@@ -234,7 +251,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "List in-game plan requests",
       description:
-        "List requests the player made from the Unbored window. Pending is the default. Each row has id, character, realm, mode, budget, and wish.",
+        "List requests the player made from the Unbored window. Pending is the default. Each row has id, character, realm, mode, budget, wish, and context: the game snapshot taken when the player pressed Get plan (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, instanceType, hearth, trackedQuests, and the active plan's progress). Start the plan near that position.",
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])

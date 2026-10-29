@@ -21,6 +21,24 @@ function ns.NormalizeTask(task)
   if est < 1 then
     est = 1
   end
+  local waypoints
+  if type(task.waypoints) == "table" and #task.waypoints > 0 then
+    waypoints = {}
+    for i = 1, math.min(#task.waypoints, ns.MAX_WAYPOINTS or 10) do
+      local point = task.waypoints[i]
+      if type(point) == "table" and tonumber(point.mapID) and tonumber(point.x) and tonumber(point.y) then
+        waypoints[#waypoints + 1] = {
+          mapID = tonumber(point.mapID),
+          x = tonumber(point.x),
+          y = tonumber(point.y),
+          label = type(point.label) == "string" and point.label or nil,
+        }
+      end
+    end
+    if #waypoints == 0 then
+      waypoints = nil
+    end
+  end
   return {
     id = task.id,
     title = task.title,
@@ -29,6 +47,8 @@ function ns.NormalizeTask(task)
     y = tonumber(task.y),
     estMinutes = est,
     note = type(task.note) == "string" and task.note or nil,
+    waypoints = waypoints,
+    wpIndex = tonumber(task.wpIndex),
     source = task.source,
     priority = tonumber(task.priority),
     complete = complete,

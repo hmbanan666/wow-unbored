@@ -49,6 +49,12 @@ function ns.PlayerPosition()
   if ns.IsPaused() then
     return nil
   end
+  return ns.RawPlayerPosition()
+end
+
+-- Same as PlayerPosition, but also inside instances and combat. Used for the
+-- request snapshot, never for waypoints.
+function ns.RawPlayerPosition()
   if not C_Map or not C_Map.GetBestMapForUnit or not C_Map.GetPlayerMapPosition then
     return nil
   end
@@ -239,4 +245,61 @@ function ns.ClickSound()
   if id then
     pcall(PlaySound, id)
   end
+end
+
+-- Cut to at most maxBytes without splitting a UTF-8 character.
+function ns.Utf8Truncate(text, maxBytes)
+  if type(text) ~= "string" or #text <= maxBytes then
+    return text
+  end
+  local cut = text:sub(1, maxBytes)
+  local i = #cut
+  while i > 0 do
+    local byte = cut:byte(i)
+    if byte < 0x80 then
+      return cut
+    end
+    if byte >= 0xC0 then
+      local need = byte >= 0xF0 and 4 or (byte >= 0xE0 and 3 or 2)
+      if #cut - i + 1 < need then
+        return cut:sub(1, i - 1)
+      end
+      return cut
+    end
+    i = i - 1
+  end
+  return ""
+end
+
+-- A plain, non-secret, non-empty string, or nil.
+function ns.SafeString(value, maxBytes)
+  if type(issecretvalue) == "function" then
+    local ok, secret = pcall(issecretvalue, value)
+    if not ok or secret then
+      return nil
+    end
+  end
+  if type(value) ~= "string" then
+    return nil
+  end
+  local text = ns.Trim(value)
+  if text == "" then
+    return nil
+  end
+  return ns.Utf8Truncate(text, maxBytes or 120)
+end
+
+local function passResults(ok, ...)
+  if not ok then
+    return nil
+  end
+  return ...
+end
+
+-- pcall that returns the results, or nil when fn is missing or throws.
+function ns.Call(fn, ...)
+  if type(fn) ~= "function" then
+    return nil
+  end
+  return passResults(pcall(fn, ...))
 end

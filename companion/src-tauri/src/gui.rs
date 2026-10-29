@@ -14,10 +14,13 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::addon::{install_addon_zip, select_addon_zip, should_update};
+use crate::addon::{install_addon_zip, installed_version, select_addon_zip, should_update};
 use crate::device::{self, DeviceCredential};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
-use crate::plan::{decode_unb1, install_plan, install_request_file, plan_from_value, Plan};
+use crate::plan::{
+    decode_unb1, ensure_helper, install_plan, install_plan_file, pick_plan_file, plan_from_value, Plan,
+    PlannerState, RequestState,
+};
 use crate::savedvars::request_from_saved_variables;
 use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, CharacterFile};
 
@@ -28,6 +31,10 @@ struct Settings {
     account: String,
     endpoint_url: String,
     poll_minutes: u32,
+    /// Launch at login is turned on once, on the first run; after that the
+    /// player's choice in the window stands.
+    #[serde(default)]
+    autostart_set: bool,
 }
 
 impl Default for Settings {
@@ -37,6 +44,7 @@ impl Default for Settings {
             account: String::new(),
             endpoint_url: String::new(),
             poll_minutes: 5,
+            autostart_set: false,
         }
     }
 }
@@ -234,10 +242,10 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
     if plan.generated_at.is_none() {
         plan.generated_at = Some(now_secs());
     }
-    let path = install_plan(&retail, plan).map_err(|err| err.0)?;
+    let written = install_plan(&retail, plan).map_err(|err| err.0)?;
     Ok(format!(
-        "Wrote {}. /reload in game, then choose Use it.",
-        path.display()
+        "Wrote {}. Press Load plan in game.",
+        written.path.display()
     ))
 }
 
@@ -387,16 +395,11 @@ fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, String>
         let model = state.inner.lock().map_err(|err| err.to_string())?;
         return Ok(snapshot(&app, &model));
     }
-    match pull_plan(&settings, &secret) {
-        Ok(message) => {
-            let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-            if let Some(message) = message {
-                model.status = message;
-            }
-            Ok(snapshot(&app, &model))
-        }
-        Err(err) => Err(err),
-    }
+    let mut notified = std::collections::HashSet::new();
+    let message = sync_plans(&app, &settings, &secret, &mut notified)?;
+    let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.status = message.unwrap_or_else(|| "No plan on the planner yet.".into());
+    Ok(snapshot(&app, &model))
 }
 
 #[tauri::command]
@@ -528,12 +531,21 @@ fn machine_name() -> String {
     }
 }
 
-fn pull_plan(settings: &Settings, secret: &str) -> Result<Option<String>, String> {
-    let url = effective_url(settings);
-    validate_endpoint(&url)?;
-    let client = http_client(Duration::from_secs(20))?;
+fn decode_plan_field(value: &serde_json::Value) -> Result<Option<Plan>, String> {
+    match value {
+        serde_json::Value::String(text) => decode_unb1(text).map(Some).map_err(|err| err.0),
+        other if other.is_object() => plan_from_value(other.clone()).map(Some).map_err(|err| err.0),
+        _ => Ok(None),
+    }
+}
+
+fn get_json(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    secret: &str,
+) -> Result<Option<serde_json::Value>, String> {
     let response = client
-        .get(join_url(&url, "v1/plan"))
+        .get(url)
         .bearer_auth(secret)
         .send()
         .map_err(|err| err.to_string())?;
@@ -543,16 +555,104 @@ fn pull_plan(settings: &Settings, secret: &str) -> Result<Option<String>, String
     if !response.status().is_success() {
         return Err(format!("Planner returned {}.", response.status()));
     }
-    let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
-    let mut plan = match &body["plan"] {
-        serde_json::Value::String(text) => decode_unb1(text).map_err(|err| err.0)?,
-        other if other.is_object() => plan_from_value(other.clone()).map_err(|err| err.0)?,
-        _ => return Err("Response needs a plan string or plan object.".into()),
-    };
-    if settings.wow_path.trim().is_empty() {
-        return Ok(Some("Approved. Choose the Retail folder.".into()));
+    response.json().map(Some).map_err(|err| err.to_string())
+}
+
+fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, String> {
+    let url = effective_url(settings);
+    validate_endpoint(&url)?;
+    let client = http_client(Duration::from_secs(20))?;
+    let mut state = PlannerState::default();
+    if let Some(body) = get_json(&client, &join_url(&url, "v1/plan"), secret)? {
+        if let Some(plan) = decode_plan_field(&body["plan"])? {
+            let id = body.get("id").and_then(|value| value.as_u64()).unwrap_or(0);
+            state.latest_plan = Some((id, plan));
+        }
     }
-    Ok(Some(write_plan(settings, &mut plan)?))
+    if let Some(body) = get_json(&client, &join_url(&url, "v1/requests/latest"), secret)? {
+        if let Some(id) = body.get("id").and_then(|value| value.as_str()) {
+            state.request = Some(RequestState {
+                id: id.to_string(),
+                status: body
+                    .get("status")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("pending")
+                    .to_string(),
+                reason: body.get("reason").and_then(|value| value.as_str()).map(str::to_string),
+                plan_id: body.get("planId").and_then(|value| value.as_u64()),
+                plan: decode_plan_field(body.get("plan").unwrap_or(&serde_json::Value::Null))?,
+            });
+        }
+    }
+    Ok(state)
+}
+
+fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let url = effective_url(settings);
+    for file in character_saved_variables(retail, None) {
+        let Ok(text) = fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let Ok(Some(request)) = request_from_saved_variables(&text) else {
+            continue;
+        };
+        let response = client
+            .post(join_url(&url, "v1/requests"))
+            .bearer_auth(secret)
+            .json(&serde_json::json!({
+                "id": request.id,
+                "createdAt": request.created_at,
+                "character": request.character,
+                "realm": request.realm,
+                "mode": request.mode,
+                "budget": request.budget,
+                "wish": request.wish,
+                "context": request.context,
+            }))
+            .send()
+            .map_err(|err| err.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("Planner returned {}.", response.status()));
+        }
+    }
+    Ok(())
+}
+
+/// Sends in-game requests, then writes the one Plan.lua the game should see.
+/// Returns a status line when the file changed.
+fn sync_plans(
+    app: &AppHandle,
+    settings: &Settings,
+    secret: &str,
+    notified: &mut std::collections::HashSet<String>,
+) -> Result<Option<String>, String> {
+    let Some(retail) = retail_path(settings) else {
+        return Ok(Some("Approved. Choose the Retail folder.".into()));
+    };
+    ensure_helper(&retail).map_err(|err| err.0)?;
+    post_requests(settings, &retail, secret)?;
+    let state = planner_state(settings, secret)?;
+    let Some(file) = pick_plan_file(&state) else {
+        return Ok(None);
+    };
+    let written = install_plan_file(&retail, &file).map_err(|err| err.0)?;
+    if let Some(id) = &file.ready_request {
+        if notified.insert(id.clone()) && written.changed {
+            notify(app, "Plan ready, press Load plan");
+            return Ok(Some("Plan ready, press Load plan".into()));
+        }
+    }
+    if !written.changed {
+        return Ok(None);
+    }
+    Ok(Some(match &state.request {
+        Some(request) if file.ready_request.is_none() && request.status == "pending" => {
+            "Request sent. The planner is working on it.".into()
+        }
+        Some(request) if request.status == "failed" => "The planner could not make that plan.".into(),
+        _ => "New plan written. Press Load plan in game.".into(),
+    }))
 }
 
 fn register_device(url: &str, device: &DeviceCredential) -> Result<String, String> {
@@ -638,7 +738,8 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
     let Some(release) = select_addon_zip(&body)? else {
         return Ok("No addon release found.".into());
     };
-    let installed = fs::read_to_string(version_file).ok().map(|text| text.trim().to_string());
+    let installed = installed_version(retail)
+        .or_else(|| fs::read_to_string(version_file).ok().map(|text| text.trim().to_string()));
     let toc = retail.join("Interface").join("AddOns").join("Unbored").join("Unbored.toc");
     if toc.is_file() && !should_update(installed.as_deref(), &release.version) {
         if let Ok(mut model) = app.state::<AppState>().inner.lock() {
@@ -646,6 +747,7 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
         }
         return Ok(format!("Addon {} is installed.", release.version));
     }
+    let toc_existed = toc.is_file();
     let bytes = client
         .get(&release.url)
         .send()
@@ -660,82 +762,32 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
     if let Ok(mut model) = app.state::<AppState>().inner.lock() {
         model.addon_version = release.version.clone();
     }
+    if toc_existed && wow_running() {
+        notify(app, &format!("Addon updated to {}. Type /reload in game.", release.version));
+    }
     Ok(format!("Installed addon {}.", release.version))
 }
 
-fn sync_requests(
-    app: &AppHandle,
-    settings: &Settings,
-    secret: &str,
-    notified: &mut std::collections::HashSet<String>,
-) -> Result<(), String> {
-    let Some(retail) = retail_path(settings) else {
-        return Ok(());
-    };
-    let client = http_client(Duration::from_secs(20))?;
-    let url = effective_url(settings);
-    for file in character_saved_variables(&retail, None) {
-        let Ok(text) = fs::read_to_string(&file.path) else {
-            continue;
-        };
-        let Ok(Some(request)) = request_from_saved_variables(&text) else {
-            continue;
-        };
-        let response = client
-            .post(join_url(&url, "v1/requests"))
-            .bearer_auth(secret)
-            .json(&serde_json::json!({
-                "id": request.id,
-                "createdAt": request.created_at,
-                "character": request.character,
-                "realm": request.realm,
-                "mode": request.mode,
-                "budget": request.budget,
-                "wish": request.wish,
-            }))
-            .send()
-            .map_err(|err| err.to_string())?;
-        if !response.status().is_success() {
-            return Err(format!("Planner returned {}.", response.status()));
-        }
-    }
-    let latest = client
-        .get(join_url(&url, "v1/requests/latest"))
-        .bearer_auth(secret)
-        .send()
-        .map_err(|err| err.to_string())?;
-    if latest.status().as_u16() == 404 {
-        return Ok(());
-    }
-    if !latest.status().is_success() {
-        return Err(format!("Planner returned {}.", latest.status()));
-    }
-    let body: serde_json::Value = latest.json().map_err(|err| err.to_string())?;
-    let Some(id) = body.get("id").and_then(|value| value.as_str()) else {
-        return Ok(());
-    };
-    let status = body.get("status").and_then(|value| value.as_str()).unwrap_or("pending");
-    let reason = body.get("reason").and_then(|value| value.as_str());
-    let plan = match body.get("plan") {
-        Some(serde_json::Value::String(text)) => Some(decode_unb1(text).map_err(|err| err.0)?),
-        _ => None,
-    };
-    install_request_file(&retail, id, status, reason, plan.as_ref()).map_err(|err| err.0)?;
-    if status == "fulfilled" && notified.insert(id.to_string()) {
-        publish_status(app, "Plan ready, /reload");
-        notify_plan_ready(app);
-    }
-    Ok(())
+fn notify(app: &AppHandle, body: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app.notification().builder().title("Unbored").body(body).show();
 }
 
-fn notify_plan_ready(app: &AppHandle) {
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app
-        .notification()
-        .builder()
-        .title("Unbored")
-        .body("Plan ready, /reload")
-        .show();
+#[cfg(windows)]
+fn wow_running() -> bool {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq Wow.exe", "/NH", "/FO", "CSV"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).to_ascii_lowercase().contains("wow.exe"))
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn wow_running() -> bool {
+    false
 }
 
 fn sync_once(
@@ -772,13 +824,12 @@ fn sync_once(
         publish_status(app, &pairing_message(&status, needs_path));
     }
     if status == "approved" && !needs_path {
-        if let Some(message) = pull_plan(&settings, &secret)? {
-            publish_status(app, &message);
-        }
         let mut model = state.inner.lock().map_err(|err| err.to_string())?;
         let _ = run_scan(&mut model, Some(&secret));
         drop(model);
-        sync_requests(app, &settings, &secret, notified)?;
+        if let Some(message) = sync_plans(app, &settings, &secret, notified)? {
+            publish_status(app, &message);
+        }
     }
     let due = addon_checked
         .map(|at| at.elapsed() >= Duration::from_secs(30 * 60))
@@ -813,6 +864,54 @@ fn sync_loop(app: AppHandle) {
     }
 }
 
+const UPDATE_EVERY: Duration = Duration::from_secs(4 * 60 * 60);
+
+fn update_marker(app: &AppHandle) -> Option<PathBuf> {
+    settings_path(app).ok().map(|path| path.with_file_name("updating"))
+}
+
+/// Checks GitHub for a signed build at start and every few hours. The
+/// installer runs quietly and the app comes back in the tray.
+fn spawn_updater(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        loop {
+            if let Err(err) = update_once(&app).await {
+                eprintln!("update check: {err}");
+            }
+            tokio::time::sleep(UPDATE_EVERY).await;
+        }
+    });
+}
+
+async fn update_once(app: &AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|err| err.to_string())?;
+    let Some(update) = updater.check().await.map_err(|err| err.to_string())? else {
+        return Ok(());
+    };
+    let bytes = update
+        .download(|_, _| {}, || {})
+        .await
+        .map_err(|err| err.to_string())?;
+    if let Some(marker) = update_marker(app) {
+        let _ = fs::write(marker, &update.version);
+    }
+    update.install(bytes).map_err(|err| err.to_string())?;
+    app.restart();
+}
+
+fn enable_autostart_once(app: &AppHandle, settings: &mut Settings) {
+    if settings.autostart_set {
+        return;
+    }
+    use tauri_plugin_autostart::ManagerExt;
+    if app.autolaunch().enable().is_ok() {
+        settings.autostart_set = true;
+        let _ = save_settings(app, settings);
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -836,6 +935,7 @@ pub fn run() {
                 .map(|path| path.display().to_string())
                 .collect::<Vec<_>>();
             let mut settings = settings;
+            enable_autostart_once(app.handle(), &mut settings);
             if settings.wow_path.is_empty() {
                 if let Some(first) = installs.first() {
                     settings.wow_path = first.clone();
@@ -898,9 +998,14 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            if !std::env::args().any(|arg| arg == "--hidden") {
+            let after_update = update_marker(app.handle())
+                .map(|marker| fs::remove_file(marker).is_ok())
+                .unwrap_or(false);
+            let hidden = after_update || std::env::args().any(|arg| arg == "--hidden");
+            if !hidden || needs_wow_path {
                 show_main(app.handle());
             }
+            spawn_updater(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {

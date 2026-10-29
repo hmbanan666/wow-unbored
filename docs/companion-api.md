@@ -21,9 +21,13 @@ Response `200`:
 
 ```json
 {
+  "id": 12,
+  "createdAt": 1761720000,
   "plan": "UNB1:...."
 }
 ```
+
+`id` grows with every stored plan. The companion compares it with a request's `planId` so a plan put after a request was fulfilled is not hidden by it. Older servers that omit `id` still work; the request's plan wins then.
 
 `plan` may instead be the JSON object from [plan-format.md](plan-format.md) (`v`, `kind: "plan"`, `tasks`). The string form is the one the in-game importer also accepts.
 
@@ -68,7 +72,7 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 
 `_retail_/Interface/AddOns/Unbored_Plan/Plan.lua`
 
-Unbored reads the global `UnboredExternalPlan` from that addon on load and asks before it replaces the current list.
+Unbored reads the global `UnboredExternalPlan` from that addon on load. A plan for this character's pending request starts by itself; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast, "Plan ready, press Load plan", once per fulfilled request.
 
 ## Plan requests
 
@@ -82,15 +86,38 @@ Unbored reads the global `UnboredExternalPlan` from that addon on load and asks 
   "realm": "Area 52",
   "mode": "farm",
   "budget": 60,
-  "wish": "mount"
+  "wish": "mount, stay in this zone",
+  "context": {
+    "mapID": 2248,
+    "zone": "Isle of Dorn",
+    "subzone": "Dornogal",
+    "x": 0.4512,
+    "y": 0.6031,
+    "level": 80,
+    "faction": "Alliance",
+    "class": "Mage",
+    "classFile": "MAGE",
+    "specID": 63,
+    "spec": "Fire",
+    "ilvl": 612.4,
+    "gold": 18342,
+    "skyriding": true,
+    "canFly": true,
+    "inInstance": false,
+    "hearth": "Dornogal",
+    "trackedQuests": [{ "id": 78529, "title": "Rock Bottom" }],
+    "plan": { "mode": "quests", "step": 2, "steps": 5, "currentId": "quest:78529", "minutesLeft": 40 }
+  }
 }
 ```
 
-`mode` is `roam`, `quests`, `events`, `fun`, or `farm`. The same id posted again does not send another webhook.
+`mode` is `roam`, `quests`, `events`, `fun`, or `farm`. `wish` is free text up to 600 bytes. `context` is optional and every field in it is optional; the game fills what it can read. Fields of the wrong type are dropped, and a context over 8,000 bytes is rejected. `x`/`y` are 0–1 fractions on `mapID`. `gold` is whole gold. `plan` describes the list that was active when the request was made. The same id posted again does not send another webhook.
+
+Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`, keep the route in one zone unless the wish says otherwise, and use `hearth`, `skyriding`, and `canFly` to judge travel.
 
 `GET {base}/v1/requests/latest` returns that request plus `"plan": "UNB1:..."` when it has been fulfilled, or `"plan": null` while it is pending or failed. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed.
 
-If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, character, realm, mode, budget, wish }` to that URL. `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
+If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, character, realm, mode, budget, wish, context }` to that URL (`context` is `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
 
 ## Device pairing
 

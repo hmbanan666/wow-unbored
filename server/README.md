@@ -30,11 +30,11 @@ Companion 0.1.1 uses `https://unbored.kosarev.space` unless an advanced override
 
 `UNBORED_COMPANION_TOKEN` still authenticates those two calls for an older companion build.
 
-Until a plan exists, `GET /v1/plan` is `404`. The companion leaves the previous plan file alone.
+`GET /v1/plan` returns `{ id, createdAt, plan }`. Until a plan exists it is `404`. The companion leaves the previous plan file alone.
 
 MCP tools `list_devices`, `approve_device`, and `revoke_device` use the planner token. Approving a device does not let it write plans.
 
-`list_requests` lists pending requests (pass `status` for fulfilled or failed). `put_plan` accepts `requestId` and marks that request fulfilled. `fail_request` stores a reason the addon shows after `/reload`. `resolve_criteria` maps an achievement id plus a criteria-tree id to `criteriaID` and a 1-based `criteriaIndex`, using cached wago.tools CriteriaTree and Achievement CSVs in `/data/wago`. `criteriaID` is `CriteriaTree.CriteriaID`, the Criteria table id the addon wants. The first call downloads those files.
+`list_requests` lists pending requests (pass `status` for fulfilled or failed). Each request carries the wish and the player `context` from the game (map, position, level, class, item level, gold, hearth, tracked quests, active plan); plan from there. `put_plan` tasks may carry `waypoints`, a route of up to 10 `{ mapID, x, y, label? }` points, described in `docs/plan-format.md`. `put_plan` accepts `requestId` and marks that request fulfilled. `fail_request` stores a reason the addon shows after `/reload`. `resolve_criteria` maps an achievement id plus a criteria-tree id to `criteriaID` and a 1-based `criteriaIndex`, using cached wago.tools CriteriaTree and Achievement CSVs in `/data/wago`. `criteriaID` is `CriteriaTree.CriteriaID`, the Criteria table id the addon wants. The first call downloads those files.
 
 ## Planner HTTP
 

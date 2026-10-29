@@ -27,6 +27,15 @@ local function initDB()
   if not UnboredDB.budget then
     UnboredDB.budget = 60
   end
+  if UnboredDB.tomtomArrow == nil then
+    UnboredDB.tomtomArrow = true
+  end
+  if UnboredDB.chatNotes == nil then
+    UnboredDB.chatNotes = false
+  end
+  if type(UnboredDB.tracker) ~= "table" then
+    UnboredDB.tracker = {}
+  end
   ns.DB = UnboredDB
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
@@ -49,6 +58,12 @@ function ns.OnAddonLoaded()
   initDB()
   if ns.UI and ns.UI.Create then
     local ok, err = pcall(ns.UI.Create)
+    if not ok then
+      ns.Print(tostring(err))
+    end
+  end
+  if ns.Tracker and ns.Tracker.Create then
+    local ok, err = pcall(ns.Tracker.Create, ns.Tracker)
     if not ok then
       ns.Print(tostring(err))
     end
@@ -86,6 +101,15 @@ local function slash(message)
   command = (command or ""):lower()
   if command == "" then
     ns.UI:Toggle()
+  elseif command == "tracker" then
+    ns.Tracker:Toggle()
+  elseif command == "lock" then
+    ns.Tracker:SetLocked(not ns.Tracker:Locked())
+    ns.Print(ns.Tracker:Locked() and ns.T("LOCKED") or ns.T("UNLOCKED"))
+  elseif command == "reset" then
+    ns.Tracker:ResetPosition()
+  elseif command == "build" then
+    ns.Session:BuildHere()
   elseif command == "import" then
     ns.ShowImport(rest)
   elseif command == "export" then
@@ -96,23 +120,23 @@ local function slash(message)
   elseif command == "30" or command == "60" or command == "120" then
     ns.Session:SetBudget(tonumber(command))
     ns.UI:Show()
-  elseif command == "refresh" then
-    ns.Session:Rebuild()
-    ns.UI:Show()
   elseif command == "tomtom" then
-    ns.DB.useTomTom = not ns.DB.useTomTom
-    ns.Print(ns.DB.useTomTom and ns.T("TOMTOM_ON") or ns.T("TOMTOM_OFF"))
+    ns.DB.tomtomArrow = not ns.DB.tomtomArrow
+    ns.Print(ns.DB.tomtomArrow and ns.T("TOMTOM_ON") or ns.T("TOMTOM_OFF"))
+    ns.Session:Waypoint()
+  elseif command == "chat" then
+    ns.DB.chatNotes = not ns.DB.chatNotes
+    ns.Print(ns.DB.chatNotes and ns.T("CHAT_ON") or ns.T("CHAT_OFF"))
   elseif command == "minimap" then
     local hide = ns.DB.minimap and ns.DB.minimap.hide
     ns.MinimapSetShown(hide and true or false)
     ns.Print(hide and ns.T("MINIMAP_ON") or ns.T("MINIMAP_OFF"))
   elseif command == "companion" then
-    ns.Session:UseExternal()
-    if ns.UI and ns.UI.Show then
-      ns.UI:Show()
+    if not ns.Session:UseExternal() then
+      ns.Print(ns.T("COMPANION_NONE"))
     end
   elseif command == "where" then
-    local mapID, x, y = ns.PlayerPosition()
+    local mapID, x, y = ns.RawPlayerPosition()
     if not mapID or not x or not y then
       ns.Print(ns.T("WHERE_NONE"))
     else
@@ -145,6 +169,10 @@ function Unbored_Waypoint()
   if ns.Session then
     ns.Session:Waypoint()
   end
+end
+
+function Unbored_LoadPlan()
+  ns.Session.LoadPlan()
 end
 
 if SlashCmdList then

@@ -107,6 +107,7 @@ export function createApp(
         mode: cleaned.mode,
         budget: cleaned.budget,
         wish: cleaned.wish,
+        context: cleaned.context,
         nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
       });
       if (saved.created) {
@@ -117,6 +118,7 @@ export function createApp(
           mode: saved.request.mode,
           budget: saved.request.budget,
           wish: saved.request.wish,
+          context: saved.request.context,
         });
       }
       return c.json(publicRequest(saved.request), saved.created ? 201 : 200);
@@ -143,7 +145,7 @@ export function createApp(
     if (access instanceof Response) return access;
     const stored = store.latestPlan();
     if (!stored) return c.json({ error: "No plan yet." }, 404);
-    return c.json({ plan: stored.unb1 });
+    return c.json({ id: stored.id, createdAt: stored.createdAt, plan: stored.unb1 });
   });
 
   app.post("/v1/progress", async (c) => {

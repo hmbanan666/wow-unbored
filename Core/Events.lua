@@ -31,6 +31,16 @@ function ns.Events.Pulse()
   end
   if ns.IsTaskComplete(task) then
     ns.Session:CheckCurrent()
+    return
+  end
+  if ns.Session:AdvanceRoute() then
+    return
+  end
+  if ns.Waypoint and ns.Waypoint.Sync then
+    ns.Waypoint:Sync(task)
+  end
+  if ns.Tracker and ns.Tracker.UpdateDistance then
+    ns.Tracker:UpdateDistance()
   end
 end
 
@@ -54,7 +64,8 @@ function ns.Events.StartTicker()
   end
   ns.Events.ticker = C_Timer.NewTicker(0.75, function()
     local ok, err = pcall(ns.Events.Pulse)
-    if not ok and ns.Print then
+    if not ok and ns.Print and not ns.Events.reported then
+      ns.Events.reported = true
       ns.Print(tostring(err))
     end
   end)

@@ -13,7 +13,7 @@ pub const HELPER_TOC: &str = "\
 ## Title: Unbored Plan
 ## Notes: Plan file owned by Unbored Companion. The game reads it on /reload.
 ## Author: Unbored contributors
-## Version: 0.1.0
+## Version: 0.3.0
 ## LoadOnDemand: 0
 
 Plan.lua
@@ -66,7 +66,21 @@ pub struct Task {
     pub note: Option<String>,
     #[serde(default)]
     pub complete: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waypoints: Option<Vec<Waypoint>>,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Waypoint {
+    #[serde(rename = "mapID")]
+    pub map_id: u32,
+    pub x: f64,
+    pub y: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+pub const MAX_WAYPOINTS: usize = 10;
 
 fn default_est() -> u32 {
     15
@@ -152,6 +166,21 @@ pub fn plan_from_value(value: Value) -> Result<Plan, PlanError> {
         } else if task.x.is_some() || task.y.is_some() {
             return Err(PlanError(format!("Task {n} needs both x and y.")));
         }
+        if let Some(points) = &task.waypoints {
+            if points.len() > MAX_WAYPOINTS {
+                return Err(PlanError(format!("Task {n} has more than {MAX_WAYPOINTS} waypoints.")));
+            }
+            for point in points {
+                if point.map_id == 0
+                    || !(0.0..=1.0).contains(&point.x)
+                    || !(0.0..=1.0).contains(&point.y)
+                {
+                    return Err(PlanError(format!(
+                        "Task {n} waypoints need a mapID and x/y fractions from 0 to 1."
+                    )));
+                }
+            }
+        }
     }
     Ok(plan)
 }
@@ -177,8 +206,12 @@ pub fn install_request_file(
     status: &str,
     reason: Option<&str>,
     plan: Option<&Plan>,
-) -> Result<PathBuf, PlanError> {
-    let body = if let Some(plan) = plan {
+) -> Result<Written, PlanError> {
+    write_plan_lua(retail, &render_request_lua(request_id, status, reason, plan))
+}
+
+pub fn render_request_lua(request_id: &str, status: &str, reason: Option<&str>, plan: Option<&Plan>) -> String {
+    if let Some(plan) = plan {
         let mut copy = plan.clone();
         copy.request_id = Some(request_id.to_string());
         copy.request_status = Some(status.to_string());
@@ -196,24 +229,118 @@ pub fn install_request_file(
         }
         out.push_str("}\n");
         out
-    };
-    write_plan_lua(retail, &body)
+    }
 }
 
-pub fn install_plan(retail: &Path, plan: &Plan) -> Result<PathBuf, PlanError> {
+pub fn install_plan(retail: &Path, plan: &Plan) -> Result<Written, PlanError> {
     write_plan_lua(retail, &render_plan_lua(plan))
 }
 
-fn write_plan_lua(retail: &Path, body: &str) -> Result<PathBuf, PlanError> {
-    let dir = retail.join("Interface").join("AddOns").join("Unbored_Plan");
-    fs::create_dir_all(&dir).map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
+#[derive(Debug, Clone, PartialEq)]
+pub struct Written {
+    pub path: PathBuf,
+    pub changed: bool,
+}
+
+const EMPTY_PLAN_LUA: &str = "-- Written by Unbored Companion. No plan yet.\n";
+
+fn helper_dir(retail: &Path) -> PathBuf {
+    retail.join("Interface").join("AddOns").join("Unbored_Plan")
+}
+
+fn write_helper_toc(dir: &Path) -> Result<(), PlanError> {
     let toc = dir.join("Unbored_Plan.toc");
-    fs::write(&toc, HELPER_TOC).map_err(|err| PlanError(format!("Could not write the helper TOC: {err}")))?;
+    if fs::read_to_string(&toc).ok().as_deref() == Some(HELPER_TOC) {
+        return Ok(());
+    }
+    fs::write(&toc, HELPER_TOC).map_err(|err| PlanError(format!("Could not write the helper TOC: {err}")))
+}
+
+/// The game addon treats a loaded Unbored_Plan as "a companion is here", so
+/// the helper exists from the first sync, even before any plan arrives.
+pub fn ensure_helper(retail: &Path) -> Result<(), PlanError> {
+    let dir = helper_dir(retail);
+    fs::create_dir_all(&dir).map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
+    write_helper_toc(&dir)?;
     let lua_path = dir.join("Plan.lua");
+    if !lua_path.is_file() {
+        fs::write(&lua_path, EMPTY_PLAN_LUA)
+            .map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
+    }
+    Ok(())
+}
+
+/// Leaves the file alone when the body is unchanged, so a running game is
+/// not handed the same plan again and no second toast goes out.
+fn write_plan_lua(retail: &Path, body: &str) -> Result<Written, PlanError> {
+    let dir = helper_dir(retail);
+    fs::create_dir_all(&dir).map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
+    write_helper_toc(&dir)?;
+    let lua_path = dir.join("Plan.lua");
+    if fs::read_to_string(&lua_path).ok().as_deref() == Some(body) {
+        return Ok(Written { path: lua_path, changed: false });
+    }
     let tmp = dir.join("Plan.lua.tmp");
     fs::write(&tmp, body).map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
     fs::rename(&tmp, &lua_path).map_err(|err| PlanError(format!("Could not replace the plan: {err}")))?;
-    Ok(lua_path)
+    Ok(Written { path: lua_path, changed: true })
+}
+
+/// What the planner holds for this device: the newest plan and the newest
+/// in-game request from it.
+#[derive(Debug, Clone, Default)]
+pub struct PlannerState {
+    pub latest_plan: Option<(u64, Plan)>,
+    pub request: Option<RequestState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RequestState {
+    pub id: String,
+    pub status: String,
+    pub reason: Option<String>,
+    pub plan_id: Option<u64>,
+    pub plan: Option<Plan>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanFile {
+    pub body: String,
+    /// Set when the file carries a finished plan for this in-game request.
+    pub ready_request: Option<String>,
+}
+
+/// One Plan.lua serves both flows. A pending or failed request wins, since
+/// the game ignores other plans while it waits. A fulfilled request wins
+/// unless the planner put a newer plan after it.
+pub fn pick_plan_file(state: &PlannerState) -> Option<PlanFile> {
+    if let Some(request) = &state.request {
+        let newer_direct = match (&state.latest_plan, request.plan_id) {
+            (Some((id, _)), Some(request_plan)) => *id > request_plan,
+            _ => false,
+        };
+        let fulfilled = request.status == "fulfilled" && request.plan.is_some();
+        if !fulfilled || !newer_direct {
+            let plan = if fulfilled { request.plan.as_ref() } else { None };
+            let status = if request.status == "fulfilled" && plan.is_none() {
+                "pending"
+            } else {
+                request.status.as_str()
+            };
+            return Some(PlanFile {
+                body: render_request_lua(&request.id, status, request.reason.as_deref(), plan),
+                ready_request: plan.map(|_| request.id.clone()),
+            });
+        }
+    }
+    state.latest_plan.as_ref().map(|(_, plan)| PlanFile {
+        body: render_plan_lua(plan),
+        ready_request: None,
+    })
+}
+
+pub fn install_plan_file(retail: &Path, file: &PlanFile) -> Result<Written, PlanError> {
+    write_plan_lua(retail, &file.body)
 }
 
 pub fn render_plan_lua(plan: &Plan) -> String {
@@ -262,6 +389,12 @@ pub fn render_plan_lua(plan: &Plan) -> String {
         if let Some(complete) = &task.complete {
             out.push_str("      [\"complete\"] = ");
             write_value(&mut out, complete, 3);
+            out.push_str(",\n");
+        }
+        if let Some(points) = &task.waypoints {
+            let value = serde_json::to_value(points).unwrap_or(Value::Null);
+            out.push_str("      [\"waypoints\"] = ");
+            write_value(&mut out, &value, 3);
             out.push_str(",\n");
         }
         out.push_str("    },\n");
@@ -387,7 +520,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         let retail = root.join("_retail_");
         fs::create_dir_all(&retail).unwrap();
-        let path = install_plan(&retail, &plan).unwrap();
+        let path = install_plan(&retail, &plan).unwrap().path;
         assert!(path.ends_with("Plan.lua"));
         let toc = fs::read_to_string(
             retail.join("Interface/AddOns/Unbored_Plan/Unbored_Plan.toc"),
@@ -404,6 +537,117 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("Ashes \"of\" Al'ar\nline")
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn small_plan(id: &str) -> Plan {
+        plan_from_value(serde_json::json!({
+            "v": 1,
+            "kind": "plan",
+            "budget": 30,
+            "generatedAt": 5,
+            "tasks": [{ "id": id, "title": "T", "estMinutes": 5 }]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn keeps_waypoints_and_rejects_bad_routes() {
+        let plan = plan_from_value(serde_json::json!({
+            "v": 1,
+            "kind": "plan",
+            "budget": 30,
+            "tasks": [{
+                "id": "a",
+                "title": "A",
+                "waypoints": [
+                    { "mapID": 2248, "x": 0.1, "y": 0.2, "label": "Gate" },
+                    { "mapID": 2248, "x": 0.5, "y": 0.6 }
+                ]
+            }]
+        }))
+        .unwrap();
+        let lua = render_plan_lua(&plan);
+        let values = parse_saved_variables(&lua).unwrap();
+        let task = crate::savedvars::array_items(
+            crate::savedvars::table_get(values.get("UnboredExternalPlan").unwrap(), "tasks").unwrap(),
+        )[0];
+        let points = crate::savedvars::array_items(crate::savedvars::table_get(task, "waypoints").unwrap());
+        assert_eq!(points.len(), 2);
+        assert_eq!(
+            crate::savedvars::table_get(points[0], "label").and_then(|v| v.as_str()),
+            Some("Gate")
+        );
+        assert!(crate::savedvars::table_get(points[1], "label").is_none());
+        let percent = plan_from_value(serde_json::json!({
+            "v": 1, "kind": "plan", "budget": 30,
+            "tasks": [{ "id": "a", "title": "A", "waypoints": [{ "mapID": 1, "x": 40, "y": 2 }] }]
+        }));
+        assert!(percent.is_err());
+        let many: Vec<_> = (0..11).map(|_| serde_json::json!({ "mapID": 1, "x": 0.1, "y": 0.1 })).collect();
+        let too_many = plan_from_value(serde_json::json!({
+            "v": 1, "kind": "plan", "budget": 30,
+            "tasks": [{ "id": "a", "title": "A", "waypoints": many }]
+        }));
+        assert!(too_many.is_err());
+    }
+
+    fn request(status: &str, plan_id: Option<u64>, plan: Option<Plan>) -> RequestState {
+        RequestState {
+            id: "req-1".into(),
+            status: status.into(),
+            reason: None,
+            plan_id,
+            plan,
+        }
+    }
+
+    #[test]
+    fn picks_between_the_request_and_a_direct_plan() {
+        assert!(pick_plan_file(&PlannerState::default()).is_none());
+        let direct = PlannerState { latest_plan: Some((3, small_plan("direct"))), request: None };
+        let file = pick_plan_file(&direct).unwrap();
+        assert!(file.body.contains("direct") && file.ready_request.is_none());
+
+        let pending = PlannerState {
+            latest_plan: Some((3, small_plan("direct"))),
+            request: Some(request("pending", None, None)),
+        };
+        let file = pick_plan_file(&pending).unwrap();
+        assert!(file.body.contains("\"pending\"") && !file.body.contains("direct"));
+        assert!(file.ready_request.is_none());
+
+        let fulfilled = PlannerState {
+            latest_plan: Some((4, small_plan("asked"))),
+            request: Some(request("fulfilled", Some(4), Some(small_plan("asked")))),
+        };
+        let file = pick_plan_file(&fulfilled).unwrap();
+        assert!(file.body.contains("req-1") && file.body.contains("asked"));
+        assert_eq!(file.ready_request.as_deref(), Some("req-1"));
+
+        let newer = PlannerState {
+            latest_plan: Some((9, small_plan("later"))),
+            request: Some(request("fulfilled", Some(4), Some(small_plan("asked")))),
+        };
+        let file = pick_plan_file(&newer).unwrap();
+        assert!(file.body.contains("later") && !file.body.contains("req-1"));
+    }
+
+    #[test]
+    fn writes_only_when_the_plan_changes() {
+        let root = std::env::temp_dir().join(format!("unbored-plan-change-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let retail = root.join("_retail_");
+        fs::create_dir_all(&retail).unwrap();
+        ensure_helper(&retail).unwrap();
+        let lua = retail.join("Interface/AddOns/Unbored_Plan/Plan.lua");
+        assert!(lua.is_file());
+        assert!(parse_saved_variables(&fs::read_to_string(&lua).unwrap()).unwrap().is_empty());
+        let plan = small_plan("a");
+        assert!(install_plan(&retail, &plan).unwrap().changed);
+        assert!(!install_plan(&retail, &plan).unwrap().changed);
+        ensure_helper(&retail).unwrap();
+        assert!(fs::read_to_string(&lua).unwrap().contains("\"a\""));
         let _ = fs::remove_dir_all(&root);
     }
 }

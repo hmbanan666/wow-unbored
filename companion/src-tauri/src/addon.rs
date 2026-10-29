@@ -113,22 +113,50 @@ pub fn install_addon_zip(bytes: &[u8], retail: &Path) -> Result<(), String> {
         Some(index) => toc[..=index].to_string(),
         None => String::new(),
     };
-    let addon_dir = retail.join("Interface").join("AddOns").join("Unbored");
-    if addon_dir.is_dir() {
-        fs::remove_dir_all(&addon_dir).map_err(|err| err.to_string())?;
+    let addons = retail.join("Interface").join("AddOns");
+    let addon_dir = addons.join("Unbored");
+    let staging = addons.join("Unbored.new");
+    let previous = addons.join("Unbored.old");
+    if staging.exists() {
+        fs::remove_dir_all(&staging).map_err(|err| err.to_string())?;
     }
-    fs::create_dir_all(&addon_dir).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&staging).map_err(|err| err.to_string())?;
+    let unpacked = unpack(&mut archive, &prefix, &staging);
+    if let Err(err) = unpacked {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(err);
+    }
+    // Two renames keep a whole addon on disk at every moment: the game never
+    // sees a half-written folder, and a failed swap puts the old one back.
+    if previous.exists() {
+        fs::remove_dir_all(&previous).map_err(|err| err.to_string())?;
+    }
+    if addon_dir.exists() {
+        fs::rename(&addon_dir, &previous).map_err(|err| err.to_string())?;
+    }
+    if let Err(err) = fs::rename(&staging, &addon_dir) {
+        if previous.exists() {
+            let _ = fs::rename(&previous, &addon_dir);
+        }
+        let _ = fs::remove_dir_all(&staging);
+        return Err(err.to_string());
+    }
+    let _ = fs::remove_dir_all(&previous);
+    Ok(())
+}
+
+fn unpack(archive: &mut ZipArchive<Cursor<&[u8]>>, prefix: &str, dir: &Path) -> Result<(), String> {
     for index in 0..archive.len() {
         let mut file = archive.by_index(index).map_err(|err| err.to_string())?;
         let name = file.name().replace('\\', "/");
-        if !prefix.is_empty() && !name.starts_with(&prefix) {
+        if !prefix.is_empty() && !name.starts_with(prefix) {
             continue;
         }
         if name.ends_with('/') {
             continue;
         }
-        let relative = name.trim_start_matches(&prefix);
-        let dest = safe_join(&addon_dir, relative).ok_or_else(|| format!("Unsafe path in the zip: {name}"))?;
+        let relative = name.trim_start_matches(prefix);
+        let dest = safe_join(dir, relative).ok_or_else(|| format!("Unsafe path in the zip: {name}"))?;
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|err| err.to_string())?;
         }
@@ -137,10 +165,25 @@ pub fn install_addon_zip(bytes: &[u8], retail: &Path) -> Result<(), String> {
         file.read_to_end(&mut buf).map_err(|err| err.to_string())?;
         out.write_all(&buf).map_err(|err| err.to_string())?;
     }
-    if !addon_dir.join("Unbored.toc").is_file() {
-        return Err("Unbored.toc was not written.".into());
+    if !dir.join("Unbored.toc").is_file() {
+        return Err("The release zip has no Unbored.toc at the addon root.".into());
     }
     Ok(())
+}
+
+/// `## Version:` from the installed Unbored.toc, so a manual install counts.
+pub fn installed_version(retail: &Path) -> Option<String> {
+    let toc = retail.join("Interface").join("AddOns").join("Unbored").join("Unbored.toc");
+    let text = fs::read_to_string(toc).ok()?;
+    text.lines().find_map(|line| {
+        let rest = line.trim().strip_prefix("##")?.trim();
+        let value = rest.strip_prefix("Version:")?.trim().trim_start_matches('v');
+        if value.is_empty() || value.starts_with('@') {
+            None
+        } else {
+            Some(value.to_string())
+        }
+    })
 }
 
 fn safe_join(root: &Path, relative: &str) -> Option<PathBuf> {
@@ -300,7 +343,7 @@ mod tests {
             writer
                 .start_file("Unbored/Unbored.toc", SimpleFileOptions::default())
                 .unwrap();
-            writer.write_all(b"## Interface: 120105\n").unwrap();
+            writer.write_all(b"## Interface: 120105\n## Version: v0.3.0\n").unwrap();
             writer
                 .start_file("Unbored/Core/Namespace.lua", SimpleFileOptions::default())
                 .unwrap();
@@ -311,12 +354,21 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         let retail = root.join("_retail_");
         fs::create_dir_all(&retail).unwrap();
+        let stale = retail.join("Interface/AddOns/Unbored/Old.lua");
+        fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        fs::write(&stale, "old").unwrap();
         install_addon_zip(cursor.get_ref(), &retail).unwrap();
         let toc = fs::read_to_string(retail.join("Interface/AddOns/Unbored/Unbored.toc")).unwrap();
         assert!(toc.contains("120105"));
+        assert_eq!(installed_version(&retail).as_deref(), Some("0.3.0"));
         assert!(retail
             .join("Interface/AddOns/Unbored/Core/Namespace.lua")
             .is_file());
+        assert!(!stale.exists());
+        assert!(!retail.join("Interface/AddOns/Unbored.new").exists());
+        assert!(!retail.join("Interface/AddOns/Unbored.old").exists());
+        assert!(install_addon_zip(b"not a zip", &retail).is_err());
+        assert!(retail.join("Interface/AddOns/Unbored/Unbored.toc").is_file());
         let _ = fs::remove_dir_all(&root);
     }
 

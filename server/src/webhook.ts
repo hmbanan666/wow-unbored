@@ -1,3 +1,5 @@
+import type { PlayerContext } from "./plan.ts";
+
 export type WebhookConfig = {
   url: string;
   key: string;
@@ -19,6 +21,7 @@ export type WebhookBody = {
   mode: string;
   budget: number;
   wish: string | null;
+  context: PlayerContext | null;
 };
 
 type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number }>;

@@ -2,7 +2,7 @@
 ## Title: Unbored
 ## Notes: A calm session planner. What do I do now?
 ## Author: Unbored contributors
-## Version: 0.2.0
+## Version: 0.3.0
 ## SavedVariables: UnboredDB
 ## SavedVariablesPerCharacter: UnboredCharDB
 ## OptionalDeps: TomTom, Unbored_Plan
@@ -16,6 +16,7 @@
 Core\Namespace.lua
 Core\Locale.lua
 Core\Util.lua
+Core\Context.lua
 Core\Codec.lua
 Core\Import.lua
 Core\Plan.lua
@@ -35,6 +36,7 @@ Providers\Achievements.lua
 Providers\Farm.lua
 Companion\Plan.lua
 UI\Frame.lua
+UI\Tracker.lua
 UI\Import.lua
 UI\Minimap.lua
 Core\Init.lua
