@@ -11,7 +11,7 @@ use serde_json::Value;
 pub const HELPER_TOC: &str = "\
 ## Interface: 120105, 120100
 ## Title: Unbored Plan
-## Notes: Plans, Answers and Personal advice from Unbored Companion. Read at login or Refresh.
+## Notes: Plans, answers and item tips from Unbored Companion. Wisp reads them when you log in or press Refresh.
 ## Author: Unbored contributors
 ## Version: 0.6.0
 ## LoadOnDemand: 0

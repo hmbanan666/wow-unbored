@@ -34,10 +34,10 @@ No Windows, or prefer doing it by hand? Download `Unbored-v….zip` from the new
 Yes, it follows the same rules as every other addon. Wisp only suggests things; she never plays for you and never presses anything on her own. The Companion works like the Raider.IO or WeakAuras companion apps: it only reads and writes addon files in your World of Warcraft folder. It does not read game memory, inject anything, or touch `Wow.exe`. Unbored is a fan project and is not made by Blizzard.
 
 **Why does Wisp sometimes offer a Refresh?**
-The game reads addon files only when your interface loads: at login, when you switch characters, or when you reload. Teleports and loading screens don't count. When the Companion has something new (a fuller plan or answer), Wisp asks once: "New stuff is ready. Refresh now?" Refresh reloads your interface for a few seconds. Later is fine too: it will be there at your next login. Wisp never reloads by herself.
+The game reads addon files only when your interface loads: when you log in, switch characters, or reload. Teleports and loading screens don't count. When the Companion has something new (a fuller plan or answer), Wisp asks once: "New stuff is ready. Refresh now?" Refresh reloads your interface for a few seconds. Later is fine too: it will be there next time you log in. Wisp never reloads by herself.
 
 **What data does it use?**
-The addon itself never goes online. The Companion sends your questions and your character's state (where you are, level, class, item level, gold, bags and bank, professions, collections, recent steps) to the Unbored server, so the planner can give answers that fit you and your other characters. It is stored per character, linked to your game account, and used only for Unbored. No passwords, no Battle.net login, no chat logs.
+The addon itself never goes online. The Companion sends your questions and your character's state (where you are, level, class, item level, gold, bags and bank, professions, collections, recent steps) to the Unbored server, so the planner can give answers that fit you and your other characters. It is stored per character, linked to your game account, and used only for Unbored. You never sign in to anything: no passwords, no Battle.net account, no chat logs.
 
 **Does it work without the Companion?**
 Yes: quick plans, item tips and answers to common questions all work in the game alone. Fuller answers and full plans need the Companion.

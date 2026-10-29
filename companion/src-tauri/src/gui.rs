@@ -272,7 +272,7 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
     }
     let written = install_plan(&retail, plan).map_err(|err| err.0)?;
     Ok(format!(
-        "Wrote {}. Wisp picks it up at your next login, or click Refresh in Wisp's bubble.",
+        "Wrote {}. Wisp picks it up next time you log in, or click Refresh in Wisp's bubble.",
         written.path.display()
     ))
 }
@@ -853,7 +853,7 @@ fn sync_plans(
             "Request sent. The planner is working on it.".into()
         }
         Some(request) if request.status == "failed" => "The planner could not answer that one.".into(),
-        _ => "New plan ready. Wisp picks it up at your next login.".into(),
+        _ => "New plan ready. Wisp picks it up next time you log in.".into(),
     }))
 }
 

@@ -107,7 +107,7 @@ pub fn current(input: &MoodInput) -> Mood {
             return mood(
                 "ready",
                 ready_text(kind),
-                "Wisp picks it up at your next login, or click Refresh in Wisp's bubble.",
+                "Wisp picks it up next time you log in, or click Refresh in Wisp's bubble.",
             );
         }
     }
