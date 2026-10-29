@@ -129,4 +129,8 @@ read_globals = {
   "TSM_API",
   "C_Bank",
   "IsControlKeyDown",
+  "GetCoinTextureString",
+  "ITEM_SPELL_KNOWN",
+  "ITEM_OPENABLE",
+  "UnboredAdvice",
 }

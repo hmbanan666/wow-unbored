@@ -18,6 +18,8 @@ Core\Locale.lua
 Core\Util.lua
 Core\Context.lua
 Core\Profile.lua
+Core\Intents.lua
+Core\Advice.lua
 Core\Codec.lua
 Core\Import.lua
 Core\Plan.lua
@@ -31,6 +33,7 @@ Data\FunAchievements.lua
 Data\Holidays.lua
 Data\Farm.lua
 Data\Items.lua
+Data\AdviceTable.lua
 Data\Presets.lua
 Providers\Roam.lua
 Providers\Quests.lua
