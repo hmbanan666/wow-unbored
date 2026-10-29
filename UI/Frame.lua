@@ -1,5 +1,6 @@
--- Main window: choose what to do and ask for a plan. Nothing else.
--- The active plan lives in the tracker (UI/Tracker.lua).
+-- Main window: the mascot asks one thing per screen. A new plan (mode, time,
+-- wish), a question, "what to do nearby", or "what is this item". The active
+-- plan lives in the mascot bubble (UI/Mascot.lua).
 
 local _, ns = ...
 
@@ -125,8 +126,16 @@ local function setPrimaryFont(button)
   end
 end
 
--- Small popup menu. items: { text, func, checked (true/false/nil) }
+-- Small popup menu, used when the game's MenuUtil is missing.
+-- items: { text, func, checked (bool or function), children, title }
 function ns.UI.ShowMenu(anchor, items)
+  local rows = {}
+  for i = 1, #items do
+    if not items[i].title then
+      rows[#rows + 1] = items[i]
+    end
+  end
+  items = rows
   local menu = ns.UI.menu
   if not menu then
     local catcher = CreateFrame("Button", nil, UIParent)
@@ -174,14 +183,20 @@ function ns.UI.ShowMenu(anchor, items)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", 6, -6 - (i - 1) * 20)
     row:SetPoint("TOPRIGHT", -6, -6 - (i - 1) * 20)
-    row.label:SetText(item.text)
+    row.label:SetText(item.children and (item.text .. "  >") or item.text)
     local labelWidth = ns.AsNumber(row.label:GetStringWidth()) or 0
     width = math.max(width, math.ceil(labelWidth) + 40)
-    row.check:SetShown(item.checked == true)
+    local checked = item.checked
+    if type(checked) == "function" then
+      checked = checked()
+    end
+    row.check:SetShown(checked == true)
     row:SetScript("OnClick", function()
       menu:Hide()
       menu.catcher:Hide()
-      if item.func then
+      if item.children then
+        ns.UI.ShowMenu(anchor, item.children)
+      elseif item.func then
         item.func()
       end
     end)
@@ -217,42 +232,7 @@ function ns.UI.HasCompanion()
 end
 
 function ns.UI.MenuItems()
-  local items = {
-    { text = ns.T("MENU_BUILD"), func = function() ns.Session:BuildHere() end },
-    { text = ns.T("MENU_IMPORT"), func = function() ns.ShowImport() end },
-    { text = ns.T("MENU_EXPORT"), func = function() ns.ShowExport() end },
-  }
-  if ns.Tracker and ns.Tracker.frame then
-    if ns.Tracker.frame:IsShown() then
-      items[#items + 1] = { text = ns.T("MENU_HIDE"), func = function() ns.Tracker:Hide() end }
-    else
-      items[#items + 1] = { text = ns.T("SHOW_TRACKER"), func = function() ns.Tracker:Reveal() end }
-    end
-    items[#items + 1] = {
-      text = ns.T("MENU_LOCK"),
-      checked = ns.Tracker:Locked(),
-      func = function() ns.Tracker:SetLocked(not ns.Tracker:Locked()) end,
-    }
-  end
-  if ns.Session:Current() then
-    items[#items + 1] = { text = ns.T("MENU_WAYPOINT"), func = function() ns.Session:Waypoint() end }
-  end
-  if ns.AddonLoaded("TomTom") then
-    items[#items + 1] = {
-      text = ns.T("MENU_TOMTOM"),
-      checked = ns.DB.tomtomArrow ~= false,
-      func = function()
-        ns.DB.tomtomArrow = ns.DB.tomtomArrow == false
-        ns.Session:Waypoint()
-      end,
-    }
-  end
-  items[#items + 1] = {
-    text = ns.T("MENU_CHAT"),
-    checked = ns.DB.chatNotes == true,
-    func = function() ns.DB.chatNotes = not ns.DB.chatNotes end,
-  }
-  return items
+  return ns.Mascot:SettingsTree()
 end
 
 local function makeCard(parent, info)
@@ -296,6 +276,62 @@ local function layoutCard(card, selected)
   return height
 end
 
+-- A multiline box with a grey hint inside it. onChange(text) on every edit.
+local function makeTextBox(parent, hint, maxLetters, onChange)
+  local okBox, box = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
+  if not okBox or not box then
+    box = CreateFrame("Frame", nil, parent)
+  end
+  box:SetSize(INNER, 92)
+  ns.UI.ApplyBackdrop(box, { 0, 0, 0, 0.55 }, { 0.4, 0.4, 0.4, 1 })
+  local edit = CreateFrame("EditBox", nil, box)
+  edit:SetMultiLine(true)
+  edit:SetAutoFocus(false)
+  edit:SetMaxLetters(maxLetters)
+  edit:SetFontObject(ChatFontNormal or GameFontHighlight)
+  edit:SetPoint("TOPLEFT", 8, -7)
+  edit:SetPoint("BOTTOMRIGHT", -8, 7)
+  edit:SetWidth(INNER - 16)
+  edit:SetTextInsets(0, 0, 0, 0)
+  local placeholder = font(box, "GameFontDisable")
+  placeholder:SetPoint("TOPLEFT", 9, -8)
+  placeholder:SetWidth(INNER - 18)
+  placeholder:SetText(hint)
+  box.placeholder = placeholder
+  local function update()
+    local text = edit:GetText() or ""
+    placeholder:SetShown(text == "" and not edit:HasFocus())
+  end
+  box.UpdatePlaceholder = update
+  edit:SetScript("OnEscapePressed", function(self)
+    self:ClearFocus()
+  end)
+  edit:SetScript("OnTextChanged", function()
+    update()
+    if onChange then
+      onChange(ns.Trim(edit:GetText() or ""))
+    end
+  end)
+  edit:SetScript("OnEditFocusGained", update)
+  edit:SetScript("OnEditFocusLost", update)
+  box:EnableMouse(true)
+  box:SetScript("OnMouseDown", function()
+    edit:SetFocus()
+  end)
+  update()
+  return box, edit
+end
+
+local function itemIcon(itemID)
+  if C_Item and C_Item.GetItemIconByID then
+    local icon = ns.Call(C_Item.GetItemIconByID, itemID)
+    if icon then
+      return icon
+    end
+  end
+  return "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
 function ns.UI.Create()
   if ns.UI.frame then
     return
@@ -331,9 +367,14 @@ function ns.UI.Create()
   local ui = ns.UI
   ui.frame = frame
 
+  ui.portrait = frame:CreateTexture(nil, "ARTWORK")
+  ui.portrait:SetSize(36, 36)
+  ui.portrait:SetPoint("TOPLEFT", PAD - 4, -8)
+  ui.portrait:SetTexture(ns.MEDIA .. "WispIdle64")
   ui.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  ui.title:SetPoint("TOPLEFT", PAD, -14)
-  ui.title:SetText("Unbored")
+  ui.title:SetPoint("LEFT", ui.portrait, "RIGHT", 6, 0)
+  ui.title:SetText(ns.MASCOT_NAME)
+  ui.title:SetTextColor(0.37, 0.89, 0.83)
 
   local okClose, close = pcall(CreateFrame, "Button", nil, frame, "UIPanelCloseButton")
   if not okClose or not close then
@@ -396,51 +437,61 @@ function ns.UI.Create()
 
   ui.stepWish = font(frame, "GameFontNormal")
   ui.stepWish:SetText(ns.T("STEP_WISH"))
-  local okBox, box = pcall(CreateFrame, "Frame", nil, frame, "BackdropTemplate")
-  if not okBox or not box then
-    box = CreateFrame("Frame", nil, frame)
-  end
-  box:SetSize(INNER, 92)
-  ns.UI.ApplyBackdrop(box, { 0, 0, 0, 0.55 }, { 0.4, 0.4, 0.4, 1 })
-  local wish = CreateFrame("EditBox", nil, box)
-  wish:SetMultiLine(true)
-  wish:SetAutoFocus(false)
-  wish:SetMaxLetters(300)
-  wish:SetFontObject(ChatFontNormal or GameFontHighlight)
-  wish:SetPoint("TOPLEFT", 8, -7)
-  wish:SetPoint("BOTTOMRIGHT", -8, 7)
-  wish:SetWidth(INNER - 16)
-  wish:SetTextInsets(0, 0, 0, 0)
-  local placeholder = font(box, "GameFontDisable")
-  placeholder:SetPoint("TOPLEFT", 9, -8)
-  placeholder:SetWidth(INNER - 18)
-  placeholder:SetText(ns.T("WISH_HINT"))
-  local function updatePlaceholder()
-    local text = wish:GetText() or ""
-    placeholder:SetShown(text == "" and not wish:HasFocus())
-  end
-  wish:SetScript("OnEscapePressed", function(self)
-    self:ClearFocus()
-  end)
-  wish:SetScript("OnTextChanged", function()
-    updatePlaceholder()
+  ui.wishBox, ui.wish = makeTextBox(frame, ns.T("WISH_HINT"), 300, function(text)
     if type(UnboredCharDB) == "table" then
-      local text = ns.Trim(wish:GetText() or "")
       UnboredCharDB.lastWish = text ~= "" and text or nil
     end
   end)
-  wish:SetScript("OnEditFocusGained", updatePlaceholder)
-  wish:SetScript("OnEditFocusLost", updatePlaceholder)
-  box:EnableMouse(true)
-  box:SetScript("OnMouseDown", function()
-    wish:SetFocus()
-  end)
   if type(UnboredCharDB) == "table" and type(UnboredCharDB.lastWish) == "string" then
-    wish:SetText(UnboredCharDB.lastWish)
+    ui.wish:SetText(UnboredCharDB.lastWish)
   end
-  updatePlaceholder()
-  ui.wishBox = box
-  ui.wish = wish
+  ui.wishBox.UpdatePlaceholder()
+
+  -- Ask something / what to do nearby: one line from the mascot, one box.
+  ui.speech = font(frame, "GameFontNormal")
+  ui.askBox, ui.ask = makeTextBox(frame, ns.T("ASK_HINT"), 300, function()
+    ui.askError = nil
+  end)
+
+  -- What is this item: a slot to drop it on, then what is known about it.
+  local slot = CreateFrame("Button", nil, frame)
+  slot:SetSize(40, 40)
+  slot:RegisterForClicks("AnyUp")
+  slot.bg = slot:CreateTexture(nil, "BACKGROUND")
+  slot.bg:SetAllPoints()
+  slot.bg:SetTexture("Interface\\PaperDoll\\UI-Backpack-EmptySlot")
+  slot.icon = slot:CreateTexture(nil, "ARTWORK")
+  slot.icon:SetPoint("TOPLEFT", 2, -2)
+  slot.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+  slot:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  local function dropOnSlot()
+    local item = ns.Items.FromCursor()
+    if item then
+      ui:OpenItem(item)
+    end
+  end
+  slot:SetScript("OnReceiveDrag", dropOnSlot)
+  slot:SetScript("OnClick", dropOnSlot)
+  slot:SetScript("OnEnter", function(self)
+    if not GameTooltip then
+      return
+    end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if ui.item and ui.item.link then
+      pcall(GameTooltip.SetHyperlink, GameTooltip, ui.item.link)
+    else
+      GameTooltip:SetText(ns.T("ITEM_DROP"))
+    end
+    GameTooltip:Show()
+  end)
+  slot:SetScript("OnLeave", function()
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
+  ui.slot = slot
+  ui.itemName = font(frame, "GameFontHighlight")
+  ui.itemFacts = font(frame, "GameFontHighlightSmall")
 
   ui.primary = ns.UI.MakeButton(frame, ns.T("GET_PLAN"), INNER, 34)
   setPrimaryFont(ui.primary)
@@ -464,9 +515,12 @@ function ns.UI.Create()
   ui:Refresh()
 end
 
--- What the one big button does depends on the screen.
+-- What the one big button does depends on the screen. Every send saves the
+-- request and reloads in the same click: ReloadUI needs a hardware event,
+-- and the reload is what writes SavedVariables for the companion.
 function ns.UI.OnPrimary()
-  local view = ns.UI.view
+  local ui = ns.UI
+  local view = ui.view
   if view == "waiting" then
     ns.Session.LoadPlan()
     return
@@ -475,17 +529,55 @@ function ns.UI.OnPrimary()
     ns.Session:CancelRequest()
     return
   end
-  if not ns.UI.HasCompanion() then
-    ns.Session:BuildHere(ns.Session.ChosenMode(), ns.Session.ChosenBudget())
+  local companion = ui.HasCompanion()
+  if view == "wizard" then
+    if not companion then
+      ns.Session:BuildHere(ns.Session.ChosenMode(), ns.Session.ChosenBudget())
+      return
+    end
+    ns.Session:RequestPlan(ui.wish and ui.wish:GetText() or "")
+    ns.Session.LoadPlan()
     return
   end
-  local text = ns.UI.wish and ns.UI.wish:GetText() or ""
-  ns.Session:RequestPlan(text)
-  -- Same click: ReloadUI needs a hardware event, and the reload is what
-  -- writes SavedVariables for the companion.
-  ns.Session.LoadPlan()
+  local text = ns.Trim(ui.ask and ui.ask:GetText() or "")
+  if view == "nearby" then
+    if not companion then
+      ns.Session:BuildHere("roam", ns.Session.ChosenBudget())
+      return
+    end
+    if text == "" then
+      text = ns.T("NEARBY_QUESTION")
+    end
+    if ns.Session:Ask({ type = "question", topic = "nearby", question = text }) then
+      ui.ask:SetText("")
+      ns.Session.LoadPlan()
+    end
+    return
+  end
+  if not companion then
+    return
+  end
+  if view == "ask" then
+    if text == "" then
+      ui.askError = ns.T("ASK_EMPTY")
+      ui:Refresh()
+      return
+    end
+    if ns.Session:Ask({ type = "question", question = text }) then
+      ui.ask:SetText("")
+      ns.Session.LoadPlan()
+    end
+    return
+  end
+  if view == "item" and ui.item then
+    if ns.Session:Ask({ type = "item", item = ui.item }) then
+      ns.Session.LoadPlan()
+    end
+  end
 end
 
+-- Screens: wizard, ask, nearby, item; a request that is out shows waiting
+-- or failed instead, whatever was opened.
 function ns.UI.View()
   local note = ns.Session and ns.Session.requestNote
   if note == "failed" then
@@ -494,23 +586,11 @@ function ns.UI.View()
   if note == "sending" or note == "preparing" or note == "ready" then
     return "waiting"
   end
+  local mode = ns.UI.mode
+  if mode == "ask" or mode == "nearby" or mode == "item" then
+    return mode
+  end
   return "wizard"
-end
-
-local function summaryOfRequest()
-  local req = ns.Session:PendingRequest()
-  if not req then
-    return ""
-  end
-  local parts = { ns.ModeLabel(req.mode), ns.T("BUDGET_" .. tostring(req.budget)) }
-  if parts[2] == "BUDGET_" .. tostring(req.budget) then
-    parts[2] = ns.T("MINUTES", tonumber(req.budget) or 0)
-  end
-  local text = table.concat(parts, "  ·  ")
-  if type(req.wish) == "string" and req.wish ~= "" then
-    text = text .. "\n\"" .. req.wish .. "\""
-  end
-  return text
 end
 
 function ns.UI:Refresh()
@@ -520,7 +600,7 @@ function ns.UI:Refresh()
   local frame = self.frame
   local view = ns.UI.View()
   self.view = view
-  local y = -44
+  local y = -52
 
   local function put(region, height, x)
     region:ClearAllPoints()
@@ -528,9 +608,9 @@ function ns.UI:Refresh()
     region:Show()
     y = y - height
   end
-  local function text(fs, value, gap)
+  local function text(fs, value, gap, width)
     fs:SetText(value or "")
-    local height = ns.UI.Measure(fs, INNER)
+    local height = ns.UI.Measure(fs, width or INNER)
     if height == 0 then
       fs:Hide()
       return
@@ -538,10 +618,24 @@ function ns.UI:Refresh()
     put(fs, height)
     y = y - (gap or GAP)
   end
+  local function primary(label, enabled)
+    self.primary:SetText(label)
+    if enabled == false then
+      self.primary:Disable()
+    else
+      self.primary:Enable()
+    end
+    put(self.primary, self.primary:GetHeight())
+    y = y - 6
+  end
 
-  local wizardParts = { self.stepWhat, self.stepTime, self.stepWish, self.wishBox, self.activeText, self.activeLink }
-  for i = 1, #wizardParts do
-    wizardParts[i]:Hide()
+  local parts = {
+    self.stepWhat, self.stepTime, self.stepWish, self.wishBox, self.activeText, self.activeLink,
+    self.speech, self.askBox, self.slot, self.itemName, self.itemFacts,
+    self.stateTitle, self.stateSummary, self.stateBody, self.stateNote, self.cancel, self.hint,
+  }
+  for i = 1, #parts do
+    parts[i]:Hide()
   end
   for i = 1, #self.cards do
     self.cards[i]:Hide()
@@ -549,11 +643,8 @@ function ns.UI:Refresh()
   for i = 1, #self.budgetButtons do
     self.budgetButtons[i]:Hide()
   end
-  local stateParts = { self.stateTitle, self.stateSummary, self.stateBody, self.stateNote, self.cancel }
-  for i = 1, #stateParts do
-    stateParts[i]:Hide()
-  end
-  self.hint:Hide()
+  local companion = ns.UI.HasCompanion()
+  self.portrait:SetTexture(ns.MEDIA .. (view == "waiting" and "WispThinking64" or "WispIdle64"))
 
   if view == "wizard" then
     local progress = ns.Session:Progress()
@@ -563,7 +654,7 @@ function ns.UI:Refresh()
       put(self.activeText, 0)
       self.activeLink:ClearAllPoints()
       self.activeLink:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD + 4, y + 2)
-      self.activeLink:SetShown(not (ns.Tracker and ns.Tracker.frame and ns.Tracker.frame:IsShown()))
+      self.activeLink:SetShown(not ns.Tracker:IsOpen())
       y = y - math.max(height, 16) - GAP
     end
 
@@ -607,15 +698,54 @@ function ns.UI:Refresh()
     put(self.wishBox, self.wishBox:GetHeight())
     y = y - GAP - 6
 
-    local companion = ns.UI.HasCompanion()
-    self.primary:SetText(companion and ns.T("GET_PLAN") or ns.T("BUILD_PLAN"))
-    self.primary:Enable()
-    put(self.primary, self.primary:GetHeight())
-    y = y - 6
+    primary(companion and ns.T("GET_PLAN") or ns.T("BUILD_PLAN"))
     text(self.hint, companion and ns.T("GET_PLAN_HINT") or ns.T("BUILD_HINT"), 0)
+  elseif view == "ask" or view == "nearby" then
+    local nearby = view == "nearby"
+    text(self.speech, nearby and ns.T("NEARBY_TITLE") or ns.T("ASK_TITLE"), 8)
+    self.askBox.placeholder:SetText(nearby and ns.T("NEARBY_HINT") or ns.T("ASK_HINT"))
+    self.askBox.UpdatePlaceholder()
+    put(self.askBox, self.askBox:GetHeight())
+    y = y - GAP - 6
+    if nearby and not companion then
+      primary(ns.T("BUILD_PLAN"))
+      text(self.hint, ns.T("BUILD_HINT"), 0)
+    else
+      primary(ns.T("SEND"), companion)
+      local hint = ns.T("GET_PLAN_HINT")
+      if not companion then
+        hint = ns.T("NEED_COMPANION")
+      elseif self.askError then
+        hint = self.askError
+      end
+      text(self.hint, hint, 0)
+    end
+  elseif view == "item" then
+    text(self.speech, ns.T("ITEM_TITLE"), 8)
+    local item = self.item
+    local top = y
+    put(self.slot, 40)
+    if item then
+      self.slot.icon:SetTexture(itemIcon(item.itemID))
+      self.slot.icon:Show()
+    else
+      self.slot.icon:Hide()
+    end
+    self.itemName:SetText(item and (item.link or item.name or ("#" .. item.itemID)) or ns.T("ITEM_DROP"))
+    local nameHeight = ns.UI.Measure(self.itemName, INNER - 50)
+    self.itemName:ClearAllPoints()
+    self.itemName:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 50, top - math.max(0, (40 - nameHeight) / 2))
+    self.itemName:Show()
+    y = math.min(y, top - nameHeight) - GAP
+    if item then
+      local facts = ns.Items.Facts(item.itemID, item.link, true)
+      text(self.itemFacts, #facts > 0 and table.concat(facts, "\n\n") or ns.T("ITEM_NOTHING"), GAP + 4)
+    end
+    primary(ns.T("ITEM_ASK"), item ~= nil and companion)
+    text(self.hint, companion and ns.T("GET_PLAN_HINT") or ns.T("NEED_COMPANION"), 0)
   elseif view == "waiting" then
-    text(self.stateTitle, ns.T("WAIT_TITLE"), 8)
-    text(self.stateSummary, summaryOfRequest(), GAP)
+    text(self.stateTitle, ns.T("THINKING"), 8)
+    text(self.stateSummary, ns.Mascot.RequestSummary(ns.Session:PendingRequest() or {}), GAP)
     local note = ns.Session.requestNote
     text(self.stateBody, note == "sending" and ns.T("WAIT_SENDING") or ns.T("WAIT_PREPARING"), 6)
     local age = ns.Session:RequestAge()
@@ -624,24 +754,20 @@ function ns.UI:Refresh()
       notice = ns.T("WAIT_STALE", math.floor(age / 60))
     end
     text(self.stateNote, notice, GAP + 4)
-    self.primary:SetText(ns.T("LOAD_PLAN"))
-    self.primary:Enable()
-    put(self.primary, self.primary:GetHeight())
-    y = y - 8
+    primary(ns.T("LOAD_PLAN"))
+    y = y - 2
     self.cancel:ClearAllPoints()
     self.cancel:SetPoint("TOP", frame, "TOP", 0, y)
     self.cancel:Show()
     y = y - 18
   else
-    text(self.stateTitle, ns.T("FAIL_TITLE"), 8)
+    text(self.stateTitle, ns.T("SORRY"), 8)
     local reason = ns.Session.requestReason
     if type(reason) ~= "string" or reason == "" then
       reason = ns.T("REQUEST_FAILED")
     end
     text(self.stateBody, reason, GAP + 4)
-    self.primary:SetText(ns.T("TRY_AGAIN"))
-    self.primary:Enable()
-    put(self.primary, self.primary:GetHeight())
+    primary(ns.T("TRY_AGAIN"))
   end
 
   frame:SetHeight(math.ceil(-y + PAD))
@@ -658,6 +784,24 @@ function ns.UI:Show()
   self:Refresh()
 end
 
+-- Opens one screen: wizard, ask, nearby, or item.
+function ns.UI:Open(mode)
+  self.mode = mode or "wizard"
+  self.askError = nil
+  if self.mode ~= "item" then
+    self.item = nil
+  end
+  self:Show()
+  if (self.mode == "ask" or self.mode == "nearby") and self.ask and self.view == self.mode then
+    self.ask:SetFocus()
+  end
+end
+
+function ns.UI:OpenItem(item)
+  self.item = item
+  self:Open("item")
+end
+
 function ns.UI:Toggle()
   if not self.frame then
     return
@@ -665,6 +809,6 @@ function ns.UI:Toggle()
   if self.frame:IsShown() then
     self.frame:Hide()
   else
-    self:Show()
+    self:Open("wizard")
   end
 end

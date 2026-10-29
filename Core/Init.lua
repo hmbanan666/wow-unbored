@@ -36,6 +36,12 @@ local function initDB()
   if type(UnboredDB.tracker) ~= "table" then
     UnboredDB.tracker = {}
   end
+  if type(UnboredDB.mascot) ~= "table" then
+    UnboredDB.mascot = {}
+  end
+  if type(UnboredDB.itemNotes) ~= "table" then
+    UnboredDB.itemNotes = {}
+  end
   ns.DB = UnboredDB
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
@@ -67,6 +73,15 @@ function ns.OnAddonLoaded()
     if not ok then
       ns.Print(tostring(err))
     end
+  end
+  if ns.Mascot and ns.Mascot.Create then
+    local ok, err = pcall(ns.Mascot.Create, ns.Mascot)
+    if not ok then
+      ns.Print(tostring(err))
+    end
+  end
+  if ns.Items and ns.Items.Hook then
+    pcall(ns.Items.Hook)
   end
   if ns.CreateMinimapButton then
     pcall(ns.CreateMinimapButton)
@@ -100,13 +115,28 @@ local function slash(message)
   local command, rest = message:match("^(%S*)%s*(.*)$")
   command = (command or ""):lower()
   if command == "" then
+    if ns.Mascot:IsHidden() then
+      ns.Mascot:Reveal()
+    end
     ns.UI:Toggle()
-  elseif command == "tracker" then
+  elseif command == "show" then
+    ns.Mascot:Reveal()
+  elseif command == "hide" then
+    ns.Mascot:Hide()
+  elseif command == "ask" or command == "nearby" or command == "item" then
+    ns.UI:Open(command)
+    if command == "ask" and rest ~= "" then
+      ns.UI.ask:SetText(rest)
+    end
+  elseif command == "tracker" or command == "list" then
     ns.Tracker:Toggle()
   elseif command == "lock" then
-    ns.Tracker:SetLocked(not ns.Tracker:Locked())
-    ns.Print(ns.Tracker:Locked() and ns.T("LOCKED") or ns.T("UNLOCKED"))
+    local locked = not ns.Mascot:Locked()
+    ns.Mascot:SetLocked(locked)
+    ns.Tracker:SetLocked(locked)
+    ns.Print(locked and ns.T("LOCKED") or ns.T("UNLOCKED"))
   elseif command == "reset" then
+    ns.Mascot:ResetPosition()
     ns.Tracker:ResetPosition()
   elseif command == "build" then
     ns.Session:BuildHere()

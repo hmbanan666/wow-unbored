@@ -39,6 +39,9 @@ function ns.Events.Pulse()
   if ns.Waypoint and ns.Waypoint.Sync then
     ns.Waypoint:Sync(task)
   end
+  if ns.Mascot and ns.Mascot.UpdateDistance then
+    ns.Mascot:UpdateDistance()
+  end
   if ns.Tracker and ns.Tracker.UpdateDistance then
     ns.Tracker:UpdateDistance()
   end

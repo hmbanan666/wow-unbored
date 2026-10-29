@@ -41,15 +41,15 @@ function ns.RegisterCompartment()
     return
   end
   local ok = pcall(AddonCompartmentFrame.RegisterAddon, AddonCompartmentFrame, {
-    text = "Unbored",
+    text = "Unbored: " .. ns.MASCOT_NAME,
     icon = "Interface\\AddOns\\Unbored\\Media\\Icon.tga",
     notCheckable = true,
     registerForAnyClick = true,
     func = function(_, _, mouseButton)
-      if mouseButton == "RightButton" and ns.ShowImport then
-        ns.ShowImport()
-      else
+      if mouseButton == "RightButton" then
         Unbored_Toggle()
+      else
+        ns.Mascot:Toggle()
       end
     end,
   })
@@ -82,10 +82,10 @@ function ns.CreateMinimapButton()
   end
 
   button:SetScript("OnClick", function(_, mouseButton)
-    if mouseButton == "RightButton" and ns.ShowImport then
-      ns.ShowImport()
-    else
+    if mouseButton == "RightButton" then
       ns.UI:Toggle()
+    else
+      ns.Mascot:Toggle()
     end
   end)
   button:SetScript("OnDragStart", function(self)
@@ -119,8 +119,8 @@ function ns.CreateMinimapButton()
       return
     end
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:SetText("Unbored")
-    GameTooltip:AddLine(ns.T("BINDING_TOGGLE"), 1, 1, 1)
+    GameTooltip:SetText(ns.MASCOT_NAME)
+    GameTooltip:AddLine(ns.T("TIP_MINIMAP"), 1, 1, 1, true)
     GameTooltip:Show()
   end)
   button:SetScript("OnLeave", function()

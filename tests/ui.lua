@@ -1,5 +1,5 @@
--- Drives the main window and the tracker against a fake frame API, so a
--- layout error or a nil call shows up without the game client.
+-- Drives the mascot, the main window, and the list view against a fake frame
+-- API, so a layout error or a nil call shows up without the game client.
 
 local fails = 0
 local checks = 0
@@ -140,6 +140,29 @@ local methods = {
   GetTop = function()
     return 0
   end,
+  CreateAnimationGroup = function(self)
+    local group = newWidget("AnimationGroup", nil, self)
+    group.playing = false
+    return group
+  end,
+  CreateAnimation = function(self, kind)
+    return newWidget(kind, nil, self)
+  end,
+  Play = function(self)
+    self.playing = true
+  end,
+  Stop = function(self)
+    self.playing = false
+  end,
+  SetTexture = function(self, texture)
+    self.texture = texture
+  end,
+  Enable = function(self)
+    self.disabled = false
+  end,
+  Disable = function(self)
+    self.disabled = true
+  end,
   Click = function(self, button)
     if self.scripts.OnClick then
       self.scripts.OnClick(self, button or "LeftButton")
@@ -243,6 +266,81 @@ ReloadUI = function()
   reloads = reloads + 1
 end
 
+local printed = {}
+DEFAULT_CHAT_FRAME = {
+  AddMessage = function(_, message)
+    printed[#printed + 1] = message
+  end,
+}
+local tooltipLines = {}
+GameTooltip.AddLine = function(_, text)
+  tooltipLines[#tooltipLines + 1] = text
+end
+local hooks = {}
+hooksecurefunc = function(name, fn)
+  hooks[name] = fn
+end
+HandleModifiedItemClick = function() end
+local tooltipCalls = {}
+Enum = { TooltipDataType = { Item = 0 } }
+TooltipDataProcessor = {
+  AddTooltipPostCall = function(kind, fn)
+    tooltipCalls[kind] = fn
+  end,
+}
+local altDown = false
+IsAltKeyDown = function()
+  return altDown
+end
+GetMouseButtonClicked = function()
+  return "RightButton"
+end
+local cursor = nil
+GetCursorInfo = function()
+  if cursor then
+    return "item", cursor.itemID, cursor.link
+  end
+  return nil
+end
+local cleared = 0
+ClearCursor = function()
+  cursor = nil
+  cleared = cleared + 1
+end
+local HEARTH = "|cffffffff|Hitem:6948::::::::80:::::|h[Hearthstone]|h|r"
+C_Container = {
+  GetContainerNumSlots = function(bag)
+    return bag == 0 and 4 or 0
+  end,
+  GetContainerItemInfo = function(bag, slot)
+    if bag == 0 and slot == 3 then
+      return { itemID = 6948, stackCount = 1, hyperlink = HEARTH }
+    end
+    return nil
+  end,
+}
+C_ToyBox = {
+  GetToyInfo = function(itemID)
+    if itemID == 1234 then
+      return 1234, "Silly toy"
+    end
+    return nil
+  end,
+}
+PlayerHasToy = function()
+  return false
+end
+C_MountJournal = {
+  GetMountFromItem = function(itemID)
+    return itemID == 555 and 99 or nil
+  end,
+  GetMountInfoByID = function(mountID)
+    if mountID == 99 then
+      return "Sky Wisp", 1, 1, false, true, 0, false, false, 0, false, false
+    end
+  end,
+}
+
 local ns = {}
 local toc = io.open("Unbored.toc", "r")
 local files = {}
@@ -275,17 +373,86 @@ if ns.Session and not ns.Session.started then
 end
 
 local ui = ns.UI
+local mascot = ns.Mascot
+local tracker = ns.Tracker
 check(ui.frame ~= nil, "main window exists")
-check(ns.Tracker.frame ~= nil, "tracker exists")
-ui:Show()
-check(ui.frame:IsShown(), "main window shows")
-check(ui.view == "wizard", "a fresh character sees the wizard")
+check(mascot.frame ~= nil and mascot.frame:IsShown(), "the mascot is on screen from the start")
+check(tooltipCalls[0] ~= nil, "item tooltips get a post call")
+check(hooks.HandleModifiedItemClick ~= nil, "modified item clicks are post-hooked")
+
+-- Hello.
+check(mascot.view.kind == "greeting", "a fresh character gets a hello")
+check(textOf(mascot.message):find("Wisp", 1, true) ~= nil, "the hello says the mascot name")
+check(mascot.buttons.new:IsShown() and not mascot.buttons.done:IsShown(), "hello offers New plan only")
+check(mascot.art.texture:find("WispIdle", 1, true) ~= nil, "idle portrait")
+check(mascot.bubble.height > 30, "the bubble has a real height")
+check(not tracker.frame:IsShown(), "the list view is closed by default")
+
+-- The portrait opens the menu (the fallback menu here: no MenuUtil).
+local function menuRow(label)
+  local menu = ui.menu
+  for i = 1, #(menu and menu.rows or {}) do
+    local row = menu.rows[i]
+    if row:IsShown() and textOf(row.label):find(label, 1, true) == 1 then
+      return row
+    end
+  end
+  return nil
+end
+mascot.frame:Click("LeftButton")
+check(ui.menu and ui.menu:IsShown(), "clicking the portrait opens a menu")
+local labels = { "New plan", "What is this item?", "What to do nearby?", "Ask something", "Settings", "Hide" }
+for _, label in ipairs(labels) do
+  check(menuRow(label) ~= nil, "menu has " .. label)
+end
+
+local made = {}
+local function fakeRoot(list)
+  return {
+    CreateTitle = function(_, text)
+      list[#list + 1] = { title = text }
+    end,
+    CreateButton = function(_, text, fn)
+      local entry = { text = text, fn = fn, children = {} }
+      list[#list + 1] = entry
+      return fakeRoot(entry.children)
+    end,
+    CreateCheckbox = function(_, text, isSelected, setSelected)
+      list[#list + 1] = { text = text, checkbox = true, isSelected = isSelected, setSelected = setSelected }
+    end,
+  }
+end
+MenuUtil = {
+  CreateContextMenu = function(owner, generator)
+    generator(owner, fakeRoot(made))
+  end,
+}
+mascot.frame:Click("LeftButton")
+check(made[1] and made[1].title == "Wisp", "the game menu has the mascot as title")
+local settings
+for i = 1, #made do
+  if made[i].text == "Settings" then
+    settings = made[i]
+  end
+end
+check(settings and #settings.children >= 4, "Settings is a submenu")
+local lock = settings and settings.children[1]
+check(lock and lock.checkbox and lock.isSelected() == false, "lock is a checkbox, off")
+lock.setSelected()
+check(mascot:Locked(), "the lock checkbox locks the mascot")
+mascot:SetLocked(false)
+MenuUtil = nil
+
+-- New plan: the wizard.
+menuRow("New plan"):Click()
+check(ui.frame:IsShown() and ui.view == "wizard", "New plan opens the wizard")
+check(ui.title.text == "Wisp" and ui.portrait.texture:find("Wisp", 1, true), "the window is the mascot talking")
 check(ui.primary.text == "Get plan", "companion present: the button says Get plan")
 check(ui.frame.height > 300, "wizard has a real height: " .. tostring(ui.frame.height))
 for i = 1, #ui.cards do
   check(ui.cards[i]:IsShown(), "mode card " .. i .. " is shown")
 end
-check(not ui.stateTitle:IsShown(), "no state screen in the wizard")
+check(not ui.askBox:IsShown() and not ui.slot:IsShown(), "no ask box or item slot in the wizard")
 
 ui.cards[5]:Click()
 check(UnboredDB.mode == "farm", "a card picks the mode")
@@ -295,19 +462,22 @@ ui.wish:SetText("mount, no raids")
 ui.primary:Click()
 check(reloads == 1, "Get plan reloads in the same click")
 local req = UnboredCharDB.request
-check(req and req.mode == "farm" and req.budget == 120 and req.wish == "mount, no raids", "Get plan saves the request")
+check(req and req.type == "plan" and req.mode == "farm" and req.budget == 120, "Get plan saves a plan request")
+check(req and req.wish == "mount, no raids", "Get plan saves the wish")
 check(req and req.context and req.context.mapID == 84, "Get plan saves context")
 ui:Refresh()
 check(ui.view == "waiting", "after Get plan the window waits")
-check(ui.primary.text == "Load plan", "waiting shows Load plan")
+check(ui.primary.text == "Load", "waiting shows Load")
 check(ui.cancel:IsShown(), "waiting offers cancel")
-check(not ui.cards[1]:IsShown(), "waiting hides the wizard")
-ui.primary:Click()
-check(reloads == 2, "Load plan reloads")
 
-ns.Tracker:Refresh()
-check(ns.Tracker.frame:IsShown(), "tracker shows while waiting")
-check(ns.Tracker.bannerButton:IsShown() and textOf(ns.Tracker.bannerButton) == "Load plan", "tracker offers Load plan")
+-- Waiting: the mascot thinks.
+check(mascot.view.kind == "waiting", "the bubble waits too")
+check(textOf(mascot.message) == "Thinking...", "the bubble says Thinking...")
+check(mascot.bob and mascot.bob.playing and mascot.pulse.playing, "the mascot bobs and glows while thinking")
+check(mascot.art.texture:find("WispThinking", 1, true) ~= nil, "thinking portrait")
+check(mascot.buttons.load:IsShown() and textOf(mascot.buttons.load) == "Load", "the bubble offers Load")
+mascot.buttons.load:Click()
+check(reloads == 2, "Load reloads")
 
 UnboredExternalPlan = {
   v = 1,
@@ -317,10 +487,11 @@ UnboredExternalPlan = {
   generatedAt = 50,
   requestId = req.id,
   requestStatus = "fulfilled",
+  requestType = "plan",
   tasks = {
     {
       id = "a",
-      title = "Ride to the gate and then keep riding along the long coast road",
+      title = "Fly to Dalaran. Portal is next to you in Orgrimmar, then keep riding along the long coast road",
       estMinutes = 20,
       note = string.rep("A long note that must wrap and never be cut. ", 8),
       waypoints = {
@@ -334,55 +505,187 @@ UnboredExternalPlan = {
 }
 check(ns.Session:AutoApplyExternal() == true, "the requested plan starts")
 check(not ui.frame:IsShown(), "starting a plan hides the main window")
-local tracker = ns.Tracker
-check(tracker.frame:IsShown(), "starting a plan shows the tracker")
-check(textOf(tracker.sub):find("Step 1 of 3", 1, true) ~= nil, "tracker shows the step count: " .. textOf(tracker.sub))
-local row = tracker.currentRow
-check(row and row:IsShown(), "current row is shown")
-local noteText = row and row.note and row.note.text or ""
+check(mascot.view.kind == "step", "the bubble shows the step")
+check(not mascot.bob.playing, "thinking stops when the plan is in")
+check(textOf(mascot.message):find("Fly to Dalaran", 1, true) == 1, "the bubble says the step as written")
+check(textOf(mascot.count) == "1/3", "the bubble shows small progress: " .. textOf(mascot.count))
+local noteText = textOf(mascot.sub)
 check(noteText:find("never be cut", 1, true) and #noteText > 300, "the full note is shown")
-check(row.note.height >= 4 * LINE_HEIGHT, "a long note wraps to several lines")
-local meta = textOf(row.meta)
-check(meta:find("Point 1/2: Gate", 1, true), "meta shows the route point: " .. meta)
+check(mascot.sub.height >= 4 * LINE_HEIGHT, "a long note wraps to several lines")
+check(mascot.message.height >= 2 * LINE_HEIGHT, "a long step wraps")
+check(textOf(mascot.meta):find("Point 1/2: Gate", 1, true), "the bubble shows the route point")
+check(mascot.buttons.done:IsShown() and mascot.buttons.skip:IsShown(), "Done and Skip are there")
+local height = mascot.bubble.height
+check(height > mascot.sub.height + mascot.message.height, "the bubble grows with the text")
 check(C_Map.pin and C_Map.pin.uiMapID == 84 and C_SuperTrack.on == true, "the current step is pinned and super-tracked")
-local height = tracker.frame.height
-check(height > row.note.height, "tracker grows with the note")
+check(not tracker.frame:IsShown(), "the list view stays closed")
 
 C_Map.GetPlayerMapPosition = function()
   return { x = 0.25, y = 0.25 }
 end
 ns.Session:AdvanceRoute()
-check(textOf(tracker.currentRow.meta):find("Point 2/2: Bridge", 1, true), "arrival moves to the next point")
-check(math.abs(C_Map.pin.position.x - 0.6) < 1e-6, "the pin moves with the route")
+check(textOf(mascot.meta):find("Point 2/2: Bridge", 1, true), "arrival moves to the next point")
 
-tracker.collapse:Click()
-check(tracker.frame.height < height, "collapse makes the tracker shorter")
-tracker.collapse:Click()
+-- The list view on demand.
+tracker:Toggle()
+check(tracker.frame:IsShown(), "the list view opens on demand")
+check(textOf(tracker.sub):find("Step 1 of 3", 1, true) ~= nil, "the list shows the step count")
+tracker:Toggle()
+check(not tracker.frame:IsShown(), "and closes again")
 
-tracker.done:Click()
+-- Collapse to the portrait.
+mascot.collapse:Click()
+check(not mascot.bubble:IsShown() and mascot.badge:IsShown(), "collapse leaves just the portrait")
+mascot.frame:Click("LeftButton")
+check(menuRow("Show message") ~= nil, "the menu offers the message back")
+menuRow("Show message"):Click()
+check(mascot.bubble:IsShown(), "the bubble is back")
+
+mascot.buttons.done:Click()
 check(ns.Session:Current().id == "b", "Done moves to the next step")
-check(textOf(tracker.sub):find("Step 2 of 3", 1, true) ~= nil, "step count follows Done")
-tracker.skip:Click()
+check(textOf(mascot.count) == "2/3", "progress follows Done")
+mascot.buttons.skip:Click()
 check(ns.Session:Current().id == "c", "Skip moves on")
-tracker.done:Click()
-tracker.done:Click()
+mascot.buttons.done:Click()
+mascot.buttons.done:Click()
 check(ns.Session:Current() == nil, "the plan can be finished")
-check(tracker.bannerButton:IsShown() and textOf(tracker.bannerButton) == "New plan", "a finished plan offers New plan")
-tracker.bannerButton:Click()
-check(ui.frame:IsShown() and ui.view == "wizard", "New plan opens the wizard")
+check(mascot.view.kind == "done" and mascot.buttons.new:IsShown(), "a finished plan offers New plan")
+check(mascot.art.texture:find("WispHappy", 1, true) ~= nil, "happy portrait when done")
+mascot.buttons.ok:Click()
+check(mascot.view.kind == "greeting" and UnboredCharDB.session == nil, "ok clears the finished plan")
 
-UnboredCharDB.request = {
-  id = "req-x",
-  createdAt = os.time(),
-  mode = "roam",
-  budget = 30,
+-- Ask something.
+ui:Open("ask")
+check(ui.view == "ask" and ui.askBox:IsShown() and ui.primary.text == "Send", "Ask is one box and Send")
+check(not ui.cards[1]:IsShown(), "no wizard on the ask screen")
+ui.primary:Click()
+check(reloads == 2 and ui.hint.text == "Type your question first.", "an empty question is not sent")
+ui.ask:SetText("Where can I get a flying mount?")
+ui.primary:Click()
+check(reloads == 3, "Send reloads in the same click")
+req = UnboredCharDB.request
+check(req and req.type == "question" and req.question == "Where can I get a flying mount?", "the question is saved")
+check(req and req.mode == nil and req.budget == nil, "a question has no mode or budget")
+check(mascot.view.kind == "waiting" and mascot.view.header:find("flying mount", 1, true),
+  "the bubble shows the question")
+
+UnboredExternalPlan = {
+  requestId = req.id,
+  requestStatus = "fulfilled",
+  requestType = "question",
+  answer = {
+    message = "Head to the rare east of you.\n" .. string.rep("It drops a mount sometimes. ", 10),
+    waypoints = { { mapID = 84, x = 0.5, y = 0.5, label = "Rare" } },
+  },
 }
+check(ns.Session:AutoApplyExternal() == true, "an answer is taken on load")
+check(UnboredCharDB.request == nil, "the question is no longer pending")
+check(mascot.view.kind == "answer", "the bubble shows the answer")
+check(textOf(mascot.message):find("It drops a mount sometimes.", 1, true), "the answer is shown as written")
+check(mascot.message.height >= 3 * LINE_HEIGHT, "a long answer wraps")
+check(textOf(mascot.header):find("flying mount", 1, true), "the answer says what was asked")
+check(mascot.art.texture:find("WispHappy", 1, true) ~= nil, "happy portrait for an answer")
+check(ns.Session:Current() and ns.Session:Current().title == "Rare", "waypoints in an answer become a step")
+check(ns.Session:AutoApplyExternal() == false, "the same answer is not taken twice")
+mascot.buttons.ok:Click()
+check(mascot.view.kind == "step" and textOf(mascot.message) == "Rare", "after the answer the bubble shows the step")
+mascot.buttons.done:Click()
+
+-- What to do nearby.
+ui:Open("nearby")
+check(ui.view == "nearby" and ui.askBox:IsShown(), "nearby asks for an optional wish")
+ui.primary:Click()
+req = UnboredCharDB.request
+check(reloads == 4 and req.type == "question" and req.topic == "nearby", "nearby sends a nearby question")
+check(req.question == "What can I do nearby right now?", "nearby fills in the question")
+ns.Session:CancelRequest()
+
+-- What is this item: Alt+Right-click in bags.
+altDown = true
+hooks.HandleModifiedItemClick(HEARTH, {
+  IsBagAndSlot = function()
+    return true
+  end,
+  GetBagAndSlot = function()
+    return 0, 3
+  end,
+})
+altDown = false
+check(ui.frame:IsShown() and ui.view == "item", "Alt+Right-click opens the item screen")
+check(ui.item and ui.item.itemID == 6948 and ui.item.bag == 0 and ui.item.slot == 3, "the bag slot is kept")
+check(ui.item.count == 1 and ui.item.name == "Hearthstone", "count and name are kept")
+check(ui.itemName.text == HEARTH, "the item screen shows the item")
+check(ui.itemFacts.text:find("inn", 1, true) ~= nil, "the item screen says what we know")
+check(not ui.primary.disabled and ui.primary.text == "Ask about it", "the item can be asked about")
+check(reloads == 4, "the click hook never reloads")
+ui.primary:Click()
+req = UnboredCharDB.request
+check(reloads == 5 and req.type == "item" and req.item.itemID == 6948 and req.item.bag == 0, "item request saved")
+
+UnboredExternalPlan = {
+  requestId = req.id,
+  requestStatus = "fulfilled",
+  requestType = "item",
+  answer = { message = "Your Hearthstone. Set it at any inn.\nUse it often." },
+}
+check(ns.Session:AutoApplyExternal() == true, "the item answer is taken")
+check(mascot.view.kind == "answer" and textOf(mascot.header) == HEARTH, "the answer shows the item link")
+check(UnboredDB.itemNotes[6948].message:find("Set it at any inn", 1, true), "the item answer is remembered")
+tooltipLines = {}
+tooltipCalls[0](GameTooltip, { id = 6948 })
+check(tooltipLines[1] and tooltipLines[1]:find("Wisp:", 1, true), "the tooltip line is from the mascot")
+check(tooltipLines[1]:find("Set it at any inn", 1, true) and not tooltipLines[1]:find("often", 1, true),
+  "the tooltip shows the first line of the answer")
+mascot.buttons.ok:Click()
+
+tooltipLines = {}
+tooltipCalls[0](GameTooltip, { id = 1234 })
+check(tooltipLines[1] and tooltipLines[1]:find("toy you don't have", 1, true), "an unowned toy is pointed out")
+tooltipLines = {}
+tooltipCalls[0](GameTooltip, { id = 555 })
+check(tooltipLines[1] and tooltipLines[1]:find("mount you don't have", 1, true), "an unowned mount is pointed out")
+tooltipLines = {}
+tooltipCalls[0](GameTooltip, { id = 42 })
+check(#tooltipLines == 0, "nothing is added when there is nothing to say")
+tooltipCalls[0](ui.frame, { id = 6948 })
+check(#tooltipLines == 0, "other tooltips are left alone")
+
+-- Dropping an item on the mascot.
+ui.frame:Hide()
+cursor = { itemID = 6948, link = HEARTH }
+mascot.frame:Click("LeftButton")
+check(ui.view == "item" and ui.item.itemID == 6948 and cleared == 1, "dropping an item on the mascot asks about it")
+check(ui.item.bag == 0 and ui.item.slot == 3, "a dropped item is found in the bags")
+
+-- A failed request.
+UnboredCharDB.request = { id = "req-x", type = "question", question = "?", createdAt = os.time() }
 UnboredExternalPlan = { requestId = "req-x", requestStatus = "failed", requestReason = "Nothing nearby." }
 ns.Session:NoteRequest()
-ui:Refresh()
-check(ui.view == "failed" and ui.stateBody.text == "Nothing nearby.", "a failed request shows its reason")
-ui.primary:Click()
-check(UnboredCharDB.request == nil and ui.view == "wizard", "Try again returns to the wizard")
+ns.Session:RefreshUI()
+check(mascot.view.kind == "failed" and textOf(mascot.sub) == "Nothing nearby.", "a failed request says why")
+check(ui.view == "failed" and ui.stateBody.text == "Nothing nearby.", "the window says why too")
+mascot.buttons.ok:Click()
+check(UnboredCharDB.request == nil and mascot.view.kind ~= "failed", "ok clears the failure")
+
+-- Hide and bring back.
+mascot.frame:Click("LeftButton")
+menuRow("Hide"):Click()
+check(not mascot.frame:IsShown() and UnboredDB.mascot.hidden, "Hide hides the mascot")
+check(printed[#printed]:find("minimap", 1, true) ~= nil, "hiding says how to get it back")
+mascot:Toggle()
+check(mascot.frame:IsShown(), "the minimap button brings it back")
+
+UIParent.width = 1000
+mascot.frame.GetLeft = function()
+  return 900
+end
+mascot:Refresh()
+check(mascot.bubble.points[1][1] == "TOPRIGHT", "near the right edge the bubble opens to the left")
+mascot.frame.GetLeft = function()
+  return 40
+end
+mascot:Refresh()
+check(mascot.bubble.points[1][1] == "TOPLEFT", "otherwise it opens to the right")
 
 local items = ui.MenuItems()
 check(#items >= 3, "gear menu has items")
