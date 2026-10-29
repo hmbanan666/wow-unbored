@@ -1,0 +1,55 @@
+name: Companion
+
+on:
+  pull_request:
+    paths:
+      - "companion/**"
+      - ".github/workflows/companion.yml"
+      - "docs/companion-api.md"
+  push:
+    tags:
+      - "companion-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Library tests
+        run: cargo test --manifest-path companion/src-tauri/Cargo.toml --lib --no-default-features
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install frontend CLI
+        working-directory: companion
+        run: npm install
+      - name: Build installer
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: companion
+          tauriScript: npx --no-install tauri
+          args: --bundles msi,nsis
+          # Tag releases upload the installer. Pull requests only compile it.
+          releaseDraft: true
+          releaseName: "Unbored Companion v__VERSION__"
+          releaseBody: "Windows installer is unsigned. SmartScreen will warn; More info, then Run anyway. See companion/README.md."
+          prerelease: false
+          includeUpdaterJson: false
+        if: startsWith(github.ref, 'refs/tags/companion-v')
+      - name: Build installer without publishing
+        if: (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && !startsWith(github.ref, 'refs/tags/companion-v')
+        working-directory: companion
+        run: npx --no-install tauri build --bundles msi,nsis

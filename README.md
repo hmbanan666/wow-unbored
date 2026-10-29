@@ -77,7 +77,7 @@ An outside planner builds a line that starts with `UNB1:`. You paste it with `/u
 
 The format, the JSON schema, and a paste-ready example are in [`docs/plan-format.md`](docs/plan-format.md).
 
-A future companion app can still write `Companion/Plan.lua` or `UnboredDB.companionPlan` while the game is closed. That is read on login if its `generatedAt` is newer than the saved session. `/unbored companion` applies it anyway. The string is the path to use.
+The Windows tray app in `companion/` writes `Interface/AddOns/Unbored_Plan/Plan.lua`. On `/reload`, Unbored offers that plan. **Use it** or `/unbored companion` activates it. **Not now** hides that same file until it changes. The older `Companion/Plan.lua` and `UnboredDB.companionPlan` seam is still applied on login when its `generatedAt` is newer than the saved session. The import string remains the path that does not need the desktop app.
 
 Changing mode, budget, or Refresh throws away an imported list and builds one in game.
 
@@ -186,7 +186,7 @@ Lint and unit tests run on every push (`.github/workflows/ci.yml`, `luacheck` an
 - Midnight zone rows, once ui map ids are confirmed in `/unbored where`.
 - Transmog-only dungeon trips, using the `appearances` field that Farm already understands.
 - A real options panel. The slash commands cover the MVP.
-- The companion app itself. Not in this repo.
+- Installers and SmartScreen notes for the tray app live in `companion/README.md`.
 
 ## Known limits
 

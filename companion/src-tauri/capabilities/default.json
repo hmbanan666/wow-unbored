@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Unbored Companion window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-unminimize",
+    "core:window:allow-set-focus",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
+    "allow-get-state",
+    "allow-detect-wow",
+    "allow-set-wow-path",
+    "allow-set-account",
+    "allow-set-endpoint",
+    "allow-set-autostart",
+    "allow-write-plan-text",
+    "allow-fetch-plan",
+    "allow-rescan-progress"
+  ]
+}
