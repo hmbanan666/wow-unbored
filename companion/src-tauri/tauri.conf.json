@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Unbored Companion",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "dev.unbored.companion",
   "build": {
     "frontendDist": "../ui",
@@ -31,7 +31,7 @@
       "icons/128x128.png",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
@@ -40,12 +40,12 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3NjIzREE2MkJDODNGNEQKUldSTlA4Z3JwajFpOTNsTGZZaVZGSmt5Mzd1MjRSNzN3SDBxbWpMWUtqaVhFNnJYK0JFUWxLUkwK",
       "endpoints": [
-        "https://github.com/hmbanan666/wow-unbored/releases/latest/download/latest.json"
+        "https://github.com/hmbanan666/wow-unbored/releases/download/companion-updater/latest.json"
       ],
       "windows": {
-        "installMode": "passive"
+        "installMode": "quiet"
       }
     }
   }
