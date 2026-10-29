@@ -2,7 +2,7 @@
 ## Title: Unbored
 ## Notes: A calm session planner. What do I do now?
 ## Author: Unbored contributors
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: UnboredDB
 ## SavedVariablesPerCharacter: UnboredCharDB
 ## OptionalDeps: TomTom, Unbored_Plan

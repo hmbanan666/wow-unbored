@@ -103,6 +103,59 @@ pub fn parse_saved_variables(text: &str) -> Result<BTreeMap<String, LuaValue>, S
     Ok(out)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedRequest {
+    pub id: String,
+    pub created_at: Option<u64>,
+    pub character: String,
+    pub realm: String,
+    pub mode: String,
+    pub budget: u64,
+    pub wish: Option<String>,
+}
+
+pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, String> {
+    let values = parse_saved_variables(text)?;
+    let Some(db) = values.get("UnboredCharDB") else {
+        return Ok(None);
+    };
+    let Some(request) = table_get(db, "request") else {
+        return Ok(None);
+    };
+    let Some(id) = table_get(request, "id").and_then(LuaValue::as_str) else {
+        return Ok(None);
+    };
+    if id.is_empty() {
+        return Ok(None);
+    }
+    let character = table_get(request, "character")
+        .and_then(LuaValue::as_str)
+        .unwrap_or("")
+        .to_string();
+    let realm = table_get(request, "realm")
+        .and_then(LuaValue::as_str)
+        .unwrap_or("")
+        .to_string();
+    let mode = table_get(request, "mode")
+        .and_then(LuaValue::as_str)
+        .unwrap_or("")
+        .to_string();
+    let budget = table_get(request, "budget").and_then(LuaValue::as_u64).unwrap_or(60);
+    let wish = table_get(request, "wish")
+        .and_then(LuaValue::as_str)
+        .map(str::to_string)
+        .filter(|text| !text.is_empty());
+    Ok(Some(SavedRequest {
+        id: id.to_string(),
+        created_at: table_get(request, "createdAt").and_then(LuaValue::as_u64),
+        character,
+        realm,
+        mode,
+        budget,
+        wish,
+    }))
+}
+
 pub fn session_from_saved_variables(text: &str) -> Result<Option<SessionProgress>, String> {
     let values = parse_saved_variables(text)?;
     let Some(db) = values.get("UnboredCharDB") else {
@@ -437,6 +490,28 @@ UnboredCharDB = {
             "title",
         );
         assert_eq!(title.and_then(LuaValue::as_str), Some("Line\nbreak"));
+    }
+
+    #[test]
+    fn reads_a_plan_request() {
+        let text = r#"
+UnboredCharDB = {
+  ["request"] = {
+    ["id"] = "req-1",
+    ["createdAt"] = 10,
+    ["character"] = "Hero",
+    ["realm"] = "Area 52",
+    ["mode"] = "farm",
+    ["budget"] = 60,
+    ["wish"] = "mount",
+  },
+}
+"#;
+        let request = request_from_saved_variables(text).unwrap().unwrap();
+        assert_eq!(request.id, "req-1");
+        assert_eq!(request.character, "Hero");
+        assert_eq!(request.mode, "farm");
+        assert_eq!(request.wish.as_deref(), Some("mount"));
     }
 
     #[test]

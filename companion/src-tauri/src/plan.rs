@@ -32,6 +32,12 @@ pub struct Plan {
     pub note: Option<String>,
     #[serde(default)]
     pub generated_at: Option<u64>,
+    #[serde(default)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub request_status: Option<String>,
+    #[serde(default)]
+    pub request_reason: Option<String>,
     pub tasks: Vec<Task>,
 }
 
@@ -165,15 +171,47 @@ fn decode_b64(payload: &str) -> Result<Vec<u8>, PlanError> {
 /// Write `Interface/AddOns/Unbored_Plan`, which this app owns.
 /// WoW rewrites SavedVariables on logout, so a helper addon is the file
 /// that survives a play session and is read on the next /reload.
+pub fn install_request_file(
+    retail: &Path,
+    request_id: &str,
+    status: &str,
+    reason: Option<&str>,
+    plan: Option<&Plan>,
+) -> Result<PathBuf, PlanError> {
+    let body = if let Some(plan) = plan {
+        let mut copy = plan.clone();
+        copy.request_id = Some(request_id.to_string());
+        copy.request_status = Some(status.to_string());
+        copy.request_reason = reason.map(str::to_string);
+        render_plan_lua(&copy)
+    } else {
+        let mut out = String::from(
+            "-- Written by Unbored Companion. Loaded by Unbored_Plan on /reload.\n",
+        );
+        out.push_str("UnboredExternalPlan = {\n");
+        push_pair(&mut out, 1, "requestId", &Value::String(request_id.to_string()));
+        push_pair(&mut out, 1, "requestStatus", &Value::String(status.to_string()));
+        if let Some(reason) = reason {
+            push_pair(&mut out, 1, "requestReason", &Value::String(reason.to_string()));
+        }
+        out.push_str("}\n");
+        out
+    };
+    write_plan_lua(retail, &body)
+}
+
 pub fn install_plan(retail: &Path, plan: &Plan) -> Result<PathBuf, PlanError> {
+    write_plan_lua(retail, &render_plan_lua(plan))
+}
+
+fn write_plan_lua(retail: &Path, body: &str) -> Result<PathBuf, PlanError> {
     let dir = retail.join("Interface").join("AddOns").join("Unbored_Plan");
     fs::create_dir_all(&dir).map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
     let toc = dir.join("Unbored_Plan.toc");
     fs::write(&toc, HELPER_TOC).map_err(|err| PlanError(format!("Could not write the helper TOC: {err}")))?;
     let lua_path = dir.join("Plan.lua");
-    let body = render_plan_lua(plan);
     let tmp = dir.join("Plan.lua.tmp");
-    fs::write(&tmp, &body).map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
+    fs::write(&tmp, body).map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
     fs::rename(&tmp, &lua_path).map_err(|err| PlanError(format!("Could not replace the plan: {err}")))?;
     Ok(lua_path)
 }
@@ -193,6 +231,15 @@ pub fn render_plan_lua(plan: &Plan) -> String {
     }
     if let Some(note) = &plan.note {
         push_pair(&mut out, 1, "note", &Value::String(note.clone()));
+    }
+    if let Some(request_id) = &plan.request_id {
+        push_pair(&mut out, 1, "requestId", &Value::String(request_id.clone()));
+    }
+    if let Some(request_status) = &plan.request_status {
+        push_pair(&mut out, 1, "requestStatus", &Value::String(request_status.clone()));
+    }
+    if let Some(request_reason) = &plan.request_reason {
+        push_pair(&mut out, 1, "requestReason", &Value::String(request_reason.clone()));
     }
     out.push_str("  [\"tasks\"] = {\n");
     for task in &plan.tasks {

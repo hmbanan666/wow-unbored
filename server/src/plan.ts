@@ -1,4 +1,5 @@
 const MODES = new Set(["roam", "quests", "events", "fun", "farm", "custom"]);
+const REQUEST_MODES = new Set(["roam", "quests", "events", "fun", "farm"]);
 
 export type Plan = {
   v: 1;
@@ -328,6 +329,54 @@ function stamps(value: unknown, label: string): Stamp[] {
     }
     return { id: row.id, at };
   });
+}
+
+export type PlanRequestInput = {
+  id: string;
+  character: string;
+  realm: string;
+  mode: string;
+  budget: number;
+  wish: string | null;
+  createdAt: number | null;
+};
+
+export function cleanPlanRequest(raw: unknown): PlanRequestInput {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new PlanError("The request must be a JSON object.");
+  }
+  const body = raw as Record<string, unknown>;
+  const id = typeof body.id === "string" ? body.id.trim() : "";
+  if (!/^[A-Za-z0-9:._-]{1,80}$/.test(id)) {
+    throw new PlanError("Request id must be 1 to 80 letters, digits, colon, dot, underscore, or hyphen.");
+  }
+  const character = typeof body.character === "string" ? body.character.trim() : "";
+  const realm = typeof body.realm === "string" ? body.realm.trim() : "";
+  if (!character || character.length > 80 || realm.length > 80) {
+    throw new PlanError("character is required, and realm must be at most 80 characters.");
+  }
+  if (typeof body.mode !== "string" || !REQUEST_MODES.has(body.mode)) {
+    throw new PlanError("mode must be roam, quests, events, fun, or farm.");
+  }
+  const budget = integer(body.budget, 5, 240);
+  if (budget === undefined) {
+    throw new PlanError("budget must be a whole number of minutes from 5 to 240.");
+  }
+  let wish: string | null = null;
+  if (body.wish !== undefined && body.wish !== null && body.wish !== "") {
+    if (typeof body.wish !== "string" || Buffer.byteLength(body.wish, "utf8") > 200) {
+      throw new PlanError("wish must be a string of at most 200 bytes.");
+    }
+    wish = body.wish.trim();
+  }
+  let createdAt: number | null = null;
+  if (body.createdAt !== undefined && body.createdAt !== null) {
+    createdAt = integer(body.createdAt, 0, 4_000_000_000) ?? null;
+    if (body.createdAt !== null && createdAt === null) {
+      throw new PlanError("createdAt must be a unix timestamp.");
+    }
+  }
+  return { id, character, realm, mode: body.mode, budget, wish, createdAt };
 }
 
 export function cleanProgress(raw: unknown): ProgressPost {

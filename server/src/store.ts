@@ -64,6 +64,20 @@ export class Store {
         saved_at INTEGER,
         body_json TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS requests (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        character_name TEXT NOT NULL,
+        realm TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        budget INTEGER NOT NULL,
+        wish TEXT,
+        status TEXT NOT NULL,
+        reason TEXT,
+        plan_id INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS devices (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -90,6 +104,13 @@ export class Store {
       )
       .run(PLAYER, createdAt, JSON.stringify(plan), unb1);
     return { id: Number(result.lastInsertRowid), createdAt, plan, unb1 };
+  }
+
+  planById(id: number): StoredPlan | undefined {
+    const row = this.db
+      .prepare(`SELECT id, created_at, body_json, unb1 FROM plans WHERE id = ?`)
+      .get(id) as PlanRow | undefined;
+    return row ? this.planFromRow(row) : undefined;
   }
 
   latestPlan(): StoredPlan | undefined {
@@ -231,6 +252,88 @@ export class Store {
     return this.deviceById(id);
   }
 
+  addRequest(input: {
+    id: string;
+    deviceId: string;
+    character: string;
+    realm: string;
+    mode: string;
+    budget: number;
+    wish: string | null;
+    nowSeconds: number;
+  }): { created: boolean; request: PlanRequest } {
+    const existing = this.requestById(input.id);
+    if (existing) return { created: false, request: existing };
+    this.db
+      .prepare(
+        `INSERT INTO requests
+           (id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.deviceId,
+        input.character,
+        input.realm,
+        input.mode,
+        input.budget,
+        input.wish,
+        input.nowSeconds,
+        input.nowSeconds,
+      );
+    const request = this.requestById(input.id);
+    if (!request) throw new Error("Could not store the request.");
+    return { created: true, request };
+  }
+
+  listRequests(status = "pending", limit = 50): PlanRequest[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at
+         FROM requests WHERE status = ? ORDER BY created_at DESC, id ASC LIMIT ?`,
+      )
+      .all(status, limit) as RequestRow[];
+    return rows.map(requestFromRow);
+  }
+
+  requestById(id: string): PlanRequest | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at
+         FROM requests WHERE id = ?`,
+      )
+      .get(id) as RequestRow | undefined;
+    return row ? requestFromRow(row) : undefined;
+  }
+
+  latestRequestForDevice(deviceId: string): PlanRequest | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at
+         FROM requests WHERE device_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`,
+      )
+      .get(deviceId) as RequestRow | undefined;
+    return row ? requestFromRow(row) : undefined;
+  }
+
+  fulfillRequest(id: string, planId: number, nowSeconds = Math.floor(Date.now() / 1000)): PlanRequest | undefined {
+    if (!this.requestById(id)) return undefined;
+    this.db
+      .prepare(
+        `UPDATE requests SET status = 'fulfilled', plan_id = ?, reason = NULL, updated_at = ? WHERE id = ?`,
+      )
+      .run(planId, nowSeconds, id);
+    return this.requestById(id);
+  }
+
+  failRequest(id: string, reason: string, nowSeconds = Math.floor(Date.now() / 1000)): PlanRequest | undefined {
+    if (!this.requestById(id)) return undefined;
+    this.db
+      .prepare(`UPDATE requests SET status = 'failed', reason = ?, updated_at = ? WHERE id = ?`)
+      .run(reason, nowSeconds, id);
+    return this.requestById(id);
+  }
+
   private deviceById(id: string): Device | undefined {
     const row = this.db
       .prepare(
@@ -325,6 +428,74 @@ function deviceFromRow(row: DeviceRow): Device {
     status,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
+  };
+}
+
+export type RequestStatus = "pending" | "fulfilled" | "failed";
+
+export type PlanRequest = {
+  id: string;
+  deviceId: string;
+  character: string;
+  realm: string;
+  mode: string;
+  budget: number;
+  wish: string | null;
+  status: RequestStatus;
+  reason: string | null;
+  planId: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type RequestRow = {
+  id: string;
+  device_id: string;
+  character_name: string;
+  realm: string;
+  mode: string;
+  budget: number;
+  wish: string | null;
+  status: string;
+  reason: string | null;
+  plan_id: number | null;
+  created_at: number;
+  updated_at: number;
+};
+
+function requestFromRow(row: RequestRow): PlanRequest {
+  const status: RequestStatus =
+    row.status === "fulfilled" || row.status === "failed" ? row.status : "pending";
+  return {
+    id: row.id,
+    deviceId: row.device_id,
+    character: row.character_name,
+    realm: row.realm,
+    mode: row.mode,
+    budget: row.budget,
+    wish: row.wish,
+    status,
+    reason: row.reason,
+    planId: row.plan_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function publicRequest(request: PlanRequest) {
+  return {
+    id: request.id,
+    deviceId: request.deviceId,
+    character: request.character,
+    realm: request.realm,
+    mode: request.mode,
+    budget: request.budget,
+    wish: request.wish,
+    status: request.status,
+    reason: request.reason,
+    planId: request.planId,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
   };
 }
 

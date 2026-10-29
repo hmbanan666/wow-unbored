@@ -6,7 +6,7 @@ The in-game addon is the other half. This folder is the desktop half.
 
 ## Install
 
-1. Download `Unbored Companion_0.1.1_x64-setup.exe` or the `.msi` from the GitHub release tagged `companion-v0.1.1`.
+1. Download the setup `.exe` or the `.msi` from the GitHub release tagged `companion-v0.2.0`.
 2. Windows SmartScreen will say it prevented an unrecognized app from starting. The installer is not Authenticode-signed. Choose **More info**, then **Run anyway**. That warning is expected.
 3. The window opens. It also sits in the tray. Closing the window hides it; Quit is on the tray menu.
 4. **Start with Windows** is off until you check it. The login shortcut passes `--hidden`, so the window stays in the tray.
@@ -26,8 +26,9 @@ The installer lands in `src-tauri/target/release/bundle/`.
 2. The owner approves that device with the planner MCP tool `approve_device`. The app then uses the device secret as the bearer for `GET /v1/plan` and `POST /v1/progress`. It cannot write a plan.
 3. Retail is detected from the Blizzard registry (`InstallPath` under `Blizzard Entertainment\World of Warcraft`), `C:\Program Files (x86)\World of Warcraft` and `C:\Program Files\World of Warcraft`, and Battle.net's `product.db` / `Battle.net.config` when those files mention a World of Warcraft path. A hit contains `Wow.exe` or `_retail_\Wow.exe`. The folder field appears only when none of those work.
 4. The latest GitHub release asset `Unbored-v*.zip` whose tag is `v*` (not `companion-v*`) is unpacked into `_retail_\Interface\AddOns\Unbored`. A newer tag replaces it. SavedVariables are read from `WTF\Account\*\*\SavedVariables\Unbored.lua` with no account picker.
-5. The plan file is still `Interface\AddOns\Unbored_Plan\`, which this app owns. In game, `/reload`, then **Use it** or `/unbored companion`.
-6. After `/reload` or logout the app reads `Unbored.lua` and posts progress once per change.
+5. In the Unbored window, pick a mode and a budget, type an optional wish, and press **Get plan**. Then press **Reload**. After the game writes SavedVariables, this app posts the request. When a plan comes back it writes `Unbored_Plan` and the tray says **Plan ready, /reload**. Reload again and choose **Use it**.
+6. The plan file is `Interface\AddOns\Unbored_Plan\`, which this app owns.
+7. After `/reload` or logout the app reads `Unbored.lua` and posts progress once per change.
 
 Advanced settings can replace the planner URL. There is no token field. An empty URL means `https://unbored.kosarev.space`.
 

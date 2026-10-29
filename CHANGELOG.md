@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Get plan in the Unbored window. Pick a mode and a budget, add an optional wish, then reload. The companion brings the plan back and Use it appears when that request is ready.
+
 ## 0.1.0
 
 - A plan written by Unbored Companion (`Unbored_Plan`) is offered on load. Use it, or Not now.

@@ -17,7 +17,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::addon::{install_addon_zip, select_addon_zip, should_update};
 use crate::device::{self, DeviceCredential};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
-use crate::plan::{decode_unb1, install_plan, plan_from_value, Plan};
+use crate::plan::{decode_unb1, install_plan, install_request_file, plan_from_value, Plan};
+use crate::savedvars::request_from_saved_variables;
 use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, CharacterFile};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -662,7 +663,86 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
     Ok(format!("Installed addon {}.", release.version))
 }
 
-fn sync_once(app: &AppHandle, addon_checked: &mut Option<std::time::Instant>) -> Result<(), String> {
+fn sync_requests(
+    app: &AppHandle,
+    settings: &Settings,
+    secret: &str,
+    notified: &mut std::collections::HashSet<String>,
+) -> Result<(), String> {
+    let Some(retail) = retail_path(settings) else {
+        return Ok(());
+    };
+    let client = http_client(Duration::from_secs(20))?;
+    let url = effective_url(settings);
+    for file in character_saved_variables(&retail, None) {
+        let Ok(text) = fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let Ok(Some(request)) = request_from_saved_variables(&text) else {
+            continue;
+        };
+        let response = client
+            .post(join_url(&url, "v1/requests"))
+            .bearer_auth(secret)
+            .json(&serde_json::json!({
+                "id": request.id,
+                "createdAt": request.created_at,
+                "character": request.character,
+                "realm": request.realm,
+                "mode": request.mode,
+                "budget": request.budget,
+                "wish": request.wish,
+            }))
+            .send()
+            .map_err(|err| err.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("Planner returned {}.", response.status()));
+        }
+    }
+    let latest = client
+        .get(join_url(&url, "v1/requests/latest"))
+        .bearer_auth(secret)
+        .send()
+        .map_err(|err| err.to_string())?;
+    if latest.status().as_u16() == 404 {
+        return Ok(());
+    }
+    if !latest.status().is_success() {
+        return Err(format!("Planner returned {}.", latest.status()));
+    }
+    let body: serde_json::Value = latest.json().map_err(|err| err.to_string())?;
+    let Some(id) = body.get("id").and_then(|value| value.as_str()) else {
+        return Ok(());
+    };
+    let status = body.get("status").and_then(|value| value.as_str()).unwrap_or("pending");
+    let reason = body.get("reason").and_then(|value| value.as_str());
+    let plan = match body.get("plan") {
+        Some(serde_json::Value::String(text)) => Some(decode_unb1(text).map_err(|err| err.0)?),
+        _ => None,
+    };
+    install_request_file(&retail, id, status, reason, plan.as_ref()).map_err(|err| err.0)?;
+    if status == "fulfilled" && notified.insert(id.to_string()) {
+        publish_status(app, "Plan ready, /reload");
+        notify_plan_ready(app);
+    }
+    Ok(())
+}
+
+fn notify_plan_ready(app: &AppHandle) {
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app
+        .notification()
+        .builder()
+        .title("Unbored")
+        .body("Plan ready, /reload")
+        .show();
+}
+
+fn sync_once(
+    app: &AppHandle,
+    addon_checked: &mut Option<std::time::Instant>,
+    notified: &mut std::collections::HashSet<String>,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let (settings, secret, _) = {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
@@ -697,6 +777,8 @@ fn sync_once(app: &AppHandle, addon_checked: &mut Option<std::time::Instant>) ->
         }
         let mut model = state.inner.lock().map_err(|err| err.to_string())?;
         let _ = run_scan(&mut model, Some(&secret));
+        drop(model);
+        sync_requests(app, &settings, &secret, notified)?;
     }
     let due = addon_checked
         .map(|at| at.elapsed() >= Duration::from_secs(30 * 60))
@@ -722,8 +804,9 @@ fn sync_once(app: &AppHandle, addon_checked: &mut Option<std::time::Instant>) ->
 
 fn sync_loop(app: AppHandle) {
     let mut addon_checked = None;
+    let mut notified = std::collections::HashSet::new();
     loop {
-        if let Err(err) = sync_once(&app, &mut addon_checked) {
+        if let Err(err) = sync_once(&app, &mut addon_checked, &mut notified) {
             publish_status(&app, &err);
         }
         std::thread::sleep(Duration::from_secs(30));
@@ -744,6 +827,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ))
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let settings = load_settings(app.handle());
