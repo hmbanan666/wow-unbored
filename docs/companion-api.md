@@ -31,7 +31,7 @@ Response `200`:
 
 `plan` may instead be the JSON object from [plan-format.md](plan-format.md) (`v`, `kind: "plan"`, `tasks`). The string form is the one the in-game importer also accepts.
 
-Anything other than 2xx is shown in the tray window and the previous `Plan.lua` is left as it was. The server in this repo returns `404` with `{ "error": "No plan yet." }` until the planner has stored one.
+Anything other than 2xx is shown under Advanced in the tray window, the plan part of `Plan.lua` is left as it was, and the status block says `online = false`. The server in this repo returns `404` with `{ "error": "No plan yet." }` until the planner has stored one.
 
 ## POST /v1/progress
 
@@ -73,6 +73,23 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 `_retail_/Interface/AddOns/Unbored_Plan/Plan.lua`
 
 Unbored reads the global `UnboredExternalPlan` from that addon on load. A plan for this character's pending request starts by itself; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast from Wisp, "Plan ready, press Load in game" (or "I have an answer, press Load in game"), once per fulfilled request.
+
+### Companion status
+
+The file ends with a status block after the line `-- Companion status, rewritten on every check.` The plan part and this part are written separately, so neither overwrites the other:
+
+```lua
+UnboredCompanionStatus = {
+  v = 1,
+  pairing = "pending",      -- "pending", "approved", "revoked"; missing before the first answer
+  online = true,            -- false when the last sync with the planner failed
+  addonVersion = "0.5.0",   -- Unbored.toc on disk; missing if the addon is not installed
+  companionVersion = "0.5.0",
+  seenAt = 1793280000,      -- unix seconds of the last check, rounded down to 300
+}
+```
+
+The game reads it only on load, like the plan. Wisp turns it into one line: not approved yet, disconnected, can't reach the planner, or "the Companion isn't running" when `seenAt` is more than 15 minutes old. An `addonVersion` newer than the running addon means an update is on disk; Wisp says "press Load to apply", and asks for a game restart if Load did not pick it up. A missing block (Companion 0.4 or older) shows nothing.
 
 ## Requests
 

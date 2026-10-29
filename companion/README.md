@@ -13,17 +13,21 @@ The in-game addon is the other half. This folder is the desktop half.
 
 ## The window
 
-One friendly window with Wisp and one big status line:
+One friendly window with Wisp, one big status line, a one-line hint under it, and a short setup checklist (World of Warcraft folder found, Wisp installed in the game with its version, this PC approved):
 
 | Status | What it means |
 | --- | --- |
-| All set, go play | Approved, addon installed, nothing waiting. |
+| Connecting... | First start, before the planner has answered. |
 | Show me where World of Warcraft is | No Retail folder found. **Choose folder** opens a folder picker (the game folder or `_retail_` both work); **Look again** re-runs detection. |
-| Waiting for approval | The planner owner has not approved this PC yet. Nothing to do here. |
+| Waiting for a one-time OK | The planner owner has not approved this PC yet. The hint names the PC. Wisp is already installed in the game, and quick plans there work. |
+| Connected! You're all set | Shown for 10 minutes after approval, with a toast. |
+| This PC was disconnected | The device was revoked. |
 | Updating addon... / Updating myself... | An update is being installed. |
+| Wisp was updated, press Load in game | A new addon was installed while the game was running. |
 | Thinking about your request... | A request from the game is with the planner. |
 | Plan ready, press Load in game / I have an answer, press Load in game | The answer is in `Unbored_Plan`. Shown for 15 minutes. |
-| Can't reach the planner right now. I'll keep trying | The last sync failed. |
+| Can't reach the planner right now | The last sync failed. The hint says it keeps trying; server errors are only in Advanced. |
+| All set, go play | Approved, addon installed, nothing waiting. |
 
 Wisp bobs with a spinning ring while busy, thinking, or waiting for approval, and is happy when something is ready. The tray tooltip says the same status. Toasts come from Wisp. The planner URL, poll interval, manual plan string, folder path, and per-character progress are under **Advanced**, closed by default.
 
@@ -38,14 +42,15 @@ The installer lands in `src-tauri/target/release/bundle/`.
 
 ## Flow
 
-1. Launch the app. It creates a device id and secret (app data, and Windows Credential Manager when that store accepts it) and calls `POST /v1/devices/register` on `https://unbored.kosarev.space`. The window says **Waiting for approval** and asks again about every 30 seconds.
+1. Launch the app. It creates a device id and secret (app data, and Windows Credential Manager when that store accepts it) and calls `POST /v1/devices/register` on `https://unbored.kosarev.space`. The window says **Waiting for a one-time OK** and asks again about every 30 seconds. Steps 3 and 4 (finding the game and installing the addon) do not wait for this.
 2. The owner approves that device with the planner MCP tool `approve_device`. The app then uses the device secret as the bearer for `GET /v1/plan` and `POST /v1/progress`. It cannot write a plan.
 3. Retail is detected from the Blizzard registry (`InstallPath` under `Blizzard Entertainment\World of Warcraft`), `C:\Program Files (x86)\World of Warcraft` and `C:\Program Files\World of Warcraft`, and Battle.net's `product.db` / `Battle.net.config` when those files mention a World of Warcraft path. A hit contains `Wow.exe` or `_retail_\Wow.exe`. The folder field appears only when none of those work.
 4. The latest GitHub release asset `Unbored-v*.zip` whose tag is `v*` (not `companion-v*`) is unpacked into `_retail_\Interface\AddOns\Unbored`. A newer tag replaces it. SavedVariables are read from `WTF\Account\*\*\SavedVariables\Unbored.lua` with no account picker.
 5. In game, pick a preset chip in Wisp's bubble (or Something else...), or click Wisp for Ask something or What is this item?. A chip, **Send**, or **Ask about it** saves the request and reloads the UI, so the game writes SavedVariables. This app posts the request (`type` plan, question, or item) with the player's position, level, class, item level, gold, hearth, and tracked quests, so the planner can start near you. When the plan or answer comes back it writes `Unbored_Plan` and Wisp shows a toast: **Plan ready, press Load in game** or **I have an answer, press Load in game**. Press **Load** in game (or reload any other way) and the plan starts, or the answer appears in the bubble.
-6. The plan file is `Interface\AddOns\Unbored_Plan\`, which this app owns. It is created on the first sync, even empty, so the addon knows a companion is present. It is rewritten only when the plan or request status changes.
-7. After `/reload` or logout the app reads `Unbored.lua` and posts progress once per change.
-8. It also posts each character's player profile (bags, bank, currencies, collections, recent sessions; saved by the addon on every reload) once per save, so the planner can read it with `get_player_profile`. A failed profile upload never holds back plans.
+6. The plan file is `Interface\AddOns\Unbored_Plan\`, which this app owns. It is created on the first sync, even empty, so the addon knows a companion is present. It is rewritten only when the plan or request status changes. A request the planner rejects (a 4xx other than 401) gets a failed entry, so Wisp offers Try again instead of waiting forever.
+7. The same file ends with a small status block, `UnboredCompanionStatus` (pairing, online, the addon version on disk, this app's version, and when it last checked, rounded to 5 minutes), rewritten when that changes. Wisp uses it to say "waiting for a one-time OK", "can't reach the planner", "the Companion isn't running", or "press Load to apply" for an update. See [docs/companion-api.md](../docs/companion-api.md#companion-status).
+8. After `/reload` or logout the app reads `Unbored.lua` and posts progress once per change. A change to SavedVariables wakes the sync at once instead of waiting for the next 30-second tick.
+9. It also posts each character's player profile (bags, bank, currencies, collections, recent sessions; saved by the addon on every reload) once per save, so the planner can read it with `get_player_profile`. A failed profile upload never holds back plans.
 
 Advanced settings can replace the planner URL. There is no token field. An empty URL means `https://unbored.kosarev.space`.
 
@@ -57,7 +62,7 @@ Advanced settings can replace the planner URL. There is no token field. An empty
 
 The `companion-v*` workflow signs the build with `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, empty for the current key) and copies `latest.json` to that prerelease. The public key is in `plugins.updater.pubkey`. If the secret is missing, the workflow warns, builds the installers without updater artifacts, and leaves the feed alone; installed apps simply stay on their version. The private key is never in the repo. To rotate it, run `npm run tauri signer generate -- -w unbored-companion.key`, put the new `.pub` in `tauri.conf.json`, and replace the secret. Apps signed with the old key cannot verify the new one, so they need one manual install.
 
-**The addon** is checked every 30 minutes against the newest `v*` GitHub release. The version comes from the installed `Unbored.toc`, so a manual install counts. A newer zip is unpacked into `Unbored.new`, then swapped in with two renames, so the game never sees a half-written folder and a failed swap restores the old one. If `Wow.exe` is running a toast says to type `/reload`.
+**The addon** is checked every 30 minutes against the newest `v*` GitHub release. The version comes from the installed `Unbored.toc`, so a manual install counts. A newer zip is unpacked into `Unbored.new`, then swapped in with two renames, so the game never sees a half-written folder and a failed swap restores the old one. If `Wow.exe` is running, a toast says "I updated Wisp. Click Load next to Wisp in the game to apply it." (on a first install: "Restart World of Warcraft once to meet her"), and Wisp in the game says the same through the status block. A failed check is retried in about 5 minutes.
 
 **Start with Windows** is turned on the first time the app runs. It starts with `--hidden`, so only the tray icon appears. The window opens on a manual launch, or when the Retail folder is still unknown. Unticking the box in the window is remembered.
 

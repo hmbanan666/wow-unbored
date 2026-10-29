@@ -31,10 +31,11 @@ CurseForge, Wago, and WowUp are not wired up yet. A git tag builds a zip through
 **Wisp** is the whole UI: a small round portrait on the left of the screen with one chat bubble beside it. The bubble shows one message at a time:
 
 - the current step, as the plan wrote it ("Fly to Dalaran. Portal is next to you in Orgrimmar."), its note, the route point and distance, and a small `2/5`. The ✓ icon is Done, the arrow is Skip;
-- "Thinking..." while a question is out, with Wisp bobbing and glowing, and one **Load** button. While a Full plan is cooking, the Quick plan's step stays up with "A better one is cooking" and **Load**;
+- "Thinking..." while a question is out, with Wisp bobbing and glowing, and one **Load** button. While a Full plan is cooking, the Quick plan's step stays up with "A better one is cooking" and **Load**. If the Request cannot get through, Wisp says why instead: this PC is waiting for a one-time OK, it was disconnected, the planner cannot be reached, or the Companion app is not running. After 10 minutes Wisp says it is taking longer than usual and offers **Try again**; a failed Request says sorry, with **Try again** too;
 - "Better plan's ready! Load it in?" with **Switch** or **Keep this one**, once the Full plan has arrived;
 - an answer, shown as written, with a ✓ to say you read it;
-- "Hi! What shall we do?" with big preset chips when there is no plan, and "Nice! What next?" with the same chips when a plan is finished.
+- "Hi! What shall we do?" with big preset chips when there is no plan, and "All done, nice work! What next?" (with a chime) and the same chips when a plan is finished;
+- "I've been updated! Press Load to apply." when the Companion has put a newer addon on disk.
 
 Above the current bubble at most two older one-line messages stay for a minute and a half, fading ("Done: Fly to Dalaran", an answer you read), so there are never more than three; never a heavy list. Text wraps and the bubble grows; nothing is cut. The − in the bubble folds it down to the portrait. Drag the portrait to move it (Settings → Lock position to stop that). The position is saved, and the bubble opens toward the middle of the screen.
 
@@ -44,7 +45,7 @@ Above the current bubble at most two older one-line messages stay for a minute a
 
 - **Ask something** is one text box and **Send**.
 - **What to do nearby?** is the same box, optional, and asks the planner for something around you.
-- **What is this item?** has a slot. Drop an item on it, drop an item on Wisp, or Alt+Right-click the item in your bags. It shows what Unbored already knows and offers **Ask about it**.
+- **What is this item?**: Alt+Right-click the item in your bags, or drop it on Wisp. The bubble shows the item, what Unbored already knows, and **Ask about it**.
 - **Settings** is basic: Size (80–150%), Lock position, Hide, Keybinds, and More. Hide hides Wisp; the minimap button (left-click) or `/unbored` brings it back.
 
 With the companion installed, every send (a preset chip, **Send**, **Ask about it**) saves the request and reloads the UI in the same click, so the companion can read it. The companion pops a Windows toast from Wisp when the answer arrives. **Load** reloads, and the plan starts, or the answer appears in the bubble. Any other reload or login picks it up too. Without the companion a chip gives you just the Quick plan; What to do nearby? (`/unbored nearby`) builds a Roam list; questions and item questions say they need the companion.
@@ -53,7 +54,7 @@ With the companion installed, every send (a preset chip, **Send**, **Ask about i
 
 **Show all steps** (Settings → More) opens the full list in the quest-tracker style: step count, minutes left, the next steps dimmed (click one to read its note), collapse, and its own saved position.
 
-Settings → More holds the rarely used things: point the arrow again, the TomTom arrow, chat lines (off by default), build here instead, import a plan string, export progress, and reset position. The gear in the main window opens the same list.
+Settings → More holds the rarely used things: point the arrow again, the TomTom arrow, chat lines (off by default), and reset position. There is no other window; import, export, and build-here are slash commands only.
 
 The name is one string, `ns.MASCOT_NAME` in `Core/Namespace.lua`. Every UI string is in `Core/Locale.lua`, English by default with a Russian table; text from plans and answers is shown as written.
 
@@ -65,7 +66,7 @@ Keybinds (Esc → Options → Keybindings → AddOns → Unbored), so a gamepad 
 - Waypoint (point the arrow again)
 - Load plan (reloads the UI; a keypress counts as the click Blizzard requires)
 
-Nothing in the normal flow needs a slash command. They exist anyway: `/unbored show|hide`, `/unbored ask [text]|nearby|item`, `/unbored list|lock|reset`, `/unbored build`, `/unbored` (the chips), `/unbored roam|quests|events|fun|farm` (pick the mode, then type a wish), `/unbored 30|60|120` (pick the time), `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the companion file again), and `/unbored where` (map id and 0–100 coordinates, for people adding data).
+Nothing in the normal flow needs a slash command. They exist anyway: `/unbored show|hide`, `/unbored ask [text]|nearby|item`, `/unbored list|lock|reset`, `/unbored build`, `/unbored` (the chips), `/unbored roam|quests|events|fun|farm` (pick the mode, then type a wish), `/unbored 30|60|120` (pick the time), `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the companion file again), `/unbored where` (map id and 0–100 coordinates, for people adding data), and `/unbored errors` (caught Lua errors, for the developer; the player only ever sees one friendly line).
 
 ### What the modes suggest
 
@@ -83,13 +84,13 @@ When a step becomes current, Unbored sets the user waypoint (`C_Map.SetUserWaypo
 
 When a step finishes, the pin Unbored set is cleared. A pin you placed yourself is left alone.
 
-In combat, and inside a dungeon, raid, arena, battleground, or scenario, the pin and the "you walked up to it" check are paused. Done and Skip still work. The window stays up so you can read the list. Midnight secret values are not stored and are not used in arithmetic; if a coordinate comes back secret, that check is skipped.
+In combat, and inside a dungeon, raid, arena, battleground, or scenario, the pin and the "you walked up to it" check are paused. Wisp's bubble hides during combat and the faded portrait ignores clicks until the fight is over; the list view (if open) stays up. Midnight secret values are not stored and are not used in arithmetic; if a coordinate comes back secret, that check is skipped.
 
 Done, Skip, the queue, a pending request, and the last answer are saved per character (`UnboredCharDB`). Wisp's position and lock, the window and list positions, item answers, and the TomTom and chat toggles are account-wide (`UnboredDB`). Everything is built at the UI scale and uses the game's own fonts.
 
 ### Blizzard rules
 
-The addon never touches the network; the companion carries requests and answers through SavedVariables and its own `Unbored_Plan` addon. ReloadUI runs only from a click or a keybind. Bag buttons are not replaced or re-scripted: the tooltip line uses `TooltipDataProcessor.AddTooltipPostCall`, and Alt+Right-click is a `hooksecurefunc` post-hook on `HandleModifiedItemClick`, which only opens Unbored's own window. Modified clicks do not use the item, so no protected action changes.
+The addon never touches the network; the companion carries requests and answers through SavedVariables and its own `Unbored_Plan` addon. ReloadUI runs only from a click or a keybind. Bag buttons are not replaced or re-scripted: the tooltip line uses `TooltipDataProcessor.AddTooltipPostCall`, and Alt+Right-click is a `hooksecurefunc` post-hook on `HandleModifiedItemClick`, which only shows the item in Wisp's bubble. Modified clicks do not use the item, so no protected action changes.
 
 ### Auto-complete
 
@@ -99,7 +100,7 @@ Account-wide achievement completion counts as done. See open questions below if 
 
 ## Import and export
 
-An outside planner builds a line that starts with `UNB1:`. You paste it with `/unbored import` or Import in the gear menu. The list switches immediately. No reload.
+An outside planner builds a line that starts with `UNB1:`. You paste it with `/unbored import`. The list switches immediately. No reload.
 
 `/unbored export` selects an `UNB1P:` line: done and skipped task ids, timestamps, and what is left. Send that back to the planner.
 
