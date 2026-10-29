@@ -1,6 +1,6 @@
 # Companion planner API
 
-Unbored Companion can poll an HTTPS endpoint you host. The server does not exist in this repo. The app sends the calls below and does nothing if the URL is empty.
+Unbored Companion can poll an HTTPS endpoint you host. `server/` in this repo is that endpoint. The app sends the calls below and does nothing if the URL is empty.
 
 The base URL is whatever you type in the app, without a trailing slash. Example: `https://planner.example/unbored`.
 
@@ -27,7 +27,7 @@ Response `200`:
 
 `plan` may instead be the JSON object from [plan-format.md](plan-format.md) (`v`, `kind: "plan"`, `tasks`). The string form is the one the in-game importer also accepts.
 
-Anything other than 2xx is shown in the tray window and the previous `Plan.lua` is left as it was.
+Anything other than 2xx is shown in the tray window and the previous `Plan.lua` is left as it was. The server in this repo returns `404` with `{ "error": "No plan yet." }` until the planner has stored one.
 
 ## POST /v1/progress
 
@@ -69,3 +69,7 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 `_retail_/Interface/AddOns/Unbored_Plan/Plan.lua`
 
 Unbored reads the global `UnboredExternalPlan` from that addon on load and asks before it replaces the current list.
+
+## Server in this repo
+
+`server/` implements the two calls above. The companion sends `Authorization: Bearer <UNBORED_COMPANION_TOKEN>`. Putting a plan, reading progress, and the MCP endpoint `/mcp` use a different bearer, `UNBORED_PLANNER_TOKEN`. Setup, the volume mount, and the planner routes are in `server/README.md`.

@@ -1,5 +1,5 @@
-//! The optional planner HTTP contract. The server does not exist yet.
-//! See docs/companion-api.md.
+//! The optional planner HTTP contract. See docs/companion-api.md.
+//! server/ implements these calls.
 
 use serde_json::{json, Value};
 

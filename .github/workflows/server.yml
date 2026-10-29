@@ -1,0 +1,33 @@
+name: Server
+
+on:
+  pull_request:
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+      - "docs/companion-api.md"
+      - "docs/plan-format.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+      - "docs/companion-api.md"
+      - "docs/plan-format.md"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Lua decoder used by the plan roundtrip
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Tests
+        working-directory: server
+        run: npm ci && npm test
+      - name: Docker image
+        run: docker build -t unbored-server server

@@ -1,0 +1,25 @@
+{
+  "name": "unbored-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Plan store for Unbored Companion and the planner",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --experimental-sqlite --experimental-strip-types src/index.ts",
+    "test": "node --experimental-sqlite --experimental-strip-types --test test/api.test.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}
