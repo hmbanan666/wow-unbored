@@ -197,41 +197,40 @@ fn decode_b64(payload: &str) -> Result<Vec<u8>, PlanError> {
         .map_err(|_| PlanError("Could not decode this string. It is not valid base64.".into()))
 }
 
-/// Write `Interface/AddOns/Unbored_Plan`, which this app owns.
-/// WoW rewrites SavedVariables on logout, so a helper addon is the file
-/// that survives a play session and is read on the next /reload.
-pub fn install_request_file(
-    retail: &Path,
-    request_id: &str,
-    status: &str,
-    reason: Option<&str>,
-    plan: Option<&Plan>,
-) -> Result<Written, PlanError> {
-    write_plan_lua(retail, &render_request_lua(request_id, status, reason, plan))
-}
-
-pub fn render_request_lua(request_id: &str, status: &str, reason: Option<&str>, plan: Option<&Plan>) -> String {
+/// Plan.lua for an in-game request: its status, and when it is answered,
+/// the reply text, the follow-up plan, or both.
+pub fn render_request_lua(request: &RequestState, status: &str, plan: Option<&Plan>) -> String {
+    let mut extras = vec![("requestType", Value::String(request.kind.clone()))];
+    if let Some(answer) = request.answer.as_ref().filter(|_| status == "fulfilled") {
+        extras.push(("answer", answer.clone()));
+    }
     if let Some(plan) = plan {
         let mut copy = plan.clone();
-        copy.request_id = Some(request_id.to_string());
+        copy.request_id = Some(request.id.clone());
         copy.request_status = Some(status.to_string());
-        copy.request_reason = reason.map(str::to_string);
-        render_plan_lua(&copy)
+        copy.request_reason = request.reason.clone();
+        render_plan_body(&copy, &extras)
     } else {
         let mut out = String::from(
             "-- Written by Unbored Companion. Loaded by Unbored_Plan on /reload.\n",
         );
         out.push_str("UnboredExternalPlan = {\n");
-        push_pair(&mut out, 1, "requestId", &Value::String(request_id.to_string()));
+        push_pair(&mut out, 1, "requestId", &Value::String(request.id.clone()));
         push_pair(&mut out, 1, "requestStatus", &Value::String(status.to_string()));
-        if let Some(reason) = reason {
-            push_pair(&mut out, 1, "requestReason", &Value::String(reason.to_string()));
+        if let Some(reason) = &request.reason {
+            push_pair(&mut out, 1, "requestReason", &Value::String(reason.clone()));
+        }
+        for (key, value) in &extras {
+            push_pair(&mut out, 1, key, value);
         }
         out.push_str("}\n");
         out
     }
 }
 
+/// Write `Interface/AddOns/Unbored_Plan`, which this app owns.
+/// WoW rewrites SavedVariables on logout, so a helper addon is the file
+/// that survives a play session and is read on the next /reload.
 pub fn install_plan(retail: &Path, plan: &Plan) -> Result<Written, PlanError> {
     write_plan_lua(retail, &render_plan_lua(plan))
 }
@@ -291,51 +290,64 @@ fn write_plan_lua(retail: &Path, body: &str) -> Result<Written, PlanError> {
 #[derive(Debug, Clone, Default)]
 pub struct PlannerState {
     pub latest_plan: Option<(u64, Plan)>,
+    pub latest_plan_at: Option<u64>,
     pub request: Option<RequestState>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RequestState {
     pub id: String,
+    /// plan, item, or question.
+    pub kind: String,
     pub status: String,
     pub reason: Option<String>,
     pub plan_id: Option<u64>,
     pub plan: Option<Plan>,
+    pub answer: Option<Value>,
+    pub updated_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanFile {
     pub body: String,
-    /// Set when the file carries a finished plan for this in-game request.
+    /// Set when the file carries a finished plan or answer for this request.
     pub ready_request: Option<String>,
+    /// The kind of that ready request: plan, item, or question.
+    pub ready_kind: Option<String>,
 }
 
 /// One Plan.lua serves both flows. A pending or failed request wins, since
-/// the game ignores other plans while it waits. A fulfilled request wins
+/// the game ignores other plans while it waits. An answered request wins
 /// unless the planner put a newer plan after it.
 pub fn pick_plan_file(state: &PlannerState) -> Option<PlanFile> {
     if let Some(request) = &state.request {
+        let answered = request.status == "fulfilled" && (request.plan.is_some() || request.answer.is_some());
         let newer_direct = match (&state.latest_plan, request.plan_id) {
             (Some((id, _)), Some(request_plan)) => *id > request_plan,
+            (Some(_), None) => match (state.latest_plan_at, request.updated_at) {
+                (Some(plan_at), Some(answered_at)) => plan_at > answered_at,
+                _ => false,
+            },
             _ => false,
         };
-        let fulfilled = request.status == "fulfilled" && request.plan.is_some();
-        if !fulfilled || !newer_direct {
-            let plan = if fulfilled { request.plan.as_ref() } else { None };
-            let status = if request.status == "fulfilled" && plan.is_none() {
+        if !answered || !newer_direct {
+            let plan = if answered { request.plan.as_ref() } else { None };
+            let status = if request.status == "fulfilled" && !answered {
                 "pending"
             } else {
                 request.status.as_str()
             };
             return Some(PlanFile {
-                body: render_request_lua(&request.id, status, request.reason.as_deref(), plan),
-                ready_request: plan.map(|_| request.id.clone()),
+                body: render_request_lua(request, status, plan),
+                ready_request: answered.then(|| request.id.clone()),
+                ready_kind: answered.then(|| request.kind.clone()),
             });
         }
     }
     state.latest_plan.as_ref().map(|(_, plan)| PlanFile {
         body: render_plan_lua(plan),
         ready_request: None,
+        ready_kind: None,
     })
 }
 
@@ -344,6 +356,10 @@ pub fn install_plan_file(retail: &Path, file: &PlanFile) -> Result<Written, Plan
 }
 
 pub fn render_plan_lua(plan: &Plan) -> String {
+    render_plan_body(plan, &[])
+}
+
+fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
     let mut out = String::from(
         "-- Written by Unbored Companion. Loaded by Unbored_Plan on /reload.\n",
     );
@@ -367,6 +383,9 @@ pub fn render_plan_lua(plan: &Plan) -> String {
     }
     if let Some(request_reason) = &plan.request_reason {
         push_pair(&mut out, 1, "requestReason", &Value::String(request_reason.clone()));
+    }
+    for (key, value) in extras {
+        push_pair(&mut out, 1, key, value);
     }
     out.push_str("  [\"tasks\"] = {\n");
     for task in &plan.tasks {
@@ -595,21 +614,76 @@ mod tests {
     fn request(status: &str, plan_id: Option<u64>, plan: Option<Plan>) -> RequestState {
         RequestState {
             id: "req-1".into(),
+            kind: "plan".into(),
             status: status.into(),
-            reason: None,
             plan_id,
             plan,
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn writes_an_answer_the_parser_can_read_back() {
+        let answer = serde_json::json!({
+            "message": "A rare is east of you.\nI pinned it.",
+            "waypoints": [{ "mapID": 2248, "x": 0.6, "y": 0.4, "label": "Rare" }],
+            "answeredAt": 20
+        });
+        let state = PlannerState {
+            latest_plan: Some((3, small_plan("older"))),
+            latest_plan_at: Some(10),
+            request: Some(RequestState {
+                id: "ask-1".into(),
+                kind: "question".into(),
+                status: "fulfilled".into(),
+                answer: Some(answer),
+                updated_at: Some(20),
+                ..Default::default()
+            }),
+        };
+        let file = pick_plan_file(&state).unwrap();
+        assert_eq!(file.ready_request.as_deref(), Some("ask-1"));
+        assert_eq!(file.ready_kind.as_deref(), Some("question"));
+        let values = parse_saved_variables(&file.body).unwrap();
+        let external = values.get("UnboredExternalPlan").unwrap();
+        use crate::savedvars::table_get;
+        assert_eq!(table_get(external, "requestType").and_then(|v| v.as_str()), Some("question"));
+        let reply = table_get(external, "answer").unwrap();
+        assert_eq!(
+            table_get(reply, "message").and_then(|v| v.as_str()),
+            Some("A rare is east of you.\nI pinned it.")
+        );
+        assert!(table_get(external, "tasks").is_none());
+
+        let pending = PlannerState {
+            request: Some(RequestState {
+                id: "ask-2".into(),
+                kind: "item".into(),
+                status: "pending".into(),
+                answer: Some(serde_json::json!({ "message": "stale" })),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let file = pick_plan_file(&pending).unwrap();
+        assert!(file.ready_request.is_none() && !file.body.contains("stale"));
+        assert!(file.body.contains("\"item\""));
+
+        let mut newer = state.clone();
+        newer.latest_plan_at = Some(30);
+        let file = pick_plan_file(&newer).unwrap();
+        assert!(file.body.contains("older") && file.ready_request.is_none());
     }
 
     #[test]
     fn picks_between_the_request_and_a_direct_plan() {
         assert!(pick_plan_file(&PlannerState::default()).is_none());
-        let direct = PlannerState { latest_plan: Some((3, small_plan("direct"))), request: None };
+        let direct = PlannerState { latest_plan: Some((3, small_plan("direct"))), ..Default::default() };
         let file = pick_plan_file(&direct).unwrap();
         assert!(file.body.contains("direct") && file.ready_request.is_none());
 
         let pending = PlannerState {
+            latest_plan_at: None,
             latest_plan: Some((3, small_plan("direct"))),
             request: Some(request("pending", None, None)),
         };
@@ -618,6 +692,7 @@ mod tests {
         assert!(file.ready_request.is_none());
 
         let fulfilled = PlannerState {
+            latest_plan_at: None,
             latest_plan: Some((4, small_plan("asked"))),
             request: Some(request("fulfilled", Some(4), Some(small_plan("asked")))),
         };
@@ -626,6 +701,7 @@ mod tests {
         assert_eq!(file.ready_request.as_deref(), Some("req-1"));
 
         let newer = PlannerState {
+            latest_plan_at: None,
             latest_plan: Some((9, small_plan("later"))),
             request: Some(request("fulfilled", Some(4), Some(small_plan("asked")))),
         };
