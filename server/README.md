@@ -22,7 +22,20 @@ The process listens on `PORT` (default `3000`) and stores SQLite at `$UNBORED_DA
 | `UNBORED_PLANNER_WEBHOOK_KEY` | no | Secret sent as `Authorization: Bearer <key>`. |
 | `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` | no | Extra header name that also receives the key. |
 
-`GET /health` needs no token. Every other route rejects a missing or wrong bearer token.
+`GET /health` needs no token and returns `{"ok":true,"webhook":"on"}`, or `"off"` when `UNBORED_PLANNER_WEBHOOK_URL` is empty. Every other route rejects a missing or wrong bearer token.
+
+### Planner webhook
+
+Every new pending request (plan, question, item) is POSTed to `UNBORED_PLANNER_WEBHOOK_URL` once, with a 10 second timeout. A failure is retried after 30 s, 1, 2, 5, 10, 15, 30 and 60 min while the request is still pending and less than a day old; a request left pending by a restart is sent by the same loop. Each attempt is stored and logged as one line without the URL path or the key:
+
+```
+webhook on: planner.example with key
+webhook req=req-1 type=question attempt=1 failed ECONNREFUSED ms=3, retry in 30s
+webhook req=req-1 type=question attempt=2 ok status=200 ms=180
+webhook req=req-2 type=item skipped: UNBORED_PLANNER_WEBHOOK_URL is not set
+```
+
+`list_requests` shows the same state per request as `webhook` (`attempts`, `deliveredAt`, `lastError`; `null` when it was never tried).
 
 ## Companion
 

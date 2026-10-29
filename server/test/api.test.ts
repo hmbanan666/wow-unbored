@@ -503,7 +503,9 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
   await new Promise<void>((resolve) => hook.listen(0, "127.0.0.1", resolve));
   const address = hook.address();
   if (!address || typeof address === "string") throw new Error("no port");
-  const { app, close } = createApp({
+  let clock = Math.floor(Date.now() / 1000);
+  const lines: string[] = [];
+  const { app, webhook, store, close } = createApp({
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-hook-")),
@@ -512,6 +514,8 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
       key: "hook-secret",
       headerName: "X-Unbored-Key",
     },
+    webhookNow: () => clock,
+    log: (line) => lines.push(line),
   });
   try {
     const secret = "request-device-secret";
@@ -566,7 +570,21 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
       }),
     });
     assert.equal(posted.status, 201);
-    assert.equal(hits.length >= 2, true);
+    assert.equal(hits.length, 1);
+    assert.equal(store.webhookDelivery("req-100")?.deliveredAt, null);
+    assert.ok(lines.some((line) => line.includes("webhook req=req-100 type=plan attempt=1 failed status 500")));
+    await webhook.tick();
+    assert.equal(hits.length, 1, "the retry waits for its backoff");
+    clock += 31;
+    await webhook.tick();
+    assert.equal(hits.length, 2);
+    assert.equal(store.webhookDelivery("req-100")?.attempts, 2);
+    assert.ok(store.webhookDelivery("req-100")?.deliveredAt);
+    assert.ok(lines.some((line) => line.includes("webhook req=req-100 type=plan attempt=2 ok status=204")));
+    assert.ok(!lines.some((line) => line.includes("hook-secret") || line.includes("/hook")));
+    clock += 3600;
+    await webhook.tick();
+    assert.equal(hits.length, 2, "a delivered request is not sent again");
     assert.equal(hits.at(-1)?.authorization, "Bearer hook-secret");
     assert.equal(hits.at(-1)?.extra, "hook-secret");
     assert.equal(hits.at(-1)?.body.requestId, "req-100");

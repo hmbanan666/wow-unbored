@@ -164,6 +164,15 @@ export class Store {
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (character_name, realm, item_id)
       );
+      CREATE TABLE IF NOT EXISTS webhook_deliveries (
+        request_id TEXT PRIMARY KEY,
+        attempts INTEGER NOT NULL,
+        delivered_at INTEGER,
+        next_at INTEGER,
+        last_status INTEGER,
+        last_error TEXT,
+        updated_at INTEGER NOT NULL
+      );
     `);
     this.addColumns("profiles", [["account", "TEXT"]]);
     this.addColumns("requests", [
@@ -425,6 +434,59 @@ export class Store {
       context: request.context,
     });
     return { created: true, request };
+  }
+
+  webhookDelivery(requestId: string): WebhookDelivery | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT attempts, delivered_at, next_at, last_status, last_error, updated_at
+         FROM webhook_deliveries WHERE request_id = ?`,
+      )
+      .get(requestId) as WebhookDeliveryRow | undefined;
+    return row ? deliveryFromRow(row) : undefined;
+  }
+
+  recordWebhookAttempt(
+    requestId: string,
+    outcome: { ok: boolean; status: number | null; error: string | null; nextAt: number | null },
+    nowSeconds = Math.floor(Date.now() / 1000),
+  ): WebhookDelivery {
+    const attempts = (this.webhookDelivery(requestId)?.attempts ?? 0) + 1;
+    this.db
+      .prepare(
+        `INSERT INTO webhook_deliveries (request_id, attempts, delivered_at, next_at, last_status, last_error, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (request_id) DO UPDATE SET
+           attempts = excluded.attempts, delivered_at = excluded.delivered_at, next_at = excluded.next_at,
+           last_status = excluded.last_status, last_error = excluded.last_error, updated_at = excluded.updated_at`,
+      )
+      .run(
+        requestId,
+        attempts,
+        outcome.ok ? nowSeconds : null,
+        outcome.ok ? null : outcome.nextAt,
+        outcome.status,
+        outcome.ok ? null : outcome.error,
+        nowSeconds,
+      );
+    const delivery = this.webhookDelivery(requestId);
+    if (!delivery) throw new Error("Could not store the webhook attempt.");
+    return delivery;
+  }
+
+  /** Pending requests the planner has not been told about yet and whose retry is due. */
+  webhookDue(input: { nowSeconds: number; sinceSeconds: number; maxAttempts: number; limit?: number }): PlanRequest[] {
+    const rows = this.db
+      .prepare(
+        `SELECT r.id FROM requests r LEFT JOIN webhook_deliveries w ON w.request_id = r.id
+         WHERE r.status = 'pending' AND r.created_at >= ? AND w.delivered_at IS NULL
+           AND COALESCE(w.attempts, 0) < ? AND COALESCE(w.next_at, 0) <= ?
+         ORDER BY r.created_at ASC, r.id ASC LIMIT ?`,
+      )
+      .all(input.sinceSeconds, input.maxAttempts, input.nowSeconds, input.limit ?? 20) as { id: string }[];
+    return rows
+      .map((row) => this.requestById(row.id))
+      .filter((request): request is PlanRequest => request !== undefined);
   }
 
   listRequests(status = "pending", limit = 50): PlanRequest[] {
@@ -906,6 +968,35 @@ function deviceFromRow(row: DeviceRow): Device {
 }
 
 export type RequestStatus = "pending" | "fulfilled" | "failed";
+
+export type WebhookDelivery = {
+  attempts: number;
+  deliveredAt: number | null;
+  nextAt: number | null;
+  lastStatus: number | null;
+  lastError: string | null;
+  updatedAt: number;
+};
+
+type WebhookDeliveryRow = {
+  attempts: number;
+  delivered_at: number | null;
+  next_at: number | null;
+  last_status: number | null;
+  last_error: string | null;
+  updated_at: number;
+};
+
+function deliveryFromRow(row: WebhookDeliveryRow): WebhookDelivery {
+  return {
+    attempts: row.attempts,
+    deliveredAt: row.delivered_at,
+    nextAt: row.next_at,
+    lastStatus: row.last_status,
+    lastError: row.last_error,
+    updatedAt: row.updated_at,
+  };
+}
 
 export type PlanRequest = {
   id: string;

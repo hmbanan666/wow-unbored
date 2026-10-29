@@ -8,7 +8,7 @@ import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";
 import { publicDevice, publicRequest, sessionSummary, Store } from "./store.ts";
-import { postWebhook, webhookFromEnv, type WebhookConfig } from "./webhook.ts";
+import { PlannerWebhook, webhookFromEnv, type FetchLike, type WebhookConfig } from "./webhook.ts";
 
 function limitOf(value: string | undefined, fallback: number): number {
   const parsed = Number(value ?? fallback);
@@ -19,6 +19,8 @@ function limitOf(value: string | undefined, fallback: number): number {
 export function createApp(
   config: Pick<Config, "companionToken" | "plannerToken" | "dataDir"> & {
     webhook?: WebhookConfig;
+    webhookFetch?: FetchLike;
+    webhookNow?: () => number;
     /** One line per request (docs/adr/0013). Defaults to stdout. */
     log?: (line: string) => void;
   },
@@ -26,9 +28,16 @@ export function createApp(
   const store = new Store(config.dataDir);
   const tokens = { companion: config.companionToken, planner: config.plannerToken };
   const registerLimiter = new RegisterLimiter();
-  const webhook = config.webhook ?? webhookFromEnv();
   const app = new Hono();
   const log = config.log ?? ((line: string) => console.log(line));
+  const webhook = new PlannerWebhook(
+    config.webhook ?? webhookFromEnv(),
+    store,
+    log,
+    config.webhookFetch,
+    config.webhookNow,
+  );
+  log(webhook.describe());
 
   // Method, path, status, and why a request was refused. Never headers or bodies.
   app.use("*", async (c, next) => {
@@ -72,7 +81,7 @@ export function createApp(
     }),
   );
 
-  app.get("/health", (c) => c.json({ ok: true }));
+  app.get("/health", (c) => c.json({ ok: true, webhook: webhook.enabled ? "on" : "off" }));
 
   app.post("/v1/devices/register", async (c) => {
     const ip = clientIp(c.req.header("x-forwarded-for"), c.req.header("x-real-ip"));
@@ -137,21 +146,7 @@ export function createApp(
         nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
       });
       if (saved.created) {
-        await postWebhook(webhook, {
-          requestId: saved.request.id,
-          type: saved.request.type,
-          question: saved.request.question,
-          topic: saved.request.topic,
-          item: saved.request.item,
-          character: saved.request.character,
-          realm: saved.request.realm,
-          mode: saved.request.mode,
-          budget: saved.request.budget,
-          wish: saved.request.wish,
-          context: saved.request.context,
-          lang: saved.request.lang,
-          account: saved.request.account || null,
-        });
+        await webhook.notify(saved.request);
       }
       return c.json(publicRequest(saved.request), saved.created ? 201 : 200);
     } catch (error) {
@@ -283,7 +278,15 @@ export function createApp(
     return handleMcp(c, store, config.dataDir);
   });
 
-  return { app, store, close: () => store.close() };
+  return {
+    app,
+    store,
+    webhook,
+    close: () => {
+      webhook.stop();
+      store.close();
+    },
+  };
 }
 
 function requestIdOf(body: unknown): string | undefined {
