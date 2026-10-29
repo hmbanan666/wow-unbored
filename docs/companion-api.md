@@ -35,7 +35,7 @@ Anything other than 2xx is shown under Advanced in the tray window, the plan par
 
 ## POST /v1/progress
 
-Sent after the app reads a character `SavedVariables/Unbored.lua` (written by the game on `/reload` or logout).
+Sent after the app reads a character `SavedVariables/Unbored.lua` (written by the game at a Refresh or logout).
 
 ```
 POST {base}/v1/progress
@@ -72,7 +72,9 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 
 `_retail_/Interface/AddOns/Unbored_Plan/Plan.lua`
 
-Unbored reads the global `UnboredExternalPlan` from that addon on load. A plan for this character's pending request starts by itself; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast from Wisp, "Plan ready, press Load in game" (or "I have an answer, press Load in game"), once per fulfilled request.
+Unbored reads the global `UnboredExternalPlan` from that addon when the UI loads: at login, a character switch, or a Refresh the player clicks (teleports and loading screens do not read it; docs/adr/0012). A plan for this character's pending request is taken then; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast from Wisp, "Your plan is ready in the game" (or "Your answer is ready in the game"), once per fulfilled request.
+
+`_retail_/Interface/AddOns/Unbored_Plan/Advice.lua` holds Personal advice (below), written the same way and read at the same moments.
 
 ### Companion status
 
@@ -83,13 +85,13 @@ UnboredCompanionStatus = {
   v = 1,
   pairing = "pending",      -- "pending", "approved", "revoked"; missing before the first answer
   online = true,            -- false when the last sync with the planner failed
-  addonVersion = "0.5.0",   -- Unbored.toc on disk; missing if the addon is not installed
-  companionVersion = "0.5.0",
+  addonVersion = "0.6.0",   -- Unbored.toc on disk; missing if the addon is not installed
+  companionVersion = "0.6.0",
   seenAt = 1793280000,      -- unix seconds of the last check, rounded down to 300
 }
 ```
 
-The game reads it only on load, like the plan. Wisp turns it into one line: not approved yet, disconnected, can't reach the planner, or "the Companion isn't running" when `seenAt` is more than 15 minutes old. An `addonVersion` newer than the running addon means an update is on disk; Wisp says "press Load to apply", and asks for a game restart if Load did not pick it up. A missing block (Companion 0.4 or older) shows nothing.
+The game reads it only when the UI loads, like the plan. Wisp turns it into one line: not approved yet, disconnected, can't reach the planner, or "the Companion isn't running" when `seenAt` was more than 15 minutes old at that load (a long session alone never counts as stopped). An `addonVersion` newer than the running addon means an update is on disk; Wisp says "Press Load to finish the update", and asks for a game restart if Load did not pick it up. A missing block (Companion 0.4 or older) shows nothing.
 
 ## Requests
 
@@ -162,9 +164,46 @@ Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`,
 
 If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context }` to that URL (`context` is `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
 
+## GET /v1/advice
+
+Personal advice for the characters whose profiles this device uploaded (docs/adr/0019), with the companion bearer. The Planner stores it with the MCP tool `put_item_advice`.
+
+```json
+{
+  "characters": [
+    {
+      "character": "Hero",
+      "realm": "Area 52",
+      "updatedAt": 1761720000,
+      "items": [
+        { "itemID": 2447, "action": "send", "line": "Send to Mira (Alchemy): mail", "lineRu": "Отправь Мире (алхимия): почтой", "to": "Mira" }
+      ]
+    }
+  ]
+}
+```
+
+The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character:
+
+```lua
+UnboredAdvice = {
+  ["v"] = 1,
+  ["characters"] = {
+    ["Area 52-Hero"] = {
+      ["updatedAt"] = 1761720000,
+      ["items"] = {
+        [2447] = { ["action"] = "send", ["line"] = "Send to Mira (Alchemy): mail", ["lineRu"] = "...", ["to"] = "Mira", },
+      },
+    },
+  },
+}
+```
+
+The addon checks every line again: it drops lines that say delete, never shows sell for epic or bind-on-equip items, and never shows send for soulbound items. Live game rules (quest items, uncollected mounts, toys, pets and looks, upgrades) still come first. A failed fetch never holds back plans and answers.
+
 ## POST /v1/profile
 
-The player profile (docs/adr/0011). The addon writes `UnboredCharDB.profile` on every logout and reload; the companion posts it once per `savedAt`, with the companion bearer:
+The player profile (docs/adr/0011). The addon keeps `UnboredCharDB.profile` current from game events (bags, money, equipment, professions) and the game saves it at logout or a Refresh; the companion posts it once per `savedAt`, with the companion bearer:
 
 ```json
 { "character": "Hero", "realm": "Area 52", "savedAt": 1761720000,
