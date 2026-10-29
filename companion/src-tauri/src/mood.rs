@@ -43,13 +43,13 @@ pub fn current(input: &MoodInput) -> Mood {
     if let Some(busy) = &input.busy {
         return mood("busy", busy.clone());
     }
+    if input.needs_wow_path {
+        return mood("setup", "Show me where World of Warcraft is");
+    }
     match input.pairing.as_str() {
         "approved" => {}
         "revoked" => return mood("error", "This PC was disconnected from the planner"),
         _ => return mood("pairing", "Waiting for approval"),
-    }
-    if input.needs_wow_path {
-        return mood("setup", "Show me where World of Warcraft is");
     }
     if input.error {
         return mood("error", "Can't reach the planner right now. I'll keep trying");

@@ -10,6 +10,7 @@
     "core:window:allow-unminimize",
     "core:window:allow-set-focus",
     "notification:default",
+    "dialog:allow-open",
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",

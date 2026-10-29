@@ -23,7 +23,7 @@ use crate::plan::{
     PlannerState, RequestState,
 };
 use crate::savedvars::request_from_saved_variables;
-use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, CharacterFile};
+use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, retail_dir, CharacterFile};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -346,15 +346,20 @@ fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, String>
 #[tauri::command]
 fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<UiState, String> {
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.settings.wow_path = path.trim().to_string();
+    let chosen = path.trim();
+    model.settings.wow_path = retail_dir(Path::new(chosen))
+        .map(|dir| dir.display().to_string())
+        .unwrap_or_default();
     let retail = PathBuf::from(&model.settings.wow_path);
     model.accounts = list_accounts(&retail);
     model.progress = scan_progress(&model.settings);
-    model.needs_wow_path = model.settings.wow_path.trim().is_empty();
-    model.status = if model.needs_wow_path {
-        "Choose the Retail folder.".into()
+    model.needs_wow_path = model.settings.wow_path.is_empty();
+    model.status = if !model.needs_wow_path {
+        "Found it. Setting up the addon...".into()
+    } else if chosen.is_empty() {
+        "Pick your World of Warcraft folder.".into()
     } else {
-        "Retail folder saved.".into()
+        "I can't find World of Warcraft in that folder. Pick the one that has Wow.exe in it.".into()
     };
     let path = model.settings.wow_path.clone();
     let _ = save_settings(&app, &model.settings);
@@ -1001,6 +1006,7 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let settings = load_settings(app.handle());
