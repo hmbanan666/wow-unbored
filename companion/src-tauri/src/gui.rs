@@ -19,7 +19,7 @@ use crate::device::{self, DeviceCredential};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::plan::{
-    decode_unb1, ensure_helper, install_plan, install_plan_file, pick_plan_file, plan_from_value,
+    decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file, pick_plan_file, plan_from_value,
     render_request_lua, write_status, CompanionStatus, Plan, PlanFile, PlannerState, RequestState,
 };
 use crate::request::{reason, request_body};
@@ -272,7 +272,7 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
     }
     let written = install_plan(&retail, plan).map_err(|err| err.0)?;
     Ok(format!(
-        "Wrote {}. Press Load in game.",
+        "Wrote {}. Wisp picks it up at your next login, or click Refresh in Wisp's bubble.",
         written.path.display()
     ))
 }
@@ -787,6 +787,16 @@ fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
     Ok(())
 }
 
+/// Personal advice for this PC's characters, into Advice.lua (docs/adr/0019).
+fn sync_advice(settings: &Settings, retail: &Path, secret: &str) -> Result<bool, String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let url = join_url(&effective_url(settings), "v1/advice");
+    let Some(body) = get_json(&client, &url, secret)? else {
+        return Ok(false);
+    };
+    install_advice(retail, &body["characters"]).map_err(|err| err.0)
+}
+
 /// Sends in-game requests, then writes the one Plan.lua the game should see.
 /// Returns a status line when the file changed.
 fn sync_plans(
@@ -800,8 +810,9 @@ fn sync_plans(
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
     let rejected = post_requests(settings, &retail, secret)?;
-    // A profile that fails to upload must not hold back plans and answers.
+    // A profile or advice that fails must not hold back plans and answers.
     let _ = post_profiles(settings, &retail, secret);
+    let _ = sync_advice(settings, &retail, secret);
     if let Some((request, why)) = rejected.first() {
         // Only the Reason code goes to the game; Wisp says its own line.
         let file = PlanFile {
@@ -842,7 +853,7 @@ fn sync_plans(
             "Request sent. The planner is working on it.".into()
         }
         Some(request) if request.status == "failed" => "The planner could not answer that one.".into(),
-        _ => "New plan written. Press Load in game.".into(),
+        _ => "New plan ready. Wisp picks it up at your next login.".into(),
     }))
 }
 
@@ -978,7 +989,7 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
             if let Ok(mut model) = app.state::<AppState>().inner.lock() {
                 model.addon_updated_at = Some(now_secs());
             }
-            notify(app, "I updated Wisp. Click Load next to Wisp in the game to apply it.");
+            notify(app, "I updated Wisp. Click Load in Wisp's bubble once to finish.");
         } else {
             notify(app, "Wisp is in the game now. Restart World of Warcraft once to meet her.");
         }
