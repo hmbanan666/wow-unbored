@@ -9,6 +9,10 @@ files["tests/run.lua"] = {
   ignore = { "121", "122" },
 }
 
+files["tests/ui.lua"] = {
+  ignore = { "111", "112", "121", "122" },
+}
+
 globals = {
   "Unbored",
   "UnboredDB",
