@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
@@ -19,8 +19,8 @@ use crate::device::{self, DeviceCredential};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::plan::{
-    decode_unb1, ensure_helper, install_plan, install_plan_file, pick_plan_file, plan_from_value, Plan,
-    PlannerState, RequestState,
+    decode_unb1, ensure_helper, install_plan, install_plan_file, pick_plan_file, plan_from_value,
+    render_request_lua, write_status, CompanionStatus, Plan, PlanFile, PlannerState, RequestState,
 };
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
 use crate::wow::{character_saved_variables, detect_installs, list_accounts, read_progress, retail_dir, CharacterFile};
@@ -81,6 +81,9 @@ struct Model {
     error: bool,
     ready: Option<(String, u64)>,
     request_pending: bool,
+    connected_at: Option<u64>,
+    addon_updated_at: Option<u64>,
+    machine: String,
 }
 
 impl Model {
@@ -92,6 +95,9 @@ impl Model {
             error: self.error,
             ready: self.ready.clone(),
             request_pending: self.request_pending,
+            connected_at: self.connected_at,
+            addon_updated_at: self.addon_updated_at,
+            machine: self.machine.clone(),
             now: now_secs(),
         })
     }
@@ -102,6 +108,8 @@ struct AppState {
     /// Kept alive so the SavedVariables watch does not stop.
     watcher: Mutex<Option<RecommendedWatcher>>,
     device: Mutex<DeviceCredential>,
+    /// Set when the game saved, so the next check runs at once.
+    wake: (Mutex<bool>, Condvar),
 }
 
 fn now_secs() -> u64 {
@@ -248,7 +256,7 @@ fn scan_status(posting: bool, progress_len: usize, result: Result<usize, String>
     match result {
         Err(err) => err,
         Ok(sent) if sent > 0 => format!("Progress sent for {sent} character file(s)."),
-        Ok(_) if progress_len == 0 => "No Unbored.lua yet. /reload once in game.".into(),
+        Ok(_) if progress_len == 0 => "Nothing from the game yet. Log in once and pick a plan with Wisp.".into(),
         Ok(_) if posting => "Progress is already on the planner.".into(),
         Ok(_) => "Progress read from SavedVariables.".into(),
     }
@@ -263,7 +271,7 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
     }
     let written = install_plan(&retail, plan).map_err(|err| err.0)?;
     Ok(format!(
-        "Wrote {}. Press Load plan in game.",
+        "Wrote {}. Press Load in game.",
         written.path.display()
     ))
 }
@@ -283,12 +291,49 @@ struct UiState {
     planner_url: String,
     phase: String,
     headline: String,
+    hint: String,
+    steps: Vec<SetupStep>,
     mascot: String,
     version: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupStep {
+    label: String,
+    done: bool,
+}
+
+/// The three things a first run needs, in order, so the window can show
+/// what is done and what it is waiting for.
+fn setup_steps(model: &Model) -> Vec<SetupStep> {
+    let addon = retail_path(&model.settings).and_then(|retail| installed_version(&retail));
+    vec![
+        SetupStep {
+            label: "World of Warcraft found".into(),
+            done: !model.needs_wow_path,
+        },
+        SetupStep {
+            label: match &addon {
+                Some(version) => format!("Wisp is in the game (addon {version})"),
+                None => "Putting Wisp into the game".into(),
+            },
+            done: addon.is_some(),
+        },
+        SetupStep {
+            label: match model.pairing.as_str() {
+                "approved" => "This PC is approved".into(),
+                "revoked" => "This PC was disconnected".into(),
+                _ => "Waiting for a one-time OK for this PC".into(),
+            },
+            done: model.approved,
+        },
+    ]
+}
+
 fn snapshot(app: &AppHandle, model: &Model) -> UiState {
     let autostart = refresh_autostart(app);
+    let mood = model.mood();
     UiState {
         settings: model.settings.clone(),
         installs: model.installs.clone(),
@@ -300,8 +345,10 @@ fn snapshot(app: &AppHandle, model: &Model) -> UiState {
         addon_version: model.addon_version.clone(),
         pairing: model.pairing.clone(),
         planner_url: effective_url(&model.settings),
-        phase: model.mood().phase.to_string(),
-        headline: model.mood().headline,
+        phase: mood.phase.to_string(),
+        headline: mood.headline,
+        hint: mood.hint,
+        steps: setup_steps(model),
         mascot: MASCOT_NAME.to_string(),
         version: app.package_info().version.to_string(),
     }
@@ -501,6 +548,29 @@ fn note_saved_variables(app: &AppHandle) {
     let progress = model.progress.clone();
     drop(model);
     let _ = app.emit("progress", &progress);
+    wake_sync(app);
+}
+
+/// The game just saved (a Preset, Send, or Load): check now, not in 30 s.
+fn wake_sync(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let (lock, signal) = &state.wake;
+    if let Ok(mut woken) = lock.lock() {
+        *woken = true;
+        signal.notify_one();
+    };
+}
+
+fn wait_for_wake(app: &AppHandle, timeout: Duration) {
+    let state = app.state::<AppState>();
+    let (lock, signal) = &state.wake;
+    let Ok(guard) = lock.lock() else {
+        std::thread::sleep(timeout);
+        return;
+    };
+    if let Ok((mut woken, _)) = signal.wait_timeout_while(guard, timeout, |woken| !*woken) {
+        *woken = false;
+    };
 }
 
 fn watch_loop(app: AppHandle, rx: Receiver<Result<Event, notify::Error>>) {
@@ -627,9 +697,12 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
     Ok(state)
 }
 
-fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
+/// Sends every character's pending Request. Returns the ones the planner
+/// refused outright (a 4xx other than 401), so the game can be told.
+fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Vec<RequestState>, String> {
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
+    let mut rejected = Vec::new();
     for file in character_saved_variables(retail, None) {
         let Ok(text) = fs::read_to_string(&file.path) else {
             continue;
@@ -656,11 +729,21 @@ fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
             }))
             .send()
             .map_err(|err| err.to_string())?;
-        if !response.status().is_success() {
-            return Err(format!("Planner returned {}.", response.status()));
+        let code = response.status();
+        if code.is_client_error() && code.as_u16() != 401 {
+            rejected.push(RequestState {
+                id: request.id.clone(),
+                kind: request.kind.clone(),
+                status: "failed".into(),
+                ..Default::default()
+            });
+            continue;
+        }
+        if !code.is_success() {
+            return Err(format!("Planner returned {code}."));
         }
     }
-    Ok(())
+    Ok(rejected)
 }
 
 /// Uploads each character's profile once per save (docs/adr/0011).
@@ -712,9 +795,21 @@ fn sync_plans(
         return Ok(Some("Approved. Choose the Retail folder.".into()));
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
-    post_requests(settings, &retail, secret)?;
+    let rejected = post_requests(settings, &retail, secret)?;
     // A profile that fails to upload must not hold back plans and answers.
     let _ = post_profiles(settings, &retail, secret);
+    if let Some(request) = rejected.first() {
+        // No reason: Wisp says its own friendly line, in the player's language.
+        let file = PlanFile {
+            body: render_request_lua(request, "failed", None),
+            ready_request: None,
+            ready_kind: None,
+        };
+        let written = install_plan_file(&retail, &file).map_err(|err| err.0)?;
+        return Ok(written
+            .changed
+            .then(|| "The planner could not take that request.".to_string()));
+    }
     let state = planner_state(settings, secret)?;
     let pending = state.request.as_ref().is_some_and(|request| request.status == "pending");
     if let Ok(mut model) = app.state::<AppState>().inner.lock() {
@@ -858,7 +953,7 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
         return Ok(format!("Addon {} is installed.", release.version));
     }
     let toc_existed = toc.is_file();
-    set_busy(app, Some("Updating addon..."));
+    set_busy(app, Some(if toc_existed { "Updating Wisp in the game..." } else { "Putting Wisp into the game..." }));
     let installed = client
         .get(&release.url)
         .send()
@@ -874,8 +969,15 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
     if let Ok(mut model) = app.state::<AppState>().inner.lock() {
         model.addon_version = release.version.clone();
     }
-    if toc_existed && wow_running() {
-        notify(app, "I updated the addon. Type /reload in game");
+    if wow_running() {
+        if toc_existed {
+            if let Ok(mut model) = app.state::<AppState>().inner.lock() {
+                model.addon_updated_at = Some(now_secs());
+            }
+            notify(app, "I updated Wisp. Click Load next to Wisp in the game to apply it.");
+        } else {
+            notify(app, "Wisp is in the game now. Restart World of Warcraft once to meet her.");
+        }
     }
     Ok(format!("Installed addon {}.", release.version))
 }
@@ -908,30 +1010,80 @@ fn sync_once(
     notified: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let (settings, secret, _) = {
+    let settings = state.inner.lock().map_err(|err| err.to_string())?.settings.clone();
+    let device = state.device.lock().map_err(|err| err.to_string())?.clone();
+    let retail = retail_path(&settings);
+    // The helper and the addon come from disk and GitHub, so they are set up
+    // even while the planner is down or this PC is not approved yet.
+    if let Some(retail) = &retail {
+        let _ = ensure_helper(retail);
+        let due = addon_checked
+            .map(|at| at.elapsed() >= Duration::from_secs(30 * 60))
+            .unwrap_or(true);
+        if due {
+            let version_file = app
+                .path()
+                .app_config_dir()
+                .map_err(|err| err.to_string())?
+                .join("addon-version.txt");
+            let now = std::time::Instant::now();
+            match ensure_addon(app, retail, &version_file) {
+                Ok(_) => *addon_checked = Some(now),
+                Err(err) => {
+                    // Try again in about 5 minutes; GitHub limits unauthenticated calls.
+                    *addon_checked = Some(now.checked_sub(Duration::from_secs(25 * 60)).unwrap_or(now));
+                    publish_status(app, &format!("Addon check: {err}"));
+                }
+            }
+        }
+    }
+    let result = sync_planner(app, &settings, &device, notified);
+    if let Some(retail) = &retail {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
-        let device = state.device.lock().map_err(|err| err.to_string())?;
-        (model.settings.clone(), device.secret.clone(), model.approved)
-    };
-    let url = effective_url(&settings);
-    let device = DeviceCredential {
-        device_id: state.device.lock().map_err(|err| err.to_string())?.device_id.clone(),
-        secret: secret.clone(),
-    };
+        let status = CompanionStatus {
+            pairing: model.pairing.clone(),
+            online: result.is_ok(),
+            addon_version: installed_version(retail),
+            companion_version: app.package_info().version.to_string(),
+            seen_at: now_secs(),
+        };
+        drop(model);
+        let _ = write_status(retail, &status);
+    }
+    let _ = app.emit("progress", serde_json::json!({}));
+    result
+}
+
+fn sync_planner(
+    app: &AppHandle,
+    settings: &Settings,
+    device: &DeviceCredential,
+    notified: &mut std::collections::HashSet<String>,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let url = effective_url(settings);
+    let secret = device.secret.clone();
     let status = match device_status(&url, &secret) {
         Ok(status) => status,
-        Err(err) if err.contains("401") => register_device(&url, &device)?,
+        Err(err) if err.contains("401") => register_device(&url, device)?,
         Err(err) => return Err(err),
     };
     let needs_path = settings.wow_path.trim().is_empty();
-    let pairing_changed = {
+    let (pairing_changed, just_approved) = {
         let mut model = state.inner.lock().map_err(|err| err.to_string())?;
         let changed = model.pairing != status;
+        let just_approved = changed && status == "approved" && model.pairing == "pending";
         model.pairing = status.clone();
         model.approved = status == "approved";
         model.needs_wow_path = needs_path;
-        changed
+        if just_approved {
+            model.connected_at = Some(now_secs());
+        }
+        (changed, just_approved)
     };
+    if just_approved {
+        notify(app, "You're connected! Start World of Warcraft and click Wisp to pick a plan.");
+    }
     if pairing_changed || status != "approved" {
         publish_status(app, &pairing_message(&status, needs_path));
     }
@@ -939,29 +1091,10 @@ fn sync_once(
         let mut model = state.inner.lock().map_err(|err| err.to_string())?;
         let _ = run_scan(&mut model, Some(&secret));
         drop(model);
-        if let Some(message) = sync_plans(app, &settings, &secret, notified)? {
+        if let Some(message) = sync_plans(app, settings, &secret, notified)? {
             publish_status(app, &message);
         }
     }
-    let due = addon_checked
-        .map(|at| at.elapsed() >= Duration::from_secs(30 * 60))
-        .unwrap_or(true);
-    if due {
-        if let Some(retail) = retail_path(&settings) {
-            let version_file = app
-                .path()
-                .app_config_dir()
-                .map_err(|err| err.to_string())?
-                .join("addon-version.txt");
-            if let Err(err) = ensure_addon(app, &retail, &version_file) {
-                if let Ok(mut model) = state.inner.lock() {
-                    model.addon_version = err;
-                }
-            }
-            *addon_checked = Some(std::time::Instant::now());
-        }
-    }
-    let _ = app.emit("progress", serde_json::json!({}));
     Ok(())
 }
 
@@ -977,7 +1110,7 @@ fn sync_loop(app: AppHandle) {
             Err(err) => publish_status(&app, &err),
             Ok(()) => refresh_view(&app),
         }
-        std::thread::sleep(Duration::from_secs(30));
+        wait_for_wake(&app, Duration::from_secs(30));
     }
 }
 
@@ -1068,11 +1201,7 @@ pub fn run() {
             app.manage(AppState {
                 inner: Mutex::new(Model {
                     settings,
-                    status: if needs_wow_path {
-                        "Waiting for approval. Choose the Retail folder.".into()
-                    } else {
-                        "Waiting for approval".into()
-                    },
+                    status: String::new(),
                     installs,
                     accounts,
                     progress,
@@ -1080,14 +1209,18 @@ pub fn run() {
                     approved: false,
                     needs_wow_path,
                     addon_version: String::new(),
-                    pairing: "pending".into(),
+                    pairing: String::new(),
                     busy: None,
                     error: false,
                     ready: None,
                     request_pending: false,
+                    connected_at: None,
+                    addon_updated_at: None,
+                    machine: machine_name(),
                 }),
                 watcher: Mutex::new(None),
                 device: Mutex::new(device),
+                wake: (Mutex::new(false), Condvar::new()),
             });
             arm_watch(app.handle(), &wow_path);
             let handle = app.handle().clone();

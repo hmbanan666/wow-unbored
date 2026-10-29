@@ -13,7 +13,7 @@ pub const HELPER_TOC: &str = "\
 ## Title: Unbored Plan
 ## Notes: Plan file owned by Unbored Companion. The game reads it on /reload.
 ## Author: Unbored contributors
-## Version: 0.3.0
+## Version: 0.5.0
 ## LoadOnDemand: 0
 
 Plan.lua
@@ -243,6 +243,76 @@ pub struct Written {
 
 const EMPTY_PLAN_LUA: &str = "-- Written by Unbored Companion. No plan yet.\n";
 
+/// Everything after this line in Plan.lua is the Companion's own status. The
+/// plan part and the status part are written separately, so one never
+/// overwrites the other.
+const STATUS_MARK: &str = "-- Companion status, rewritten on every check.\n";
+
+/// What the addon is told about the Companion, so Wisp can say why a
+/// Request is not back yet (docs/companion-api.md).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CompanionStatus {
+    /// pending, approved, or revoked; empty before the planner answered once.
+    pub pairing: String,
+    /// False when the last check could not reach the planner.
+    pub online: bool,
+    /// The addon version on disk, from Unbored.toc.
+    pub addon_version: Option<String>,
+    pub companion_version: String,
+    /// Unix time, rounded down to SEEN_STEP, so the file changes rarely.
+    pub seen_at: u64,
+}
+
+pub const SEEN_STEP: u64 = 300;
+
+pub fn render_status_lua(status: &CompanionStatus) -> String {
+    let mut out = String::from(STATUS_MARK);
+    out.push_str("UnboredCompanionStatus = {\n");
+    push_pair(&mut out, 1, "v", &Value::from(1));
+    if !status.pairing.is_empty() {
+        push_pair(&mut out, 1, "pairing", &Value::String(status.pairing.clone()));
+    }
+    push_pair(&mut out, 1, "online", &Value::Bool(status.online));
+    if let Some(version) = &status.addon_version {
+        push_pair(&mut out, 1, "addonVersion", &Value::String(version.clone()));
+    }
+    push_pair(&mut out, 1, "companionVersion", &Value::String(status.companion_version.clone()));
+    push_pair(&mut out, 1, "seenAt", &Value::from(status.seen_at - status.seen_at % SEEN_STEP));
+    out.push_str("}\n");
+    out
+}
+
+fn split_status(text: &str) -> (&str, &str) {
+    match text.find(STATUS_MARK) {
+        Some(at) => (&text[..at], &text[at..]),
+        None => (text, ""),
+    }
+}
+
+fn replace_file(dir: &Path, body: &str) -> Result<PathBuf, PlanError> {
+    let lua_path = dir.join("Plan.lua");
+    let tmp = dir.join("Plan.lua.tmp");
+    fs::write(&tmp, body).map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
+    fs::rename(&tmp, &lua_path).map_err(|err| PlanError(format!("Could not replace the plan: {err}")))?;
+    Ok(lua_path)
+}
+
+/// Rewrites only the status part of Plan.lua. Returns true when it changed.
+pub fn write_status(retail: &Path, status: &CompanionStatus) -> Result<bool, PlanError> {
+    let dir = helper_dir(retail);
+    fs::create_dir_all(&dir).map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
+    write_helper_toc(&dir)?;
+    let current = fs::read_to_string(dir.join("Plan.lua")).unwrap_or_default();
+    let (plan, old) = split_status(&current);
+    let fresh = render_status_lua(status);
+    if old == fresh {
+        return Ok(false);
+    }
+    let plan = if plan.trim().is_empty() { EMPTY_PLAN_LUA } else { plan };
+    replace_file(&dir, &format!("{plan}{fresh}"))?;
+    Ok(true)
+}
+
 fn helper_dir(retail: &Path) -> PathBuf {
     retail.join("Interface").join("AddOns").join("Unbored_Plan")
 }
@@ -269,20 +339,20 @@ pub fn ensure_helper(retail: &Path) -> Result<(), PlanError> {
     Ok(())
 }
 
-/// Leaves the file alone when the body is unchanged, so a running game is
+/// Leaves the file alone when the plan part is unchanged, so a running game is
 /// not handed the same plan again and no second toast goes out.
 fn write_plan_lua(retail: &Path, body: &str) -> Result<Written, PlanError> {
     let dir = helper_dir(retail);
     fs::create_dir_all(&dir).map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
     write_helper_toc(&dir)?;
     let lua_path = dir.join("Plan.lua");
-    if fs::read_to_string(&lua_path).ok().as_deref() == Some(body) {
+    let current = fs::read_to_string(&lua_path).unwrap_or_default();
+    let (plan, status) = split_status(&current);
+    if plan == body {
         return Ok(Written { path: lua_path, changed: false });
     }
-    let tmp = dir.join("Plan.lua.tmp");
-    fs::write(&tmp, body).map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
-    fs::rename(&tmp, &lua_path).map_err(|err| PlanError(format!("Could not replace the plan: {err}")))?;
-    Ok(Written { path: lua_path, changed: true })
+    let path = replace_file(&dir, &format!("{body}{status}"))?;
+    Ok(Written { path, changed: true })
 }
 
 /// What the planner holds for this device: the newest plan and the newest
@@ -707,6 +777,48 @@ mod tests {
         };
         let file = pick_plan_file(&newer).unwrap();
         assert!(file.body.contains("later") && !file.body.contains("req-1"));
+    }
+
+    #[test]
+    fn keeps_the_status_and_the_plan_apart() {
+        let root = std::env::temp_dir().join(format!("unbored-plan-status-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let retail = root.join("_retail_");
+        fs::create_dir_all(&retail).unwrap();
+        let lua = retail.join("Interface/AddOns/Unbored_Plan/Plan.lua");
+        let mut status = CompanionStatus {
+            pairing: "pending".into(),
+            online: true,
+            addon_version: Some("0.5.0".into()),
+            companion_version: "0.5.0".into(),
+            seen_at: 1_000_123,
+        };
+        assert!(write_status(&retail, &status).unwrap());
+        assert!(!write_status(&retail, &status).unwrap(), "the same status is not written again");
+        status.seen_at += 10;
+        assert!(!write_status(&retail, &status).unwrap(), "seenAt is rounded, so it rarely changes");
+        let values = parse_saved_variables(&fs::read_to_string(&lua).unwrap()).unwrap();
+        let shown = values.get("UnboredCompanionStatus").unwrap();
+        use crate::savedvars::table_get;
+        assert_eq!(table_get(shown, "pairing").and_then(|v| v.as_str()), Some("pending"));
+        assert_eq!(table_get(shown, "addonVersion").and_then(|v| v.as_str()), Some("0.5.0"));
+        assert_eq!(table_get(shown, "seenAt").and_then(|v| v.as_u64()), Some(1_000_123 - 1_000_123 % 300));
+        assert!(values.get("UnboredExternalPlan").is_none());
+
+        let plan = small_plan("with-status");
+        assert!(install_plan(&retail, &plan).unwrap().changed);
+        assert!(!install_plan(&retail, &plan).unwrap().changed, "the status does not count as a plan change");
+        let text = fs::read_to_string(&lua).unwrap();
+        let values = parse_saved_variables(&text).unwrap();
+        assert!(values.get("UnboredExternalPlan").is_some() && values.get("UnboredCompanionStatus").is_some());
+
+        status.pairing = "approved".into();
+        status.online = false;
+        assert!(write_status(&retail, &status).unwrap());
+        let text = fs::read_to_string(&lua).unwrap();
+        assert!(text.contains("with-status") && text.contains("\"approved\"") && !text.contains("\"pending\""));
+        assert_eq!(text.matches("UnboredCompanionStatus").count(), 1);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
