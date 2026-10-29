@@ -23,5 +23,6 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0019. Tooltip Advice](0019-tooltip-advice.md)
 - [0020. Player history on the Server](0020-player-history.md)
 - [0021. Account personalization and Alt routing](0021-account-and-alt-routing.md)
+- [0022. Releases and docs for players](0022-releases-and-docs.md)
 
-The full v0.6 decision list (D1-D43) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md).
+The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md).

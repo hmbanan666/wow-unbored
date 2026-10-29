@@ -17,4 +17,6 @@ Every state the player can be in has a line from Wisp and a way forward: no sile
 
 Request payloads live in `docs/contract/`; the Companion and Server tests both read them, so change both sides together.
 
+Commits and PR titles use Conventional Commits with a scope, for example `feat(addon): ...`, `fix(companion): ...`, `docs: ...` (types feat, fix, perf, refactor, docs, chore, test, ci). Release notes are generated from them ([ADR 0022](docs/adr/0022-releases-and-docs.md)), so write the subject as a short sentence a player could read. `README.md` is for players; build, data and release details go in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+
 Checks that CI runs: `luacheck .`, `lua5.1 tests/run.lua`, `lua5.1 tests/ui.lua`, `npm test` in `server/`, and `cargo test --lib --no-default-features` in `companion/src-tauri/`.
