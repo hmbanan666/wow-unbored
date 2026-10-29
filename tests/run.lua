@@ -23,6 +23,7 @@ local files = {
   "Core/Locale.lua",
   "Core/Util.lua",
   "Core/Context.lua",
+  "Core/Profile.lua",
   "Core/Codec.lua",
   "Core/Import.lua",
   "Core/Plan.lua",

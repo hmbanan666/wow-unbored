@@ -11,3 +11,5 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0007. Gentle off-plan behaviour](0007-gentle-off-plan.md)
 - [0008. Item and question help](0008-item-and-question-help.md)
 - [0009. Player data](0009-player-data.md)
+- [0010. Local first, server brain](0010-local-first-server-brain.md)
+- [0011. Server-side player profile](0011-server-side-player-profile.md)

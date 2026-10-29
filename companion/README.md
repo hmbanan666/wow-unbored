@@ -45,6 +45,7 @@ The installer lands in `src-tauri/target/release/bundle/`.
 5. In game, pick a preset chip in Wisp's bubble (or Something else...), or click Wisp for Ask something or What is this item?. A chip, **Send**, or **Ask about it** saves the request and reloads the UI, so the game writes SavedVariables. This app posts the request (`type` plan, question, or item) with the player's position, level, class, item level, gold, hearth, and tracked quests, so the planner can start near you. When the plan or answer comes back it writes `Unbored_Plan` and Wisp shows a toast: **Plan ready, press Load in game** or **I have an answer, press Load in game**. Press **Load** in game (or reload any other way) and the plan starts, or the answer appears in the bubble.
 6. The plan file is `Interface\AddOns\Unbored_Plan\`, which this app owns. It is created on the first sync, even empty, so the addon knows a companion is present. It is rewritten only when the plan or request status changes.
 7. After `/reload` or logout the app reads `Unbored.lua` and posts progress once per change.
+8. It also posts each character's player profile (bags, bank, currencies, collections, recent sessions; saved by the addon on every reload) once per save, so the planner can read it with `get_player_profile`. A failed profile upload never holds back plans.
 
 Advanced settings can replace the planner URL. There is no token field. An empty URL means `https://unbored.kosarev.space`.
 

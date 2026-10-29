@@ -2,4 +2,4 @@
 
 Status: accepted
 
-Wisp's portrait and one Bubble are the main UI. Onboarding is Presets in the Bubble, the menu opens on a Wisp click, Settings are basic only, and the only typed input is one free-text wish or question.
+Wisp's portrait and a short Bubble stack to its right are the main UI: at most 3 short messages at once, the newest at the bottom and older ones fading, never a heavy list. Onboarding is Presets in the Bubble, the menu opens on a Wisp click, Settings are basic only, and the only typed input is one free-text wish or question.

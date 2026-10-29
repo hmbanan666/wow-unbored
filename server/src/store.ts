@@ -14,7 +14,38 @@ import {
   type ProgressPost,
 } from "./plan.ts";
 
+import type { ProfileUpload } from "./profile.ts";
+
 const PLAYER = "self";
+
+export type StoredProfile = {
+  character: string;
+  realm: string;
+  deviceId: string;
+  savedAt: number | null;
+  updatedAt: number;
+  profile: Record<string, unknown>;
+};
+
+type ProfileRow = {
+  character_name: string;
+  realm: string;
+  device_id: string;
+  saved_at: number | null;
+  updated_at: number;
+  body_json: string;
+};
+
+function profileFromRow(row: ProfileRow): StoredProfile {
+  return {
+    character: row.character_name,
+    realm: row.realm,
+    deviceId: row.device_id,
+    savedAt: row.saved_at,
+    updatedAt: row.updated_at,
+    profile: JSON.parse(row.body_json) as Record<string, unknown>,
+  };
+}
 
 export type StoredPlan = {
   id: number;
@@ -81,6 +112,15 @@ export class Store {
         plan_id INTEGER,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS profiles (
+        character_name TEXT NOT NULL,
+        realm TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        saved_at INTEGER,
+        updated_at INTEGER NOT NULL,
+        body_json TEXT NOT NULL,
+        PRIMARY KEY (character_name, realm)
       );
       CREATE TABLE IF NOT EXISTS devices (
         id TEXT PRIMARY KEY,
@@ -380,6 +420,60 @@ export class Store {
       .prepare(`UPDATE requests SET status = 'failed', reason = ?, updated_at = ? WHERE id = ?`)
       .run(reason, nowSeconds, id);
     return this.requestById(id);
+  }
+
+  /** One row per character: the newest upload wins, an older savedAt is ignored. */
+  putProfile(
+    input: ProfileUpload & { deviceId: string },
+    nowSeconds = Math.floor(Date.now() / 1000),
+  ): { profile: StoredProfile; updated: boolean } {
+    const existing = this.profileFor(input.character, input.realm);
+    if (existing && existing.savedAt && input.savedAt && input.savedAt < existing.savedAt) {
+      return { profile: existing, updated: false };
+    }
+    this.db
+      .prepare(
+        `INSERT INTO profiles (character_name, realm, device_id, saved_at, updated_at, body_json)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (character_name, realm) DO UPDATE SET
+           device_id = excluded.device_id, saved_at = excluded.saved_at,
+           updated_at = excluded.updated_at, body_json = excluded.body_json`,
+      )
+      .run(input.character, input.realm, input.deviceId, input.savedAt, nowSeconds, JSON.stringify(input.profile));
+    return { profile: this.profileFor(input.character, input.realm)!, updated: true };
+  }
+
+  /** The named character, or the most recently updated one. */
+  profileFor(character?: string, realm?: string): StoredProfile | undefined {
+    const row = (
+      character
+        ? this.db
+            .prepare(
+              `SELECT character_name, realm, device_id, saved_at, updated_at, body_json FROM profiles
+               WHERE character_name = ? AND (? IS NULL OR realm = ?) ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC LIMIT 1`,
+            )
+            .get(character, realm ?? null, realm ?? null)
+        : this.db
+            .prepare(
+              `SELECT character_name, realm, device_id, saved_at, updated_at, body_json FROM profiles
+               ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC LIMIT 1`,
+            )
+            .get()
+    ) as ProfileRow | undefined;
+    return row ? profileFromRow(row) : undefined;
+  }
+
+  listProfiles(): Omit<StoredProfile, "profile">[] {
+    const rows = this.db
+      .prepare(
+        `SELECT character_name, realm, device_id, saved_at, updated_at, '{}' AS body_json FROM profiles
+         ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC`,
+      )
+      .all() as ProfileRow[];
+    return rows.map((row) => {
+      const { profile: _, ...summary } = profileFromRow(row);
+      return summary;
+    });
   }
 
   private deviceById(id: string): Device | undefined {

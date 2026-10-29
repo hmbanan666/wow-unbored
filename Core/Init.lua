@@ -95,7 +95,10 @@ function ns.OnAddonLoaded()
   askForWorldData()
 end
 
-function ns.OnEnteringWorld()
+function ns.OnEnteringWorld(initialLogin)
+  if ns.Profile then
+    pcall(ns.Profile.StartSession, initialLogin == true)
+  end
   if ns.RegisterCompartment then
     pcall(ns.RegisterCompartment)
   end
@@ -224,7 +227,7 @@ if CreateFrame then
       return
     end
     if event == "PLAYER_ENTERING_WORLD" then
-      ns.OnEnteringWorld()
+      ns.OnEnteringWorld(arg1)
       return
     end
     if ns.Events and ns.Events.OnEvent then

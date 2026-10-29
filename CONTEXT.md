@@ -2,12 +2,14 @@
 
 The words we use for Unbored. Use them in code, docs, UI copy, and talk with the owner. Decisions behind them are in [`docs/adr/`](docs/adr/).
 
+Goal: a helper players want to use, that never annoys and genuinely helps.
+
 **Wisp**
 The mascot: a small glowing spirit, and the whole in-game companion UI. Russian: Висп. Voice: warm, light humour, short, no cringe.
 _Avoid_: tracker, window, panel, helper, assistant.
 
 **Bubble**
-One chat-style message from Wisp, beside its portrait. Shows one thing at a time.
+One chat-style message from Wisp, to the right of its portrait. The newest one is the current thing; at most two older short ones stay above it, fading. Never a heavy list.
 _Avoid_: popup, tooltip, frame, toast (the toast is the Companion's Windows notification).
 
 **Preset**
@@ -60,6 +62,14 @@ _Avoid_: marker, pin (fine for the game's own map pin), POI, GPS.
 
 **Player context**
 The snapshot of the character sent with a Request: location, level, class, gold, progress, and the like.
-_Avoid_: telemetry, tracking, profile, stats.
+_Avoid_: telemetry, tracking, stats.
+
+**Player profile**
+The fuller, up-to-date player state the Server keeps per character (Player context plus bags, bank, currencies, collections, recent sessions), uploaded by the Companion on each reload.
+_Avoid_: account data, telemetry, tracking, dossier.
+
+**Knowledge base**
+The small tables bundled with the addon (`Data/*.lua`) that let Wisp answer locally.
+_Avoid_: database, wiki, cache.
 
 **Avoid in anything user-facing**: tracker, wizard, token, URL, server address, API key, registration, login.

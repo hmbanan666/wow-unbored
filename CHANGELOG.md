@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3
+
+- Bubble stack (docs/adr/0004): above the current bubble at most two older one-line messages ("Done: ...", "Skipped: ...", an answer you read) stay for a while and fade, so Wisp never shows more than three.
+- Player profile (docs/adr/0011): the addon saves a profile on every logout and reload (context, bags, last-seen bank and warband bank, currencies, collections, renown, recent sessions and steps). Companion 0.4.1 uploads it to `POST /v1/profile`; the server keeps one per character, and the new MCP tool `get_player_profile` returns it.
+- Docs: ADR 0010 (local first, server brain), ADR 0011, ADR 0004 updated, the product goal in README and CONTEXT, and the decision process in AGENTS.md.
+
 ## 0.4.2
 
 - Quick plan, then Full plan (docs/adr/0005). A Preset click builds a Quick plan in game at once from the Providers for that chip's mode, then sends the Request and reloads in the same click. While the Full plan cooks, the Bubble shows the Quick plan's step with "A better one is cooking" and Load.

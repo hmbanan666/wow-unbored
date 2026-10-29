@@ -145,6 +145,22 @@ Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`,
 
 If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context }` to that URL (`context` is `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
 
+## POST /v1/profile
+
+The player profile (docs/adr/0011). The addon writes `UnboredCharDB.profile` on every logout and reload; the companion posts it once per `savedAt`, with the companion bearer:
+
+```json
+{ "character": "Hero", "realm": "Area 52", "savedAt": 1761720000,
+  "profile": { "v": 1, "context": { "mapID": 2248 }, "bags": [{ "itemID": 6948, "count": 1 }],
+    "bank": { "seenAt": 1761710000, "items": [] }, "currencies": [{ "id": 3008, "name": "Valorstones", "quantity": 420 }],
+    "collections": { "mounts": 212, "pets": 480, "toys": 300, "achievementPoints": 15000 },
+    "renown": [{ "id": 2590, "name": "Council of Dornogal", "level": 18 }],
+    "sessions": [{ "start": 1761700000, "stop": 1761720000, "zones": ["Isle of Dorn"] }],
+    "recentSteps": [{ "id": "quest:78529", "title": "Rock Bottom", "bucket": "done", "at": 1761719000 }] } }
+```
+
+`character` is required, `profile` must be an object under 512 KB. The server keeps one profile per character and realm; an upload with an older `savedAt` than the stored one is ignored (`"updated": false`). The bank is only readable while it is open, so `bank` is the last look. Planners read it with the MCP tool `get_player_profile`.
+
 ## Device pairing
 
 `POST {base}/v1/devices/register` with no bearer token:

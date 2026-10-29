@@ -249,7 +249,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "List in-game plan requests",
       description:
-        "List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, budget, wish; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, item.link, item.name, and item.bag/slot when picked from a bag). Every row carries context: the game snapshot taken when the player sent it (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, instanceType, hearth, trackedQuests, and the active plan's progress). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
+        "List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, budget, wish; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, item.link, item.name, and item.bag/slot when picked from a bag). Every row carries context: the game snapshot taken when the player sent it (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, instanceType, hearth, trackedQuests, and the active plan's progress). The full player profile is in get_player_profile. Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -258,6 +258,24 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
       },
     },
     async ({ status }) => text({ requests: store.listRequests(status ?? "pending").map(publicRequest) }),
+  );
+
+  server.registerTool(
+    "get_player_profile",
+    {
+      title: "Get the player profile",
+      description:
+        "The latest player state the companion uploaded from the game, saved on every logout and reload: context (location, level, class, spec, ilvl, gold, hearth, tracked quests, active plan), bags and the last seen bank and warband bank (itemID and count), currencies, collections (mounts, pets, toys, achievement points), renown, recent sessions (start, stop, zones), and recent finished or skipped steps. Read it before planning so you need not ask for anything. Pass character (and realm) for one character; without them you get the most recently updated one plus the list of known characters. savedAt is when the game wrote it.",
+      inputSchema: {
+        character: z.string().max(80).optional().describe("Character name, as in list_requests."),
+        realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
+      },
+    },
+    async ({ character, realm }) => {
+      const profile = store.profileFor(character || undefined, realm || undefined);
+      if (!profile) return failure(new Error("No profile yet. The companion uploads one after the next reload."));
+      return text({ profile, characters: store.listProfiles() });
+    },
   );
 
   server.registerTool(

@@ -214,6 +214,35 @@ pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, 
     }))
 }
 
+/// The player profile the addon saves on every logout and reload (docs/adr/0011).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SavedProfile {
+    pub character: String,
+    pub realm: String,
+    pub saved_at: Option<u64>,
+    pub profile: serde_json::Value,
+}
+
+pub fn profile_from_saved_variables(text: &str) -> Result<Option<SavedProfile>, String> {
+    let values = parse_saved_variables(text)?;
+    let Some(profile) = values.get("UnboredCharDB").and_then(|db| table_get(db, "profile")) else {
+        return Ok(None);
+    };
+    let Some(character) = text_field(profile, "character") else {
+        return Ok(None);
+    };
+    let json = profile.to_json();
+    if !json.is_object() {
+        return Ok(None);
+    }
+    Ok(Some(SavedProfile {
+        character,
+        realm: text_field(profile, "realm").unwrap_or_default(),
+        saved_at: table_get(profile, "savedAt").and_then(LuaValue::as_u64),
+        profile: json,
+    }))
+}
+
 fn text_field(table: &LuaValue, name: &str) -> Option<String> {
     table_get(table, name)
         .and_then(LuaValue::as_str)
@@ -607,5 +636,30 @@ UnboredCharDB = {
     fn ignores_an_account_file_with_no_character_session() {
         let text = "UnboredDB = {\n  [\"mode\"] = \"roam\",\n}\n";
         assert!(session_from_saved_variables(text).unwrap().is_none());
+    }
+
+    #[test]
+    fn reads_the_player_profile() {
+        let text = r#"
+UnboredCharDB = {
+  ["profile"] = {
+    ["v"] = 1,
+    ["savedAt"] = 1761720000,
+    ["character"] = "Hero",
+    ["realm"] = "Area 52",
+    ["bags"] = {
+      { ["itemID"] = 6948, ["count"] = 1 },
+    },
+    ["collections"] = { ["mounts"] = 212 },
+  },
+}
+"#;
+        let profile = profile_from_saved_variables(text).unwrap().unwrap();
+        assert_eq!(profile.character, "Hero");
+        assert_eq!(profile.realm, "Area 52");
+        assert_eq!(profile.saved_at, Some(1761720000));
+        assert_eq!(profile.profile["bags"][0]["itemID"], 6948);
+        assert_eq!(profile.profile["collections"]["mounts"], 212);
+        assert!(profile_from_saved_variables("UnboredCharDB = { }").unwrap().is_none());
     }
 }

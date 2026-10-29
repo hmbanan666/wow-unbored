@@ -19,9 +19,15 @@ local WATCH = {
   "UPDATE_INSTANCE_INFO",
   "CALENDAR_UPDATE_EVENT_LIST",
   "VIGNETTE_MINIMAP_UPDATED",
+  "PLAYER_LOGOUT",
+  "BANKFRAME_OPENED",
+  "PLAYERBANKSLOTS_CHANGED",
 }
 
 function ns.Events.Pulse()
+  if ns.Mascot and ns.Mascot.ExpireEchoes then
+    ns.Mascot:ExpireEchoes()
+  end
   if ns.IsPaused() or not ns.Session or not ns.Session.Current then
     return
   end
@@ -56,6 +62,9 @@ function ns.Events.Register(frame)
 end
 
 function ns.Events.OnEvent(event, ...)
+  if ns.Profile then
+    pcall(ns.Profile.OnEvent, event)
+  end
   if ns.Session and ns.Session.OnEvent then
     ns.Session:OnEvent(event, ...)
   end

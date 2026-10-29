@@ -108,6 +108,12 @@ function ns.Session:Finish(bucket)
     return
   end
   local list = bucket == "skipped" and self.state.skipped or self.state.done
+  if ns.Profile then
+    ns.Profile.NoteStep(task, bucket == "skipped" and "skipped" or "done")
+  end
+  if ns.Mascot and ns.Mascot.Echo then
+    ns.Mascot:Echo(ns.T(bucket == "skipped" and "ECHO_SKIPPED" or "ECHO_DONE", task.title or ""))
+  end
   list[#list + 1] = { id = task.id, at = ns.Now() }
   table.remove(self.state.tasks, 1)
   if ns.Waypoint and ns.Waypoint.ClearOwned then

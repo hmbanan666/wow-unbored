@@ -166,6 +166,9 @@ local methods = {
   SetTextColor = function(self, r, g, b)
     self.color = { r, g, b }
   end,
+  SetAlpha = function(self, alpha)
+    self.alpha = alpha
+  end,
   SetScale = function(self, scale)
     self.scale = scale
   end,
@@ -542,6 +545,10 @@ check(not mascot.bob.playing, "no thinking bob over a step")
 local quickDone = ns.Session:Current().id
 mascot.buttons.done:Click()
 check(#quick.done == 1 and quick.done[1].id == quickDone, "a Quick plan step can be done")
+local echo1 = mascot.echoFrames[1]
+check(echo1:IsShown() and textOf(echo1.text):find("Done: ", 1, true) == 1, "the done step echoes above the bubble")
+check(echo1.alpha and echo1.alpha < 1, "an older message is faded")
+check(echo1.points[1][1] == "BOTTOMLEFT" and echo1.points[1][2] == mascot.bubble, "it sits right above the bubble")
 ui:Open("ask")
 check(ui.view == "waiting" and ui.primary.text == "Load", "the window waits too")
 check(ui.cancel:IsShown(), "waiting offers cancel")
@@ -666,6 +673,21 @@ check(ns.Session:Current().id == "a", "Skip moves on")
 mascot.buttons.done:Click()
 mascot.buttons.done:Click()
 check(ns.Session:Current() == nil, "the plan can be finished")
+local shownEchoes = 0
+for _, frame in ipairs(mascot.echoFrames) do
+  shownEchoes = shownEchoes + (frame:IsShown() and 1 or 0)
+end
+check(shownEchoes == 2 and #mascot.echoes == 2, "at most 3 messages: the bubble and two older ones")
+check(textOf(mascot.echoFrames[1].text):find("Done: ", 1, true) == 1, "the newest older message is at the bottom")
+check(mascot.echoFrames[2].alpha < mascot.echoFrames[1].alpha, "the oldest fades most")
+check(mascot.echoFrames[2].points[1][2] == mascot.echoFrames[1], "older messages stack upward")
+local realNow = ns.Now
+ns.Now = function()
+  return realNow() + 120
+end
+ns.Events.Pulse()
+check(#mascot.echoes == 0 and not mascot.echoFrames[1]:IsShown(), "older messages go away by themselves")
+ns.Now = realNow
 check(mascot.view.kind == "choice" and textOf(mascot.message) == "Nice! What next?", "a finished plan celebrates")
 check(mascot.chips[1]:IsShown() and not mascot.buttons.back:IsShown(), "and offers the presets again")
 check(mascot.art.texture:find("WispHappy", 1, true) ~= nil, "happy portrait when done")
@@ -855,6 +877,22 @@ mascot.chips[1]:Click()
 check(reloads == reloadsBefore and UnboredCharDB.request == nil, "no companion: no request and no reload")
 check(mascot.view.kind ~= "waiting", "no companion: nothing to wait for: " .. mascot.view.kind)
 C_AddOns.IsAddOnLoaded = isLoaded
+
+-- The player profile is written when the game saves (logout or reload).
+driver.scripts.OnEvent(driver, "PLAYER_ENTERING_WORLD", true, false)
+driver.scripts.OnEvent(driver, "PLAYER_LOGOUT")
+local profile = UnboredCharDB.profile
+check(profile and profile.v == 1 and profile.character == "Hero" and profile.realm == "Area 52", "a profile is saved")
+check(profile and profile.context and profile.context.mapID == 84, "the profile has the player context")
+local hearth
+for _, row in ipairs(profile and profile.bags or {}) do
+  if row.itemID == 6948 then
+    hearth = row.count
+  end
+end
+check(hearth == 1, "the profile counts bag items")
+check(profile and #profile.recentSteps >= 5 and profile.recentSteps[1].bucket, "the profile keeps recent steps")
+check(profile and #profile.sessions >= 1 and profile.sessions[#profile.sessions].stop, "the profile keeps sessions")
 
 local items = ui.MenuItems()
 check(#items >= 3, "gear menu has items")
