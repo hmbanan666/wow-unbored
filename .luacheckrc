@@ -103,6 +103,7 @@ read_globals = {
   "IsFlyableArea",
   "IsShiftKeyDown",
   "ToggleWorldMap",
+  "OpenWorldMap",
   "UIParentLoadAddOn",
   "SetCursor",
   "ResetCursor",

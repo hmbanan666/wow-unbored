@@ -163,6 +163,12 @@ local methods = {
   Disable = function(self)
     self.disabled = true
   end,
+  SetTextColor = function(self, r, g, b)
+    self.color = { r, g, b }
+  end,
+  SetScale = function(self, scale)
+    self.scale = scale
+  end,
   Click = function(self, button)
     if self.scripts.OnClick then
       self.scripts.OnClick(self, button or "LeftButton")
@@ -195,6 +201,7 @@ UIParent.shown = true
 Minimap = newWidget("Frame", "Minimap", UIParent)
 GameTooltip = newWidget("Frame", "GameTooltip", UIParent)
 UISpecialFrames = {}
+SlashCmdList = {}
 GetLocale = function()
   return "enUS"
 end
@@ -380,15 +387,44 @@ check(mascot.frame ~= nil and mascot.frame:IsShown(), "the mascot is on screen f
 check(tooltipCalls[0] ~= nil, "item tooltips get a post call")
 check(hooks.HandleModifiedItemClick ~= nil, "modified item clicks are post-hooked")
 
--- Hello.
-check(mascot.view.kind == "greeting", "a fresh character gets a hello")
-check(textOf(mascot.message):find("Wisp", 1, true) ~= nil, "the hello says the mascot name")
-check(mascot.buttons.new:IsShown() and not mascot.buttons.done:IsShown(), "hello offers New plan only")
+-- First run: the mascot greets with the presets right in the bubble.
+check(mascot.view.kind == "choice", "a fresh character gets the choice")
+check(textOf(mascot.message) == "Hi! What shall we do?", "the greeting asks what to do")
+check(mascot.bubble:IsShown(), "the greeting is open")
+check(#mascot.chips == #ns.Data.Presets, "one chip per preset")
+for i, button in ipairs(mascot.chips) do
+  check(button:IsShown() and textOf(button.label) ~= "", "preset chip " .. i .. " is shown")
+  check(button:GetWidth() > 200 and button:GetHeight() >= 26, "preset chip " .. i .. " is big")
+end
+check(textOf(mascot.chips[1].label) == "Stay here, do stuff nearby", "the first chip is Stay here")
+check(mascot.otherChip:IsShown() and textOf(mascot.otherChip.label) == "Something else...", "Something else is there")
+check(#mascot.timeChips == 3, "three time chips")
+for i, button in ipairs(mascot.timeChips) do
+  check(button:IsShown() and button:GetWidth() < 60, "time chip " .. i .. " is small and shown")
+end
+local function gold(button)
+  return button.label.color and button.label.color[1] == 1 and button.label.color[3] == 0
+end
+check(textOf(mascot.timeChips[2].label) == "1h" and gold(mascot.timeChips[2]), "1h is the default time")
+check(not gold(mascot.timeChips[1]) and not gold(mascot.timeChips[3]), "only one time is picked")
+check(not mascot.buttons.done:IsShown() and not mascot.buttons.back:IsShown(), "no step buttons in the greeting")
+check(not ui.frame:IsShown(), "no window to dig through")
 check(mascot.art.texture:find("WispIdle", 1, true) ~= nil, "idle portrait")
-check(mascot.bubble.height > 30, "the bubble has a real height")
+check(mascot.bubble.height > (#mascot.chips + 1) * 26, "the bubble fits all chips: " .. mascot.bubble.height)
 check(not tracker.frame:IsShown(), "the list view is closed by default")
 
--- The portrait opens the menu (the fallback menu here: no MenuUtil).
+-- The presets are one data table.
+local ids = {}
+for _, preset in ipairs(ns.Data.Presets) do
+  ids[#ids + 1] = preset.id
+  check(ns.MODE_IDS[preset.mode] and preset.mode ~= "custom", "preset " .. preset.id .. " has a real mode")
+  check(preset.id:match("^[a-z_-]+$") ~= nil, "preset " .. preset.id .. " is a valid topic")
+  check(ns.T(preset.label) ~= preset.label, "preset " .. preset.id .. " has a label")
+  check(type(preset.wish) == "string" and #preset.wish > 10, "preset " .. preset.id .. " tells the planner")
+end
+check(table.concat(ids, ",") == "nearby,mount,collect,grind,gold,surprise", "the six presets")
+
+-- With the choice open, the portrait opens the menu (the fallback menu here: no MenuUtil).
 local function menuRow(label)
   local menu = ui.menu
   for i = 1, #(menu and menu.rows or {}) do
@@ -399,12 +435,20 @@ local function menuRow(label)
   end
   return nil
 end
-mascot.frame:Click("LeftButton")
-check(ui.menu and ui.menu:IsShown(), "clicking the portrait opens a menu")
-local labels = { "New plan", "What is this item?", "What to do nearby?", "Ask something", "Settings", "Hide" }
-for _, label in ipairs(labels) do
-  check(menuRow(label) ~= nil, "menu has " .. label)
+local function menuLabels()
+  local out = {}
+  for i = 1, #ui.menu.rows do
+    local row = ui.menu.rows[i]
+    if row:IsShown() then
+      out[#out + 1] = (textOf(row.label):gsub("  >$", ""))
+    end
+  end
+  return table.concat(out, "|")
 end
+mascot.frame:Click("LeftButton")
+check(ui.menu and ui.menu:IsShown(), "with the choice open, a click opens the menu")
+check(menuLabels() == "New plan|What is this item?|Ask something|Settings", "no-plan menu: " .. menuLabels())
+ui.menu:Hide()
 
 local made = {}
 local function fakeRoot(list)
@@ -427,52 +471,75 @@ MenuUtil = {
     generator(owner, fakeRoot(made))
   end,
 }
-mascot.frame:Click("LeftButton")
+mascot.frame:Click("RightButton")
 check(made[1] and made[1].title == "Wisp", "the game menu has the mascot as title")
-local settings
-for i = 1, #made do
-  if made[i].text == "Settings" then
-    settings = made[i]
+local function entry(list, text)
+  for i = 1, #list do
+    if list[i].text == text then
+      return list[i]
+    end
   end
+  return nil
 end
-check(settings and #settings.children >= 4, "Settings is a submenu")
-local lock = settings and settings.children[1]
+local settings = entry(made, "Settings")
+check(settings ~= nil and made[#made] == settings, "Settings is last")
+local names = {}
+for i = 1, #(settings and settings.children or {}) do
+  names[i] = settings.children[i].text
+end
+local settingNames = table.concat(names, "|")
+check(settingNames == "Size|Lock position|Hide|Keybinds|More", "Settings are basic: " .. settingNames)
+local size = entry(settings.children, "Size")
+check(#size.children == 4 and size.children[2].checkbox and size.children[2].isSelected(), "size: 100% by default")
+entry(size.children, "125%").setSelected()
+check(mascot.frame.scale == 1.25 and UnboredDB.mascot.scale == 125, "a size scales the mascot")
+check(entry(size.children, "125%").isSelected() and not size.children[2].isSelected(), "the size is checked")
+local lock = entry(settings.children, "Lock position")
 check(lock and lock.checkbox and lock.isSelected() == false, "lock is a checkbox, off")
 lock.setSelected()
 check(mascot:Locked(), "the lock checkbox locks the mascot")
 mascot:SetLocked(false)
+entry(settings.children, "Keybinds").fn()
+check(printed[#printed]:find("Keybindings", 1, true) ~= nil, "Keybinds says where to bind")
+local more = entry(settings.children, "More")
+check(#more.children >= 5 and more.children[1].text == "Show all steps", "the rest is under More")
+mascot:SetScale(100)
+check(mascot.frame.scale == 1, "size back to 100%")
 MenuUtil = nil
 
--- New plan: the wizard.
-menuRow("New plan"):Click()
-check(ui.frame:IsShown() and ui.view == "wizard", "New plan opens the wizard")
-check(ui.title.text == "Wisp" and ui.portrait.texture:find("Wisp", 1, true), "the window is the mascot talking")
-check(ui.primary.text == "Get plan", "companion present: the button says Get plan")
-check(ui.frame.height > 300, "wizard has a real height: " .. tostring(ui.frame.height))
-for i = 1, #ui.cards do
-  check(ui.cards[i]:IsShown(), "mode card " .. i .. " is shown")
-end
-check(not ui.askBox:IsShown() and not ui.slot:IsShown(), "no ask box or item slot in the wizard")
+-- Collapsed, a click with no plan opens the choice again.
+mascot.collapse:Click()
+check(not mascot.bubble:IsShown() and not mascot.badge:IsShown(), "collapsed greeting: just the portrait")
+mascot.frame:Click("LeftButton")
+check(mascot.bubble:IsShown() and mascot.view.kind == "choice", "clicking the mascot with no plan offers the presets")
+check(not ui.menu:IsShown(), "and not the menu")
 
-ui.cards[5]:Click()
-check(UnboredDB.mode == "farm", "a card picks the mode")
-ui.budgetButtons[3]:Click()
-check(UnboredDB.budget == 120, "a budget button picks the time")
-ui.wish:SetText("mount, no raids")
-ui.primary:Click()
-check(reloads == 1, "Get plan reloads in the same click")
+-- Time is optional and one small chip.
+mascot.timeChips[3]:Click()
+check(UnboredDB.budget == 120 and gold(mascot.timeChips[3]) and not gold(mascot.timeChips[2]), "a time chip picks 2h")
+mascot.timeChips[2]:Click()
+check(UnboredDB.budget == 60, "and back to 1h")
+
+-- One click on a preset: request saved and the UI reloads in the same click.
+check(reloads == 0, "nothing reloaded yet")
+mascot.chips[2]:Click()
+check(reloads == 1, "a preset click reloads in the same click")
 local req = UnboredCharDB.request
-check(req and req.type == "plan" and req.mode == "farm" and req.budget == 120, "Get plan saves a plan request")
-check(req and req.wish == "mount, no raids", "Get plan saves the wish")
-check(req and req.context and req.context.mapID == 84, "Get plan saves context")
-ui:Refresh()
-check(ui.view == "waiting", "after Get plan the window waits")
-check(ui.primary.text == "Load", "waiting shows Load")
+check(req and req.type == "plan" and req.mode == "farm" and req.topic == "mount", "the preset is sent with its mode")
+check(req and req.budget == 60, "with the default 1h")
+check(req and req.wish and req.wish:find("mount", 1, true), "and its words for the planner")
+check(req and req.context and req.context.mapID == 84, "the request has context")
+check(UnboredCharDB.lastWish == nil, "a preset does not overwrite the player's own wish")
+check(mascot.view.kind == "waiting" and textOf(mascot.message) == "Got it, cooking a plan...", "the mascot is cooking")
+check(textOf(mascot.header):find("Get a mount", 1, true) and textOf(mascot.header):find("1h", 1, true),
+  "the bubble says which preset: " .. textOf(mascot.header))
+ui:Open("ask")
+check(ui.view == "waiting" and ui.primary.text == "Load", "the window waits too")
 check(ui.cancel:IsShown(), "waiting offers cancel")
+ui.frame:Hide()
 
 -- Waiting: the mascot thinks.
 check(mascot.view.kind == "waiting", "the bubble waits too")
-check(textOf(mascot.message) == "Thinking...", "the bubble says Thinking...")
 check(mascot.bob and mascot.bob.playing and mascot.pulse.playing, "the mascot bobs and glows while thinking")
 check(mascot.art.texture:find("WispThinking", 1, true) ~= nil, "thinking portrait")
 check(mascot.buttons.load:IsShown() and textOf(mascot.buttons.load) == "Load", "the bubble offers Load")
@@ -507,6 +574,7 @@ check(ns.Session:AutoApplyExternal() == true, "the requested plan starts")
 check(not ui.frame:IsShown(), "starting a plan hides the main window")
 check(mascot.view.kind == "step", "the bubble shows the step")
 check(not mascot.bob.playing, "thinking stops when the plan is in")
+check(not mascot.forceChoice and not mascot.wishing, "a new plan clears the choice")
 check(textOf(mascot.message):find("Fly to Dalaran", 1, true) == 1, "the bubble says the step as written")
 check(textOf(mascot.count) == "1/3", "the bubble shows small progress: " .. textOf(mascot.count))
 local noteText = textOf(mascot.sub)
@@ -519,6 +587,30 @@ local height = mascot.bubble.height
 check(height > mascot.sub.height + mascot.message.height, "the bubble grows with the text")
 check(C_Map.pin and C_Map.pin.uiMapID == 84 and C_SuperTrack.on == true, "the current step is pinned and super-tracked")
 check(not tracker.frame:IsShown(), "the list view stays closed")
+
+-- With a plan, the menu is about the step first.
+mascot.frame:Click("LeftButton")
+check(ui.menu:IsShown(), "with a plan, a click opens the menu")
+check(menuLabels() == "What next?|Skip this step|Show route on map|New plan|What is this item?|Ask something|Settings",
+  "plan menu order: " .. menuLabels())
+local opened
+OpenWorldMap = function(mapID)
+  opened = mapID
+end
+menuRow("Show route on map"):Click()
+check(opened == 84, "Show route opens the map on the step")
+OpenWorldMap = nil
+mascot.frame:Click("LeftButton")
+menuRow("New plan"):Click()
+check(mascot.view.kind == "choice" and textOf(mascot.message) == "What shall we do next?", "New plan offers presets")
+check(mascot.chips[1]:IsShown() and mascot.buttons.back:IsShown(), "with a way back")
+mascot.frame:Click("LeftButton")
+check(ui.menu:IsShown() and menuRow("What next?") ~= nil, "a plan is running: the click is the menu")
+menuRow("What next?"):Click()
+check(mascot.view.kind == "step" and not mascot.chips[1]:IsShown(), "What next? shows the step")
+mascot:ShowChoice()
+mascot.buttons.back:Click()
+check(mascot.view.kind == "step", "Back returns to the step")
 
 C_Map.GetPlayerMapPosition = function()
   return { x = 0.25, y = 0.25 }
@@ -541,28 +633,51 @@ check(menuRow("Show message") ~= nil, "the menu offers the message back")
 menuRow("Show message"):Click()
 check(mascot.bubble:IsShown(), "the bubble is back")
 
+mascot.frame:Click("LeftButton")
+menuRow("Skip this step"):Click()
+check(ns.Session:Current().id == "b", "Skip this step moves on")
 mascot.buttons.done:Click()
-check(ns.Session:Current().id == "b", "Done moves to the next step")
+check(ns.Session:Current().id == "c", "Done moves to the next step")
 check(textOf(mascot.count) == "2/3", "progress follows Done")
 mascot.buttons.skip:Click()
-check(ns.Session:Current().id == "c", "Skip moves on")
+check(ns.Session:Current().id == "a", "Skip moves on")
 mascot.buttons.done:Click()
 mascot.buttons.done:Click()
 check(ns.Session:Current() == nil, "the plan can be finished")
-check(mascot.view.kind == "done" and mascot.buttons.new:IsShown(), "a finished plan offers New plan")
+check(mascot.view.kind == "choice" and textOf(mascot.message) == "Nice! What next?", "a finished plan celebrates")
+check(mascot.chips[1]:IsShown() and not mascot.buttons.back:IsShown(), "and offers the presets again")
 check(mascot.art.texture:find("WispHappy", 1, true) ~= nil, "happy portrait when done")
-mascot.buttons.ok:Click()
-check(mascot.view.kind == "greeting" and UnboredCharDB.session == nil, "ok clears the finished plan")
+
+-- Something else...: one free-text box in the bubble.
+mascot.otherChip:Click()
+check(mascot.view.kind == "wish" and mascot.wishBox:IsShown(), "Something else opens the wish box")
+check(mascot.buttons.send:IsShown() and mascot.buttons.back:IsShown(), "with Send and Back")
+check(not mascot.chips[1]:IsShown(), "the chips step aside")
+mascot.buttons.send:Click()
+check(reloads == 2 and textOf(mascot.sub) == "Type a few words first.", "an empty wish is not sent")
+mascot.buttons.back:Click()
+check(mascot.view.kind == "choice", "Back returns to the presets")
+mascot.otherChip:Click()
+mascot.wishEdit:SetText("mount, no raids")
+mascot.buttons.send:Click()
+check(reloads == 3, "Send reloads in the same click")
+req = UnboredCharDB.request
+check(req and req.type == "plan" and req.wish == "mount, no raids" and req.topic == nil, "the wish is sent as written")
+check(req and req.mode == "farm" and req.budget == 120, "with the last mode and time")
+check(UnboredCharDB.lastWish == "mount, no raids", "the wish is remembered")
+check(mascot.view.kind == "waiting" and textOf(mascot.message) == "Got it, cooking a plan...", "cooking again")
+check(textOf(mascot.header):find("mount, no raids", 1, true), "the bubble shows the wish")
+ns.Session:CancelRequest()
+check(mascot.view.kind == "choice", "cancel goes back to the presets")
 
 -- Ask something.
 ui:Open("ask")
 check(ui.view == "ask" and ui.askBox:IsShown() and ui.primary.text == "Send", "Ask is one box and Send")
-check(not ui.cards[1]:IsShown(), "no wizard on the ask screen")
 ui.primary:Click()
-check(reloads == 2 and ui.hint.text == "Type your question first.", "an empty question is not sent")
+check(reloads == 3 and ui.hint.text == "Type your question first.", "an empty question is not sent")
 ui.ask:SetText("Where can I get a flying mount?")
 ui.primary:Click()
-check(reloads == 3, "Send reloads in the same click")
+check(reloads == 4, "Send reloads in the same click")
 req = UnboredCharDB.request
 check(req and req.type == "question" and req.question == "Where can I get a flying mount?", "the question is saved")
 check(req and req.mode == nil and req.budget == nil, "a question has no mode or budget")
@@ -596,7 +711,7 @@ ui:Open("nearby")
 check(ui.view == "nearby" and ui.askBox:IsShown(), "nearby asks for an optional wish")
 ui.primary:Click()
 req = UnboredCharDB.request
-check(reloads == 4 and req.type == "question" and req.topic == "nearby", "nearby sends a nearby question")
+check(reloads == 5 and req.type == "question" and req.topic == "nearby", "nearby sends a nearby question")
 check(req.question == "What can I do nearby right now?", "nearby fills in the question")
 ns.Session:CancelRequest()
 
@@ -617,10 +732,10 @@ check(ui.item.count == 1 and ui.item.name == "Hearthstone", "count and name are 
 check(ui.itemName.text == HEARTH, "the item screen shows the item")
 check(ui.itemFacts.text:find("inn", 1, true) ~= nil, "the item screen says what we know")
 check(not ui.primary.disabled and ui.primary.text == "Ask about it", "the item can be asked about")
-check(reloads == 4, "the click hook never reloads")
+check(reloads == 5, "the click hook never reloads")
 ui.primary:Click()
 req = UnboredCharDB.request
-check(reloads == 5 and req.type == "item" and req.item.itemID == 6948 and req.item.bag == 0, "item request saved")
+check(reloads == 6 and req.type == "item" and req.item.itemID == 6948 and req.item.bag == 0, "item request saved")
 
 UnboredExternalPlan = {
   requestId = req.id,
@@ -668,7 +783,8 @@ mascot.buttons.ok:Click()
 check(UnboredCharDB.request == nil and mascot.view.kind ~= "failed", "ok clears the failure")
 
 -- Hide and bring back.
-mascot.frame:Click("LeftButton")
+mascot.frame:Click("RightButton")
+menuRow("Settings"):Click()
 menuRow("Hide"):Click()
 check(not mascot.frame:IsShown() and UnboredDB.mascot.hidden, "Hide hides the mascot")
 check(printed[#printed]:find("minimap", 1, true) ~= nil, "hiding says how to get it back")
@@ -686,6 +802,35 @@ mascot.frame.GetLeft = function()
 end
 mascot:Refresh()
 check(mascot.bubble.points[1][1] == "TOPLEFT", "otherwise it opens to the right")
+
+-- The old slash commands still work.
+SlashCmdList.UNBORED("")
+check(mascot.view.kind == "choice" and mascot.bubble:IsShown(), "/unbored offers the presets")
+SlashCmdList.UNBORED("30")
+check(UnboredDB.budget == 30 and mascot.view.kind == "choice", "/unbored 30 picks the time")
+check(mascot.Budget() == 30 and gold(mascot.timeChips[1]), "and the chip shows it")
+SlashCmdList.UNBORED("quests")
+check(UnboredDB.mode == "quests" and mascot.view.kind == "wish", "/unbored quests picks the mode, then the wish")
+mascot.buttons.back:Click()
+SlashCmdList.UNBORED("ask where to fish?")
+check(ui.frame:IsShown() and ui.view == "ask" and ui.ask.text == "where to fish?", "/unbored ask still asks")
+ui:Open("wizard")
+check(not ui.frame:IsShown() and mascot.view.kind == "choice", "the old wizard opens the presets")
+Unbored_Toggle()
+check(ui.frame:IsShown() == false and mascot.view.kind == "choice", "the toggle key offers the presets")
+
+-- No companion: a preset builds a plan in the game, no reload.
+local reloadsBefore = reloads
+local isLoaded = C_AddOns.IsAddOnLoaded
+C_AddOns.IsAddOnLoaded = function()
+  return false
+end
+UnboredExternalPlan = nil
+mascot:ShowChoice()
+mascot.chips[1]:Click()
+check(reloads == reloadsBefore and UnboredCharDB.request == nil, "no companion: no request and no reload")
+check(mascot.view.kind ~= "waiting", "no companion: nothing to wait for: " .. mascot.view.kind)
+C_AddOns.IsAddOnLoaded = isLoaded
 
 local items = ui.MenuItems()
 check(#items >= 3, "gear menu has items")

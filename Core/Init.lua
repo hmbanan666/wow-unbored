@@ -115,10 +115,7 @@ local function slash(message)
   local command, rest = message:match("^(%S*)%s*(.*)$")
   command = (command or ""):lower()
   if command == "" then
-    if ns.Mascot:IsHidden() then
-      ns.Mascot:Reveal()
-    end
-    ns.UI:Toggle()
+    ns.Mascot:ShowChoice()
   elseif command == "show" then
     ns.Mascot:Reveal()
   elseif command == "hide" then
@@ -146,10 +143,10 @@ local function slash(message)
     ns.ShowExport()
   elseif command == "roam" or command == "quests" or command == "events" or command == "fun" or command == "farm" then
     ns.Session:SetMode(command)
-    ns.UI:Show()
+    ns.Mascot:ShowWish()
   elseif command == "30" or command == "60" or command == "120" then
     ns.Session:SetBudget(tonumber(command))
-    ns.UI:Show()
+    ns.Mascot:ShowChoice()
   elseif command == "tomtom" then
     ns.DB.tomtomArrow = not ns.DB.tomtomArrow
     ns.Print(ns.DB.tomtomArrow and ns.T("TOMTOM_ON") or ns.T("TOMTOM_OFF"))

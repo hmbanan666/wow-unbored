@@ -347,7 +347,7 @@ function ns.Tracker:Refresh()
     else
       self.bannerButton:SetText(ns.T("NEW_PLAN"))
       self.bannerButton:SetScript("OnClick", function()
-        ns.UI:Show()
+        ns.Mascot:ShowChoice()
       end)
     end
     self.bannerButton:Show()

@@ -238,6 +238,7 @@ end
 -- A plan just became active: the mascot takes over, the main window steps aside.
 function ns.Session:Started()
   if ns.Mascot and ns.Mascot.Reveal then
+    ns.Mascot:Reset()
     ns.Mascot:Reveal()
   end
   if ns.UI and ns.UI.frame and ns.UI.frame.Hide then
@@ -465,9 +466,12 @@ function ns.Session:Ask(ask)
     context = okContext and type(context) == "table" and context or nil,
   }
   if kind == "plan" then
-    request.mode = self.ChosenMode()
-    request.budget = self.ChosenBudget()
-    UnboredCharDB.lastWish = request.wish
+    request.mode = ns.MODE_IDS[ask.mode] and ask.mode ~= "custom" and ask.mode or self.ChosenMode()
+    local budget = tonumber(ask.budget)
+    request.budget = budget and budget >= 5 and budget <= 240 and math.floor(budget) or self.ChosenBudget()
+    if not ask.topic then
+      UnboredCharDB.lastWish = request.wish
+    end
   end
   if type(ask.topic) == "string" and ask.topic:match("^[a-z_-]+$") and #ask.topic <= 40 then
     request.topic = ask.topic

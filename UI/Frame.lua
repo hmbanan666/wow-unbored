@@ -1,6 +1,6 @@
--- Main window: the mascot asks one thing per screen. A new plan (mode, time,
--- wish), a question, "what to do nearby", or "what is this item". The active
--- plan lives in the mascot bubble (UI/Mascot.lua).
+-- Main window: the mascot asks one thing per screen. A question, "what to do
+-- nearby", or "what is this item". Picking a plan and the active plan live
+-- in the mascot bubble (UI/Mascot.lua).
 
 local _, ns = ...
 
@@ -11,20 +11,6 @@ local PAD = 16
 local INNER = WIDTH - PAD * 2
 local GAP = 10
 local GOLD = { 1, 0.82, 0 }
-
-local MODE_CARDS = {
-  { id = "roam", name = "MODE_ROAM", desc = "DESC_ROAM" },
-  { id = "quests", name = "MODE_QUESTS", desc = "DESC_QUESTS" },
-  { id = "events", name = "MODE_EVENTS", desc = "DESC_EVENTS" },
-  { id = "fun", name = "MODE_FUN_LONG", desc = "DESC_FUN" },
-  { id = "farm", name = "MODE_FARM", desc = "DESC_FARM" },
-}
-
-local BUDGETS = {
-  { minutes = 30, caption = "BUDGET_30" },
-  { minutes = 60, caption = "BUDGET_60" },
-  { minutes = 120, caption = "BUDGET_120" },
-}
 
 function ns.UI.ApplyBackdrop(frame, bg, border)
   if not frame.SetBackdrop then
@@ -235,54 +221,14 @@ function ns.UI.MenuItems()
   return ns.Mascot:SettingsTree()
 end
 
-local function makeCard(parent, info)
-  local okCard, card = pcall(CreateFrame, "Button", nil, parent, "BackdropTemplate")
-  if not okCard or not card then
-    card = CreateFrame("Button", nil, parent)
-  end
-  card:SetWidth(INNER)
-  card:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-  card.name = font(card, "GameFontNormal")
-  card.name:SetPoint("TOPLEFT", 10, -7)
-  card.name:SetText(ns.T(info.name))
-  card.desc = font(card, "GameFontHighlightSmall")
-  card.desc:SetText(ns.T(info.desc))
-  card.mode = info.id
-  card:SetScript("OnClick", function()
-    ns.ClickSound()
-    ns.Session:SetMode(info.id)
-  end)
-  return card
-end
-
-local function layoutCard(card, selected)
-  local nameHeight = ns.UI.Measure(card.name, INNER - 20)
-  card.desc:ClearAllPoints()
-  card.desc:SetPoint("TOPLEFT", card.name, "BOTTOMLEFT", 0, -2)
-  local descHeight = ns.UI.Measure(card.desc, INNER - 20)
-  local height = 7 + nameHeight + 2 + descHeight + 8
-  card:SetHeight(height)
-  if card.SetBackdrop then
-    if selected then
-      ns.UI.ApplyBackdrop(card, { 0.3, 0.22, 0.04, 0.55 }, { 1, 0.82, 0, 1 })
-      card.name:SetTextColor(1, 0.82, 0)
-      card.desc:SetTextColor(1, 1, 1)
-    else
-      ns.UI.ApplyBackdrop(card, { 0, 0, 0, 0.35 }, { 0.35, 0.35, 0.35, 0.9 })
-      card.name:SetTextColor(0.9, 0.78, 0.4)
-      card.desc:SetTextColor(0.75, 0.75, 0.75)
-    end
-  end
-  return height
-end
-
 -- A multiline box with a grey hint inside it. onChange(text) on every edit.
-local function makeTextBox(parent, hint, maxLetters, onChange)
+function ns.UI.MakeTextBox(parent, hint, maxLetters, onChange, width, height)
+  width = width or INNER
   local okBox, box = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
   if not okBox or not box then
     box = CreateFrame("Frame", nil, parent)
   end
-  box:SetSize(INNER, 92)
+  box:SetSize(width, height or 92)
   ns.UI.ApplyBackdrop(box, { 0, 0, 0, 0.55 }, { 0.4, 0.4, 0.4, 1 })
   local edit = CreateFrame("EditBox", nil, box)
   edit:SetMultiLine(true)
@@ -291,11 +237,11 @@ local function makeTextBox(parent, hint, maxLetters, onChange)
   edit:SetFontObject(ChatFontNormal or GameFontHighlight)
   edit:SetPoint("TOPLEFT", 8, -7)
   edit:SetPoint("BOTTOMRIGHT", -8, 7)
-  edit:SetWidth(INNER - 16)
+  edit:SetWidth(width - 16)
   edit:SetTextInsets(0, 0, 0, 0)
   local placeholder = font(box, "GameFontDisable")
   placeholder:SetPoint("TOPLEFT", 9, -8)
-  placeholder:SetWidth(INNER - 18)
+  placeholder:SetWidth(width - 18)
   placeholder:SetText(hint)
   box.placeholder = placeholder
   local function update()
@@ -406,50 +352,9 @@ function ns.UI.Create()
     end
   end)
 
-  -- Active plan line (wizard only).
-  ui.activeText = font(frame, "GameFontHighlightSmall")
-  ui.activeLink = ns.UI.MakeLink(frame, ns.T("SHOW_TRACKER"))
-  ui.activeLink:SetScript("OnClick", function()
-    ns.Tracker:Reveal()
-  end)
-
-  -- Wizard.
-  ui.stepWhat = font(frame, "GameFontNormal")
-  ui.stepWhat:SetText(ns.T("STEP_WHAT"))
-  ui.cards = {}
-  for i = 1, #MODE_CARDS do
-    ui.cards[i] = makeCard(frame, MODE_CARDS[i])
-  end
-
-  ui.stepTime = font(frame, "GameFontNormal")
-  ui.stepTime:SetText(ns.T("STEP_TIME"))
-  ui.budgetButtons = {}
-  local budgetWidth = math.floor((INNER - 16) / 3)
-  for i = 1, #BUDGETS do
-    local info = BUDGETS[i]
-    local button = ns.UI.MakeButton(frame, ns.T(info.caption), budgetWidth, 26)
-    button.minutes = info.minutes
-    button:SetScript("OnClick", function()
-      ns.Session:SetBudget(info.minutes)
-    end)
-    ui.budgetButtons[i] = button
-  end
-
-  ui.stepWish = font(frame, "GameFontNormal")
-  ui.stepWish:SetText(ns.T("STEP_WISH"))
-  ui.wishBox, ui.wish = makeTextBox(frame, ns.T("WISH_HINT"), 300, function(text)
-    if type(UnboredCharDB) == "table" then
-      UnboredCharDB.lastWish = text ~= "" and text or nil
-    end
-  end)
-  if type(UnboredCharDB) == "table" and type(UnboredCharDB.lastWish) == "string" then
-    ui.wish:SetText(UnboredCharDB.lastWish)
-  end
-  ui.wishBox.UpdatePlaceholder()
-
   -- Ask something / what to do nearby: one line from the mascot, one box.
   ui.speech = font(frame, "GameFontNormal")
-  ui.askBox, ui.ask = makeTextBox(frame, ns.T("ASK_HINT"), 300, function()
+  ui.askBox, ui.ask = ns.UI.MakeTextBox(frame, ns.T("ASK_HINT"), 300, function()
     ui.askError = nil
   end)
 
@@ -493,7 +398,7 @@ function ns.UI.Create()
   ui.itemName = font(frame, "GameFontHighlight")
   ui.itemFacts = font(frame, "GameFontHighlightSmall")
 
-  ui.primary = ns.UI.MakeButton(frame, ns.T("GET_PLAN"), INNER, 34)
+  ui.primary = ns.UI.MakeButton(frame, ns.T("SEND"), INNER, 34)
   setPrimaryFont(ui.primary)
   ui.primary:SetScript("OnClick", function()
     ns.UI.OnPrimary()
@@ -530,15 +435,6 @@ function ns.UI.OnPrimary()
     return
   end
   local companion = ui.HasCompanion()
-  if view == "wizard" then
-    if not companion then
-      ns.Session:BuildHere(ns.Session.ChosenMode(), ns.Session.ChosenBudget())
-      return
-    end
-    ns.Session:RequestPlan(ui.wish and ui.wish:GetText() or "")
-    ns.Session.LoadPlan()
-    return
-  end
   local text = ns.Trim(ui.ask and ui.ask:GetText() or "")
   if view == "nearby" then
     if not companion then
@@ -576,7 +472,7 @@ function ns.UI.OnPrimary()
   end
 end
 
--- Screens: wizard, ask, nearby, item; a request that is out shows waiting
+-- Screens: ask, nearby, item; a request that is out shows waiting
 -- or failed instead, whatever was opened.
 function ns.UI.View()
   local note = ns.Session and ns.Session.requestNote
@@ -587,10 +483,10 @@ function ns.UI.View()
     return "waiting"
   end
   local mode = ns.UI.mode
-  if mode == "ask" or mode == "nearby" or mode == "item" then
+  if mode == "nearby" or mode == "item" then
     return mode
   end
-  return "wizard"
+  return "ask"
 end
 
 function ns.UI:Refresh()
@@ -630,77 +526,16 @@ function ns.UI:Refresh()
   end
 
   local parts = {
-    self.stepWhat, self.stepTime, self.stepWish, self.wishBox, self.activeText, self.activeLink,
     self.speech, self.askBox, self.slot, self.itemName, self.itemFacts,
     self.stateTitle, self.stateSummary, self.stateBody, self.stateNote, self.cancel, self.hint,
   }
   for i = 1, #parts do
     parts[i]:Hide()
   end
-  for i = 1, #self.cards do
-    self.cards[i]:Hide()
-  end
-  for i = 1, #self.budgetButtons do
-    self.budgetButtons[i]:Hide()
-  end
   local companion = ns.UI.HasCompanion()
   self.portrait:SetTexture(ns.MEDIA .. (view == "waiting" and "WispThinking64" or "WispIdle64"))
 
-  if view == "wizard" then
-    local progress = ns.Session:Progress()
-    if progress and progress.remaining > 0 then
-      self.activeText:SetText(ns.T("ACTIVE_PLAN", progress.step, progress.steps))
-      local height = ns.UI.Measure(self.activeText, INNER - 110)
-      put(self.activeText, 0)
-      self.activeLink:ClearAllPoints()
-      self.activeLink:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD + 4, y + 2)
-      self.activeLink:SetShown(not ns.Tracker:IsOpen())
-      y = y - math.max(height, 16) - GAP
-    end
-
-    text(self.stepWhat, ns.T("STEP_WHAT"), 6)
-    local chosen = ns.Session.ChosenMode()
-    for i = 1, #self.cards do
-      local card = self.cards[i]
-      local height = layoutCard(card, card.mode == chosen)
-      put(card, height)
-      y = y - 4
-    end
-    y = y - GAP + 4
-
-    text(self.stepTime, ns.T("STEP_TIME"), 6)
-    local budget = ns.Session.ChosenBudget()
-    for i = 1, #self.budgetButtons do
-      local button = self.budgetButtons[i]
-      button:ClearAllPoints()
-      button:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + (i - 1) * (button:GetWidth() + 8), y)
-      button:Show()
-      local label = button.GetFontString and button:GetFontString()
-      if button.minutes == budget then
-        if button.LockHighlight then
-          button:LockHighlight()
-        end
-        if label then
-          label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-        end
-      else
-        if button.UnlockHighlight then
-          button:UnlockHighlight()
-        end
-        if label then
-          label:SetTextColor(1, 1, 1)
-        end
-      end
-    end
-    y = y - 26 - GAP - 4
-
-    text(self.stepWish, ns.T("STEP_WISH"), 6)
-    put(self.wishBox, self.wishBox:GetHeight())
-    y = y - GAP - 6
-
-    primary(companion and ns.T("GET_PLAN") or ns.T("BUILD_PLAN"))
-    text(self.hint, companion and ns.T("GET_PLAN_HINT") or ns.T("BUILD_HINT"), 0)
-  elseif view == "ask" or view == "nearby" then
+  if view == "ask" or view == "nearby" then
     local nearby = view == "nearby"
     text(self.speech, nearby and ns.T("NEARBY_TITLE") or ns.T("ASK_TITLE"), 8)
     self.askBox.placeholder:SetText(nearby and ns.T("NEARBY_HINT") or ns.T("ASK_HINT"))
@@ -784,9 +619,17 @@ function ns.UI:Show()
   self:Refresh()
 end
 
--- Opens one screen: wizard, ask, nearby, or item.
+-- Opens one screen: ask, nearby, or item. A new plan is picked in the
+-- mascot bubble, so "wizard" (the old screen) goes there.
 function ns.UI:Open(mode)
-  self.mode = mode or "wizard"
+  if mode == nil or mode == "wizard" then
+    if self.frame then
+      self.frame:Hide()
+    end
+    ns.Mascot:ShowChoice()
+    return
+  end
+  self.mode = mode
   self.askError = nil
   if self.mode ~= "item" then
     self.item = nil
@@ -809,6 +652,6 @@ function ns.UI:Toggle()
   if self.frame:IsShown() then
     self.frame:Hide()
   else
-    self:Open("wizard")
+    ns.Mascot:ShowChoice()
   end
 end
