@@ -101,7 +101,7 @@ end
 
 function ns.Tracker:MenuItems()
   return {
-    { text = ns.T("MENU_OPEN"), func = function() ns.UI:Show() end },
+    { text = ns.T("MENU_OPEN"), func = function() ns.Mascot:Reveal() end },
     { text = ns.T("MENU_WAYPOINT"), func = function() ns.Session:Waypoint() end },
     { text = ns.T("MENU_LOCK"), checked = self:Locked(), func = function() self:SetLocked(not self:Locked()) end },
     { text = ns.T("MENU_HIDE"), func = function() self:Hide() end },
@@ -343,7 +343,9 @@ function ns.Tracker:Refresh()
     self.bannerButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, y + 4)
     if waiting then
       self.bannerButton:SetText(ns.T("LOAD_PLAN"))
-      self.bannerButton:SetScript("OnClick", ns.Session.LoadPlan)
+      self.bannerButton:SetScript("OnClick", function()
+        ns.Mascot:OnLoad()
+      end)
     else
       self.bannerButton:SetText(ns.T("NEW_PLAN"))
       self.bannerButton:SetScript("OnClick", function()

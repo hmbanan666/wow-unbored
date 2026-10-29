@@ -2,7 +2,7 @@
 ## Title: Unbored
 ## Notes: Wisp, a calm companion that tells you what to do next and answers questions.
 ## Author: Unbored contributors
-## Version: 0.4.3
+## Version: 0.5.0
 ## SavedVariables: UnboredDB
 ## SavedVariablesPerCharacter: UnboredCharDB
 ## OptionalDeps: TomTom, Unbored_Plan
@@ -38,7 +38,7 @@ Providers\Events.lua
 Providers\Achievements.lua
 Providers\Farm.lua
 Companion\Plan.lua
-UI\Frame.lua
+UI\Widgets.lua
 UI\Tracker.lua
 UI\Mascot.lua
 UI\Items.lua
