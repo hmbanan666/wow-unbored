@@ -1,5 +1,7 @@
 # Unbored
 
+Goal: a helper players want to use, that never annoys and genuinely helps.
+
 A calm, open-source session planner for World of Warcraft **Retail** (Midnight 12.x). You pick a mood and a time budget. Wisp, a small glowing spirit on your screen, answers "what do I do now?" with one step at a time in a chat bubble, and answers questions about the world and your items. One map pin, for the current step only.
 
 It is not a gold-per-hour optimizer. [WhatNow](https://www.curseforge.com/wow/addons/whatnow) is a closed beta aimed at gold per minute and it wants TomTom. Unbored is MIT, has no required libraries, and would rather you fall off a cliff for an achievement than squeeze a route.
@@ -34,7 +36,7 @@ CurseForge, Wago, and WowUp are not wired up yet. A git tag builds a zip through
 - an answer, shown as written, with a ✓ to say you read it;
 - "Hi! What shall we do?" with big preset chips when there is no plan, and "Nice! What next?" with the same chips when a plan is finished.
 
-Text wraps and the bubble grows; nothing is cut. The − in the bubble folds it down to the portrait. Drag the portrait to move it (Settings → Lock position to stop that). The position is saved, and the bubble opens toward the middle of the screen.
+Above the current bubble at most two older one-line messages stay for a minute and a half, fading ("Done: Fly to Dalaran", an answer you read), so there are never more than three; never a heavy list. Text wraps and the bubble grows; nothing is cut. The − in the bubble folds it down to the portrait. Drag the portrait to move it (Settings → Lock position to stop that). The position is saved, and the bubble opens toward the middle of the screen.
 
 **Starting a plan** happens in the bubble, with no settings to open. Each chip is one click: Stay here, do stuff nearby; Get a mount; Collect stuff nearby (pets, toys, transmog, achievements in this zone); Grind / level / renown; Farm gold / mats; Surprise me. Small time chips under them (30m, 1h, 2h) are optional; 1h is the default. **Something else...** opens one text box in the bubble for your own words, and **Send**. A click builds a **Quick plan** in game at once (up to 7 steps, from the Providers for that chip's mode), so there is a first step right away. With the companion the same click also sends the Request and reloads the UI. When the **Full plan** is back, press **Load**: Wisp asks before switching, and steps you already finished carry over. Something else... has no Quick plan; Wisp says "Got it, cooking a plan..." until Load. The chips are one table in `Data/Presets.lua` (id, label, mode, and the words sent to the planner), so they are easy to edit.
 
