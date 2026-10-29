@@ -122,4 +122,11 @@ read_globals = {
   "HandleModifiedItemClick",
   "MenuUtil",
   "ItemRefTooltip",
+  "GetProfessions",
+  "GetProfessionInfo",
+  "GetInventoryItemLink",
+  "Auctionator",
+  "TSM_API",
+  "C_Bank",
+  "IsControlKeyDown",
 }

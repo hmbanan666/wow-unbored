@@ -659,6 +659,39 @@ local capped = ns.BuildProviderPlan("many", { budget = 240 })
 check(#capped == ns.MAX_STEPS and ns.MAX_STEPS == 7, "a built plan has at most 7 steps: " .. #capped)
 ns.Providers.many = nil
 
+UnboredCharDB = {}
+UnboredDB.alts = nil
+UnitName = function() return "Ann" end
+GetRealmName = function() return "Home" end
+local savedProfessions, savedContainer = GetProfessions, C_Container
+GetProfessions = function() return 1 end
+GetProfessionInfo = function() return "Alchemy", nil, 50, 100, nil, nil, 171 end
+C_Container = {
+  GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end,
+  GetContainerItemInfo = function() return { itemID = 2589, stackCount = 4 } end,
+}
+ns.Profile.ReadAll()
+local rolling = UnboredCharDB.profile
+check(rolling.professions and rolling.professions[1].skillLine == 171, "the profile keeps professions")
+check(rolling.bags and rolling.bags[1].itemID == 2589 and rolling.bags[1].count == 4, "the profile reads bags")
+C_Container.GetContainerNumSlots = function() return 0 end
+ns.Profile.OnEvent("BAG_UPDATE_DELAYED")
+ns.Profile.Flush(true)
+check(rolling.bags and rolling.bags[1].itemID == 2589, "bags that read empty never replace bags with data")
+ns.Profile.OnEvent("PLAYER_LOGOUT")
+check(type(rolling.savedAt) == "number" and rolling.bags[1].count == 4, "logout only stamps the time")
+local altKey = ns.Profile.AltKey(UnitName("player"), GetRealmName())
+check(UnboredDB.alts and UnboredDB.alts[altKey] and UnboredDB.alts[altKey].professions[1].skillLine == 171,
+  "this character is in the alt registry")
+check(#ns.Profile.Alts() == 0, "the alt list leaves out the current character")
+UnboredDB.alts["Other-Bob"] = { name = "Bob", realm = "Other", seenAt = 1 }
+check(#ns.Profile.Alts() == 1 and ns.Profile.Alts()[1].name == "Bob", "the alt list has the other characters")
+ns.Profile.NoteUnmatched(42)
+ns.Profile.NoteUnmatched(42)
+check(#rolling.unmatchedItems == 1, "an unmatched item is logged once")
+GetProfessions, GetProfessionInfo, C_Container = savedProfessions, nil, savedContainer
+UnitName, GetRealmName = nil, nil
+
 local tocFile = assert(io.open("Unbored.toc", "r"))
 local tocText = tocFile:read("*a")
 tocFile:close()
