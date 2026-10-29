@@ -251,7 +251,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "List in-game plan requests",
       description:
-        "List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, budget, wish; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
+        "List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, budget, wish; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -259,7 +259,18 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
           .describe("Which requests to list. Defaults to pending."),
       },
     },
-    async ({ status }) => text({ requests: store.listRequests(status ?? "pending").map(publicRequest) }),
+    async ({ status }) =>
+      text({
+        requests: store.listRequests(status ?? "pending").map((request) => {
+          const delivery = store.webhookDelivery(request.id);
+          return {
+            ...publicRequest(request),
+            webhook: delivery
+              ? { attempts: delivery.attempts, deliveredAt: delivery.deliveredAt, lastError: delivery.lastError }
+              : null,
+          };
+        }),
+      }),
   );
 
   server.registerTool(
