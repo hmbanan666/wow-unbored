@@ -34,7 +34,7 @@ Companion 0.1.1 uses `https://unbored.kosarev.space` unless an advanced override
 
 MCP tools `list_devices`, `approve_device`, and `revoke_device` use the planner token. Approving a device does not let it write plans.
 
-`list_requests` lists pending requests (pass `status` for fulfilled or failed). Each request carries the wish and the player `context` from the game (map, position, level, class, item level, gold, hearth, tracked quests, active plan); plan from there. `put_plan` tasks may carry `waypoints`, a route of up to 10 `{ mapID, x, y, label? }` points, described in `docs/plan-format.md`. `put_plan` accepts `requestId` and marks that request fulfilled. `fail_request` stores a reason the addon shows after `/reload`. `resolve_criteria` maps an achievement id plus a criteria-tree id to `criteriaID` and a 1-based `criteriaIndex`, using cached wago.tools CriteriaTree and Achievement CSVs in `/data/wago`. `criteriaID` is `CriteriaTree.CriteriaID`, the Criteria table id the addon wants. The first call downloads those files.
+`list_requests` lists pending requests (pass `status` for fulfilled or failed). Each request has a `type`: `plan` (mode, budget, optional wish), `question` (free text; `topic: "nearby"` means "what to do around me"), or `item` (`item.itemID`, the link, name, bag slot, and count). Each carries the player `context` from the game (map, position, level, class, item level, gold, hearth, tracked quests, active plan); answer from there. `answer_request` answers any request: `requestId`, `message` (plain text up to 1,000 bytes, shown as written in the mascot bubble), optional `waypoints` (up to 10 route points, which become one step), and an optional follow-up `plan`. It marks the request fulfilled; the companion delivers it on the next sync and the player presses Load. `put_plan` tasks may carry `waypoints`, a route of up to 10 `{ mapID, x, y, label? }` points, described in `docs/plan-format.md`. `put_plan` accepts `requestId` and marks that request fulfilled. `fail_request` stores a reason the addon shows after `/reload`, for any request type. `resolve_criteria` maps an achievement id plus a criteria-tree id to `criteriaID` and a 1-based `criteriaIndex`, using cached wago.tools CriteriaTree and Achievement CSVs in `/data/wago`. `criteriaID` is `CriteriaTree.CriteriaID`, the Criteria table id the addon wants. The first call downloads those files.
 
 ## Planner HTTP
 
@@ -59,7 +59,10 @@ MCP tools `list_devices`, `approve_device`, and `revoke_device` use the planner 
 
 Streamable HTTP at `/mcp`. Same planner bearer token (`Authorization` header). Tools:
 
-- `put_plan` stores a plan and returns the `UNB1:` string. The tool description includes the task schema.
+- `put_plan` stores a plan and returns the `UNB1:` string. The tool description includes the task schema. With `requestId` it fulfils a plan request.
+- `list_requests` lists requests from the game, with their `type`.
+- `answer_request` answers a plan, question, or item request with a message, optional waypoints, and an optional plan.
+- `fail_request` marks a request failed with a reason.
 - `get_current_plan` reads the plan the companion will poll.
 - `get_progress` reads the newest companion post.
 - `list_sessions` lists stored plans.
@@ -85,4 +88,4 @@ From `server/`, with `lua5.1` on `PATH` (the addon decoder):
 npm test
 ```
 
-That covers auth, a plan put that the companion GET returns as `UNB1:`, decoding that string with the addon import code, a progress post, and MCP `tools/list`.
+That covers auth, a plan put that the companion GET returns as `UNB1:`, decoding that string with the addon import code, a progress post, MCP `tools/list`, and typed item and question requests answered with `answer_request`.

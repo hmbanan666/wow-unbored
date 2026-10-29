@@ -6,10 +6,26 @@ The in-game addon is the other half. This folder is the desktop half.
 
 ## Install
 
-1. Download the setup `.exe` or the `.msi` from the GitHub release tagged `companion-v0.2.0`.
+1. Download the setup `.exe` or the `.msi` from the newest GitHub release tagged `companion-v*`.
 2. Windows SmartScreen will say it prevented an unrecognized app from starting. The installer is not Authenticode-signed. Choose **More info**, then **Run anyway**. That warning is expected.
-3. The window opens. It also sits in the tray. Closing the window hides it; Quit is on the tray menu.
-4. **Start with Windows** is off until you check it. The login shortcut passes `--hidden`, so the window stays in the tray.
+3. The window opens. It also sits in the tray as Wisp. Closing the window hides it; Quit is on the tray menu.
+4. **Start with Windows** is on by default. The login shortcut passes `--hidden`, so the window stays in the tray.
+
+## The window
+
+One friendly window with Wisp and one big status line:
+
+| Status | What it means |
+| --- | --- |
+| All set, go play | Approved, addon installed, nothing waiting. |
+| Show me where World of Warcraft is | No Retail folder found. **Choose folder** opens a folder picker (the game folder or `_retail_` both work); **Look again** re-runs detection. |
+| Waiting for approval | The planner owner has not approved this PC yet. Nothing to do here. |
+| Updating addon... / Updating myself... | An update is being installed. |
+| Thinking about your request... | A request from the game is with the planner. |
+| Plan ready, press Load in game / I have an answer, press Load in game | The answer is in `Unbored_Plan`. Shown for 15 minutes. |
+| Can't reach the planner right now. I'll keep trying | The last sync failed. |
+
+Wisp bobs with a spinning ring while busy, thinking, or waiting for approval, and is happy when something is ready. The tray tooltip says the same status. Toasts come from Wisp. The planner URL, poll interval, manual plan string, folder path, and per-character progress are under **Advanced**, closed by default.
 
 You can also build it yourself on Windows, from this directory:
 
@@ -26,7 +42,7 @@ The installer lands in `src-tauri/target/release/bundle/`.
 2. The owner approves that device with the planner MCP tool `approve_device`. The app then uses the device secret as the bearer for `GET /v1/plan` and `POST /v1/progress`. It cannot write a plan.
 3. Retail is detected from the Blizzard registry (`InstallPath` under `Blizzard Entertainment\World of Warcraft`), `C:\Program Files (x86)\World of Warcraft` and `C:\Program Files\World of Warcraft`, and Battle.net's `product.db` / `Battle.net.config` when those files mention a World of Warcraft path. A hit contains `Wow.exe` or `_retail_\Wow.exe`. The folder field appears only when none of those work.
 4. The latest GitHub release asset `Unbored-v*.zip` whose tag is `v*` (not `companion-v*`) is unpacked into `_retail_\Interface\AddOns\Unbored`. A newer tag replaces it. SavedVariables are read from `WTF\Account\*\*\SavedVariables\Unbored.lua` with no account picker.
-5. In the Unbored window, pick what you want and how long, type an optional wish, and press **Get plan**. That click saves the request and reloads the UI, so the game writes SavedVariables. This app posts the request with the player's position, level, class, item level, gold, hearth, and tracked quests, so the planner can start near you. When the plan comes back it writes `Unbored_Plan` and shows a toast: **Unbored: plan ready, press Load plan**. Press **Load plan** in game (or reload any other way) and the plan starts.
+5. In game, click Wisp and pick New plan, Ask something, What to do nearby?, or What is this item?. **Get plan**, **Send**, or **Ask about it** saves the request and reloads the UI, so the game writes SavedVariables. This app posts the request (`type` plan, question, or item) with the player's position, level, class, item level, gold, hearth, and tracked quests, so the planner can start near you. When the plan or answer comes back it writes `Unbored_Plan` and Wisp shows a toast: **Plan ready, press Load in game** or **I have an answer, press Load in game**. Press **Load** in game (or reload any other way) and the plan starts, or the answer appears in the bubble.
 6. The plan file is `Interface\AddOns\Unbored_Plan\`, which this app owns. It is created on the first sync, even empty, so the addon knows a companion is present. It is rewritten only when the plan or request status changes.
 7. After `/reload` or logout the app reads `Unbored.lua` and posts progress once per change.
 
@@ -52,4 +68,4 @@ From the repo root, with a current stable Rust:
 cargo test --manifest-path companion/src-tauri/Cargo.toml --lib --no-default-features
 ```
 
-That covers SavedVariables parsing (including the request context), `UNB1` decoding with waypoint routes, choosing between a direct plan and a request, writing `Unbored_Plan/Plan.lua` only on change, the atomic addon swap, Retail folder detection, and the JSON body posted to the planner. It does not open a window.
+That covers SavedVariables parsing (including the request context and request types), the status line, `UNB1` decoding with waypoint routes, choosing between a direct plan, a request plan, and an answer, writing `Unbored_Plan/Plan.lua` only on change, the atomic addon swap, Retail folder detection, and the JSON body posted to the planner. It does not open a window.
