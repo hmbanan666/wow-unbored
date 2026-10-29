@@ -40,7 +40,11 @@ jobs:
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -n "$KEY" ]; then
+          # A secret pasted with a trailing newline fails base64 decoding.
+          key="$(printf '%s' "$KEY" | tr -d '[:space:]')"
+          if [ -n "$key" ]; then
+            echo "::add-mask::$key"
+            echo "TAURI_SIGNING_PRIVATE_KEY=$key" >> "$GITHUB_ENV"
             echo "args=--bundles msi,nsis" >> "$GITHUB_OUTPUT"
             echo "updater=true" >> "$GITHUB_OUTPUT"
           else
@@ -49,11 +53,22 @@ jobs:
             echo "args=--bundles msi,nsis --config ${root}/companion/src-tauri/tauri.unsigned.conf.json" >> "$GITHUB_OUTPUT"
             echo "updater=false" >> "$GITHUB_OUTPUT"
           fi
+      # Deleting and re-pushing a tag turns its release into a draft, and
+      # latest.json must point at public asset URLs.
+      - name: Publish an existing draft for this tag
+        if: startsWith(github.ref, 'refs/tags/companion-v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = "true" ]; then
+            gh release edit "$TAG" --draft=false
+          fi
       - name: Build installer
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: companion
@@ -90,6 +105,5 @@ jobs:
         working-directory: companion
         shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx --no-install tauri build ${{ steps.sign.outputs.args }}
