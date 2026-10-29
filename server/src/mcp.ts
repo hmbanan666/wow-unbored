@@ -104,7 +104,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     "put_plan",
     {
       title: "Put a session plan",
-      description: `Store the latest session plan for the player. The companion will pick it up on its next poll.\n\n${SCHEMA}`,
+      description: `Store the latest session plan for the player. The companion will pick it up on its next poll. Write 3 to 7 steps, each one thing the player can just do; the game shows one at a time. A plan for a preset request replaces the quick plan the game built itself only if the player agrees, and steps they already finished there (same task id) are dropped, so reuse the game's ids (quest:<questID> and the like) when you mean the same thing.\n\n${SCHEMA}`,
       inputSchema: {
         requestId: z
           .string()
