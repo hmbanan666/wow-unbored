@@ -770,6 +770,25 @@ pub fn ensure_helper(retail: &Path) -> Result<(), PlanError> {
     Ok(())
 }
 
+/// Forget my data: empties the plan, advice and ideas the planner sent. The
+/// status part of Plan.lua stays, so Bory still knows the Companion is here.
+pub fn clear_helper(retail: &Path) -> Result<(), PlanError> {
+    ensure_helper(retail)?;
+    write_plan_lua(retail, EMPTY_PLAN_LUA)?;
+    let dir = helper_dir(retail);
+    for (name, empty) in [
+        ("Advice.lua", EMPTY_ADVICE_LUA),
+        ("Suggestions.lua", EMPTY_SUGGESTIONS_LUA),
+    ] {
+        let path = dir.join(name);
+        if fs::read_to_string(&path).ok().as_deref() != Some(empty) {
+            fs::write(&path, empty)
+                .map_err(|err| PlanError(format!("Could not clear {name}: {err}")))?;
+        }
+    }
+    Ok(())
+}
+
 /// Leaves the file alone when the plan part is unchanged, so a running game is
 /// not handed the same plan again and no second toast goes out.
 fn write_plan_lua(retail: &Path, body: &str) -> Result<Written, PlanError> {
@@ -1625,6 +1644,44 @@ mod tests {
         assert!(!install_plan(&retail, &plan).unwrap().changed);
         ensure_helper(&retail).unwrap();
         assert!(fs::read_to_string(&lua).unwrap().contains("\"a\""));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn clearing_the_helper_keeps_only_the_status() {
+        let root = std::env::temp_dir().join(format!("unbored-plan-clear-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let retail = root.join("_retail_");
+        fs::create_dir_all(&retail).unwrap();
+        let dir = retail.join("Interface/AddOns/Unbored_Plan");
+        install_plan(&retail, &small_plan("gone")).unwrap();
+        let status = CompanionStatus {
+            pairing: "revoked".into(),
+            companion_version: "0.8.0".into(),
+            seen_at: 1_000,
+            ..Default::default()
+        };
+        write_status(&retail, &status).unwrap();
+        fs::write(dir.join("Advice.lua"), "UnboredAdvice = { v = 1 }\n").unwrap();
+        fs::write(
+            dir.join("Suggestions.lua"),
+            "UnboredSuggestions = { v = 1 }\n",
+        )
+        .unwrap();
+
+        clear_helper(&retail).unwrap();
+        let plan = fs::read_to_string(dir.join("Plan.lua")).unwrap();
+        let values = parse_saved_variables(&plan).unwrap();
+        assert!(!values.contains_key("UnboredExternalPlan"));
+        assert!(values.contains_key("UnboredCompanionStatus"));
+        assert_eq!(
+            fs::read_to_string(dir.join("Advice.lua")).unwrap(),
+            EMPTY_ADVICE_LUA
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("Suggestions.lua")).unwrap(),
+            EMPTY_SUGGESTIONS_LUA
+        );
         let _ = fs::remove_dir_all(&root);
     }
 }

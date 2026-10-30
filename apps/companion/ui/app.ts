@@ -120,6 +120,39 @@ $("privacy").addEventListener("click", (event) => {
   event.preventDefault();
   invoke("open_privacy").catch(showError);
 });
+const FORGET = {
+  title: "Forget my data?",
+  message:
+    "Bory will forget your characters, game data, plans and answers on the planner, and this PC stops sending. This can't be undone.",
+  ok: "Forget it all",
+  cancel: "Keep it",
+};
+
+async function confirmForget() {
+  const tauri = window.__TAURI__ || {};
+  if (tauri.dialog) {
+    return tauri.dialog.ask(FORGET.message, {
+      title: FORGET.title,
+      kind: "warning",
+      okLabel: FORGET.ok,
+      cancelLabel: FORGET.cancel,
+    });
+  }
+  const picked = await invoke("plugin:dialog|message", {
+    message: FORGET.message,
+    title: FORGET.title,
+    kind: "warning",
+    buttons: { OkCancelCustom: [FORGET.ok, FORGET.cancel] },
+  });
+  return picked === FORGET.ok;
+}
+
+$("forget").addEventListener("click", () =>
+  run(async () => {
+    if (!(await confirmForget())) return invoke("get_state");
+    return invoke("forget_my_data");
+  }),
+);
 $("fetch").addEventListener("click", () => run(() => invoke("fetch_plan")));
 $("rescan").addEventListener("click", () => run(() => invoke("rescan_progress")));
 autostart.addEventListener("change", () =>

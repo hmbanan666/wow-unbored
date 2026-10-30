@@ -631,15 +631,19 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Delete an Account's data (owner only)",
       description:
-        "Owner only. Erases every Game data Section, its history, the Characters, 0.6 profiles, Player history and personal advice of one Account. Requests and plans stay. This cannot be undone; pass confirm: true.",
+        "Owner only. Erases every Game data Section, its history, the Characters, 0.6 profiles, Player history, personal advice and ideas of one Account, and (unless requests is false) its Requests and the plans made for them: the same set a player erases with Forget my data in the Companion, which also revokes that device. This cannot be undone; pass confirm: true.",
       inputSchema: {
         account: z.string().min(1).max(80),
         confirm: z.literal(true),
+        requests: z
+          .boolean()
+          .optional()
+          .describe("Also erase the Account's Requests and their plans. Default true."),
       },
     },
-    async ({ account }) => {
+    async ({ account, requests }) => {
       try {
-        return text(store.deleteAccountData(account));
+        return text(store.deleteAccountData(account, { requests: requests !== false }));
       } catch (error) {
         return failure(error);
       }

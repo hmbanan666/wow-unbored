@@ -718,9 +718,14 @@ export class Store {
     return [...out.entries()].map(([account, characters]) => ({ account, characters }));
   }
 
-  /** Owner-only erasure of one Account: Game data, profiles, history and advice (D62). */
-  deleteAccountData(account: string) {
+  /**
+   * Erases one Account (D62): Game data, profiles, Player history, advice and
+   * ideas, and by default its Requests and the plans made for them. Used by the
+   * owner (delete_account_data) and by the player (Forget my data).
+   */
+  deleteAccountData(account: string, options: { requests?: boolean } = {}) {
     const key = accountKey(account);
+    if (!key) throw new Error("Name the Account to erase.");
     const names = this.data.characters(key).map((row) => [row.name, row.realm] as const);
     const removed = this.data.deleteAccount(key);
     let legacy = 0;
@@ -741,7 +746,89 @@ export class Store {
         );
       }
     }
-    return { account: key, ...removed, legacyRows: legacy };
+    const suggestions = Number(
+      this.db.prepare(`DELETE FROM suggestions WHERE owner_id = ?`).run(key).changes,
+    );
+    let erased = { requests: 0, plans: 0 };
+    if (options.requests !== false) {
+      const ids = new Set<string>();
+      const add = (rows: unknown[]) => {
+        for (const row of rows as { id: string }[]) ids.add(row.id);
+      };
+      if (key) add(this.db.prepare(`SELECT id FROM requests WHERE account = ?`).all(key));
+      for (const [name, realm] of names) {
+        add(
+          this.db
+            .prepare(`SELECT id FROM requests WHERE character_name = ? AND realm = ?`)
+            .all(name, realm),
+        );
+      }
+      erased = this.deleteRequests([...ids]);
+    }
+    return { account: key, ...removed, legacyRows: legacy, suggestions, ...erased };
+  }
+
+  /** Requests by id, with their webhook rows and the plans made for them. */
+  private deleteRequests(ids: string[]): { requests: number; plans: number } {
+    let requests = 0;
+    let plans = 0;
+    for (const id of ids) {
+      const row = this.db.prepare(`SELECT plan_id FROM requests WHERE id = ?`).get(id) as
+        | { plan_id: number | null }
+        | undefined;
+      if (!row) continue;
+      if (row.plan_id !== null) {
+        plans += Number(this.db.prepare(`DELETE FROM plans WHERE id = ?`).run(row.plan_id).changes);
+      }
+      this.db.prepare(`DELETE FROM webhook_deliveries WHERE request_id = ?`).run(id);
+      requests += Number(this.db.prepare(`DELETE FROM requests WHERE id = ?`).run(id).changes);
+    }
+    return { requests, plans };
+  }
+
+  /**
+   * Forget my data: the player erases every Account this device sent data or
+   * Requests for, and this device's own Requests, then the device is revoked
+   * so nothing more is stored from it.
+   */
+  forgetDevice(deviceId: string, nowSeconds = Math.floor(Date.now() / 1000)) {
+    const accounts = new Set<string>();
+    for (const row of this.data.characters()) {
+      if (row.deviceId === deviceId && row.accountId) accounts.add(row.accountId);
+    }
+    for (const table of ["profiles", "requests"]) {
+      const rows = this.db
+        .prepare(`SELECT DISTINCT account FROM ${table} WHERE device_id = ? AND account <> ''`)
+        .all(deviceId) as { account: string | null }[];
+      for (const row of rows) if (row.account) accounts.add(accountKey(row.account));
+    }
+    const totals = { accounts: 0, characters: 0, sections: 0, requests: 0, plans: 0 };
+    for (const account of accounts) {
+      const removed = this.deleteAccountData(account);
+      totals.accounts += 1;
+      totals.characters += removed.characters;
+      totals.sections += removed.sections;
+      totals.requests += removed.requests;
+      totals.plans += removed.plans;
+    }
+    const own = this.db.prepare(`SELECT id FROM requests WHERE device_id = ?`).all(deviceId) as {
+      id: string;
+    }[];
+    const loose = this.deleteRequests(own.map((row) => row.id));
+    totals.requests += loose.requests;
+    totals.plans += loose.plans;
+    const profiles = this.db
+      .prepare(`SELECT character_name, realm FROM profiles WHERE device_id = ?`)
+      .all(deviceId) as { character_name: string; realm: string }[];
+    for (const profile of profiles) {
+      for (const table of ["profiles", "profile_snapshots", "history", "advice"]) {
+        this.db
+          .prepare(`DELETE FROM ${table} WHERE character_name = ? AND realm = ?`)
+          .run(profile.character_name, profile.realm);
+      }
+    }
+    this.setDeviceStatus(deviceId, "revoked", nowSeconds);
+    return { ...totals, revoked: true };
   }
 
   addHistory(entry: {

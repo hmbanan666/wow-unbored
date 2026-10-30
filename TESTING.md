@@ -172,3 +172,16 @@
 - [ ] `https://unbored.kosarev.space/health` отвечает `{"ok":true}`.
 - [ ] MCP `get_player_profile` и `get_player_history` возвращают данные персонажа после выхода из игры, хотя аддон 0.8 больше не пишет старый профиль.
 - [ ] MCP `get_suggestions` для персонажа возвращает те же идеи, что видны в игре.
+- [ ] MCP `delete_account_data` с `requests: false` оставляет запросы и планы учётной записи; без него удаляет и их.
+
+## Удаление данных
+
+Проверять последним: после этого ПК придётся одобрить заново.
+
+- [ ] Ссылка «What he knows» под «Start with Windows» открывает браузер (раньше окно могло молча её не пропускать).
+- [ ] Companion → Advanced → «Forget my data». Появляется окно «Forget my data?» с кнопками «Forget it all» и «Keep it». «Keep it» ничего не меняет.
+- [ ] «Forget it all»: заголовок «Done. I forgot everything about you», под ним — что удалено и что делать, чтобы вернуться. В Advanced: «this PC is revoked».
+- [ ] MCP `data_catalog` больше не показывает эту учётную запись; `list_requests` — её запросов; `list_devices` — ПК со статусом `revoked`.
+- [ ] `Unbored_Plan/Advice.lua` и `Suggestions.lua` пустые, в `Plan.lua` нет плана, только статус Companion. После входа в игру у Бори нет идей и строк из совета сервера; быстрые планы работают.
+- [ ] Перезапуск Companion: всё тот же заголовок «Done. I forgot everything about you».
+- [ ] Снова `approve_device`: через 30 с «Connected!», данные снова уходят на сервер.

@@ -140,6 +140,31 @@ export function createApp(
     return c.json(publicDevice(fresh));
   });
 
+  // Forget my data (PRIVACY.md): the device secret alone is enough, whatever
+  // the pairing status, so a revoked or never approved PC can still erase.
+  app.post("/v1/devices/me/forget", async (c) => {
+    const presented = presentedBearer(c.req.header("authorization"));
+    if (!presented) return c.json({ error: "Unauthorized" }, 401);
+    if (tokenMatches(presented, tokens.companion)) {
+      return c.json(
+        { error: "Forget my data needs a paired Companion, not the shared token." },
+        403,
+      );
+    }
+    const device = store.findDeviceBySecretHash(sha256Hex(presented));
+    if (!device) return c.json({ error: "Unauthorized" }, 401);
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Send {"confirm": true} as JSON.' }, 400);
+    }
+    if ((body as { confirm?: unknown } | null)?.confirm !== true) {
+      return c.json({ error: 'Send {"confirm": true} as JSON.' }, 400);
+    }
+    return c.json({ ok: true, ...store.forgetDevice(device.id) });
+  });
+
   app.post("/v1/requests", async (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
