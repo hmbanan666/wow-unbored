@@ -2,7 +2,7 @@
 ## Title: Unbored
 ## Notes: Wisp, a calm companion that tells you what to do next and answers questions.
 ## Author: Unbored contributors
-## Version: 0.6.0
+## Version: 0.7.0
 ## SavedVariables: UnboredDB
 ## SavedVariablesPerCharacter: UnboredCharDB
 ## OptionalDeps: TomTom, Unbored_Plan

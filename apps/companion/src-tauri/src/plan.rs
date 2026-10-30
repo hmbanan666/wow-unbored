@@ -13,7 +13,7 @@ pub const HELPER_TOC: &str = "\
 ## Title: Unbored Plan
 ## Notes: Plans, answers and item tips from Unbored Companion. Wisp reads them when you log in or press Refresh.
 ## Author: Unbored contributors
-## Version: 0.6.0
+## Version: 0.7.0
 ## LoadOnDemand: 0
 
 Plan.lua

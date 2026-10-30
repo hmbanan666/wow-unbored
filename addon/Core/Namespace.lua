@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.addon = addonName or "Unbored"
 -- Must match ## Version in Unbored.toc (tests/run.lua checks it).
-ns.VERSION = "0.6.0"
+ns.VERSION = "0.7.0"
 ns.MASCOT_NAME = "Wisp"
 ns.MEDIA = "Interface\\AddOns\\Unbored\\Media\\"
 -- A plan is 3-7 steps (docs/adr/0005); the in-game builder never makes more.
