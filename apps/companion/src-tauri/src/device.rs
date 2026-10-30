@@ -88,10 +88,7 @@ fn recall_windows() -> Option<DeviceCredential> {
         let entry = keyring::Entry::new("Unbored Companion", "device").ok()?;
         let text = entry.get_password().ok()?;
         let parsed: DeviceCredential = serde_json::from_str(&text).ok()?;
-        if parsed.device_id.len() < 8 || parsed.secret.len() < 16 {
-            return None;
-        }
-        return Some(parsed);
+        (parsed.device_id.len() >= 8 && parsed.secret.len() >= 16).then_some(parsed)
     }
     #[cfg(not(windows))]
     None
