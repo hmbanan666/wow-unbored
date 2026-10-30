@@ -25,6 +25,22 @@ jobs:
       - name: Lay the addon out where the packager looks
         run: bash scripts/stage-addon.sh
 
+      # A re-run, or a tag pushed again, finds the release from the earlier
+      # run (deleting a tag turns its release into a draft). Start clean so
+      # the packager makes exactly one release and no asset is duplicated.
+      - name: Remove an earlier release of this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"${TAG}\") | .id" |
+            while read -r id; do
+              echo "Removing release ${id} left by an earlier run of ${TAG}"
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/${id}"
+            done
+
       - uses: BigWigsMods/packager@v2
         env:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
@@ -101,6 +117,12 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           version="${TAG#v}"
+          # The artifact keeps the nsis/ and msi/ folders, and GitHub stores a
+          # space in an asset name as a dot, which latest.json must match.
+          find bundle -mindepth 2 -type f -exec mv -t bundle {} +
+          for file in bundle/*" "*; do
+            mv "$file" "${file// /.}"
+          done
           files=(bundle/*.exe bundle/*.msi bundle/*.sig)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "::error::the Companion build produced no installer"
@@ -131,8 +153,10 @@ jobs:
           fi
           gh release upload companion-updater bundle/latest.json --clobber
 
+  # Runs once the addon job made the release, so a failed installer upload
+  # never leaves the packager's full CHANGELOG as the release body.
   notes:
-    needs: publish
+    needs: addon
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

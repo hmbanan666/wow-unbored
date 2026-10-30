@@ -2,6 +2,14 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## 0.7.0
+
+- Plans cover the whole goal, with no time limit to pick. Want a proper plan? Answer one short question, send it, and Wisp shows she is working on it until it is ready, with one Refresh when it is.
+- Steps have real game links: hover an item, quest, achievement, spell or currency for its tooltip, click a place or NPC for the map pin.
+- Item tooltips only speak when it is about you: your plan, something new for your collection, a quest you have not done, or a reagent for one of your alts, even one you played on another PC. A setting turns the lines off.
+- Wisp learns about your own characters (quests, collections, reputations, professions and more) so plans fit what you have left. Nothing about other players is read. See "What Wisp knows about you" in the README to turn it off.
+- Questions and items are answered in the game; anything bigger becomes a plan.
+
 ## 0.6.0
 
 - No reloads while you play (docs/adr/0012). Presets, Ask and items never reload the UI. Wisp answers locally first; the Companion prepares Full plans, Answers and Personal advice in the background, and Wisp picks them up at the next log in or after one "New stuff is ready. Refresh now?" with Refresh or Later.
