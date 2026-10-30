@@ -121,7 +121,8 @@ test("history, account scope, and personal advice over MCP", async () => {
       200,
     );
     assert.equal(
-      (await profile("Mira", 1100, { context: { gold: 0, level: 80 }, bags: {} })).status,
+      (await profile("Mira", 1100, { context: { gold: 0, level: 80, zone: "Dornogal" }, bags: {} }))
+        .status,
       200,
     );
     assert.equal(

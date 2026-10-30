@@ -4,6 +4,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 
 import { resolveCriteria } from "./criteria.ts";
+import { ID_KINDS, readable, changeSummary, type CharacterRow, type IdKind } from "./data.ts";
 import { ANSWER_MAX_BYTES, cleanAnswer, PlanError } from "./plan.ts";
 import { HISTORY_KINDS, publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
 
@@ -301,7 +302,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "Get the player profile",
       description:
-        "The latest player state the companion uploaded from the game, kept as a rolling snapshot (an empty value never overwrites a known one): context (location, level, class, spec, ilvl, gold, hearth, tracked quests, active plan), professions with skill levels, equipped items, bags, the last seen bank, reagent bank and warband bank (itemID and count), currencies, collections (mounts, pets, toys, achievement points), renown, recent sessions (start, stop, zones), recent finished or skipped steps, and unmatchedItems (item ids Wisp had no advice for). Read it before planning so you need not ask for anything. Pass character (and realm) for one character. Pass account (from list_requests or the accounts list) to get every character of that Account: use it for alt routing, e.g. an herb on one character that an Alchemist alt needs. Without arguments you get the most recently updated character, the list of known characters, and the accounts. savedAt is when the game wrote it.",
+        "The latest player state from the game, assembled from the Game data snapshot Sections (and the 0.6 profile upload for older addons; an empty value never overwrites a known one): context (location, level, class, spec, ilvl, gold, hearth, tracked quests, active plan), professions with skill levels, equipped items, bags, the last seen bank, reagent bank and warband bank (itemID and count), currencies, collections (mounts, pets, toys, achievement points), renown, recent sessions (start, stop, zones), recent finished or skipped steps, and unmatchedItems (item ids Wisp had no advice for). Read it before planning so you need not ask for anything. Pass character (and realm) for one character. Pass account (from list_requests or the accounts list) to get every character of that Account: use it for alt routing, e.g. an herb on one character that an Alchemist alt needs. Without arguments you get the most recently updated character, the list of known characters, and the accounts. savedAt is when the game wrote it. sections lists which Sections it was built from. For quest, achievement, mount, toy, pet or recipe ids use check_ids; for raw Sections use get_game_data.",
       inputSchema: {
         character: z.string().max(80).optional().describe("Character name, as in list_requests."),
         realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
@@ -335,7 +336,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "Get the player history",
       description:
-        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), and advice (a put_item_advice batch). Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
+        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), and advice (a put_item_advice batch). What changed in the game data itself (new quests done, mounts, item counts, gold) is in get_data_changes. Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
       inputSchema: {
         character: z.string().max(80).optional(),
         realm: z.string().max(80).optional(),
@@ -369,6 +370,177 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
         entries,
         snapshots: includeSnapshots ? store.profileSnapshots({ ...filter, limit: 10 }) : undefined,
       });
+    },
+  );
+
+  const data = store.data;
+  const pickCharacters = (input: { account?: string; character?: string; realm?: string }) => {
+    let rows: CharacterRow[] = input.account ? data.characters(input.account) : data.characters();
+    if (input.character) rows = rows.filter((row) => row.name === input.character);
+    if (input.realm) rows = rows.filter((row) => row.realm === input.realm);
+    if (!input.account && !input.character) rows = rows.slice(0, 1);
+    return rows;
+  };
+  const whoSchema = {
+    account: z.string().max(80).optional().describe("Account key from list_requests."),
+    character: z.string().max(80).optional().describe("Character name."),
+    realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
+  };
+
+  server.registerTool(
+    "get_account_overview",
+    {
+      title: "Overview of an Account",
+      description:
+        "Every Character of an Account (or of every Account) with class, spec, level, item level, gold, professions, last seen, and how fresh each Game data Section is. Start here before planning for a player with Alts.",
+      inputSchema: { account: whoSchema.account },
+    },
+    async ({ account }) => {
+      const accounts = account ? [data.account(account)].filter(Boolean) : data.accounts();
+      if (accounts.length === 0) return failure(new Error("No game data for that Account yet."));
+      return text({
+        accounts: accounts.map((row) => ({
+          account: row!.id,
+          lastSeen: row!.lastSeen,
+          sections: data
+            .sections("account", row!.id)
+            .map((s) => ({ name: s.section, at: s.at, savedAt: s.savedAt })),
+          characters: data.characters(row!.id).map((char) => data.overview(char)),
+        })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "get_game_data",
+    {
+      title: "Read Game data Sections",
+      description:
+        "The latest bodies of Game data Sections for one Character (Character Sections plus its Account Sections). Pass sections to pick some (data_catalog lists them). Packed id sets come back as counts; pass expand to get the ids (capped at 2000 per set, with more saying how many were cut). For a yes/no on specific ids use check_ids instead.",
+      inputSchema: {
+        ...whoSchema,
+        sections: z.array(z.string().max(40)).max(40).optional().describe("Section names."),
+        expand: z.boolean().optional().describe("Unpack id sets (capped)."),
+      },
+    },
+    async ({ account, character, realm, sections, expand }) => {
+      const row = pickCharacters({ account, character, realm })[0];
+      if (!row) return failure(new Error("No game data for that character yet."));
+      const all = data.sectionsFor(row);
+      const out: Record<string, unknown> = {};
+      for (const [name, section] of all) {
+        if (sections?.length && !sections.includes(name)) continue;
+        out[name] = {
+          scope: section.ownerKind,
+          v: section.v,
+          at: section.at,
+          savedAt: section.savedAt,
+          unknown: section.unknown,
+          body: readable(section.body, expand === true),
+        };
+      }
+      return text({
+        character: row.name,
+        realm: row.realm,
+        account: row.accountId,
+        sections: out,
+        missing: (sections ?? []).filter((name) => !all.has(name)),
+      });
+    },
+  );
+
+  server.registerTool(
+    "check_ids",
+    {
+      title: "Check ids against the game data",
+      description:
+        "Which of the given ids the player has: quest (completed, per Character), achievement (earned on the Account, and by each Character when known), mount, toy, pet (species, on the Account), recipe (learned, per Character; only professions whose window was opened). have is null when that Section was never read. Use it before suggesting something the player may already have, and never invent ids.",
+      inputSchema: {
+        kind: z.enum(ID_KINDS as [IdKind, ...IdKind[]]),
+        ids: z.array(z.number().int().min(1)).min(1).max(500),
+        ...whoSchema,
+      },
+    },
+    async ({ kind, ids, account, character, realm }) => {
+      const rows = pickCharacters({ account, character, realm });
+      if (rows.length === 0) return failure(new Error("No game data for that player yet."));
+      const first = rows[0]!;
+      const targets = character || !first.accountId ? rows : data.characters(first.accountId);
+      return text(data.checkIds(kind, ids, targets));
+    },
+  );
+
+  server.registerTool(
+    "get_data_changes",
+    {
+      title: "What changed in the game data",
+      description:
+        "Per-Section changes, newest first: ids added or removed (quests done, mounts, achievements, recipes), item counts that changed (bags, banks), and small fields that changed (gold, level, item level). Without since you get the last upload (the last session). initial means the first upload of that Section. Lists are capped at 2000.",
+      inputSchema: {
+        ...whoSchema,
+        since: z.number().int().optional().describe("Unix seconds; changes at or after it."),
+        sections: z.array(z.string().max(40)).max(40).optional(),
+        limit: z.number().int().min(1).max(200).optional().describe("Default 50."),
+      },
+    },
+    async ({ account, character, realm, since, sections, limit }) => {
+      const rows = pickCharacters({ account, character, realm });
+      if (rows.length === 0) return failure(new Error("No game data for that player yet."));
+      const owners = [
+        ...rows.map((row) => ({ kind: "char" as const, id: row.id })),
+        ...[...new Set(rows.map((row) => row.accountId).filter(Boolean))].map((id) => ({
+          kind: "account" as const,
+          id,
+        })),
+      ];
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      let entries = data.history({ owners, sections, since, limit: limit ?? 50 });
+      if (since === undefined && entries.length > 0) {
+        const last = Math.max(...entries.map((entry) => entry.savedAt ?? 0));
+        entries = entries.filter((entry) => (entry.savedAt ?? 0) === last);
+      }
+      return text({
+        changes: entries.map((entry) => ({
+          section: entry.section,
+          scope: entry.ownerKind,
+          character: entry.ownerKind === "char" ? (byId.get(entry.ownerId)?.name ?? null) : null,
+          at: entry.at,
+          savedAt: entry.savedAt,
+          summary: changeSummary(entry.kind, entry.body),
+          change: entry.body,
+        })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "data_catalog",
+    {
+      title: "Data explorer",
+      description:
+        "The Data explorer: every Account and Character with each Game data Section (version, read time, savedAt, size in bytes, id and item counts, the last change), Sections the addon dropped to stay small, and unknown Sections a newer addon sent. Use it to see what was collected; read bodies with get_game_data.",
+      inputSchema: { account: whoSchema.account },
+    },
+    async ({ account }) => text(data.catalog({ account })),
+  );
+
+  server.registerTool(
+    "delete_account_data",
+    {
+      title: "Delete an Account's data (owner only)",
+      description:
+        "Owner only. Erases every Game data Section, its history, the Characters, 0.6 profiles, Player history and personal advice of one Account. Requests and plans stay. This cannot be undone; pass confirm: true.",
+      inputSchema: {
+        account: z.string().min(1).max(80),
+        confirm: z.literal(true),
+      },
+    },
+    async ({ account }) => {
+      try {
+        return text(store.deleteAccountData(account));
+      } catch (error) {
+        return failure(error);
+      }
     },
   );
 

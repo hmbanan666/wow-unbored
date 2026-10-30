@@ -1,9 +1,12 @@
+import { gunzipSync } from "node:zlib";
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { presentedBearer, requireRole, sha256Hex, tokenMatches } from "./auth.ts";
 import type { Config } from "./config.ts";
 import { clientIp, cleanRegistration, PENDING_CAP, RegisterLimiter } from "./devices.ts";
+import { cleanSnapshot, SNAPSHOT_MAX_COMPRESSED, SNAPSHOT_MAX_INFLATED } from "./data.ts";
 import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";
@@ -217,6 +220,42 @@ export function createApp(
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
       throw error;
     }
+  });
+
+  // Game data Sections that changed, gzip JSON (docs/adr/0029).
+  app.post("/v1/snapshot", async (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    const declared = Number(c.req.header("content-length") ?? 0);
+    if (declared > SNAPSHOT_MAX_COMPRESSED) {
+      return c.json({ error: "The game data is too large." }, 413);
+    }
+    const raw = Buffer.from(await c.req.arrayBuffer());
+    if (raw.length > SNAPSHOT_MAX_COMPRESSED) {
+      return c.json({ error: "The game data is too large." }, 413);
+    }
+    let body: unknown;
+    try {
+      const gzip = (c.req.header("content-encoding") ?? "").toLowerCase().includes("gzip");
+      const bytes = gzip ? gunzipSync(raw, { maxOutputLength: SNAPSHOT_MAX_INFLATED }) : raw;
+      body = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      return c.json({ error: "The game data must be JSON, optionally gzip." }, 400);
+    }
+    try {
+      const result = store.putSnapshot(cleanSnapshot(body), access.deviceId);
+      return c.json({ ok: true, ...result });
+    } catch (error) {
+      if (error instanceof PlanError) return c.json({ error: error.message }, 400);
+      throw error;
+    }
+  });
+
+  // The Data explorer as JSON, for quick checks with the owner bearer (docs/adr/0030).
+  app.get("/owner/data", (c) => {
+    const denied = requireRole(c, "planner", tokens);
+    if (denied) return denied;
+    return c.json(store.data.catalog({ account: c.req.query("account") || undefined }));
   });
 
   app.put("/v1/plan", async (c) => {

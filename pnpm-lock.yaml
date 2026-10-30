@@ -33,6 +33,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
         version: 1.32.2(zod@4.6.7)
+      '@unbored/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       hono:
         specifier: ^4.13.14
         version: 4.13.14
@@ -43,9 +46,6 @@ importers:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
-      '@unbored/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

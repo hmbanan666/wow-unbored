@@ -13,12 +13,12 @@
   "dependencies": {
     "@hono/node-server": "^2.1.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@unbored/contracts": "workspace:*",
     "hono": "^4.13.14",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
-    "@unbored/contracts": "workspace:*",
     "typescript": "^7.0.2",
     "vite-plus": "1.4.0"
   },
