@@ -65,6 +65,7 @@ end
 
 function ns.OnAddonLoaded()
   initDB()
+  ns.Markup.Hook()
   if ns.UI and ns.UI.Create then
     local ok, err = pcall(ns.UI.Create)
     if not ok then

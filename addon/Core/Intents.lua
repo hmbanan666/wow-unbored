@@ -130,7 +130,7 @@ function ns.Intents.Answer(intent, lang)
   end
   local lines = { ns.TL(lang, header) }
   for i = 1, math.min(#tasks, LISTED) do
-    lines[#lines + 1] = "- " .. tostring(tasks[i].title or "")
+    lines[#lines + 1] = "- " .. ns.Markup.Plain(tostring(tasks[i].title or ""), tasks[i].npcs)
   end
   local messages = { table.concat(lines, "\n") }
   if #tasks > LISTED then

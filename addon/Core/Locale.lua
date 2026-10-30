@@ -265,6 +265,7 @@ local en = {
   MENU_CANCEL_REQUEST = "Cancel my request",
   ASK_TO_PLAN = "I can't answer that one here. Want a plan from it?",
   MAKE_PLAN = "Make a plan",
+  LINK_SET_WAYPOINT = "Click: set a waypoint",
 }
 
 local ru = {
@@ -527,6 +528,7 @@ local ru = {
   MENU_CANCEL_REQUEST = "Отменить мой запрос",
   ASK_TO_PLAN = "Здесь я на это не отвечу. Сделать из этого план?",
   MAKE_PLAN = "Сделать план",
+  LINK_SET_WAYPOINT = "Клик: поставить метку",
 }
 
 ns.Locales = { en = en, ru = ru }

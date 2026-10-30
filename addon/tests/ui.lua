@@ -1035,6 +1035,132 @@ check(mascot.view.kind == "item", "no Companion: the item still opens")
 mascot.buttons.back:Click()
 C_AddOns.IsAddOnLoaded = loaded
 
+-- Entity markup: the shared fixture parses the same as on the Server.
+local function readJson(path)
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
+  return assert(ns.JSON.Decode(text))
+end
+local markup = readJson("../packages/contracts/fixtures/markup.json")
+local function tidy(text)
+  return ns.Trim((text:gsub("  +", " ")))
+end
+local savedItem = C_Item
+C_Item = nil
+for _, case in ipairs(markup.cases) do
+  local tokens = {}
+  for _, part in ipairs(ns.Markup.Parse(case.text)) do
+    if type(part) == "table" then
+      tokens[#tokens + 1] = part
+    end
+  end
+  local same = #tokens == #case.tokens
+  for i = 1, math.min(#tokens, #case.tokens) do
+    local want, got = case.tokens[i], tokens[i]
+    for _, field in ipairs({ "type", "id", "mapID", "x", "y", "label" }) do
+      same = same and want[field] == got[field]
+    end
+  end
+  check(same, "markup tokens: " .. case.name)
+  local plain = ns.Markup.Plain(case.text, ns.Markup.CleanEntities(markup.entities))
+  check(plain == tidy(case.plain), "markup plain text: " .. case.name .. ": " .. tostring(plain))
+end
+C_Item = savedItem
+
+-- A plan with links: the Bubble shows native links, other places plain names.
+local linked = assert(ns.ValidatePlan(markup.plan, false))
+check(linked.tasks[1].npcs and linked.tasks[1].npcs["12345"].name == "Fixer Kev", "a Step keeps the npcs it links")
+check(ns.DecodeImport(ns.EncodePlan(linked)).tasks[1].npcs["12345"].mapID == 2339, "npcs survive an export")
+UnboredCharDB.request = nil
+ns.Session.answer = nil
+ns.Session:ApplyPlan(linked, "companion", true)
+mascot.forceChoice = nil
+mascot:Refresh()
+check(textOf(mascot.message) == "Talk to |cffffd100|Haddon:Unbored:npc:12345|h[Fixer Kev]|h|r",
+  "an npc link in the title: " .. textOf(mascot.message))
+check(textOf(mascot.sub):find("|Hitem:6948|h[Hearthstone]|h", 1, true) ~= nil, "an item link with the game's name")
+check(textOf(mascot.sub):find("|Haddon:Unbored:pin:2339:52.1:47.3|h[the forge]|h", 1, true) ~= nil, "a pin link")
+check(ns.Markup.Plain(linked.tasks[1].title, linked.tasks[1].npcs) == "Talk to Fixer Kev", "plain text for the tracker")
+tooltipLines = {}
+mascot.bubble.scripts.OnHyperlinkEnter(mascot.bubble, "addon:Unbored:npc:12345", "[Fixer Kev]")
+check(tooltipLines[1] == "Fixer Kev" and tooltipLines[2] == "Stormwind City" and tooltipLines[3] == "52.1, 47.3",
+  "the npc tooltip: name, zone, place")
+mascot.bubble.scripts.OnHyperlinkClick(mascot.bubble, "addon:Unbored:npc:12345", "[Fixer Kev]", "LeftButton")
+check(C_Map.pin and C_Map.pin.uiMapID == 2339 and math.abs(C_Map.pin.position.x - 0.521) < 1e-9,
+  "an npc click sets the waypoint")
+mascot.bubble.scripts.OnHyperlinkClick(mascot.bubble, "addon:Unbored:pin:2339:40:60", "[x]", "LeftButton")
+check(math.abs(C_Map.pin.position.y - 0.6) < 1e-9, "a pin click sets the waypoint")
+local hovered, referred
+GameTooltip.SetHyperlink = function(_, link)
+  hovered = link
+end
+SetItemRef = function(link, text, button)
+  referred = link .. "|" .. text .. "|" .. button
+end
+mascot.bubble.scripts.OnHyperlinkEnter(mascot.bubble, "item:6948", "[Hearthstone]")
+check(hovered == "item:6948", "a game link shows the game tooltip")
+mascot.bubble.scripts.OnHyperlinkClick(mascot.bubble, "item:6948", "[Hearthstone]", "LeftButton")
+check(referred == "item:6948|[Hearthstone]|LeftButton", "a game link click goes to the game (shift-click: chat)")
+mascot.bubble.scripts.OnHyperlinkLeave(mascot.bubble)
+SetItemRef = nil
+
+-- A name that is not cached yet: the label while it loads, a link once it does,
+-- and plain text plus a note for the Server when it never comes.
+local titles, listeners, redraws = {}, {}, 0
+C_QuestLog = {
+  GetTitleForQuestID = function(id)
+    return titles[id]
+  end,
+}
+QuestEventListener = {
+  AddCallback = function(_, id, done)
+    listeners[id] = done
+  end,
+}
+local function redraw()
+  redraws = redraws + 1
+end
+check(ns.Markup.Render("Do {quest:500|The Hunt}", nil, redraw) == "Do The Hunt", "loading: the label")
+titles[500] = "The Great Hunt"
+listeners[500]()
+check(redraws == 1, "a loaded name redraws the Bubble")
+check(ns.Markup.Render("Do {quest:500|The Hunt}", nil, redraw) == "Do |cffffff00|Hquest:500:-1|h[The Great Hunt]|h|r",
+  "loaded: a quest link built from the title")
+check(ns.Markup.Render("Do {quest:501|Lost one}", nil, redraw) == "Do Lost one", "another quest waits")
+local realGetTime = GetTime
+GetTime = function()
+  return realGetTime() + 4
+end
+check(ns.Markup.Render("Do {quest:501|Lost one}", nil, redraw) == "Do Lost one", "after the wait: plain label")
+GetTime = realGetTime
+local unresolved = ns.Snapshot.Body("unresolvedIds")
+check(unresolved and unresolved.list[#unresolved.list].kind == "quest" and unresolved.list[#unresolved.list].id == 501,
+  "the unresolved id is kept for the Server")
+check(ns.Markup.Render("{ach:42|Old}", nil, redraw) == "Old", "an achievement the game does not know: plain label")
+C_QuestLog, QuestEventListener = nil, nil
+
+-- An answer with links keeps its npcs.
+UnboredCharDB.request = { id = "req-l", type = "question", question = "Who?", createdAt = clock, onDisk = true }
+ns.Session:MarkLoaded()
+UnboredExternalPlan = {
+  requestId = "req-l",
+  requestStatus = "fulfilled",
+  requestType = "question",
+  answer = {
+    message = "Find {npc:777}.",
+    entities = { npc = { ["777"] = { name = "Old Ma", mapID = 84, x = 10, y = 20 }, ["8"] = { name = "Unused" } } },
+  },
+}
+check(ns.Session:AutoApplyExternal() == true, "an answer with links is taken")
+ns.Session:RefreshUI()
+check(textOf(mascot.message) == "Find |cffffd100|Haddon:Unbored:npc:777|h[Old Ma]|h|r.", "the answer links its npc")
+check(UnboredCharDB.answer.npcs["8"] == nil, "and keeps only the npcs it links")
+mascot.bubble.scripts.OnHyperlinkClick(mascot.bubble, "addon:Unbored:npc:777", "[Old Ma]", "LeftButton")
+check(C_Map.pin.uiMapID == 84 and math.abs(C_Map.pin.position.x - 0.1) < 1e-9, "its click uses the answer's npc")
+mascot.buttons.ok:Click()
+UnboredExternalPlan = nil
+
 -- The bubble opens toward the middle of the screen.
 UIParent.width = 1000
 mascot.frame.GetLeft = function()

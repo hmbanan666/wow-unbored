@@ -128,7 +128,24 @@ function ns.Waypoint.Label(task, point)
   if point and type(point.label) == "string" and point.label ~= "" then
     return point.label
   end
-  return task and task.title or "Unbored"
+  return task and ns.Markup.Plain(task.title, task.npcs) or "Unbored"
+end
+
+-- A place the player clicked in the Bubble (a pin or npc link). The step keeps
+-- its key, so the next Sync leaves this arrow until the step changes.
+function ns.Waypoint:Point(mapID, x, y, title)
+  if ns.IsPaused() or not mapID or not x or not y then
+    return false
+  end
+  self:ClearNative()
+  self:ClearTomTom()
+  local point = { mapID = mapID, x = x, y = y }
+  local native = setNative(point)
+  if native then
+    self.nativePoint = point
+  end
+  self.tomtomUID = setTomTom(point, title or "Unbored")
+  return native or self.tomtomUID ~= nil
 end
 
 -- Point the arrow at the task's current target. Does nothing when that target

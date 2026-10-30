@@ -577,7 +577,7 @@ function ns.Profile.NoteStep(task, bucket)
   end
   db.recentSteps[#db.recentSteps + 1] = {
     id = task.id,
-    title = ns.SafeString(task.title, 120),
+    title = ns.SafeString(ns.Markup.Plain(task.title, task.npcs), 120),
     bucket = bucket,
     at = ns.Now(),
   }

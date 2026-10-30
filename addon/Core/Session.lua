@@ -102,7 +102,8 @@ function ns.Session:Finish(bucket)
     ns.Profile.NoteStep(task, bucket == "skipped" and "skipped" or "done")
   end
   if ns.Mascot and ns.Mascot.Echo then
-    ns.Mascot:Echo(ns.T(bucket == "skipped" and "ECHO_SKIPPED" or "ECHO_DONE", task.title or ""))
+    local title = ns.Markup.Plain(task.title or "", task.npcs)
+    ns.Mascot:Echo(ns.T(bucket == "skipped" and "ECHO_SKIPPED" or "ECHO_DONE", title))
     ns.Mascot:Lead(bucket == "skipped" and "OK_NEXT" or "NICE")
   end
   list[#list + 1] = { id = task.id, at = ns.Now() }
@@ -113,7 +114,7 @@ function ns.Session:Finish(bucket)
   self:Save()
   local nxt = self:Current()
   if nxt then
-    self.Note(ns.T("NEXT_UP", nxt.title))
+    self.Note(ns.T("NEXT_UP", ns.Markup.Plain(nxt.title, nxt.npcs)))
     ns.ClickSound()
   else
     self.Note(ns.T("PLAN_DONE_CHAT"))
@@ -166,7 +167,8 @@ function ns.Session:Skip()
   if ns.Waypoint and ns.Waypoint.ClearOwned then
     ns.Waypoint:ClearOwned()
   end
-  self.Note(ns.T("NEXT_UP", self:Current().title))
+  local current = self:Current()
+  self.Note(ns.T("NEXT_UP", ns.Markup.Plain(current.title, current.npcs)))
   self:Save()
   self:CheckCurrent()
   self:RefreshUI()
@@ -1014,7 +1016,8 @@ local function cleanAnswer(raw)
     return nil
   end
   local waypoints = ns.CleanWaypoints(raw.waypoints, 1)
-  return { message = message, messages = ns.Intents.Split(message), waypoints = waypoints }
+  local npcs = ns.Markup.NpcsFor(ns.Markup.CleanEntities(raw.entities), message)
+  return { message = message, messages = ns.Intents.Split(message), waypoints = waypoints, npcs = npcs }
 end
 
 -- Picks up the companion file on every load. A plan with a requestId is taken
@@ -1075,6 +1078,7 @@ function ns.Session:AutoApplyExternal()
       type = kind,
       message = answer.message,
       messages = answer.messages,
+      npcs = answer.npcs,
       lang = req and req.lang or nil,
       question = req and (req.question or req.wish) or nil,
       itemID = item and item.itemID or nil,

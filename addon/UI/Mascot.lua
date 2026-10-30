@@ -424,6 +424,18 @@ function ns.Mascot:CreateBubble()
   bubble:EnableMouse(true)
   bubble:SetScript("OnReceiveDrag", takeCursorItem)
   bubble:SetScript("OnMouseUp", takeCursorItem)
+  if bubble.SetHyperlinksEnabled then
+    bubble:SetHyperlinksEnabled(true)
+  end
+  bubble:SetScript("OnHyperlinkEnter", function(frame, link, text)
+    ns.Markup.OnEnter(frame, link, text)
+  end)
+  bubble:SetScript("OnHyperlinkLeave", function()
+    ns.Markup.OnLeave()
+  end)
+  bubble:SetScript("OnHyperlinkClick", function(_, link, text, button)
+    ns.Markup.OnClick(link, text, button)
+  end)
   ns.UI.ApplyBackdrop(bubble, { 0.03, 0.08, 0.09, 0.92 }, { TEAL[1], TEAL[2], TEAL[3], 0.9 })
   bubble:Hide()
   self.bubble = bubble
@@ -641,6 +653,11 @@ local function progressMeta(session)
   return text
 end
 
+-- A name that loads after the Bubble was drawn draws it again.
+local function relink()
+  ns.Mascot:Refresh()
+end
+
 local function stepView(mascot, session, task)
   return {
     kind = "step",
@@ -648,8 +665,9 @@ local function stepView(mascot, session, task)
     mood = "idle",
     meta = progressMeta(session),
     header = leadText(mascot),
-    message = task.title or "",
-    sub = type(task.note) == "string" and task.note ~= "" and task.note or nil,
+    message = ns.Markup.Render(task.title or "", task.npcs, relink),
+    sub = type(task.note) == "string" and task.note ~= "" and ns.Markup.Render(task.note, task.npcs, relink) or nil,
+    npcs = task.npcs,
     where = ns.Tracker.CurrentMeta(task),
     buttons = { "done", "skip", "list" },
   }
@@ -669,7 +687,7 @@ local REASONS = {
   companion_offline = "COMPANION_STOPPED",
   server_unreachable = "COMPANION_OFFLINE",
   rejected = "REASON_REJECTED",
-  timeout = "WAIT_SLOW",
+  timeout = "EXPIRED",
   planner_failed = "REASON_PLANNER_FAILED",
 }
 
@@ -748,7 +766,7 @@ local function answerView(session, answer)
     or ns.Intents.Split(answer.message)
   local before = {}
   for i = 1, #messages - 1 do
-    before[i] = messages[i]
+    before[i] = ns.Markup.Plain(messages[i], answer.npcs)
   end
   local header = answer.itemLink
   if not header and type(answer.question) == "string" and answer.question ~= "" then
@@ -767,8 +785,9 @@ local function answerView(session, answer)
     key = (answer.isLocal and "local:" or "") .. tostring(answer.requestId or answer.at),
     mood = "happy",
     header = header,
-    message = messages[#messages],
+    message = ns.Markup.Render(messages[#messages], answer.npcs, relink),
     before = before,
+    npcs = answer.npcs,
     buttons = buttons,
   }
 end
@@ -900,7 +919,7 @@ function ns.Mascot.View()
       key = offer.requestId or offer.key,
       mood = "happy",
       message = ns.T("BETTER_READY"),
-      sub = first and ns.T("BETTER_FIRST", #offer.plan.tasks, first.title or "") or nil,
+      sub = first and ns.T("BETTER_FIRST", #offer.plan.tasks, ns.Markup.Plain(first.title or "", first.npcs)) or nil,
       buttons = { "use", "keep" },
     }
   end
@@ -1386,6 +1405,7 @@ function ns.Mascot:Layout(view, right)
   else
     self.meta:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
   end
+  ns.Markup.UseNpcs(view.npcs)
   put(self.meta, view.meta or ns.MASCOT_NAME, 6, INNER - (TOP_ICON + 4) * 2 - 4)
   put(self.header, view.header, 4)
   put(self.message, view.message, 6)

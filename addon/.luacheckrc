@@ -42,6 +42,14 @@ globals = {
 }
 
 read_globals = {
+  "C_Spell",
+  "EventRegistry",
+  "GetAchievementLink",
+  "GetTime",
+  "Item",
+  "QuestEventListener",
+  "SetItemRef",
+  "Spell",
   "C_ClassTalents",
   "C_GossipInfo",
   "ChatFrame_DisplayTimePlayed",

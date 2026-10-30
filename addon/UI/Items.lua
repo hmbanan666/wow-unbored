@@ -138,7 +138,7 @@ function ns.Items.Facts(itemID, link, where)
   local mountFact, mountID = ns.Items.MountFact(itemID)
   local task = rule ~= 1 and ns.Items.PlanTask(itemID, mountID)
   if task then
-    lines[#lines + 1] = ns.T("FACT_PLAN", task.title or "")
+    lines[#lines + 1] = ns.T("FACT_PLAN", ns.Markup.Plain(task.title or "", task.npcs))
   end
   if rule ~= 5 and rule ~= 6 and rule ~= 7 then
     local collectible = mountFact or ns.Items.PetFact(itemID) or ns.Items.ToyFact(itemID)

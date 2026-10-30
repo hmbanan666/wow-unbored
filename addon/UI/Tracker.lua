@@ -234,11 +234,11 @@ local function layoutRow(row, task, number, current, expanded, noNote)
   if current then
     row.title:SetFontObject("GameFontHighlight")
     row.title:SetTextColor(1, 1, 1)
-    row.title:SetText(task.title or "")
+    row.title:SetText(ns.Markup.Plain(task.title or "", task.npcs))
   else
     row.title:SetFontObject("GameFontHighlightSmall")
     row.title:SetTextColor(0.6, 0.6, 0.6)
-    row.title:SetText(number .. ".  " .. (task.title or ""))
+    row.title:SetText(number .. ".  " .. ns.Markup.Plain(task.title or "", task.npcs))
   end
   local height = ns.UI.Measure(row.title, textWidth)
 
@@ -264,7 +264,7 @@ local function layoutRow(row, task, number, current, expanded, noNote)
   row.note:ClearAllPoints()
   if showNote then
     row.note:SetPoint("TOPLEFT", row.meta, "BOTTOMLEFT", 0, -3)
-    row.note:SetText(task.note)
+    row.note:SetText(ns.Markup.Plain(task.note, task.npcs))
     if current then
       row.note:SetTextColor(0.9, 0.9, 0.9)
     else
