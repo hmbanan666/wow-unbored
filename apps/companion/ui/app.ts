@@ -1,5 +1,8 @@
 // @ts-nocheck — the window was plain script; the import below is the shared contract.
 import type { Plan, PlayerProfile, RequestBody } from "@unbored/contracts";
+import wispHappy from "./img/wisp-happy.png";
+import wispIdle from "./img/wisp-idle.png";
+import wispThinking from "./img/wisp-thinking.png";
 
 // The window does not build Requests. These names are the same contract the Server stores.
 export type { Plan, PlayerProfile, RequestBody };
@@ -26,20 +29,21 @@ const autostart = $("autostart");
 const progress = $("progress");
 const steps = $("steps");
 
+// Imported so Vite fingerprints and ships them; a runtime "img/..." path is not in dist/.
 const PICTURES = {
-  idle: "idle",
-  setup: "idle",
-  error: "idle",
-  ready: "happy",
-  thinking: "thinking",
-  busy: "thinking",
-  pairing: "thinking",
+  idle: wispIdle,
+  setup: wispIdle,
+  error: wispIdle,
+  ready: wispHappy,
+  thinking: wispThinking,
+  busy: wispThinking,
+  pairing: wispThinking,
 };
 
 function paint(state) {
   const phase = state.phase || "idle";
   document.body.dataset.phase = phase;
-  mascot.src = `img/wisp-${PICTURES[phase] || "idle"}.png`;
+  mascot.src = PICTURES[phase] || wispIdle;
   mascot.alt = state.mascot || "Wisp";
   headline.textContent = state.headline || "";
   hint.textContent = phase === "setup" && state.status ? state.status : state.hint || "";

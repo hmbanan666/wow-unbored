@@ -9,6 +9,7 @@ on:
       - "pnpm-workspace.yaml"
       - "package.json"
       - ".github/workflows/companion.yml"
+      - "scripts/check-companion-dist.sh"
       - "docs/companion-api.md"
       - "docs/contract/**"
   workflow_dispatch:
@@ -58,3 +59,6 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm exec tauri build ${{ steps.sign.outputs.args }}
+      - name: Check the window ships every Wisp picture
+        shell: bash
+        run: scripts/check-companion-dist.sh apps/companion/dist
