@@ -8,7 +8,8 @@
 
 Один тег `vX.Y.Z` содержит установщик, zip аддона и `latest.json`. Уже установленные Companion читают `latest.json` с релиза `companion-updater`. Тег ставит владелец.
 
-- [ ] До тега: Actions → Release → Run workflow (ветка `main`, галочка `dry_run` стоит). Все задания зелёные, в артефактах `Unbored.Companion_0.8.0_x64-setup.exe`, `Unbored.Companion_0.8.0_x64_en-US.msi`, `Unbored-v0.8.0.zip`, `latest.json` (версия 0.8.0, ссылки на тег `v0.8.0`) и `notes.md`. Новых релизов на GitHub не появилось.
+- [ ] До тега: Actions → Release → Run workflow (ветка `main`, галочка `dry_run` стоит). Все задания зелёные, в артефактах `Unbored.Companion_0.8.0_x64-setup.exe`, `Unbored.Companion_0.8.0_x64_en-US.msi`, `Unbored-v0.8.0.zip`, `latest.json` (версия 0.8.0, ссылки на тег `v0.8.0`) и `notes.md`. В сводке задания `notes` — текст релиза; в нём нет «Wisp», строк про CI, clippy, тесты и версий в начале строки. Если версия уже выпущена, там же предупреждение «already released». Новых релизов на GitHub не появилось.
+- [ ] В PR: в сводке задания `PR title / notes-preview` — заметки, как будто PR уже влит; задание красное, если туда попала служебная строка.
 - [ ] В релизе `v0.8.0` текст начинается с «Install / Download»: какой файл скачать (`..._x64-setup.exe`), 2–3 шага, ссылка на README. `latest.json` и `.sig` подписаны как «для автообновления, не трогай».
 - [ ] Ниже — только Features / Fixes / Performance этой версии: нет группы «Other», нет строк «Bump …», «Format …», «Version …», ни одна строка не повторяется.
 - [ ] README открывается по-человечески: что такое Бори, картинка, установка в 3 шага, FAQ, раздел «По-русски».
