@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fails when the built Companion window misses a Wisp picture or links a file
+# Fails when the built Companion window misses a Bory picture or links a file
 # that is not in dist/. Run after `vp build` in apps/companion.
 set -euo pipefail
 
@@ -7,7 +7,7 @@ dist="${1:-apps/companion/dist}"
 [ -f "$dist/index.html" ] || { echo "no $dist/index.html, run vp build first" >&2; exit 1; }
 
 fail=0
-for name in wisp-idle wisp-happy wisp-thinking; do
+for name in bory-idle bory-happy bory-thinking bory-waiting bory-frame; do
   if ! find "$dist" -type f -name "${name}*.png" | grep -q .; then
     echo "missing picture: $name in $dist" >&2
     fail=1

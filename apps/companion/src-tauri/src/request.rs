@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 use crate::savedvars::SavedRequest;
 
-/// Why a Request did not get an Answer. Wisp has one friendly line per code.
+/// Why a Request did not get an Answer. Bory has one friendly line per code.
 pub mod reason {
     pub const NOT_APPROVED: &str = "not_approved";
     pub const SERVER_UNREACHABLE: &str = "server_unreachable";

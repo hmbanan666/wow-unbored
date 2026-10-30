@@ -11,7 +11,7 @@ use serde_json::Value;
 pub const HELPER_TOC: &str = "\
 ## Interface: 120105, 120100
 ## Title: Unbored Plan
-## Notes: Plans, answers and item tips from Unbored Companion. Wisp reads them when you log in or press Refresh.
+## Notes: Plans, answers and item tips from Unbored Companion. Bory reads them when you log in or press Refresh.
 ## Author: Unbored contributors
 ## Version: 0.7.0
 ## LoadOnDemand: 0
@@ -646,7 +646,7 @@ pub fn install_advice(retail: &Path, characters: &Value) -> Result<bool, PlanErr
 /// overwrites the other.
 const STATUS_MARK: &str = "-- Companion status, rewritten on every check.\n";
 
-/// What the addon is told about the Companion, so Wisp can say why a
+/// What the addon is told about the Companion, so Bory can say why a
 /// Request is not back yet (docs/companion-api.md).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CompanionStatus {
@@ -809,13 +809,13 @@ pub struct RequestState {
     pub kind: String,
     pub status: String,
     pub reason: Option<String>,
-    /// A Reason code (docs/adr/0013); Wisp turns it into its own line.
+    /// A Reason code (docs/adr/0013); Bory turns it into its own line.
     pub reason_code: Option<String>,
     pub plan_id: Option<u64>,
     pub plan: Option<Plan>,
     pub answer: Option<Value>,
     pub updated_at: Option<u64>,
-    /// Seconds a plan usually takes (Server p50), for Wisp's Refresh offer (D68).
+    /// Seconds a plan usually takes (Server p50), for Bory's Refresh offer (D68).
     pub eta: Option<u64>,
 }
 
