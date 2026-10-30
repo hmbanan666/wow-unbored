@@ -181,6 +181,17 @@ pub fn character_saved_variables(retail: &Path, account: Option<&str>) -> Vec<Ch
     files
 }
 
+/// The Account file (`WTF/Account/<account>/SavedVariables/Unbored.lua`).
+pub fn account_saved_variables(retail: &Path, account: &str) -> Option<PathBuf> {
+    let path = retail
+        .join("WTF")
+        .join("Account")
+        .join(account)
+        .join("SavedVariables")
+        .join("Unbored.lua");
+    path.is_file().then_some(path)
+}
+
 pub fn read_progress(file: &CharacterFile) -> Result<Option<SessionProgress>, String> {
     let text = fs::read_to_string(&file.path).map_err(|err| err.to_string())?;
     session_from_saved_variables(&text)

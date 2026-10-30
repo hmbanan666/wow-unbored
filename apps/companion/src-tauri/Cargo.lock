@@ -5261,6 +5261,7 @@ name = "unbored-companion"
 version = "0.6.0"
 dependencies = [
  "base64 0.23.1",
+ "flate2",
  "getrandom 0.4.3",
  "jsonschema",
  "keyring",

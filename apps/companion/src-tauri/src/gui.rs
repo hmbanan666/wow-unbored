@@ -25,9 +25,13 @@ use crate::plan::{
 };
 use crate::request::{reason, request_body};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
+use crate::snapshot::{
+    build_upload, character_identity, data_from_saved_variables, gzip, DataFile,
+    MAX_COMPRESSED_BYTES,
+};
 use crate::wow::{
-    character_saved_variables, detect_installs, list_accounts, read_progress, retail_dir,
-    CharacterFile,
+    account_saved_variables, character_saved_variables, detect_installs, list_accounts,
+    read_progress, retail_dir, CharacterFile,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -770,7 +774,71 @@ fn post_requests(
     Ok(rejected)
 }
 
-/// Uploads each character's profile once per save (docs/adr/0011).
+/// Uploads the Sections that changed for every character and its Account,
+/// gzip, on each SavedVariables write (docs/adr/0029). Characters whose addon
+/// has no snapshot yet (0.6) are left to `post_profiles`.
+fn post_snapshots(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
+    static SENT: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
+    let sent = SENT.get_or_init(|| Mutex::new(HashMap::new()));
+    let client = http_client(Duration::from_secs(30))?;
+    let url = effective_url(settings);
+    let mut accounts: HashMap<String, Option<DataFile>> = HashMap::new();
+    for file in character_saved_variables(retail, None) {
+        let Ok(text) = fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let Ok(Some(char_file)) = data_from_saved_variables(&text, "UnboredCharDB") else {
+            continue;
+        };
+        let account_file = accounts
+            .entry(file.account.clone())
+            .or_insert_with(|| {
+                account_saved_variables(retail, &file.account)
+                    .and_then(|path| fs::read_to_string(path).ok())
+                    .and_then(|text| data_from_saved_variables(&text, "UnboredDB").ok().flatten())
+            })
+            .clone();
+        let (character, realm) = character_identity(Some(&char_file), &file.realm, &file.character);
+        let known = sent.lock().map_err(|err| err.to_string())?.clone();
+        let Some((body, remember)) = build_upload(
+            &file.account,
+            &character,
+            &realm,
+            Some(&char_file),
+            account_file.as_ref(),
+            &known,
+        ) else {
+            continue;
+        };
+        let bytes = gzip(body.to_string().as_bytes())?;
+        if bytes.len() > MAX_COMPRESSED_BYTES {
+            return Err("The game data is too big to send.".into());
+        }
+        let response = client
+            .post(join_url(&url, "v1/snapshot"))
+            .bearer_auth(secret)
+            .header("Content-Type", "application/json")
+            .header("Content-Encoding", "gzip")
+            .body(bytes)
+            .send()
+            .map_err(|err| err.to_string())?;
+        if response.status().as_u16() == 404 {
+            // A Server older than 0.7: the profile upload still carries the basics.
+            return Ok(());
+        }
+        if !response.status().is_success() {
+            return Err(format!(
+                "Planner returned {} for the game data.",
+                response.status()
+            ));
+        }
+        sent.lock().map_err(|err| err.to_string())?.extend(remember);
+    }
+    Ok(())
+}
+
+/// Uploads each character's profile once per save (docs/adr/0011). From 0.7
+/// only for characters whose addon has no Game data snapshot yet.
 fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
     static POSTED: std::sync::OnceLock<Mutex<HashMap<String, u64>>> = std::sync::OnceLock::new();
     let posted = POSTED.get_or_init(|| Mutex::new(HashMap::new()));
@@ -780,6 +848,12 @@ fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
         let Ok(text) = fs::read_to_string(&file.path) else {
             continue;
         };
+        if matches!(
+            data_from_saved_variables(&text, "UnboredCharDB"),
+            Ok(Some(_))
+        ) {
+            continue;
+        }
         let Ok(Some(profile)) = profile_from_saved_variables(&text) else {
             continue;
         };
@@ -837,7 +911,8 @@ fn sync_plans(
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
     let rejected = post_requests(settings, &retail, secret)?;
-    // A profile or advice that fails must not hold back plans and answers.
+    // Game data, a profile or advice that fails must not hold back plans and answers.
+    let _ = post_snapshots(settings, &retail, secret);
     let _ = post_profiles(settings, &retail, secret);
     let _ = sync_advice(settings, &retail, secret);
     if let Some((request, why)) = rejected.first() {
