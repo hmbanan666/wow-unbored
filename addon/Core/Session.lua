@@ -41,16 +41,6 @@ function ns.Session:Mode()
   return "roam"
 end
 
-function ns.Session:Budget()
-  if self.state and self.state.budget then
-    return self.state.budget
-  end
-  if ns.DB and ns.DB.budget then
-    return ns.DB.budget
-  end
-  return 60
-end
-
 function ns.Session:Untouched()
   local state = self.state
   if not state then
@@ -227,13 +217,12 @@ function ns.Session:ApplyPlan(plan, source, reveal)
       tasks[#tasks + 1] = task
     end
   end
-  self.state = blankState(plan.mode or "custom", plan.budget or 60, source or "import")
+  self.state = blankState(plan.mode or "custom", plan.budget, source or "import")
   self.state.tasks = tasks
   self.state.note = plan.note
   self.state.savedAt = ns.Now()
   if ns.DB then
     ns.DB.mode = self.state.mode
-    ns.DB.budget = self.state.budget
   end
   self:Save()
   if ns.Waypoint and ns.Waypoint.ClearOwned then
@@ -298,27 +287,24 @@ function ns.Session:ApplyCompanion(force)
   return true
 end
 
-function ns.Session:Rebuild(mode, budget)
+function ns.Session:Rebuild(mode)
   if ns.IsCombat() then
     self.rebuildQueued = true
     self.queuedMode = mode
-    self.queuedBudget = budget
     ns.Print(ns.T("PAUSED"))
     return
   end
   mode = mode or (ns.DB and ns.DB.mode) or "roam"
-  budget = budget or (ns.DB and ns.DB.budget) or 60
   if ns.DB then
     ns.DB.mode = mode
-    ns.DB.budget = budget
   end
-  local ctx = ns.BuildContext(budget)
+  local ctx = ns.BuildContext()
   local tasks = ns.BuildProviderPlan(mode, ctx)
   if not tasks then
     ns.Print(ns.T("BUILD_FAILED"))
     tasks = {}
   end
-  self.state = blankState(mode, budget, "provider")
+  self.state = blankState(mode, nil, "provider")
   self.state.tasks = tasks
   self.state.pendingQuests = mode == "quests"
   self.state.pendingLockouts = mode == "farm"
@@ -332,8 +318,8 @@ function ns.Session:Rebuild(mode, budget)
   self:RefreshUI()
 end
 
-function ns.Session:BuildHere(mode, budget)
-  self:Rebuild(mode or self:Mode(), budget or self:Budget())
+function ns.Session:BuildHere(mode)
+  self:Rebuild(mode or self:Mode())
   if not self.rebuildQueued then
     self:Started()
   end
@@ -341,11 +327,11 @@ end
 
 -- A Quick plan: built here from the Providers at once, so the player has a
 -- step right away while the Full plan is made (docs/adr/0005).
-function ns.Session:QuickPlan(preset, budget)
+function ns.Session:QuickPlan(preset)
   if type(UnboredCharDB) == "table" then
     UnboredCharDB.offer = nil
   end
-  self:Rebuild(preset.mode, budget)
+  self:Rebuild(preset.mode)
   if self.rebuildQueued then
     return
   end
@@ -422,28 +408,12 @@ function ns.Session.SetMode(_, mode)
   ns.Session:RefreshUI()
 end
 
-function ns.Session.SetBudget(_, minutes)
-  minutes = tonumber(minutes)
-  if ns.DB and minutes and minutes >= 5 and minutes <= 240 then
-    ns.DB.budget = minutes
-  end
-  ns.Session:RefreshUI()
-end
-
 function ns.Session.ChosenMode()
   local mode = ns.DB and ns.DB.mode
   if mode == "roam" or mode == "quests" or mode == "events" or mode == "fun" or mode == "farm" then
     return mode
   end
   return "roam"
-end
-
-function ns.Session.ChosenBudget()
-  local budget = tonumber(ns.DB and ns.DB.budget) or 60
-  if budget < 5 or budget > 240 then
-    return 60
-  end
-  return budget
 end
 
 function ns.Session:MaybeRebuild(flag)
@@ -454,9 +424,8 @@ function ns.Session:MaybeRebuild(flag)
     return
   end
   local mode = self.state.mode
-  local budget = self.state.budget
   local quick, topic = self.state.quick, self.state.topic
-  self:Rebuild(mode, budget)
+  self:Rebuild(mode)
   if self.state then
     self.state[flag] = false
     self.state.quick = quick
@@ -646,7 +615,9 @@ function ns.Session:Ask(ask)
     UnboredCharDB.offer = nil
     request.mode = ns.MODE_IDS[ask.mode] and ask.mode ~= "custom" and ask.mode or self.ChosenMode()
     local budget = tonumber(ask.budget)
-    request.budget = budget and budget >= 5 and budget <= 240 and math.floor(budget) or self.ChosenBudget()
+    if budget and budget >= 5 and budget <= 240 then
+      request.budget = math.floor(budget)
+    end
     if not ask.topic then
       UnboredCharDB.lastWish = request.wish
     end
@@ -800,7 +771,7 @@ function ns.Session:AnswerPlan()
   end
   local tasks = answer.tasks
   answer.seen = true
-  self:ApplyPlan({ mode = "roam", budget = self.ChosenBudget(), tasks = tasks }, "provider", true)
+  self:ApplyPlan({ mode = "roam", tasks = tasks }, "provider", true)
 end
 
 ns.ITEM_NOTES_MAX = 200
@@ -1107,7 +1078,7 @@ end
 function ns.Session:OnCombatEnd()
   if self.rebuildQueued then
     self.rebuildQueued = false
-    self:Rebuild(self.queuedMode, self.queuedBudget)
+    self:Rebuild(self.queuedMode)
     return
   end
   self:CheckCurrent()
@@ -1127,7 +1098,7 @@ function ns.Session:ProgressTable()
     v = 1,
     kind = "progress",
     mode = state.mode or "custom",
-    budget = state.budget or 60,
+    budget = state.budget,
     exportedAt = ns.Now(),
     currentId = tasks[1] and tasks[1].id or nil,
     done = done,

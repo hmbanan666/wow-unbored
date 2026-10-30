@@ -281,12 +281,8 @@ function ns.ValidatePlan(raw, loose)
     return nil, ns.T("ERR_MODE")
   end
   local budget = plain(raw.budget)
-  if budget == nil then
-    budget = 60
-  end
-  budget = whole(budget, 5, 240)
-  if not budget then
-    return nil, ns.T("ERR_BUDGET")
+  if budget ~= nil then
+    budget = whole(budget, 5, 240)
   end
   local note = plain(raw.note)
   if note ~= nil and type(note) ~= "string" then
@@ -399,7 +395,7 @@ function ns.EncodePlan(plan)
     v = 1,
     kind = "plan",
     mode = clean.mode or "custom",
-    budget = clean.budget or 60,
+    budget = clean.budget,
     note = clean.note,
     tasks = clean.tasks,
   }
@@ -411,7 +407,7 @@ function ns.EncodeProgress(progress)
     v = 1,
     kind = "progress",
     mode = progress.mode or "custom",
-    budget = progress.budget or 60,
+    budget = progress.budget,
     exportedAt = progress.exportedAt or ns.Now(),
     currentId = progress.currentId,
     done = progress.done or {},

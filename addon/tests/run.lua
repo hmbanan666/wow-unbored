@@ -523,14 +523,13 @@ check(ns.Session:UseExternal() == true, "slash companion applies it again")
 check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "the forced plan is current")
 
 UnboredDB.mode = "farm"
-UnboredDB.budget = 60
 local reloads = 0
 ReloadUI = function()
   reloads = reloads + 1
 end
 ns.Session:RequestPlan("mount, stay in this zone")
 local req = UnboredCharDB.request
-check(req and req.mode == "farm" and req.budget == 60, "get plan saves mode and budget")
+check(req and req.mode == "farm" and req.budget == nil, "get plan saves the mode and no time budget")
 check(req and req.wish == "mount, stay in this zone" and req.character == "player", "get plan saves the wish")
 check(req and type(req.context) == "table" and req.context.mapID == 84, "get plan saves the player context")
 check(req and near(req.context.x, 0.2) and req.context.zone == "Stormwind City", "context has position and zone")

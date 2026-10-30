@@ -12,7 +12,6 @@ local function initDB()
       window = { point = "TOPRIGHT", rel = "TOPRIGHT", x = -80, y = -220 },
       useTomTom = false,
       mode = "roam",
-      budget = 60,
       companionPlan = companion,
     }
   end
@@ -24,9 +23,7 @@ local function initDB()
   if not UnboredDB.mode then
     UnboredDB.mode = "roam"
   end
-  if not UnboredDB.budget then
-    UnboredDB.budget = 60
-  end
+  UnboredDB.budget = nil
   if UnboredDB.tomtomArrow == nil then
     UnboredDB.tomtomArrow = true
   end
@@ -161,9 +158,6 @@ local function slash(message)
   elseif command == "roam" or command == "quests" or command == "events" or command == "fun" or command == "farm" then
     ns.Session:SetMode(command)
     ns.Mascot:ShowWish()
-  elseif command == "30" or command == "60" or command == "120" then
-    ns.Session:SetBudget(tonumber(command))
-    ns.Mascot:ShowChoice()
   elseif command == "tomtom" then
     ns.DB.tomtomArrow = not ns.DB.tomtomArrow
     ns.Print(ns.DB.tomtomArrow and ns.T("TOMTOM_ON") or ns.T("TOMTOM_OFF"))

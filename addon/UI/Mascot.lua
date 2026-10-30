@@ -21,7 +21,6 @@ local TEAL = { 0.37, 0.89, 0.83 }
 local MUTED = { 0.62, 0.7, 0.7 }
 local COMBAT_ALPHA = 0.5
 local CHIP_HEIGHT = 26
-local TIME_CHIP_WIDTH = 44
 local SCALES = { 80, 100, 125, 150 }
 local ECHOES = 2
 local ECHO_SECONDS = 90
@@ -451,7 +450,7 @@ function ns.Mascot:CreateBubble()
     self.buttons[name] = actionButton(bubble, spec, handlers[name])
   end
 
-  -- The choice: one chip per preset, then "Something else...", then the time chips.
+  -- The choice: one chip per preset, then "Something else...".
   self.chips = {}
   for i = 1, #ns.Data.Presets do
     local preset = ns.Data.Presets[i]
@@ -464,25 +463,14 @@ function ns.Mascot:CreateBubble()
   self.otherChip = chip(bubble, "GameFontNormal", function()
     self:ShowWish()
   end)
-  self.timeLabel = font(bubble, "GameFontHighlightSmall")
-  self.timeLabel:SetTextColor(0.75, 0.82, 0.82)
-  self.timeChips = {}
-  for i = 1, #ns.Data.PresetBudgets do
-    local minutes = ns.Data.PresetBudgets[i]
-    local button = chip(bubble, "GameFontHighlightSmall", function()
-      ns.Session:SetBudget(minutes)
-    end)
-    button:SetSize(TIME_CHIP_WIDTH, 20)
-    button.label:ClearAllPoints()
-    button.label:SetPoint("CENTER")
-    button.minutes = minutes
-    self.timeChips[i] = button
-  end
 
   self.wishBox, self.wishEdit = ns.UI.MakeTextBox(bubble, ns.T("WISH_HINT"), 300, function()
     self.wishError = nil
   end, INNER, 64)
   self.wishBox:Hide()
+  -- Only the fully custom wish may carry minutes, and only when typed (docs/adr/0037).
+  self.minutesBox, self.minutesEdit = ns.UI.MakeNumberBox(bubble, ns.T("WISH_MINUTES_HINT"), 3, INNER)
+  self.minutesBox:Hide()
 
   self.echoFrames = {}
   for i = 1, ECHOES do
@@ -544,7 +532,10 @@ function ns.Mascot.RequestSummary(req)
     return req.question and ("\"" .. req.question .. "\"") or nil
   end
   local preset = ns.Mascot.Preset(req.topic)
-  local text = (preset and ns.T(preset.label) or ns.ModeLabel(req.mode)) .. "  ·  " .. ns.Mascot.BudgetLabel(req.budget)
+  local text = preset and ns.T(preset.label) or ns.ModeLabel(req.mode)
+  if not preset and tonumber(req.budget) then
+    text = text .. "  ·  " .. ns.T("MINUTES", tonumber(req.budget))
+  end
   if not preset and type(req.wish) == "string" and req.wish ~= "" then
     text = text .. "\n\"" .. req.wish .. "\""
   end
@@ -558,26 +549,6 @@ function ns.Mascot.Preset(id)
     end
   end
   return nil
-end
-
-function ns.Mascot.BudgetLabel(minutes)
-  local label = ns.T("BUDGET_" .. tostring(minutes))
-  if label == "BUDGET_" .. tostring(minutes) then
-    label = ns.T("MINUTES", tonumber(minutes) or 0)
-  end
-  return label
-end
-
--- The time a preset is sent with: the player's last pick if it is one of
--- the chips, else the default.
-function ns.Mascot.Budget()
-  local chosen = ns.Session.ChosenBudget()
-  for i = 1, #ns.Data.PresetBudgets do
-    if ns.Data.PresetBudgets[i] == chosen then
-      return chosen
-    end
-  end
-  return ns.Data.PresetDefaultBudget
 end
 
 -- Nothing to do and nothing asked: a left click offers the presets.
@@ -857,6 +828,7 @@ function ns.Mascot.View()
       message = ns.T("WISH_TITLE"),
       sub = mascot.wishError,
       wish = true,
+      minutes = true,
       hint = ns.T("WISH_HINT"),
       buttons = { "send", "back" },
     }
@@ -1094,6 +1066,9 @@ function ns.Mascot:ShowWish()
     local last = type(UnboredCharDB) == "table" and UnboredCharDB.lastWish
     self.wishEdit:SetText(type(last) == "string" and last or "")
   end
+  if self.minutesEdit then
+    self.minutesEdit:SetText("")
+  end
   self:Reveal()
   if self.wishEdit and self.view and self.view.kind == "wish" then
     self.wishEdit:SetFocus()
@@ -1127,13 +1102,12 @@ end
 -- One click: a Quick plan right away and, with the Companion, the Request
 -- for the Full plan. Nothing reloads (docs/adr/0005, 0012).
 function ns.Mascot:Choose(preset)
-  local budget = self.Budget()
   self:Reset()
-  ns.Session:QuickPlan(preset, budget)
+  ns.Session:QuickPlan(preset)
   if not ns.UI.HasCompanion() then
     return
   end
-  ns.Session:Ask({ type = "plan", mode = preset.mode, budget = budget, topic = preset.id, wish = preset.wish })
+  ns.Session:Ask({ type = "plan", mode = preset.mode, topic = preset.id, wish = preset.wish })
 end
 
 function ns.Mascot:SendWish()
@@ -1143,15 +1117,25 @@ function ns.Mascot:SendWish()
     self:Refresh()
     return
   end
-  local budget = self.Budget()
+  local minutes = ns.Trim(self.minutesEdit and self.minutesEdit:GetText() or "")
+  local budget = nil
+  if minutes ~= "" then
+    budget = tonumber(minutes)
+    if not budget or budget < 5 or budget > 240 or budget ~= math.floor(budget) then
+      self.wishError = ns.T("WISH_MINUTES_BAD")
+      self:Refresh()
+      return
+    end
+  end
   local mode = ns.Session.ChosenMode()
   self:Reset()
   if self.wishEdit.ClearFocus then
     self.wishEdit:ClearFocus()
   end
-  ns.Session:QuickPlan({ id = nil, mode = mode }, budget)
+  ns.Session:QuickPlan({ id = nil, mode = mode })
   if ns.UI.HasCompanion() and ns.Session:Ask({ type = "plan", wish = text, budget = budget }) then
     self.wishEdit:SetText("")
+    self.minutesEdit:SetText("")
   end
 end
 
@@ -1221,12 +1205,9 @@ local function clearBubble(mascot)
   for i = 1, #mascot.chips do
     mascot.chips[i]:Hide()
   end
-  for i = 1, #mascot.timeChips do
-    mascot.timeChips[i]:Hide()
-  end
   mascot.otherChip:Hide()
-  mascot.timeLabel:Hide()
   mascot.wishBox:Hide()
+  mascot.minutesBox:Hide()
 end
 
 function ns.Mascot:Refresh()
@@ -1372,26 +1353,14 @@ function ns.Mascot:Layout(view, right)
       layoutChip(self.chips[i], ns.T(self.chips[i].preset.label), false)
     end
     layoutChip(self.otherChip, ns.T("PRESET_OTHER"), false)
-    y = y - 2
-    self.timeLabel:SetText(ns.T("CHOICE_TIME"))
-    local labelWidth = math.ceil(ns.AsNumber(self.timeLabel:GetStringWidth()) or 30)
-    self.timeLabel:SetSize(labelWidth + 2, 20)
-    self.timeLabel:SetJustifyV("MIDDLE")
-    place(self.timeLabel, PAD, 20)
-    local budget = self.Budget()
-    local x = PAD + labelWidth + 8
-    for i = 1, #self.timeChips do
-      local button = self.timeChips[i]
-      button.label:SetText(self.BudgetLabel(button.minutes))
-      styleChip(button, button.minutes == budget)
-      place(button, x, 20)
-      x = x + TIME_CHIP_WIDTH + 4
-    end
-    y = y - 20 - 4
   elseif view.wish then
     self.wishBox.placeholder:SetText(view.hint or ns.T("WISH_HINT"))
     y = y - place(self.wishBox, PAD, ns.AsNumber(self.wishBox:GetHeight()) or 64) - 6
     self.wishBox.UpdatePlaceholder()
+    if view.minutes then
+      y = y - place(self.minutesBox, PAD, 24) - 6
+      self.minutesBox.UpdatePlaceholder()
+    end
   end
 
   -- One action bar; a row that would not fit wraps.

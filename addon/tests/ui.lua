@@ -450,11 +450,7 @@ for i, button in ipairs(mascot.chips) do
 end
 check(textOf(mascot.chips[1].label) == "Stay here, do stuff nearby", "the first chip is Stay here")
 check(mascot.otherChip:IsShown() and textOf(mascot.otherChip.label) == "Something else...", "Something else is there")
-check(#mascot.timeChips == 3, "three time chips")
-local function gold(button)
-  return button.label.color and button.label.color[1] == 1 and button.label.color[3] == 0
-end
-check(textOf(mascot.timeChips[2].label) == "1h" and gold(mascot.timeChips[2]), "1h is the default time")
+check(mascot.timeChips == nil and not mascot.minutesBox:IsShown(), "presets ask no time (docs/adr/0037)")
 check(not mascot.buttons.done:IsShown(), "no step buttons in the greeting")
 check(mascot.art.texture:find("WispIdle", 1, true) ~= nil, "idle portrait")
 check(mascot.bubble.height > (#mascot.chips + 1) * 26, "the bubble fits all chips: " .. mascot.bubble.height)
@@ -573,10 +569,6 @@ check(not mascot.bubble:IsShown() and mascot.pill:IsShown(), "collapsed: the por
 mascot.pill:Click("LeftButton")
 check(mascot.bubble:IsShown() and not mascot.pill:IsShown(), "the pill brings the bubble back")
 
-mascot.timeChips[3]:Click()
-check(UnboredDB.budget == 120 and gold(mascot.timeChips[3]), "a time chip picks 2h")
-mascot.timeChips[2]:Click()
-
 -- One click on a preset: a Quick plan at once, the Request saved, nothing reloads.
 local realNow = ns.Now
 local clock = realNow()
@@ -587,7 +579,7 @@ mascot.chips[2]:Click()
 check(reloads == 0, "a preset click does not reload")
 local req = UnboredCharDB.request
 check(req and req.type == "plan" and req.mode == "farm" and req.topic == "mount", "the preset is sent with its mode")
-check(req and req.budget == 60 and not req.onDisk, "with the default 1h, not on disk yet")
+check(req and req.budget == nil and not req.onDisk, "with no time budget, not on disk yet")
 local quick = ns.Session.state
 check(quick and quick.quick and quick.topic == "mount", "a Quick plan is built here")
 check(mascot.view.kind == "step" and textOf(mascot.message) == ns.Session:Current().title, "Wisp shows the first step")
@@ -711,6 +703,8 @@ check(mascot.view.kind == "choice" and textOf(mascot.message) == "All done, nice
 -- Something else...: one free-text box.
 mascot.otherChip:Click()
 check(mascot.view.kind == "wish" and mascot.wishBox:IsShown(), "Something else opens the wish box")
+check(mascot.minutesBox:IsShown() and textOf(mascot.minutesEdit) == "", "with an empty, optional minutes box")
+check(textOf(mascot.minutesBox.placeholder) == "Minutes, only if you have a limit", "that says it is optional")
 mascot.buttons.send:Click()
 check(textOf(mascot.sub) == "Type a few words first.", "an empty wish is not sent")
 mascot.wishEdit:SetText("mount, no raids")
@@ -718,7 +712,19 @@ mascot.buttons.send:Click()
 req = UnboredCharDB.request
 check(reloads == 1, "Send does not reload")
 check(req and req.type == "plan" and req.wish == "mount, no raids", "the wish is sent as written")
+check(req.budget == nil, "an empty minutes box sends no budget")
 check(UnboredCharDB.lastWish == "mount, no raids", "the wish is remembered")
+ns.Session:CancelRequest()
+mascot.otherChip:Click()
+mascot.wishEdit:SetText("all of Hallowfall's exploration")
+mascot.minutesEdit:SetText("300")
+mascot.buttons.send:Click()
+check(textOf(mascot.sub) == "Minutes: a whole number from 5 to 240, or leave it empty.", "bad minutes are not sent")
+mascot.minutesEdit:SetText("45")
+mascot.buttons.send:Click()
+req = UnboredCharDB.request
+check(req and req.budget == 45 and req.wish == "all of Hallowfall's exploration", "typed minutes go with the wish")
+check(textOf(mascot.minutesEdit) == "", "and the minutes box starts empty again")
 ns.Session:CancelRequest()
 
 -- Ask: the local answer at once, the fuller one after a refresh (docs/adr/0014).
@@ -1026,8 +1032,6 @@ check(mascot.frame:IsShown(), "the minimap button brings it back")
 -- The old slash commands still work.
 SlashCmdList.UNBORED("")
 check(mascot.view.kind == "choice" and mascot.bubble:IsShown(), "/unbored offers the presets")
-SlashCmdList.UNBORED("30")
-check(UnboredDB.budget == 30 and gold(mascot.timeChips[1]), "/unbored 30 picks the time")
 SlashCmdList.UNBORED("ask where to fish?")
 check(mascot.view.kind == "ask" and textOf(mascot.wishEdit) == "where to fish?", "/unbored ask still asks")
 Unbored_Toggle()

@@ -101,7 +101,7 @@ Players never need them. Keybinds (Esc → Options → Keybindings → AddOns �
 - **Fun.** A short curated list: Going Down?, Higher Learning, the squirrel `/love` sets, Well Read.
 - **Farm.** Old raids (and Return to Karazhan) that still have a mount you do not own. A lockout from `GetSavedInstanceInfo` hides that instance for the week.
 
-Tasks carry a rough minute estimate. The list stops when it has filled the budget, allowing about 10 extra minutes so a task is not sliced in half. The first task is kept even if it is longer than the budget.
+Tasks carry a rough minute estimate. A local Quick plan is sized internally (about an hour of estimates, at most `ns.MAX_STEPS` Steps) so it stays a short start; the player never picks a time. Full plans from the Planner have no time budget and cover the whole goal ([ADR 0037](adr/0037-no-time-budget.md)).
 
 ## Pins and combat
 

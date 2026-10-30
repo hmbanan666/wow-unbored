@@ -43,7 +43,3 @@ ns.Data.Presets = {
     wish = "Surprise me with something fun.",
   },
 }
-
--- The small time chips under the presets. The default is one hour.
-ns.Data.PresetBudgets = { 30, 60, 120 }
-ns.Data.PresetDefaultBudget = 60
