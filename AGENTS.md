@@ -11,9 +11,9 @@ Process: decisions that are hard to reverse or that players will see are grilled
 
 Hard to reverse means things like data flow, privacy, pairing, what the addon may do under Blizzard rules, and how Plans are made. Record each decision as the next numbered ADR: a title, `Status: accepted`, and one to three sentences. Link it from `docs/adr/README.md`.
 
-Wisp's voice is warm, short, with light humour and no cringe. Plans are usually 3 to 7 Steps, one shown at a time, the full list on click; a Plan for one goal covers all of it and has no time budget (ADR 0037). Every UI string goes in `Core/Locale.lua`, in English and Russian.
+Bory's voice is warm, short, with light humour and no cringe. Plans are usually 3 to 7 Steps, one shown at a time, the full list on click; a Plan for one goal covers all of it and has no time budget (ADR 0037). Every UI string goes in `Core/Locale.lua`, in English and Russian.
 
-Every state the player can be in has a line from Wisp and a way forward: no silent waits, no raw errors or ids, no slash command or manual `/reload` needed. Never reload per message (ADR 0012): answer locally first, let the Companion prepare the rest in the background, and offer one Refresh only when something is waiting. No clipboard tricks. Never touch protected or secure frames outside a hardware event, and add no overlays on game UI. [`TESTING.md`](TESTING.md) is the owner's live-client checklist (in Russian); update it when a player-visible flow changes.
+Every state the player can be in has a line from Bory and a way forward: no silent waits, no raw errors or ids, no slash command or manual `/reload` needed. Never reload per message (ADR 0012): answer locally first, let the Companion prepare the rest in the background, and offer one Refresh only when something is waiting. No clipboard tricks. Never touch protected or secure frames outside a hardware event, and add no overlays on game UI. [`TESTING.md`](TESTING.md) is the owner's live-client checklist (in Russian); update it when a player-visible flow changes.
 
 Request, Plan, snapshot and markup payloads live in `packages/contracts/` (`schema/`, `fixtures/`, `markup.md`); the addon, Companion and Server tests all read the same fixtures, so change every side together. A short pointer, including the Packed id set spec, is in `docs/contract/`.
 

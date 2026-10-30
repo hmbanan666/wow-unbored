@@ -6,7 +6,7 @@ Read [`CONTEXT.md`](../CONTEXT.md) (the words we use) and [`docs/adr/`](adr/) (t
 
 ## The pieces
 
-- **The addon** (`addon/`): Wisp, the Bubble, Quick plans from the Providers, tooltip Advice, local answers. Lua for the Retail client, no required libraries. It is not a JavaScript package.
+- **The addon** (`addon/`): Bory, the Bubble, Quick plans from the Providers, tooltip Advice, local answers. Lua for the Retail client, no required libraries. It is not a JavaScript package.
 - **The Companion** (`apps/companion/`): a Windows tray app (Tauri, Rust, window in `ui/`). It installs and updates the addon, sends Requests and profiles from SavedVariables to the Server, and writes `Interface/AddOns/Unbored_Plan/Plan.lua` and `Advice.lua`. See [`apps/companion/README.md`](../apps/companion/README.md).
 - **The Server** (`apps/server/`): Node, Hono and SQLite at `https://unbored.kosarev.space`. Devices, Requests, Plans, Player profiles, history, Personal advice, and the MCP tools the Planner uses. Contract: [`companion-api.md`](companion-api.md), plan format: [`plan-format.md`](plan-format.md).
 - **Shared types** (`packages/contracts/`): Request, Plan, and Player profile types and JSON Schema. The Server and the Companion window import them. The Rust contract test reads the JSON Schema.
@@ -37,9 +37,9 @@ Bindings.xml
 Core/         session, Requests, Advice, Intents, profile, codec, locale
 Data/         contributor tables (Presets, Items, Rares, ...)
 Providers/    one file per mode
-UI/           Wisp (Mascot.lua), the list view, item help, minimap button
+UI/           Bory (Mascot.lua), the list view, item help, minimap button
 Media/        portraits and Icon*.tga (built by art/*.py)
-tests/        run.lua (logic), ui.lua (Wisp against a fake frame API)
+tests/        run.lua (logic), ui.lua (Bory against a fake frame API)
 ```
 
 Every UI string is in `Core/Locale.lua`, English and Russian. The name is one string, `ns.MASCOT_NAME` in `Core/Namespace.lua`. Saved variables never contain secret values or functions.
@@ -114,11 +114,11 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 | `addons` | account | C_AddOns.IsAddOnLoaded for TomTom, Auctionator, TSM, Bagnon | login | |
 | `unresolvedIds` | char | Plan ids the game could not resolve | when a link fails | |
 
-"Share game data to make Wisp smarter" (`UnboredDB.shareData`, on by default) off keeps only `char`, `gear`, `questLog` and `sessions`, the Sections a Plan Request needs. The owner sees what arrived with the MCP tools `data_catalog` and `get_game_data`.
+"Share game data to make Bory smarter" (`UnboredDB.shareData`, on by default) off keeps only `char`, `gear`, `questLog` and `sessions`, the Sections a Plan Request needs. The owner sees what arrived with the MCP tools `data_catalog` and `get_game_data`.
 
 ## Tooltip Advice
 
-`Core/Advice.lua` adds at most one "Wisp: ..." line to an item tooltip, and only when it is about this player ([ADR 0035](adr/0035-personal-only-advice.md)). The rules, first match wins: needed for the active Plan (names the Step), starts a quest this character has not completed, new for the Account's collection (a mount, toy, pet or look no character has), Personal advice from the Server (`UnboredAdvice` in `Unbored_Plan/Advice.lua`) or a planner answer about the item, and a reagent for a profession an Alt has and this character lacks, with the route (mail or warband bank, [ADR 0021](adr/0021-account-and-alt-routing.md)). No line is the default. It never says delete, never says sell for epic or bind-on-equip items, and never routes a soulbound item to an Alt. The menu toggle "Wisp lines in tooltips" (on by default, `UnboredDB.tooltipLines`) turns them all off.
+`Core/Advice.lua` adds at most one "Bory: ..." line to an item tooltip, and only when it is about this player ([ADR 0035](adr/0035-personal-only-advice.md)). The rules, first match wins: needed for the active Plan (names the Step), starts a quest this character has not completed, new for the Account's collection (a mount, toy, pet or look no character has), Personal advice from the Server (`UnboredAdvice` in `Unbored_Plan/Advice.lua`) or a planner answer about the item, and a reagent for a profession an Alt has and this character lacks, with the route (mail or warband bank, [ADR 0021](adr/0021-account-and-alt-routing.md)). No line is the default. It never says delete, never says sell for epic or bind-on-equip items, and never routes a soulbound item to an Alt. The menu toggle "Bory lines in tooltips" (on by default, `UnboredDB.tooltipLines`) turns them all off.
 
 ## Slash commands and keybinds
 
@@ -142,13 +142,13 @@ When a step becomes current, Unbored sets the user waypoint (`C_Map.SetUserWaypo
 
 When a step finishes, the pin Unbored set is cleared. A pin you placed yourself is left alone.
 
-In combat, and inside a dungeon, raid, arena, battleground, or scenario, the pin and the "you walked up to it" check are paused. Wisp's bubble hides during combat and the faded portrait ignores clicks until the fight is over; the list view (if open) stays up. Midnight secret values are not stored and are not used in arithmetic; if a coordinate comes back secret, that check is skipped.
+In combat, and inside a dungeon, raid, arena, battleground, or scenario, the pin and the "you walked up to it" check are paused. Bory's bubble hides during combat and the faded portrait ignores clicks until the fight is over; the list view (if open) stays up. Midnight secret values are not stored and are not used in arithmetic; if a coordinate comes back secret, that check is skipped.
 
-Done, Skip, the queue, a pending request, and the last answer are saved per character (`UnboredCharDB`). Wisp's position and lock, the window and list positions, item answers, and the TomTom and chat toggles are account-wide (`UnboredDB`). Everything is built at the UI scale and uses the game's own fonts.
+Done, Skip, the queue, a pending request, and the last answer are saved per character (`UnboredCharDB`). Bory's position and lock, the window and list positions, item answers, and the TomTom and chat toggles are account-wide (`UnboredDB`). Everything is built at the UI scale and uses the game's own fonts.
 
 ## Blizzard rules
 
-The addon never touches the network; the Companion carries Requests and answers through SavedVariables and its own `Unbored_Plan` addon (`Plan.lua` and `Advice.lua`). `ReloadUI` runs only from a click on Refresh or Load, or the Refresh keybind, never per message ([ADR 0012](adr/0012-reload-free-background-refresh.md)). Bag buttons are not replaced, re-scripted or hooked: the tooltip line uses `TooltipDataProcessor.AddTooltipPostCall`, and an item reaches Wisp by being dropped on her or picked up in pick mode (`GetCursorInfo`, then `ClearCursor` puts it back). There are no `hooksecurefunc` hooks and no protected calls outside a hardware event.
+The addon never touches the network; the Companion carries Requests and answers through SavedVariables and its own `Unbored_Plan` addon (`Plan.lua` and `Advice.lua`). `ReloadUI` runs only from a click on Refresh or Load, or the Refresh keybind, never per message ([ADR 0012](adr/0012-reload-free-background-refresh.md)). Bag buttons are not replaced, re-scripted or hooked: the tooltip line uses `TooltipDataProcessor.AddTooltipPostCall`, and an item reaches Bory by being dropped on him or picked up in pick mode (`GetCursorInfo`, then `ClearCursor` puts it back). There are no `hooksecurefunc` hooks and no protected calls outside a hardware event.
 
 ## Auto-complete
 

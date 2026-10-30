@@ -1,6 +1,6 @@
 # Brand
 
-How Unbored names and shows itself. This is the direction: the code, the art and the player copy still say Wisp until the new art lands, and each rename ships on its own.
+How Unbored names and shows itself. Bory and this palette shipped in 0.8; some code names inside still say `wisp` (for example the `MENU_WISP_SIZE` locale key), which players never see.
 
 ## Names
 
@@ -19,7 +19,7 @@ How Unbored names and shows itself. This is the direction: the code, the art and
 
 **Bory** is a ginger cat. The name is said like the Russian "Бори" (BOR-ee). He lives in the addon, the Companion, and later the site.
 
-Bory replaces Wisp. Until his art is ready, Wisp's art and name stay where they are.
+Bory replaced Wisp in 0.8. Wisp's art is gone; "Wisp" stays only in old records (ADRs, decision logs, past release notes).
 
 ## Slogan
 
@@ -27,13 +27,27 @@ Bory replaces Wisp. Until his art is ready, Wisp's art and name stay where they 
 
 ## Palette
 
-Warm: gold, burgundy and amber, replacing the current teal. The gold avatar frame stays.
+Warm, matched to Bory, with no teal anywhere. Defined once: `ns.PALETTE` in `addon/Core/Namespace.lua` and the CSS variables at the top of `apps/companion/ui/app.css`.
+
+| Token | Hex | Used for |
+| --- | --- | --- |
+| gold | `#E8B04A` | the accent: borders, glyphs, links in the window |
+| highlight | `#F5D27A` | titles, the selected chip, the ready glow |
+| burgundy | `#7A2230` | Bory's scarf: selected fills, the error glow |
+| bg | `#1E1410` | bubbles, the window |
+| raised | `#2A1C15` | buttons, chips, the disc behind Bory |
+| cream | `#EADBC0` | body text |
+| muted | `#B8A385` | secondary text |
+| faint | `#806E5C` | done and skipped rows |
 
 ## Portrait
 
-The portrait is two layers:
+The portrait is layers, never one baked picture:
 
-1. **Bory**: his art on a transparent background.
-2. **Frame**: a separate gold ring texture drawn on top.
+1. **Disc**: a dark warm circle behind him, so he reads on any game scene (in the window, CSS draws it).
+2. **Bory**: his bust on a transparent background, cut round to sit inside the ring.
+3. **Frame**: a thin gold ring with a soft sheen from the top left, no ornaments, drawn on top.
 
-The frame is never baked into the portrait. Moods (idle, thinking, waiting, happy) swap only the inner Bory layer, so the ring stays the same in every state.
+Moods swap only the Bory layer: idle, thinking (working on a plan), waiting (a yawn, when a plan takes long or the PC waits for approval) and happy (something is ready). The ring never moves against him: in the game the bob moves all layers together.
+
+`python3 art/build_assets.py` makes every texture, the window pictures and the icons from `art/bory/`.

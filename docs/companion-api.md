@@ -71,7 +71,7 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 
 `_retail_/Interface/AddOns/Unbored_Plan/Plan.lua`
 
-Unbored reads the global `UnboredExternalPlan` from that addon when the UI loads: at login, a character switch, or a Refresh the player clicks (teleports and loading screens do not read it; docs/adr/0012). A plan for this character's pending request is taken then; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast from Wisp, "Your plan is ready in the game" (or "Your answer is ready in the game"), once per fulfilled request.
+Unbored reads the global `UnboredExternalPlan` from that addon when the UI loads: at login, a character switch, or a Refresh the player clicks (teleports and loading screens do not read it; docs/adr/0012). A plan for this character's pending request is taken then; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast from Bory, "Your plan is ready in the game" (or "Your answer is ready in the game"), once per fulfilled request.
 
 `_retail_/Interface/AddOns/Unbored_Plan/Advice.lua` holds Personal advice (below), written the same way and read at the same moments.
 
@@ -90,11 +90,11 @@ UnboredCompanionStatus = {
 }
 ```
 
-The game reads it only when the UI loads, like the plan. Wisp turns it into one line: not approved yet, disconnected, can't reach the planner, or "the Companion isn't running" when `seenAt` was more than 15 minutes old at that load (a long session alone never counts as stopped). An `addonVersion` newer than the running addon means an update is on disk; Wisp says "Press Load to finish the update", and asks for a game restart if Load did not pick it up. A missing block (Companion 0.4 or older) shows nothing.
+The game reads it only when the UI loads, like the plan. Bory turns it into one line: not approved yet, disconnected, can't reach the planner, or "the Companion isn't running" when `seenAt` was more than 15 minutes old at that load (a long session alone never counts as stopped). An `addonVersion` newer than the running addon means an update is on disk; Bory says "Press Load to finish the update", and asks for a game restart if Load did not pick it up. A missing block (Companion 0.4 or older) shows nothing.
 
 ## Requests
 
-The game sends three kinds of request, all through SavedVariables and the companion: `plan` (a preset chip or Something else... in Wisp's bubble), `question` (Ask something, and What to do nearby? with `topic: "nearby"`), and `item` (What is this item?). One request is pending per character at a time.
+The game sends three kinds of request, all through SavedVariables and the companion: `plan` (a preset chip or Something else... in Bory's bubble), `question` (Ask something, and What to do nearby? with `topic: "nearby"`), and `item` (What is this item?). One request is pending per character at a time.
 
 `POST {base}/v1/requests` with the companion bearer (device secret or `UNBORED_COMPANION_TOKEN`):
 
@@ -152,7 +152,7 @@ An item request carries `item`: `itemID` is required; `link`, `name`, `bag`, `sl
 
 Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`, keep the route in one zone unless the wish says otherwise, and use `hearth`, `skyriding`, and `canFly` to judge travel.
 
-`GET {base}/v1/requests/{id}` returns the Request with that id, or 404 when it is not this device's. The companion asks for exactly the id the game waits for (`UnboredCharDB.request.id` in SavedVariables), so a newer status on an older Request never changes which answer the game gets. `GET {base}/v1/requests/latest` is the fallback when the game waits for nothing: it returns the device's newest Request by creation time (never by update time). Both return the request (with `type`, `question`, `topic`, `item`) plus `"plan": "UNB1:..."` when it was fulfilled with a plan, or `"plan": null` otherwise. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed, with `reasonCode` (`planner_failed`, or `timeout` when a Request was still pending after 60 minutes; that changes only its own status). `eta` is how long recent plan Requests took (p50 in seconds, 60 to 900, 180 until there are three answers); the Companion writes it into `Plan.lua` so Wisp knows when to offer a Refresh. `answer` is set when the planner answered with `answer_request`:
+`GET {base}/v1/requests/{id}` returns the Request with that id, or 404 when it is not this device's. The companion asks for exactly the id the game waits for (`UnboredCharDB.request.id` in SavedVariables), so a newer status on an older Request never changes which answer the game gets. `GET {base}/v1/requests/latest` is the fallback when the game waits for nothing: it returns the device's newest Request by creation time (never by update time). Both return the request (with `type`, `question`, `topic`, `item`) plus `"plan": "UNB1:..."` when it was fulfilled with a plan, or `"plan": null` otherwise. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed, with `reasonCode` (`planner_failed`, or `timeout` when a Request was still pending after 60 minutes; that changes only its own status). `eta` is how long recent plan Requests took (p50 in seconds, 60 to 900, 180 until there are three answers); the Companion writes it into `Plan.lua` so Bory knows when to offer a Refresh. `answer` is set when the planner answered with `answer_request`:
 
 ```json
 { "message": "A rare is east of you. I pinned it.", "waypoints": [{ "mapID": 2248, "x": 0.6, "y": 0.4, "label": "Rare" }], "answeredAt": 1761720500 }

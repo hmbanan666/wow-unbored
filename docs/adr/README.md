@@ -43,5 +43,6 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0039. Link token kinds v2](0039-link-token-kinds-v2.md) (amends 0034)
 - [0040. Suggestions from data](0040-suggestions-from-data.md)
 - [0041. Release notes for players and a release dry run](0041-player-release-notes-and-dry-run.md) (amends 0022)
+- [0042. Bory and the warm palette](0042-bory-and-the-warm-palette.md) (amends 0004)
 
 The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md), and v0.8 (D83-D121) in [`docs/decisions-v0.8.md`](../decisions-v0.8.md).

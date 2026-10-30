@@ -1,6 +1,6 @@
 # Entity markup
 
-Plan Step `title`, `note`, `why` and condition `text`, the Plan `goal`, `details` and `rewards`, and the `message` of an answer, may name game things with short tokens. Every game object the Planner names is a token when it has the id from a tool; otherwise it is plain text. Wisp turns them into native links in the Bubble: hover shows the game tooltip, click opens it, shift-click puts the link in chat. Names always come from the game ([ADR 0034](../../docs/adr/0034-entity-markup.md)).
+Plan Step `title`, `note`, `why` and condition `text`, the Plan `goal`, `details` and `rewards`, and the `message` of an answer, may name game things with short tokens. Every game object the Planner names is a token when it has the id from a tool; otherwise it is plain text. Bory turns them into native links in the Bubble: hover shows the game tooltip, click opens it, shift-click puts the link in chat. Names always come from the game ([ADR 0034](../../docs/adr/0034-entity-markup.md)).
 
 | Token | Means | Example |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Plan Step `title`, `note`, `why` and condition `text`, the Plan `goal`, `details
 | `{pin:MAPID:X:Y}` | a map spot; click sets the waypoint | `{pin:2339:52.1:47.3}` |
 | `{mount:MOUNTID}` | a mount by mount journal id; shows the mount spell link, "(collected)" when owned | `{mount:183}` |
 | `{toy:ITEMID}` | a toy by its item id; the game's toy link | `{toy:ITEMID}` |
-| `{pet:SPECIESID}` | a battle pet species; Wisp's tooltip shows its source and how many you own | `{pet:SPECIESID}` |
+| `{pet:SPECIESID}` | a battle pet species; Bory's tooltip shows its source and how many you own | `{pet:SPECIESID}` |
 | `{zone:UIMAPID}` | a zone; click opens the world map there, tooltip shows the parent zone | `{zone:554}` |
 | `{instance:JOURNALINSTANCEID}` | a dungeon or raid; click opens the Adventure Guide on it | `{instance:ID}` |
 
@@ -39,7 +39,7 @@ Npc names and places live in a side table on the Plan (or the answer), not insid
 }
 ```
 
-`name` is required, at most 80 bytes. `mapID`, `x` and `y` are optional and go together; `x` and `y` are percent like a pin. At most 40 npcs. Wisp's npc tooltip shows the name, the zone and the coordinates; a click sets the waypoint when the place is known.
+`name` is required, at most 80 bytes. `mapID`, `x` and `y` are optional and go together; `x` and `y` are percent like a pin. At most 40 npcs. Bory's npc tooltip shows the name, the zone and the coordinates; a click sets the waypoint when the place is known.
 
 ## What the Server does
 
