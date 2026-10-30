@@ -548,10 +548,21 @@ check(req.onDisk == true, "after a load the request is on disk")
 check(ns.Session:RefreshOffer() == nil, "right after a load there is nothing to offer yet")
 local loadedAt = ns.Session.loadedAt
 ns.Session.loadedAt = loadedAt - ns.READY_GUESS_SECONDS - 1
+check(ns.Session.requestNote == "sending" and ns.Session:RefreshOffer() == nil,
+  "no ready guess while the Companion file does not name the request")
+local fileBefore = UnboredExternalPlan
+UnboredExternalPlan = { v = 1, kind = "plan", requestId = "req-old", requestStatus = "failed" }
+ns.Session:NoteRequest()
+check(ns.Session.requestNote == "sending" and ns.Session:RefreshOffer() == nil,
+  "a stale failed request in the file never offers a Refresh")
+UnboredExternalPlan = { v = 1, kind = "plan", requestId = req.id, requestStatus = "pending" }
+ns.Session:NoteRequest()
 offer = ns.Session:RefreshOffer()
-check(offer and offer.kind == "ready", "a while after the load: New stuff is ready")
+check(offer and offer.kind == "ready", "a while after the load with the request being prepared: New stuff is ready")
 ns.Session:Later()
 check(ns.Session:RefreshOffer() == nil, "Later on the ready offer holds for this load")
+UnboredExternalPlan = fileBefore
+ns.Session:NoteRequest()
 ns.Session.loadedAt = loadedAt
 ns.Session.readyLater = nil
 check(ns.Session:AutoApplyExternal() == false, "an old direct plan does not replace a pending request")

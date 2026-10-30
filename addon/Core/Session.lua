@@ -693,7 +693,8 @@ ns.READY_GUESS_SECONDS = 3 * 60
 
 -- The one Refresh offer (docs/adr/0012): "after" for a Request made in this
 -- session (it reaches the Companion only after a Refresh or logout), "ready"
--- for one that was already on disk at the last load. Each is shown once;
+-- for one that was already on disk at the last load and that the Companion
+-- file already named as being prepared. Each is shown once;
 -- Later puts it off until the next login.
 function ns.Session:RefreshOffer()
   local req = self:PendingRequest()
@@ -706,7 +707,9 @@ function ns.Session:RefreshOffer()
     end
     return { kind = "after", request = req }
   end
-  if self.requestNote ~= "sending" and self.requestNote ~= "preparing" then
+  -- Only a Companion file that names this Request id can turn into its
+  -- Answer; without it a Refresh would find nothing (D82).
+  if self.requestNote ~= "preparing" then
     return nil
   end
   if (self.readyLater or {})[req.id] or self:IsSlow() then

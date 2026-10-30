@@ -40,4 +40,4 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0036. Prefetch contents and budget](0036-prefetch-budget.md)
 - [0037. No time budget on Plans](0037-no-time-budget.md) (amends 0013, 0033)
 
-The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), and v0.7 (D47-D81) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md).
+The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), and v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md).

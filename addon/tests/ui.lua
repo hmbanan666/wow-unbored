@@ -611,12 +611,20 @@ check(menuRow("Refresh now") ~= nil, "the menu offers Refresh while something is
 menuRow("Refresh now"):Click()
 check(reloads == 1, "Refresh now reloads from the click")
 
--- After the reload: the Request is on disk. Nothing to offer for a while,
+-- After the reload: the Request is on disk. No guess while the Companion
+-- file does not name it; once it says "preparing", nothing for a while,
 -- then one "New stuff is ready" guess.
 ns.Session:MarkLoaded()
 check(req.onDisk and ns.Session:RefreshOffer() == nil, "right after a load there is no offer")
 ns.Session:RefreshUI()
 check(not mascot.buttons.refresh:IsShown(), "no Refresh button yet")
+clock = clock + ns.READY_GUESS_SECONDS + 1
+ns.Events.Pulse()
+check(not mascot.buttons.refresh:IsShown(), "no ready guess while the file does not name the request")
+UnboredExternalPlan = { v = 1, kind = "plan", requestId = req.id, requestStatus = "pending" }
+ns.Session:MarkLoaded()
+ns.Session:NoteRequest()
+check(ns.Session.requestNote == "preparing", "the file names the request as being prepared")
 clock = clock + ns.READY_GUESS_SECONDS + 1
 ns.Events.Pulse()
 check(textOf(mascot.header) == "New stuff is ready. Refresh now?", "the ready guess comes once")
