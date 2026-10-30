@@ -142,6 +142,7 @@ local function taskFromRow(row, holidayTitle)
       estMinutes = row.estMinutes or 20,
       priority = row.estMinutes or 20,
       note = holidayTitle,
+      holiday = holidayTitle,
       source = "events",
       complete = { kind = "achievement", achievementID = state.id },
     }
@@ -158,6 +159,7 @@ local function taskFromRow(row, holidayTitle)
       estMinutes = row.estMinutes or 20,
       priority = row.estMinutes or 20,
       note = row.note or holidayTitle,
+      holiday = holidayTitle,
       source = "events",
       complete = { kind = "mount", mountID = row.mountID },
     }

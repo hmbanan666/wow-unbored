@@ -36,6 +36,7 @@ Core\Import.lua
 Core\Plan.lua
 Core\Complete.lua
 Core\Waypoint.lua
+Core\Steps.lua
 Core\Session.lua
 Core\Events.lua
 Data\Exploration.lua
@@ -52,7 +53,6 @@ Providers\Achievements.lua
 Providers\Farm.lua
 Companion\Plan.lua
 UI\Widgets.lua
-UI\Tracker.lua
 UI\Mascot.lua
 UI\Items.lua
 UI\Import.lua

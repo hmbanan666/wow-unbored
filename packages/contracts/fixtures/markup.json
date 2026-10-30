@@ -69,10 +69,24 @@
       "tokens": [{ "type": "npc", "id": 999, "label": "the guard" }]
     },
     {
+      "name": "mount, toy, pet, zone and instance tokens",
+      "text": "Ride {mount:183|Ashes of Al'ar} to {zone:554|Timeless Isle}, use {toy:1|a toy}, find {pet:2|a pet}, then {instance:3|a dungeon}.",
+      "clean": "Ride {mount:183|Ashes of Al'ar} to {zone:554|Timeless Isle}, use {toy:1|a toy}, find {pet:2|a pet}, then {instance:3|a dungeon}.",
+      "plain": "Ride Ashes of Al'ar to Timeless Isle, use a toy, find a pet, then a dungeon.",
+      "issues": 0,
+      "tokens": [
+        { "type": "mount", "id": 183, "label": "Ashes of Al'ar" },
+        { "type": "zone", "id": 554, "label": "Timeless Isle" },
+        { "type": "toy", "id": 1, "label": "a toy" },
+        { "type": "pet", "id": 2, "label": "a pet" },
+        { "type": "instance", "id": 3, "label": "a dungeon" }
+      ]
+    },
+    {
       "name": "an unknown type falls back to its label",
-      "text": "Ride {mount:183|Ashes of Al'ar} today.",
-      "clean": "Ride Ashes of Al'ar today.",
-      "plain": "Ride Ashes of Al'ar today.",
+      "text": "Earn {faction:2600|the Severed Threads} favour.",
+      "clean": "Earn the Severed Threads favour.",
+      "plain": "Earn the Severed Threads favour.",
       "issues": 1,
       "tokens": []
     },

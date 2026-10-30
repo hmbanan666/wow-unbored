@@ -161,6 +161,15 @@ local methods = {
   end,
   Stop = function(self)
     self.playing = false
+    self.stopped = true
+  end,
+  -- Like the client: the loop runs out, then OnFinished fires.
+  Finish = function(self)
+    self.playing = false
+    self.finished = true
+    if self.scripts.OnFinished then
+      self.scripts.OnFinished(self)
+    end
   end,
   SetTexture = function(self, texture)
     self.texture = texture
@@ -279,6 +288,10 @@ C_SuperTrack = {
     C_SuperTrack.on = on
   end,
 }
+local mapOpened
+OpenWorldMap = function(id)
+  mapOpened = id
+end
 local reloads = 0
 ReloadUI = function()
   reloads = reloads + 1
@@ -409,8 +422,9 @@ end
 
 local ui = ns.UI
 local mascot = ns.Mascot
-local tracker = ns.Tracker
 local INNER = 240
+local CARD_INNER = 280
+check(ns.Tracker == nil and _G.UnboredTracker == nil, "there is no separate steps window (D90)")
 check(ui.frame == nil and _G.UnboredFrame == nil, "there is no main window, only Wisp")
 check(mascot.frame ~= nil and mascot.frame:IsShown(), "the mascot is on screen from the start")
 check(tooltipCalls[0] ~= nil, "item tooltips get a post call")
@@ -436,7 +450,8 @@ local function rowFits(label)
     local x = button.points[1] and button.points[1][4] or 0
     right = math.max(right, x + button:GetWidth())
   end
-  check(right <= 10 + INNER, label .. ": the action row fits: " .. right)
+  local inner = mascot.view.card and CARD_INNER or INNER
+  check(right <= 10 + inner, label .. ": the action row fits: " .. right)
 end
 
 -- First run: the presets right in the bubble.
@@ -456,8 +471,6 @@ check(mascot.art.texture:find("WispIdle", 1, true) ~= nil, "idle portrait")
 check(mascot.bubble.height > (#mascot.chips + 1) * 26, "the bubble fits all chips: " .. mascot.bubble.height)
 check(textOf(mascot.meta) == "Wisp", "the top row says who is talking")
 check(mascot.collapse:IsShown() ~= false and mascot.menuButton ~= nil, "collapse and menu icons on the top row")
-check(not tracker.frame:IsShown(), "the list view is closed by default")
-
 local ids = {}
 for _, preset in ipairs(ns.Data.Presets) do
   ids[#ids + 1] = preset.id
@@ -582,10 +595,13 @@ local quick = ns.Session.state
 check(quick and quick.quick and quick.topic == "mount", "a Quick plan is built here")
 check(mascot.view.kind == "step" and textOf(mascot.message) == ns.Session:Current().title, "Wisp shows the first step")
 check(textOf(mascot.header) == "", "no Refresh talk over the Quick plan: " .. textOf(mascot.header))
-check(shownButtons() == "done,skip,list,proper", "Done, Skip, List and one proper-plan button: " .. shownButtons())
+check(shownButtons() == "done,skip,proper", "Done, Skip and one proper-plan button: " .. shownButtons())
 check(textOf(mascot.buttons.proper.label) == "Want a proper plan?", "the button asks")
 rowFits("quick plan with the proper-plan button")
-check(textOf(mascot.meta):find("^1/") ~= nil, "progress sits small on the top row: " .. textOf(mascot.meta))
+check(mascot.view.card and mascot.bubble.width == CARD_INNER + 20,
+  "a Step is one 300 px card (D92): " .. mascot.bubble.width)
+check(textOf(mascot.title) == "Get a mount", "the Quick plan is named after its preset: " .. textOf(mascot.title))
+check(mascot.view.pips == nil or mascot.view.pips.done == 0, "no step done yet")
 
 local firstStep = ns.Session:Current().id
 mascot.buttons.done:Click()
@@ -612,7 +628,7 @@ mascot.wishEdit:SetText("no dungeons")
 mascot.buttons.next:Click()
 check(mascot.view.kind == "confirm" and textOf(mascot.message) == "Shall I send this to the planner?", "Confirm")
 check(textOf(mascot.header):find("no dungeons", 1, true) ~= nil, "with the summary line")
-check(shownButtons() == "sendnow,sendlater,back", "Send now, or at logout: " .. shownButtons())
+check(shownButtons() == "sendnow,back", "one primary action: Send now (D85): " .. shownButtons())
 rowFits("confirm")
 check(reloads == 0, "still nothing reloaded")
 mascot.buttons.sendnow:Click()
@@ -627,7 +643,7 @@ ns.Session:MarkLoaded()
 ns.Session:RefreshUI()
 check(req.onDisk and req.state == "waiting" and ns.Session:Locked(), "after the reload it waits, locked")
 check(mascot.view.kind == "step" and textOf(mascot.header):find("I'm on it", 1, true), "the step with the wait line")
-check(shownButtons() == "done,skip,list", "the step stays doable: " .. shownButtons())
+check(shownButtons() == "done,skip", "the step stays doable: " .. shownButtons())
 mascot:ShowChoice()
 check(mascot.view.kind ~= "choice" and textOf(mascot.echoFrames[1].text) == "One thing at a time, I'm still thinking.",
   "no presets while waiting")
@@ -645,7 +661,7 @@ check(not mascot.buttons.refresh:IsShown(), "before the ETA: just the wait")
 clock = req.sentAt + 301
 ns.Events.Pulse()
 check(textOf(mascot.header) == "Should be ready. Refresh?", "after the ETA: one Refresh offer")
-check(shownButtons() == "done,skip,list,refresh", "with Refresh: " .. shownButtons())
+check(shownButtons() == "done,skip,refresh", "with Refresh: " .. shownButtons())
 mascot.buttons.refresh:Click()
 check(reloads == 2 and req.checks == 1, "Refresh reloads from the click")
 ns.Session:MarkLoaded()
@@ -662,10 +678,15 @@ UnboredExternalPlan = {
   requestId = req.id,
   requestStatus = "fulfilled",
   requestType = "plan",
+  title = "Ride to Dalaran",
+  goal = "Get to Dalaran and set your hearth there",
+  details = "You are level 80.\n\nThe portal room is upstairs.",
+  rewards = { "{item:6948|Hearthstone}" },
   tasks = {
     {
       id = "a",
       title = "Fly to Dalaran. Portal is next to you in Orgrimmar, then keep riding along the long coast road",
+      why = "Dalaran has the portal you need",
       estMinutes = 20,
       note = string.rep("A long note that must wrap and never be cut. ", 8),
       waypoints = {
@@ -686,13 +707,49 @@ rowFits("the plan offer")
 mascot.buttons.use:Click()
 check(ns.Session.state.source == "companion" and #ns.Session.state.tasks == 3, "Switch starts the Full plan")
 check(mascot.view.kind == "step" and textOf(mascot.message):find("Fly to Dalaran", 1, true) == 1, "the step as written")
-check(textOf(mascot.meta):find("2/4", 1, true) == 1, "small progress: " .. textOf(mascot.meta))
-check(textOf(mascot.sub):find("never be cut", 1, true) and mascot.sub.height >= 4 * LINE_HEIGHT, "the note wraps")
+check(textOf(mascot.title) == "Ride to Dalaran", "the card is titled by the plan: " .. textOf(mascot.title))
+-- Closed by default (casual first): title, what to do, why, the main reward, Done and Skip.
+check(not ns.Mascot.CardOpen(), "the card starts closed")
+check(textOf(mascot.why) == "Dalaran has the portal you need", "the Step says why")
 check(mascot.message.height >= 2 * LINE_HEIGHT, "a long step wraps")
-check(textOf(mascot.where):find("Point 1/2: Gate", 1, true), "the route point: " .. textOf(mascot.where))
-check(mascot.bubble.height > mascot.sub.height + mascot.message.height, "the bubble grows with the text")
+check(mascot.rewardLines[1]:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true)
+  and not mascot.rewardsHeader:IsShown(), "closed: the main reward, no header: " .. textOf(mascot.rewardLines[1]))
+for _, region in ipairs({ "pipRow", "goal", "details", "list", "where" }) do
+  check(not mascot[region]:IsShown(), "closed: no " .. region)
+end
+check(mascot.cardToggle:IsShown() and textOf(mascot.cardToggle.label) == "Show more", "one Show more toggle")
 check(C_Map.pin and C_Map.pin.uiMapID == 84, "the current step is pinned")
-check(shownButtons() == "done,skip,list", "a plain step: Done, Skip, List")
+check(shownButtons() == "done,skip", "a plain step: Done and Skip")
+rowFits("a step card")
+local closedHeight = mascot.bubble.height
+
+mascot.cardToggle:Click()
+check(ns.Mascot.CardOpen() and UnboredDB.mascot.cardOpen == true, "Show more opens the card and is remembered")
+check(textOf(mascot.cardToggle.label) == "Show less", "the toggle now says Show less")
+check(mascot.view.pips and mascot.view.pips.done == 1 and mascot.view.pips.total == 4, "open: the pips, 1 of 4 done")
+check(mascot.pipRow:IsShown(), "the pip row is on the card")
+check(textOf(mascot.goal) == "Get to Dalaran and set your hearth there", "open: the goal")
+check(mascot.details:IsShown() and textOf(mascot.details):find("portal room", 1, true), "open: the plan details")
+check(textOf(mascot.details):find("never be cut", 1, true) and mascot.details.height >= 4 * LINE_HEIGHT,
+  "the Step note is in Details and wraps")
+check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
+  "open: the rewards with their header")
+check(textOf(mascot.where):find("Point 1/2: Gate", 1, true), "open: the route point: " .. textOf(mascot.where))
+check(not textOf(mascot.where):find("~", 1, true), "the footer has no ~: " .. textOf(mascot.where))
+local rowCount = 0
+for _, row in ipairs(mascot.list.rows or {}) do
+  if row:IsShown() then
+    rowCount = rowCount + 1
+  end
+end
+check(mascot.list:IsShown() and rowCount == 4, "open: every step is a row, the done one too: " .. rowCount)
+check(mascot.list.height <= 260, "the list scrolls past its cap")
+check(mascot.bubble.height > closedHeight, "the open card is taller")
+mascot.list.rows[3]:Click()
+check(mascot.view.all[3].detail == "second note", "a click on a later step shows its note")
+mascot.cardToggle:Click()
+check(not ns.Mascot.CardOpen() and not mascot.list:IsShown() and mascot.bubble.height == closedHeight,
+  "Show less closes it again")
 
 -- Welcome back on login.
 ns.Session.welcomeBack = true
@@ -707,12 +764,6 @@ mascot.frame:Click("RightButton")
 check(menuLabels() == "What next?|Skip this step|Show route on map|New plan|What is this item?|Ask something|Settings",
   "plan menu order: " .. menuLabels())
 ui.menu:Hide()
-
-mascot.buttons.list:Click()
-check(tracker.frame:IsShown(), "the list opens from the List button")
-check(textOf(tracker.sub):find("Step 2 of 4", 1, true) ~= nil, "the list shows the step count")
-mascot.buttons.list:Click()
-check(not tracker.frame:IsShown(), "and closes again")
 
 mascot.buttons.skip:Click()
 check(ns.Session:Current().id == "b" and textOf(mascot.header) == "Ok, next:", "Skip moves on with a lead line")
@@ -742,13 +793,19 @@ check(textOf(mascot.sub) == "Minutes: a whole number from 5 to 240, or leave it 
 mascot.minutesEdit:SetText("45")
 mascot.buttons.next:Click()
 check(mascot.view.kind == "confirm" and textOf(mascot.header):find("45 min", 1, true), "Confirm shows the minutes")
-mascot.buttons.sendlater:Click()
+check(mascot.buttons.sendlater == nil, "no Send at logout any more (D85)")
+mascot.buttons.sendnow:Click()
 req = UnboredCharDB.request
-check(reloads == 2 and req.state == "queued", "send at logout: queued, no reload")
+check(reloads == 3 and req.state == "sent", "Send now sends and reloads in the click")
 check(req.budget == 45 and req.wish == "all of Hallowfall's exploration", "typed minutes go with the wish")
 check(UnboredCharDB.lastWish == "all of Hallowfall's exploration", "the wish is remembered")
-check(mascot.view.kind == "waiting" and textOf(mascot.message) == "I'll send it when you log out.", "queued is said")
-check(shownButtons() == "sendnow", "with Send now still there: " .. shownButtons())
+ns.Session:CancelRequest()
+-- A Request a 0.7 client queued for logout: Wisp offers Send now.
+UnboredCharDB.request = { id = "req-old", type = "plan", mode = "custom", wish = "old", state = "queued",
+  createdAt = clock }
+ns.Session:RefreshUI()
+check(shownButtons() == "sendnow" and textOf(mascot.message) == "Shall I send this to the planner?",
+  "a 0.7 queued Request: Send now: " .. shownButtons())
 ns.Session:CancelRequest()
 check(not ns.Session:Locked(), "Cancel unlocks")
 
@@ -761,7 +818,7 @@ mascot.buttons.send:Click()
 check(textOf(mascot.sub) == "Type your question first.", "an empty question is not sent")
 mascot.wishEdit:SetText("What can I do nearby?")
 mascot.buttons.send:Click()
-check(reloads == 2 and UnboredCharDB.request == nil, "a question sends nothing to the planner")
+check(reloads == 3 and UnboredCharDB.request == nil, "a question sends nothing to the planner")
 local answer = UnboredCharDB.answer
 check(answer and answer.isLocal and answer.intent == "here", "a local answer at once")
 check(mascot.view.kind == "answer" and textOf(mascot.header):find("nearby", 1, true), "the bubble shows it")
@@ -996,7 +1053,8 @@ clock = clock - 50 * 60
 ns.Session:RefreshUI()
 check(bubbleText():find("I'm on it.", 1, true), "all fine: on it, keep playing")
 check(not mascot.buttons.refresh:IsShown(), "no Refresh while the Companion file does not name it")
-check(mascot.pulse.playing and mascot.bob.playing, "and Wisp visibly thinks")
+check(mascot.float.playing and mascot.glow.playing, "and Wisp visibly thinks")
+check(mascot.thinkingDots:IsShown(), "with three dots by the name")
 UnboredCharDB.request.sentAt = ns.Session.loadedAt - 11 * 60
 ns.Session:RefreshUI()
 check(bubbleText():find("taking long", 1, true), "a slow request is said")
@@ -1004,7 +1062,11 @@ check(mascot.buttons.retry:IsShown(), "with Try again")
 ns.Session:CancelRequest()
 ns.Session:RefreshUI()
 check(UnboredCharDB.request == nil, "Cancel drops it")
-check(not mascot.pulse.playing and not mascot.bob.playing, "and Wisp stops thinking")
+check(not mascot.float.playing and not mascot.glow.playing, "and Wisp stops thinking")
+check(mascot.float.finished and mascot.glow.finished and not mascot.float.stopped and not mascot.glow.stopped,
+  "the loop runs out, never cut mid-move (D88)")
+check(not mascot.finishing and mascot.art.texture:find("WispThinking", 1, true) == nil, "the new picture once it ends")
+check(not mascot.thinkingDots:IsShown(), "and the dots go")
 waitFor({ v = 1, pairing = "approved", online = true, seenAt = clock }, clock - 61 * 60)
 check(mascot.view.kind == "expired" and shownButtons() == "retry,ok", "after an hour: lost, Try again or Got it")
 mascot.buttons.ok:Click()
@@ -1013,9 +1075,14 @@ check(UnboredCharDB.request == nil, "Got it drops the lost one")
 -- The Companion put a newer addon on disk: Load applies it.
 UnboredCompanionStatus.addonVersion = "9.9.9"
 ns.Session:RefreshUI()
-check(mascot.view.kind == "update" and shownButtons() == "load,later", "an update waiting: Load or Later")
+check(mascot.view.kind == "update" and shownButtons() == "load", "an update waiting: one Load button")
+mascot.collapse:Click()
+check(mascot.updateLater, "collapsing the bubble means later (D87)")
+mascot.pill:Click("LeftButton")
+mascot.updateLater = nil
+ns.Session:RefreshUI()
 mascot.buttons.load:Click()
-check(reloads == 3 and UnboredCharDB.updateTried == "9.9.9", "Load reloads and remembers the try")
+check(reloads == 4 and UnboredCharDB.updateTried == "9.9.9", "Load reloads and remembers the try")
 ns.Session:RefreshUI()
 check(textOf(mascot.message):find("restart the game", 1, true), "still old after Load: restart once")
 mascot.buttons.ok:Click()
@@ -1071,8 +1138,8 @@ local markup = readJson("../packages/contracts/fixtures/markup.json")
 local function tidy(text)
   return ns.Trim((text:gsub("  +", " ")))
 end
-local savedItem = C_Item
-C_Item = nil
+local savedItem, savedMap = C_Item, C_Map
+C_Item, C_Map = nil, nil
 for _, case in ipairs(markup.cases) do
   local tokens = {}
   for _, part in ipairs(ns.Markup.Parse(case.text)) do
@@ -1091,7 +1158,7 @@ for _, case in ipairs(markup.cases) do
   local plain = ns.Markup.Plain(case.text, ns.Markup.CleanEntities(markup.entities))
   check(plain == tidy(case.plain), "markup plain text: " .. case.name .. ": " .. tostring(plain))
 end
-C_Item = savedItem
+C_Item, C_Map = savedItem, savedMap
 
 -- A plan with links: the Bubble shows native links, other places plain names.
 local linked = assert(ns.ValidatePlan(markup.plan, false))
@@ -1104,8 +1171,11 @@ mascot.forceChoice = nil
 mascot:Refresh()
 check(textOf(mascot.message) == "Talk to |cffffd100|Haddon:Unbored:npc:12345|h[Fixer Kev]|h|r",
   "an npc link in the title: " .. textOf(mascot.message))
-check(textOf(mascot.sub):find("|Hitem:6948|h[Hearthstone]|h", 1, true) ~= nil, "an item link with the game's name")
-check(textOf(mascot.sub):find("|Haddon:Unbored:pin:2339:52.1:47.3|h[the forge]|h", 1, true) ~= nil, "a pin link")
+if not ns.Mascot.CardOpen() then
+  mascot.cardToggle:Click()
+end
+check(textOf(mascot.details):find("|Hitem:6948|h[Hearthstone]|h", 1, true) ~= nil, "an item link with the game's name")
+check(textOf(mascot.details):find("|Haddon:Unbored:pin:2339:52.1:47.3|h[the forge]|h", 1, true) ~= nil, "a pin link")
 check(ns.Markup.Plain(linked.tasks[1].title, linked.tasks[1].npcs) == "Talk to Fixer Kev", "plain text for the tracker")
 tooltipLines = {}
 mascot.bubble.scripts.OnHyperlinkEnter(mascot.bubble, "addon:Unbored:npc:12345", "[Fixer Kev]")
@@ -1186,6 +1256,85 @@ check(C_Map.pin.uiMapID == 84 and math.abs(C_Map.pin.position.x - 0.1) < 1e-9, "
 mascot.buttons.ok:Click()
 UnboredExternalPlan = nil
 
+-- The card for every kind of plan (D91-D97).
+UnboredCharDB.request = nil
+ns.Session.answer = nil
+local function applyCard(plan)
+  ns.Session:ApplyPlan(assert(ns.ValidatePlan(plan, false)), "companion", true)
+  mascot.forceChoice = nil
+  mascot:Refresh()
+end
+applyCard({ v = 1, kind = "plan", mode = "custom", note = "Plan for request mode surprise",
+  tasks = { { id = "o1", title = "Old step", estMinutes = 25 }, { id = "o2", title = "Old two" } } })
+check(textOf(mascot.title) == "Your plan", "a 0.7 plan without a title: never its note (D96): " .. textOf(mascot.title))
+check(not mascot.rewardsHeader:IsShown(), "no rewards: no reward row")
+check(not mascot.why:IsShown() and not mascot.condition:IsShown(), "no why, no condition line")
+check(textOf(mascot.where) == "about 25 min", "the footer time in words: " .. textOf(mascot.where))
+check(not bubbleText():find("~", 1, true), "no ~ anywhere on the card")
+check(ns.Steps.Duration(100) == "1 h 40 min" and ns.Steps.Duration(120) == "2 h", "hours read as words")
+
+local coins = 3200
+C_CurrencyInfo = {
+  GetCurrencyInfo = function(id)
+    return id == 1166 and { quantity = coins } or nil
+  end,
+}
+applyCard({ v = 1, kind = "plan", mode = "custom", title = "Badges for a mount",
+  tasks = {
+    { id = "c1", title = "Buy the mount",
+      condition = { text = "If you have 5,000 {currency:1166|badges}",
+        check = { kind = "currency", id = 1166, atLeast = 5000 } } },
+    { id = "c2", title = "Run a dungeon", rewards = { "{item:6948|Hearthstone}" } },
+  } })
+check(mascot.condition:IsShown() and textOf(mascot.condition):find("If you have 5,000", 1, true),
+  "the condition line before the step: " .. textOf(mascot.condition))
+check(mascot.view.notYet, "unmet: the step is marked not yet")
+if not ns.Mascot.CardOpen() then
+  mascot.cardToggle:Click()
+end
+check(textOf(mascot.details):find("3,200 / 5,000", 1, true),
+  "unmet: the live count in Details: " .. textOf(mascot.details))
+mascot.buttons.skip:Click()
+local cardState = ns.Session.state
+check(#(cardState.skipped or {}) == 0 and ns.Session:Current().id == "c2",
+  "Skip on a not-yet step moves on, not skipped")
+check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
+  "a Step's own rewards show")
+coins = 5000
+mascot.buttons.done:Click()
+check(ns.Session:Current() and ns.Session:Current().id == "c1", "the waiting step comes back")
+check(not mascot.view.notYet and textOf(mascot.condition):find("Ready", 1, true),
+  "met: Ready: " .. textOf(mascot.condition))
+C_CurrencyInfo = nil
+local holidayCard = ns.Steps.QuickCard({
+  { title = "a", holiday = "Hallow's End", complete = { kind = "achievement", achievementID = 291 } },
+  { title = "b", holiday = "Hallow's End", complete = { kind = "achievement", achievementID = 291 } },
+}, ns.Data.Presets[1])
+check(holidayCard.title == "Hallow's End" and holidayCard.goal and #holidayCard.rewards == 1,
+  "a holiday Quick plan: its name, a goal, the achievement once (D97)")
+check(ns.Steps.QuickCard({ { title = "x" } }, ns.Data.Presets[1]).title == "Stay here, do stuff nearby",
+  "any other Quick plan: the preset label")
+
+C_Spell = {
+  GetSpellLink = function(id)
+    return "|cff71d5ff|Hspell:" .. id .. ":0|h[Sky Wisp]|h|r"
+  end,
+}
+-- The new link kinds: a mount the game knows, a pet and a zone as our own links.
+check(ns.Markup.Render("{mount:99|x}", nil, redraw):find("Sky Wisp", 1, true) ~= nil,
+  "a mount renders with the game's name: " .. ns.Markup.Render("{mount:99|x}", nil, redraw))
+check(ns.Markup.Render("{zone:84|City}", nil, redraw):find("|Haddon:Unbored:zone:84|h", 1, true) ~= nil,
+  "a zone is our own link")
+check(ns.Markup.Render("{mount:4242|Lost mount}", nil, redraw) == "Lost mount", "an unknown mount: plain label")
+check(ns.Markup.Render("{pet:7|Some pet}", nil, redraw) == "Some pet", "a pet the game does not know: plain label")
+local unknownMount = false
+for _, seen in ipairs((ns.Snapshot.Body("unresolvedIds") or {}).list or {}) do
+  unknownMount = unknownMount or (seen.kind == "mount" and seen.id == 4242)
+end
+check(unknownMount, "the unknown mount is kept for the Server")
+mascot.bubble.scripts.OnHyperlinkClick(mascot.bubble, "addon:Unbored:zone:84", "[City]", "LeftButton")
+check(mapOpened == 84, "a zone click opens the world map on it")
+
 -- The bubble opens toward the middle of the screen.
 UIParent.width = 1000
 mascot.frame.GetLeft = function()
@@ -1227,7 +1376,7 @@ profile = UnboredCharDB.profile
 check(profile and profile.character == "Hero" and profile.realm == "Area 52", "a profile is saved")
 check(profile and profile.context and profile.context.mapID == 84, "the profile has the player context")
 
-check(reloads == 3, "only the Send now, Refresh and Load clicks ever reloaded: " .. reloads)
+check(reloads == 4, "only the Send now, Refresh and Load clicks ever reloaded: " .. reloads)
 ns.Now = realNow
 
 if fails > 0 then

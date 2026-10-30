@@ -33,9 +33,6 @@ local function initDB()
   if UnboredDB.chatNotes == nil then
     UnboredDB.chatNotes = false
   end
-  if type(UnboredDB.tracker) ~= "table" then
-    UnboredDB.tracker = {}
-  end
   if type(UnboredDB.mascot) ~= "table" then
     UnboredDB.mascot = {}
   end
@@ -71,12 +68,6 @@ function ns.OnAddonLoaded()
   ns.Markup.Hook()
   if ns.UI and ns.UI.Create then
     local ok, err = pcall(ns.UI.Create)
-    if not ok then
-      ns.ReportError(err)
-    end
-  end
-  if ns.Tracker and ns.Tracker.Create then
-    local ok, err = pcall(ns.Tracker.Create, ns.Tracker)
     if not ok then
       ns.ReportError(err)
     end
@@ -143,16 +134,12 @@ local function slash(message)
     for i = 1, #list do
       ns.Print(tostring(list[i].version) .. ": " .. tostring(list[i].text))
     end
-  elseif command == "tracker" or command == "list" then
-    ns.Tracker:Toggle()
   elseif command == "lock" then
     local locked = not ns.Mascot:Locked()
     ns.Mascot:SetLocked(locked)
-    ns.Tracker:SetLocked(locked)
     ns.Print(locked and ns.T("LOCKED") or ns.T("UNLOCKED"))
   elseif command == "reset" then
     ns.Mascot:ResetPosition()
-    ns.Tracker:ResetPosition()
   elseif command == "build" then
     ns.Session:BuildHere()
   elseif command == "import" then

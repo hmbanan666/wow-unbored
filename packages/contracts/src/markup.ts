@@ -1,6 +1,19 @@
 /** Entity markup in Step titles, notes and messages (packages/contracts/markup.md, ADR 0034). */
 
-export const MARKUP_TYPES = ["item", "quest", "ach", "spell", "currency", "npc", "pin"] as const;
+export const MARKUP_TYPES = [
+  "item",
+  "quest",
+  "ach",
+  "spell",
+  "currency",
+  "npc",
+  "pin",
+  "mount",
+  "toy",
+  "pet",
+  "zone",
+  "instance",
+] as const;
 export type MarkupType = (typeof MARKUP_TYPES)[number];
 
 /** Tokens per Step (title and note together) or per message. */

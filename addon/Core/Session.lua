@@ -66,9 +66,6 @@ function ns.Session.RefreshUI()
   if ns.UI and ns.UI.Refresh then
     ns.UI:Refresh()
   end
-  if ns.Tracker and ns.Tracker.Refresh then
-    ns.Tracker:Refresh()
-  end
   if ns.Mascot and ns.Mascot.Refresh then
     ns.Mascot:Refresh()
   end
@@ -106,7 +103,8 @@ function ns.Session:Finish(bucket)
     ns.Mascot:Echo(ns.T(bucket == "skipped" and "ECHO_SKIPPED" or "ECHO_DONE", title))
     ns.Mascot:Lead(bucket == "skipped" and "OK_NEXT" or "NICE")
   end
-  list[#list + 1] = { id = task.id, at = ns.Now() }
+  -- The title is kept so the inline list can show what was finished.
+  list[#list + 1] = { id = task.id, at = ns.Now(), title = ns.SafeString(ns.Markup.Plain(task.title, task.npcs), 120) }
   table.remove(self.state.tasks, 1)
   if ns.Waypoint and ns.Waypoint.ClearOwned then
     ns.Waypoint:ClearOwned()
@@ -150,6 +148,23 @@ end
 function ns.Session:Skip()
   local task = self:Current()
   if not task or not self.state or type(self.state.tasks) ~= "table" then
+    return
+  end
+  -- A Step that is "not yet" (D95) moves on without counting as skipped.
+  if ns.Steps.NotYet(task) then
+    table.remove(self.state.tasks, 1)
+    if #self.state.tasks > 0 then
+      self.state.tasks[#self.state.tasks + 1] = task
+    end
+    if ns.Waypoint and ns.Waypoint.ClearOwned then
+      ns.Waypoint:ClearOwned()
+    end
+    if ns.Mascot and ns.Mascot.Lead then
+      ns.Mascot:Lead("OK_NEXT")
+    end
+    self:Save()
+    self:CheckCurrent()
+    self:RefreshUI()
     return
   end
   local skips = (tonumber(task.skipCount) or 0) + 1
@@ -222,6 +237,11 @@ function ns.Session:ApplyPlan(plan, source, reveal)
   self.state = blankState(plan.mode or "custom", plan.budget, source or "import")
   self.state.tasks = tasks
   self.state.note = plan.note
+  self.state.title = plan.title
+  self.state.goal = plan.goal
+  self.state.details = plan.details
+  self.state.rewards = plan.rewards and ns.DeepCopy(plan.rewards, 0) or nil
+  self.state.npcs = plan.npcs and ns.DeepCopy(plan.npcs) or nil
   self.state.savedAt = ns.Now()
   if ns.DB then
     ns.DB.mode = self.state.mode
@@ -340,9 +360,16 @@ function ns.Session:QuickPlan(preset)
   if self.state then
     self.state.quick = true
     self.state.topic = preset.id
+    self:FillQuickCard()
     self:Save()
   end
   self:Started()
+end
+
+function ns.Session:FillQuickCard()
+  local preset = self.state.topic and ns.Mascot and ns.Mascot.Preset(self.state.topic)
+  local card = ns.Steps.QuickCard(self.state.tasks, preset)
+  self.state.title, self.state.goal, self.state.rewards = card.title, card.goal, card.rewards
 end
 
 -- The Full plan that came back while a Quick plan is running. The player
@@ -432,6 +459,9 @@ function ns.Session:MaybeRebuild(flag)
     self.state[flag] = false
     self.state.quick = quick
     self.state.topic = topic
+    if quick then
+      self:FillQuickCard()
+    end
     self:Save()
   end
 end
@@ -751,11 +781,11 @@ function ns.Session:Ask(ask)
   return request
 end
 
--- Send now (D66): the Request is written and the game reloads in this click.
--- Send at logout: it waits in SavedVariables for the next logout or reload.
-function ns.Session:Send(now)
+-- Send now (D66, D85): the Request is written and the game reloads in this
+-- click. A Request queued by 0.7 ("send at logout") is sent the same way.
+function ns.Session:Send()
   local req = self.Flow()
-  if req and req.state == "queued" and now then
+  if req and req.state == "queued" then
     req.state = "sent"
     req.sentAt = ns.Now()
     self.RefreshNow()
@@ -765,15 +795,11 @@ function ns.Session:Send(now)
     return nil
   end
   local request = self:Ask(req)
-  request.state = now and "sent" or "queued"
-  request.sentAt = now and ns.Now() or nil
+  request.state = "sent"
+  request.sentAt = ns.Now()
   UnboredCharDB.request = request
   self:NoteRequest()
-  if now then
-    self.RefreshNow()
-  else
-    self:RefreshUI()
-  end
+  self.RefreshNow()
   return request.id
 end
 
@@ -822,7 +848,7 @@ function ns.Session:CheckAgain()
   self.RefreshNow()
 end
 
--- A queued Request is written at logout, so it counts as sent from then.
+-- A Request queued by 0.7 is written at logout, so it counts as sent from then.
 function ns.Session:OnLogout()
   local req = self.Flow()
   if req and req.state == "queued" then
@@ -1089,10 +1115,15 @@ function ns.Session:AutoApplyExternal()
       self.RememberItem(item.itemID, answer.message)
     end
   end
-  if plan and self.state and self.state.quick and self:Current() then
+  -- Only a plan the player has made progress on is worth asking about (D86).
+  if plan and self:Current() and #(self.state.done or {}) > 0 then
     UnboredCharDB.offer = { plan = plan, key = key, requestId = requestId, at = ns.Now() }
   elseif plan then
+    self.undo = self.state and self:Current() and ns.DeepCopy(self.state) or nil
     self:ApplyFull(plan, key, requestId)
+    if self.undo and ns.Mascot and ns.Mascot.Echo then
+      ns.Mascot:Echo(ns.T("ECHO_NEW_PLAN", self:PlanName()))
+    end
   elseif answer then
     self:AnswerStep(answer, requestId)
   end
@@ -1195,20 +1226,34 @@ function ns.Session:Start(initialLogin)
   self:ScheduleDataRefresh()
 end
 
--- "Continue <plan>" on login: what the plan is called.
+-- The Plan title on the card and in "Continue <plan>": the title, else the
+-- Preset label, never the note (D96).
 function ns.Session:PlanName()
   local state = self.state or {}
+  if type(state.title) == "string" and ns.Trim(state.title) ~= "" then
+    return state.title
+  end
   local preset = state.topic and ns.Mascot and ns.Mascot.Preset(state.topic)
   if preset then
     return ns.T(preset.label)
   end
-  if type(state.note) == "string" and state.note ~= "" and #state.note <= 60 then
-    return state.note
-  end
-  if state.mode and state.mode ~= "custom" then
-    return ns.ModeLabel(state.mode)
-  end
   return ns.T("PLAN_NAME_DEFAULT")
+end
+
+-- Undo in the menu, for this session only: the plan a new one replaced (D86).
+function ns.Session:UndoReplace()
+  local old = self.undo
+  if type(old) ~= "table" then
+    return false
+  end
+  self.undo = nil
+  self.state = old
+  self:Save()
+  if ns.Waypoint and ns.Waypoint.ClearOwned then
+    ns.Waypoint:ClearOwned()
+  end
+  self:RefreshUI()
+  return true
 end
 
 function ns.Session:ContinuePlan()

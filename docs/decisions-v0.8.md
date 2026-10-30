@@ -51,6 +51,7 @@ Owner: the separate All steps window and its button are removed; everything usef
   8. **Footer**: one muted small line, right aligned: distance and time, formatted "about 25 min" / "about 1 h 40 min" ("около 25 мин", "около 1 ч 40 мин"), no `~`. Time shows only when `estMinutes` exists; plan-level time left is not shown on the card (it stays in the step-pips tooltip as "about N h left").
   9. **Buttons**: [Done] [Skip] only. Everything else in the right-click / `...` menu.
   Reason: mirrors the quest log the player already reads (title, objective, description, rewards) and keeps one window.
+  **Amended by the owner during 0.8:** the card must not feel overloaded. Closed by default it shows only the title, the current step (what to do plus a short why, and the condition line when there is one), the main reward and [Done] [Skip]. Pips, goal, details, the next steps (as the full list) and every reward sit behind **one** "Show more" / "Show less" toggle on the card, with generous spacing; the open/closed choice is remembered for the Account (`UnboredDB.mascot.cardOpen`), not per plan.
 - D92 Q: Bubble width? A: 260 -> **300** px for the step card only (other views stay 260); bubble scale setting still applies. Reason: a reward row and two-line titles need room; quest log text width is similar.
 - D93 Q: Plan-level schema? A: additive fields on Plan v1 (no version bump; all optional, old plans keep working):
   - `title` string, 3-40 characters, human and catchy like a quest title, no ids, no numbers unless part of a name, no "you have", no link tokens;

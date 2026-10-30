@@ -12,8 +12,11 @@ ns.Mascot = {}
 
 local SIZE = 52
 local BUBBLE_WIDTH = 260
+-- The plan card is wider (D92): two-line titles and a Rewards row need room.
+local CARD_WIDTH = 300
 local PAD = 10
 local INNER = BUBBLE_WIDTH - PAD * 2
+local CARD_INNER = CARD_WIDTH - PAD * 2
 local ACTION = 24
 local GLYPH = 16
 local TOP_ICON = 16
@@ -27,6 +30,11 @@ local ECHO_SECONDS = 90
 local ECHO_BYTES = 90
 local ECHO_ALPHA = { 0.85, 0.55 }
 local LEAD_SECONDS = 8
+local GOLD = { 1, 0.82, 0 }
+local PIPS = 12
+local PIP = 7
+local LIST_MAX_HEIGHT = 260
+local LIST_ROW_GAP = 4
 -- The drop hint stops once the player has handed Wisp this many items.
 local DROP_TEACH = 3
 
@@ -41,7 +49,6 @@ local PORTRAITS = {
 local ACTIONS = {
   done = { icon = "IconDone", tip = "TIP_DONE" },
   skip = { icon = "IconSkip", tip = "TIP_SKIP" },
-  list = { icon = "IconList", tip = "TIP_LIST" },
   send = { icon = "IconSend", tip = "SEND" },
   back = { icon = "IconBack", tip = "BACK" },
   ok = { icon = "IconDone", tip = "GOT_IT" },
@@ -49,7 +56,6 @@ local ACTIONS = {
   plan = { icon = "IconPlan", label = "INTENT_PLAN" },
   refresh = { icon = "IconRefresh", label = "REFRESH", tip = "TIP_REFRESH" },
   load = { icon = "IconRefresh", label = "LOAD", tip = "TIP_REFRESH" },
-  later = { label = "LATER" },
   retry = { label = "TRY_AGAIN" },
   use = { label = "OFFER_USE" },
   keep = { label = "OFFER_KEEP" },
@@ -58,7 +64,6 @@ local ACTIONS = {
   proper = { icon = "IconPlan", label = "WANT_PROPER", tip = "TIP_WANT_PROPER" },
   next = { icon = "IconSend", label = "NEXT" },
   sendnow = { icon = "IconSend", label = "SEND_NOW", tip = "TIP_SEND_NOW" },
-  sendlater = { label = "SEND_LOGOUT", tip = "TIP_SEND_LOGOUT" },
   makeplan = { icon = "IconPlan", label = "MAKE_PLAN" },
 }
 
@@ -207,7 +212,14 @@ local function fadeIn(region, from, seconds)
   return group
 end
 
-local function bob(region)
+-- Thinking (D88): loops made once, each step there and back again, so every
+-- loop starts and ends at rest. They stop with Finish() at the end of a loop,
+-- never with Stop(), which snaps the portrait back mid-move.
+-- TODO(verify-in-game): Finish() on a REPEAT group in 12.x.
+local LOOP_SECONDS = 1.2
+local FINISH_CAP = LOOP_SECONDS * 2
+
+local function loop(region)
   if not region.CreateAnimationGroup then
     return nil
   end
@@ -215,34 +227,79 @@ local function bob(region)
   if not ok or not group then
     return nil
   end
-  group:SetLooping("BOUNCE")
-  local anim = group:CreateAnimation("Translation")
-  anim:SetOffset(0, 4)
-  anim:SetDuration(0.9)
-  if anim.SetSmoothing then
-    anim:SetSmoothing("IN_OUT")
-  end
+  group:SetLooping("REPEAT")
   return group
 end
 
--- "Thinking" (D71): a slow alpha pulse on the one portrait texture.
-local function pulse(region)
-  if not region.CreateAnimationGroup then
-    return nil
-  end
-  local ok, group = pcall(region.CreateAnimationGroup, region)
-  if not ok or not group then
-    return nil
-  end
-  group:SetLooping("BOUNCE")
-  local anim = group:CreateAnimation("Alpha")
-  anim:SetFromAlpha(1)
-  anim:SetToAlpha(0.85)
-  anim:SetDuration(1.6)
+local function step(group, kind, order, seconds)
+  local anim = group:CreateAnimation(kind)
+  anim:SetOrder(order)
+  anim:SetDuration(seconds)
   if anim.SetSmoothing then
     anim:SetSmoothing("IN_OUT")
   end
+  return anim
+end
+
+local function float(region)
+  local group = loop(region)
+  if not group then
+    return nil
+  end
+  step(group, "Translation", 1, LOOP_SECONDS):SetOffset(0, 3)
+  step(group, "Translation", 2, LOOP_SECONDS):SetOffset(0, -3)
   return group
+end
+
+local function glow(region)
+  local group = loop(region)
+  if not group then
+    return nil
+  end
+  local down = step(group, "Alpha", 1, LOOP_SECONDS)
+  down:SetFromAlpha(1)
+  down:SetToAlpha(0.85)
+  local up = step(group, "Alpha", 2, LOOP_SECONDS)
+  up:SetFromAlpha(0.85)
+  up:SetToAlpha(1)
+  return group
+end
+
+-- Three dots that light up in turn while Wisp waits (D89).
+-- TODO(verify-in-game): Animation:SetTarget on a child font string.
+local DOT_ALPHA = 0.25
+local DOT_SECONDS = 0.4
+
+local function dots(parent)
+  local frame = CreateFrame("Frame", nil, parent)
+  frame:SetSize(18, 10)
+  frame.dots = {}
+  for i = 1, 3 do
+    local dot = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dot:SetText(".")
+    dot:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+    dot:SetPoint("LEFT", (i - 1) * 5, 0)
+    dot:SetAlpha(DOT_ALPHA)
+    frame.dots[i] = dot
+  end
+  local group = loop(frame)
+  if group then
+    for i = 1, 3 do
+      local up = step(group, "Alpha", i, DOT_SECONDS)
+      up:SetFromAlpha(DOT_ALPHA)
+      up:SetToAlpha(1)
+      local down = step(group, "Alpha", i + 1, DOT_SECONDS)
+      down:SetFromAlpha(1)
+      down:SetToAlpha(DOT_ALPHA)
+      if up.SetTarget then
+        pcall(up.SetTarget, up, frame.dots[i])
+        pcall(down.SetTarget, down, frame.dots[i])
+      end
+    end
+  end
+  frame.group = group
+  frame:Hide()
+  return frame
 end
 
 local function cursorHoldsItem()
@@ -345,8 +402,13 @@ function ns.Mascot:CreatePortrait()
   self.art:SetSize(SIZE, SIZE)
   self.art:SetPoint("CENTER")
   self.art:SetTexture(ns.MEDIA .. PORTRAITS.idle)
-  self.bob = bob(self.art)
-  self.pulse = pulse(self.art)
+  self.float = float(self.art)
+  self.glow = glow(self.art)
+  if self.float then
+    self.float:SetScript("OnFinished", function()
+      self:FinishMood()
+    end)
+  end
 
   -- Collapsed: a small "..." pill beside the portrait. A click brings the bubble back.
   local pill = framed(frame)
@@ -412,6 +474,104 @@ function ns.Mascot:CreatePortrait()
   end
 end
 
+-- "Show more" / "Show less": the card's one text toggle, with a chevron.
+local function textToggle(parent, onClick)
+  local button = CreateFrame("Button", nil, parent)
+  button:SetHeight(16)
+  button.label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  button.label:SetPoint("LEFT", 0, 0)
+  button.label:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+  button.chevron = glyph(button, "IconChevron", 10)
+  button.chevron:SetPoint("LEFT", button.label, "RIGHT", 3, 0)
+  button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  button:SetScript("OnClick", function()
+    if ns.ClickSound then
+      ns.ClickSound()
+    end
+    onClick()
+  end)
+  -- TODO(verify-in-game): which way IconChevron points; it is turned for open and closed.
+  button.SetOpen = function(self, text, open)
+    self.label:SetText(text)
+    local width = math.ceil(ns.AsNumber(self.label:GetStringWidth()) or 60)
+    self:SetWidth(width + 16)
+    if self.chevron.SetRotation then
+      self.chevron:SetRotation(open and math.pi / 2 or -math.pi / 2)
+    end
+  end
+  button:Hide()
+  return button
+end
+
+-- Progress pips (D91): done filled, the current one a gold ring, the rest dim.
+local function pipRow(parent)
+  local frame = CreateFrame("Frame", nil, parent)
+  frame:SetHeight(PIP)
+  frame:EnableMouse(true)
+  frame.pips = {}
+  for i = 1, PIPS do
+    local pip = frame:CreateTexture(nil, "ARTWORK")
+    pip:SetSize(PIP, PIP)
+    pip:SetPoint("LEFT", (i - 1) * (PIP + 4), 0)
+    local hole = frame:CreateTexture(nil, "OVERLAY")
+    hole:SetSize(PIP - 4, PIP - 4)
+    hole:SetPoint("CENTER", pip, "CENTER")
+    hole:SetColorTexture(0.03, 0.08, 0.09, 1)
+    pip.hole = hole
+    frame.pips[i] = pip
+  end
+  frame.more = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  frame.more:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  frame:SetScript("OnEnter", function(self)
+    if GameTooltip and self.tip then
+      GameTooltip:SetOwner(self, "ANCHOR_TOP")
+      GameTooltip:SetText(self.tip, 1, 1, 1, 1, true)
+      GameTooltip:Show()
+    end
+  end)
+  frame:SetScript("OnLeave", function()
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
+  frame:Hide()
+  return frame
+end
+
+local function drawPips(frame, done, total)
+  local shown = math.min(total, PIPS)
+  for i = 1, PIPS do
+    local pip = frame.pips[i]
+    if i > shown then
+      pip:Hide()
+      pip.hole:Hide()
+    else
+      pip:Show()
+      if i <= done then
+        pip:SetColorTexture(TEAL[1], TEAL[2], TEAL[3], 1)
+        pip.hole:Hide()
+      elseif i == done + 1 then
+        pip:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+        pip.hole:Show()
+      else
+        pip:SetColorTexture(MUTED[1], MUTED[2], MUTED[3], 0.35)
+        pip.hole:Hide()
+      end
+    end
+  end
+  local width = shown * (PIP + 4)
+  if total > PIPS then
+    frame.more:SetText("+" .. (total - PIPS))
+    frame.more:ClearAllPoints()
+    frame.more:SetPoint("LEFT", width, 0)
+    frame.more:Show()
+    width = width + math.ceil(ns.AsNumber(frame.more:GetStringWidth()) or 12)
+  else
+    frame.more:Hide()
+  end
+  frame:SetWidth(math.max(width, 1))
+end
+
 function ns.Mascot:CreateBubble()
   local okBubble, bubble = pcall(CreateFrame, "Frame", "UnboredMascotBubble", UIParent, "BackdropTemplate")
   if not okBubble or not bubble then
@@ -442,13 +602,57 @@ function ns.Mascot:CreateBubble()
   self.fade = fadeIn(bubble, 0.2, 0.25)
 
   self.meta = font(bubble, "GameFontHighlightSmall")
+  self.thinkingDots = dots(bubble)
   self.tick = fadeIn(self.meta, 0.1, 0.4)
   self.header = font(bubble, "GameFontNormal")
   self.message = font(bubble, "GameFontHighlight")
   self.sub = font(bubble, "GameFontHighlightSmall")
   self.sub:SetTextColor(0.75, 0.82, 0.82)
-  self.where = font(bubble, "GameFontNormalSmall")
-  self.where:SetTextColor(1, 0.82, 0)
+  self.where = font(bubble, "GameFontHighlightSmall")
+  self.where:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+
+  -- The plan card (D91).
+  self.title = font(bubble, "GameFontNormal")
+  self.title:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+  self.pipRow = pipRow(bubble)
+  self.goal = font(bubble, "GameFontHighlightSmall")
+  self.goal:SetTextColor(0.92, 0.92, 0.88)
+  self.condition = font(bubble, "GameFontHighlightSmall")
+  self.condition:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  self.why = font(bubble, "GameFontHighlightSmall")
+  self.why:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  self.cardToggle = textToggle(bubble, function()
+    self.peek = nil
+    self:ToggleCard()
+  end)
+  self.details = font(bubble, "GameFontHighlightSmall")
+  self.details:SetTextColor(0.85, 0.88, 0.88)
+  local okList, list = pcall(CreateFrame, "ScrollFrame", nil, bubble)
+  if not okList or not list then
+    list = CreateFrame("Frame", nil, bubble)
+  end
+  list.child = CreateFrame("Frame", nil, list)
+  if list.SetScrollChild then
+    list:SetScrollChild(list.child)
+  end
+  list:EnableMouseWheel(true)
+  list:SetScript("OnMouseWheel", function(frame, delta)
+    if not frame.GetVerticalScroll or not frame.SetVerticalScroll then
+      return
+    end
+    local range = ns.AsNumber(frame.GetVerticalScrollRange and frame:GetVerticalScrollRange()) or 0
+    local at = (ns.AsNumber(frame:GetVerticalScroll()) or 0) - delta * 24
+    frame:SetVerticalScroll(math.max(0, math.min(range, at)))
+  end)
+  list.rows = {}
+  list:Hide()
+  self.list = list
+  self.rewardsHeader = font(bubble, "GameFontNormalSmall")
+  self.rewardsHeader:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+  self.rewardLines = {}
+  for i = 1, ns.PLAN_LIMITS.rewards do
+    self.rewardLines[i] = font(bubble, "GameFontHighlightSmall")
+  end
 
   self.collapse = iconButton(bubble, "IconChevron", ns.T("TIP_COLLAPSE"), function()
     self:Collapse()
@@ -460,7 +664,6 @@ function ns.Mascot:CreateBubble()
   local handlers = {
     done = function() ns.Session:Done() end,
     skip = function() ns.Session:Skip() end,
-    list = function() ns.Tracker:Toggle() end,
     send = function() self:SendAsk() end,
     back = function() self:Back() end,
     ok = function() self:OnOk() end,
@@ -475,7 +678,6 @@ function ns.Mascot:CreateBubble()
       end
     end,
     load = function() self.OnLoad() end,
-    later = function() self:OnLater() end,
     retry = function() self:Retry() end,
     use = function() ns.Session:AcceptOffer() end,
     keep = function() ns.Session:DeclineOffer() end,
@@ -490,8 +692,7 @@ function ns.Mascot:CreateBubble()
     end,
     next = function() self:SurveyNext() end,
     -- Send now reloads in this click: it needs the hardware event (D66).
-    sendnow = function() ns.Session:Send(true) end,
-    sendlater = function() ns.Session:Send(false) end,
+    sendnow = function() ns.Session:Send() end,
     makeplan = function() self:PlanFromAnswer() end,
   }
   self.buttons = {}
@@ -551,6 +752,9 @@ function ns.Mascot:OnRightHalf()
   return left ~= nil and width ~= nil and width > 0 and (left + SIZE / 2) * scale > width / 2
 end
 
+-- Only here, and only on a change of mood, are the loops played or
+-- finished (D88). Refresh never touches them. While a loop runs out, the new
+-- picture waits; a mood change meanwhile only changes which one it will be.
 function ns.Mascot:SetMood(mood)
   if not PORTRAITS[mood] then
     mood = "idle"
@@ -558,22 +762,60 @@ function ns.Mascot:SetMood(mood)
   if self.mood == mood then
     return
   end
-  local thinking = mood == "thinking"
   self.mood = mood
-  -- The animations are made once and only played or stopped here, on a
-  -- change of mood; the texture never swaps while they loop (D71).
-  if not thinking then
-    self.art:SetTexture(ns.MEDIA .. PORTRAITS[mood])
+  local thinking = mood == "thinking"
+  if thinking == (self.thinking or false) then
+    if self.finishing then
+      self.pendingArt = PORTRAITS[mood]
+    elseif not thinking then
+      self.art:SetTexture(ns.MEDIA .. PORTRAITS[mood])
+    end
+    return
   end
-  if thinking ~= self.thinking then
-    self.thinking = thinking
-    for _, group in ipairs({ self.bob, self.pulse }) do
-      if thinking then
-        group:Play()
-      else
-        group:Stop()
+  self.thinking = thinking
+  local groups = { self.float, self.glow, self.thinkingDots and self.thinkingDots.group }
+  if thinking then
+    self.finishing = false
+    self.pendingArt = nil
+    for i = 1, 3 do
+      if groups[i] then
+        groups[i]:Play()
       end
     end
+    return
+  end
+  self.finishing = true
+  self.pendingArt = PORTRAITS[mood]
+  self.finishToken = (self.finishToken or 0) + 1
+  local token = self.finishToken
+  for i = 1, 3 do
+    if groups[i] then
+      groups[i]:Finish()
+    end
+  end
+  if not self.float then
+    self:FinishMood()
+  elseif C_Timer and C_Timer.After then
+    C_Timer.After(FINISH_CAP, function()
+      if self.finishing and self.finishToken == token then
+        self:FinishMood()
+      end
+    end)
+  end
+end
+
+-- The thinking loop ran out: the picture the mood asked for, at rest.
+function ns.Mascot:FinishMood()
+  if not self.finishing then
+    return
+  end
+  self.finishing = false
+  if self.pendingArt then
+    self.art:SetTexture(ns.MEDIA .. self.pendingArt)
+    self.pendingArt = nil
+  end
+  if self.thinkingDots and not self.thinking then
+    self.thinkingDots:Hide()
   end
 end
 
@@ -640,36 +882,148 @@ local function leadText(mascot)
   return nil
 end
 
--- "1/5 · ~12 min"
-local function progressMeta(session)
-  local progress = session:Progress()
-  if not progress or progress.steps == 0 or progress.remaining == 0 then
-    return nil
-  end
-  local text = ns.T("STEP_COUNT", progress.step, progress.steps)
-  if progress.minutesLeft and progress.minutesLeft > 0 then
-    text = text .. " · " .. ns.T("MINUTES", progress.minutesLeft)
-  end
-  return text
-end
-
 -- A name that loads after the Bubble was drawn draws it again.
 local function relink()
   ns.Mascot:Refresh()
 end
 
+local function render(text, npcs)
+  if type(text) ~= "string" or ns.Trim(text) == "" then
+    return nil
+  end
+  return ns.Markup.Render(text, npcs, relink)
+end
+
+local function merged(a, b)
+  if type(a) ~= "table" then
+    return b
+  end
+  if type(b) ~= "table" then
+    return a
+  end
+  local out = {}
+  for key, value in pairs(b) do
+    out[key] = value
+  end
+  for key, value in pairs(a) do
+    out[key] = value
+  end
+  return out
+end
+
+-- Plan Rewards first, then the Step's own, at most 6 (D91).
+local function rewardLines(state, task)
+  local out, seen = {}, {}
+  for _, list in ipairs({ state.rewards or {}, task.rewards or {} }) do
+    for i = 1, #(type(list) == "table" and list or {}) do
+      local token = list[i]
+      if type(token) == "string" and not seen[token] and #out < ns.PLAN_LIMITS.rewards then
+        seen[token] = true
+        local line = ns.Markup.RenderReward(token, relink)
+        if line then
+          out[#out + 1] = line
+        end
+      end
+    end
+  end
+  return out
+end
+
+local function conditionLine(task, check)
+  local condition = type(task.condition) == "table" and task.condition or nil
+  local text = condition and render(condition.text, task.npcs) or nil
+  if not check then
+    return text
+  end
+  local tag = check.met and ("|cff33dd55" .. ns.T("READY") .. "|r") or ("|cffd9a040" .. ns.T("NOT_YET") .. "|r")
+  return text and (text .. "  " .. tag) or tag
+end
+
+-- Every Step of the plan in order, finished ones first, for the inline list.
+local function allRows(state, mascot)
+  local rows = {}
+  local finished = {}
+  for _, bucket in ipairs({ "done", "skipped" }) do
+    for _, entry in ipairs(state[bucket] or {}) do
+      if type(entry) == "table" and type(entry.title) == "string" then
+        finished[#finished + 1] = { title = entry.title, at = tonumber(entry.at) or 0, state = bucket }
+      end
+    end
+  end
+  table.sort(finished, function(a, b)
+    return a.at < b.at
+  end)
+  for i = 1, #finished do
+    rows[#rows + 1] = finished[i]
+  end
+  for i = 1, #(state.tasks or {}) do
+    local task = state.tasks[i]
+    local row = {
+      id = task.id,
+      title = ns.Markup.Plain(task.title or "", task.npcs),
+      state = i == 1 and "current" or "ahead",
+    }
+    if mascot.peek == task.id and i > 1 then
+      local parts = {}
+      for _, name in ipairs({ "why", "note" }) do
+        local field = task[name]
+        if type(field) == "string" and ns.Trim(field) ~= "" then
+          parts[#parts + 1] = ns.Markup.Plain(field, task.npcs)
+        end
+      end
+      row.detail = #parts > 0 and table.concat(parts, "\n") or nil
+    end
+    rows[#rows + 1] = row
+  end
+  return rows
+end
+
+-- The plan card (D91): what the Bubble shows for the current Step.
 local function stepView(mascot, session, task)
+  local state = session.state or {}
+  local progress = session:Progress() or { step = 1, steps = 1, remaining = 1, minutesLeft = 0 }
+  local check = ns.Steps.Condition(task)
+  local open = mascot.CardOpen()
+  local details = {}
+  local progressText = ns.Steps.Progress(check)
+  if progressText and not check.met then
+    details[#details + 1] = progressText
+  end
+  details[#details + 1] = render(task.note, task.npcs)
+  details[#details + 1] = render(state.details, state.npcs)
+  local goal = render(state.goal, state.npcs)
+  local rewards = rewardLines(state, task)
+  local where = ns.Steps.Footer(task)
+  local many = progress.steps > 1
+  local tip = ns.T("STEP_OF", progress.step, progress.steps)
+  local left = ns.Steps.Duration(progress.minutesLeft)
+  if left then
+    tip = tip .. "\n" .. ns.T("LEFT", left)
+  end
   return {
     kind = "step",
     key = task.id,
     mood = "idle",
-    meta = progressMeta(session),
+    card = true,
+    title = session:PlanName(),
     header = leadText(mascot),
+    condition = conditionLine(task, check),
+    notYet = check ~= nil and not check.met,
     message = ns.Markup.Render(task.title or "", task.npcs, relink),
-    sub = type(task.note) == "string" and task.note ~= "" and ns.Markup.Render(task.note, task.npcs, relink) or nil,
-    npcs = task.npcs,
-    where = ns.Tracker.CurrentMeta(task),
-    buttons = { "done", "skip", "list" },
+    why = render(task.why, task.npcs),
+    reward = rewards[1],
+    -- Everything below sits behind the one toggle.
+    expandable = many or goal ~= nil or #details > 0 or #rewards > 1 or where ~= nil,
+    open = open,
+    pips = open and many and { done = progress.step - 1, total = progress.steps } or nil,
+    pipTip = tip,
+    goal = open and goal or nil,
+    details = open and #details > 0 and table.concat(details, "\n\n") or nil,
+    all = open and many and allRows(state, mascot) or nil,
+    rewards = open and rewards or {},
+    where = open and where or nil,
+    npcs = merged(task.npcs, state.npcs),
+    buttons = { "done", "skip" },
   }
 end
 
@@ -819,7 +1173,7 @@ local function confirmView(req)
     mood = "idle",
     header = flowSummary(req),
     message = ns.T("CONFIRM_TITLE"),
-    buttons = { "sendnow", "sendlater", "back" },
+    buttons = { "sendnow", "back" },
   }
 end
 
@@ -831,7 +1185,7 @@ local function waitingView(mascot, session, task, state)
   local line, slow = waitLine(session)
   local message
   if state == "queued" then
-    message = ns.T("QUEUED")
+    message = ns.T("CONFIRM_TITLE")
   elseif offer then
     message = ns.T("ETA_READY")
   else
@@ -935,7 +1289,7 @@ function ns.Mascot.View()
       key = update,
       mood = "happy",
       message = ns.T("UPDATE_READY"),
-      buttons = { "load", "later" },
+      buttons = { "load" },
     }
   end
   if state == "queued" or state == "sent" or state == "waiting" then
@@ -961,11 +1315,6 @@ function ns.Mascot:OnOk()
     self.updateLater = true
     self:Refresh()
   end
-end
-
-function ns.Mascot:OnLater()
-  self.updateLater = true
-  self:Refresh()
 end
 
 -- Load: ReloadUI in the same click. With an update waiting, it remembers
@@ -1266,6 +1615,87 @@ function ns.Mascot:SetBubbleScale(percent)
   end
 end
 
+-- The card opens and closes as a whole; the choice is kept for the Account.
+function ns.Mascot.CardOpen()
+  return db().cardOpen == true
+end
+
+function ns.Mascot:ToggleCard()
+  db().cardOpen = not self.CardOpen() or nil
+  self:Refresh()
+end
+
+-- A row in the inline list; a click shows that Step's why and note.
+function ns.Mascot:ListRow(index)
+  local list = self.list
+  local row = list.rows[index]
+  if row then
+    return row
+  end
+  row = CreateFrame("Button", nil, list.child)
+  row:RegisterForClicks("LeftButtonUp")
+  row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+  row.text = font(row, "GameFontHighlightSmall")
+  row.text:SetPoint("TOPLEFT", 0, 0)
+  row.detail = font(row, "GameFontHighlightSmall")
+  row.detail:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  row:SetScript("OnClick", function(button)
+    if button.taskId then
+      self.peek = self.peek ~= button.taskId and button.taskId or nil
+      self:Refresh()
+    end
+  end)
+  list.rows[index] = row
+  return row
+end
+
+local ROW_COLORS = {
+  done = { 0.45, 0.5, 0.5 },
+  skipped = { 0.45, 0.5, 0.5 },
+  current = { 1, 1, 1 },
+  ahead = MUTED,
+}
+
+-- Finished Steps are dimmed and marked; the list scrolls past LIST_MAX_HEIGHT.
+function ns.Mascot:LayoutList(rows, width)
+  local list = self.list
+  for i = 1, #list.rows do
+    list.rows[i]:Hide()
+  end
+  local y = 0
+  for i = 1, #rows do
+    local entry = rows[i]
+    local row = self:ListRow(i)
+    local mark = (entry.state == "done" and "|cff33dd55+|r ") or (entry.state == "skipped" and "- ")
+      or (entry.state == "current" and "|cffffd100>|r ") or ""
+    row.taskId = entry.state == "ahead" and entry.id or nil
+    row.text:SetText(mark .. (entry.title or ""))
+    local color = ROW_COLORS[entry.state] or MUTED
+    row.text:SetTextColor(color[1], color[2], color[3])
+    local height = ns.UI.Measure(row.text, width)
+    if entry.detail then
+      row.detail:SetText(entry.detail)
+      row.detail:ClearAllPoints()
+      row.detail:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 8, -2)
+      height = height + 2 + ns.UI.Measure(row.detail, width - 8)
+      row.detail:Show()
+    else
+      row.detail:SetText("")
+      row.detail:Hide()
+    end
+    row:SetSize(width, height)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", list.child, "TOPLEFT", 0, -y)
+    row:Show()
+    y = y + height + LIST_ROW_GAP
+  end
+  local total = math.max(y - LIST_ROW_GAP, 0)
+  list.child:SetSize(width, math.max(total, 1))
+  local shown = math.min(total, LIST_MAX_HEIGHT)
+  list:SetSize(width, math.max(shown, 1))
+  return shown
+end
+
 local function hideAll(mascot)
   mascot.bubble:Hide()
   mascot.pill:Hide()
@@ -1285,6 +1715,13 @@ local function clearBubble(mascot)
   mascot.otherChip:Hide()
   mascot.wishBox:Hide()
   mascot.minutesBox:Hide()
+  for _, region in ipairs({ mascot.title, mascot.pipRow, mascot.goal, mascot.condition, mascot.why,
+    mascot.cardToggle, mascot.details, mascot.list, mascot.rewardsHeader }) do
+    region:Hide()
+  end
+  for i = 1, #mascot.rewardLines do
+    mascot.rewardLines[i]:Hide()
+  end
 end
 
 function ns.Mascot:Refresh()
@@ -1367,6 +1804,8 @@ end
 function ns.Mascot:Layout(view, right)
   local bubble = self.bubble
   local frame = self.frame
+  local inner = view.card and CARD_INNER or INNER
+  bubble:SetWidth(inner + PAD * 2)
   bubble:ClearAllPoints()
   if right then
     bubble:SetPoint("TOPRIGHT", frame, "TOPLEFT", -8, 0)
@@ -1390,7 +1829,7 @@ function ns.Mascot:Layout(view, right)
       return
     end
     fs:SetText(value)
-    local height = ns.UI.Measure(fs, width or INNER)
+    local height = ns.UI.Measure(fs, width or inner)
     fs:ClearAllPoints()
     fs:SetPoint("TOPLEFT", bubble, "TOPLEFT", PAD, y)
     fs:Show()
@@ -1408,11 +1847,34 @@ function ns.Mascot:Layout(view, right)
     self.meta:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
   end
   ns.Markup.UseNpcs(view.npcs)
-  put(self.meta, view.meta or ns.MASCOT_NAME, 6, INNER - (TOP_ICON + 4) * 2 - 4)
-  put(self.header, view.header, 4)
-  put(self.message, view.message, 6)
-  put(self.sub, view.sub, 4)
-  put(self.where, view.where, 4)
+  local topWidth = inner - (TOP_ICON + 4) * 2 - 4
+  if view.card then
+    self.meta:SetText("")
+    self.meta:Hide()
+    put(self.title, view.title, 8, topWidth)
+    self:LayoutCard(view, inner, function(region, height, gap, x)
+      region:ClearAllPoints()
+      region:SetPoint("TOPLEFT", bubble, "TOPLEFT", PAD + (x or 0), y)
+      region:Show()
+      y = y - height - (gap or 4)
+    end, put)
+  else
+    put(self.meta, view.meta or ns.MASCOT_NAME, 6, topWidth)
+    put(self.header, view.header, 4)
+    put(self.message, view.message, 6)
+    put(self.sub, view.sub, 4)
+    self.where:SetJustifyH("LEFT")
+    put(self.where, view.where, 4)
+  end
+  local dotsFor = view.card and self.title or self.meta
+  if self.thinking or self.finishing then
+    local width = math.min(math.ceil(ns.AsNumber(dotsFor:GetStringWidth()) or 0), topWidth)
+    self.thinkingDots:ClearAllPoints()
+    self.thinkingDots:SetPoint("TOPLEFT", dotsFor, "TOPLEFT", width + 3, 0)
+    self.thinkingDots:Show()
+  else
+    self.thinkingDots:Hide()
+  end
 
   local function place(region, x, height)
     region:ClearAllPoints()
@@ -1422,8 +1884,8 @@ function ns.Mascot:Layout(view, right)
   end
   local function layoutChip(button, text, selected)
     button.label:SetText(text)
-    local height = math.max(CHIP_HEIGHT, ns.UI.Measure(button.label, INNER - 20) + 10)
-    button:SetSize(INNER, height)
+    local height = math.max(CHIP_HEIGHT, ns.UI.Measure(button.label, inner - 20) + 10)
+    button:SetSize(inner, height)
     styleChip(button, selected)
     y = y - place(button, PAD, height) - 4
   end
@@ -1451,7 +1913,7 @@ function ns.Mascot:Layout(view, right)
     for i = 1, #buttons do
       local button = self.buttons[buttons[i]]
       local width = ns.AsNumber(button:GetWidth()) or ACTION
-      if x > PAD and x + width > PAD + INNER then
+      if x > PAD and x + width > PAD + inner then
         x = PAD
         y = y - ACTION - 4
       end
@@ -1464,6 +1926,47 @@ function ns.Mascot:Layout(view, right)
   end
   bubble:SetHeight(math.ceil(-y + PAD))
   self:LayoutEchoes(right)
+end
+
+-- The card below its title row. Closed, it is only what to do now: the
+-- step, why, and the main reward. "Show more" opens the rest in place.
+-- place(region, height, gap, x) puts a region at the cursor; put(fs, text, gap) a string.
+function ns.Mascot:LayoutCard(view, inner, place, put)
+  put(self.header, view.header, 6)
+  put(self.condition, view.condition, 3)
+  put(self.message, view.message, 4)
+  put(self.why, view.why, 8)
+  if view.reward and not view.open then
+    put(self.rewardLines[1], view.reward, 8)
+  end
+  if view.expandable then
+    self.cardToggle:SetOpen(view.open and ns.T("LESS") or ns.T("CARD_MORE"), view.open)
+    place(self.cardToggle, 16, 8)
+  end
+  if not view.open then
+    return
+  end
+  if view.pips and view.pips.total > 1 then
+    drawPips(self.pipRow, view.pips.done, view.pips.total)
+    self.pipRow.tip = view.pipTip
+    place(self.pipRow, PIP, 8, 1)
+  end
+  put(self.goal, view.goal, 8)
+  put(self.details, view.details, 8)
+  if view.all then
+    local height = self:LayoutList(view.all, inner - 4)
+    place(self.list, height, 8, 4)
+  end
+  if #view.rewards > 0 then
+    put(self.rewardsHeader, ns.T("REWARDS"), 4)
+    for i = 1, #self.rewardLines do
+      put(self.rewardLines[i], view.rewards[i], 3)
+    end
+  end
+  if view.where then
+    self.where:SetJustifyH("RIGHT")
+    put(self.where, view.where, 4)
+  end
 end
 
 -- An older message, kept for a little while above the bubble. Done/Skip
@@ -1542,7 +2045,7 @@ function ns.Mascot:UpdateDistance()
   if not self.bubble or not self.bubble:IsShown() or not view or view.kind ~= "step" or not task then
     return
   end
-  if ns.Tracker.CurrentMeta(task) ~= view.where then
+  if ns.Steps.Footer(task) ~= view.where then
     self:Refresh()
   end
 end
@@ -1554,7 +2057,11 @@ function ns.Mascot:Reveal()
   self:Refresh()
 end
 
+-- On the update view the collapse is the "later" (D87).
 function ns.Mascot:Collapse()
+  if self.view and self.view.kind == "update" then
+    self.updateLater = true
+  end
   db().collapsed = true
   self:Refresh()
 end
@@ -1639,13 +2146,7 @@ function ns.Mascot:SettingsTree()
 end
 
 function ns.Mascot:MoreTree()
-  local items = {
-    {
-      text = ns.T("MENU_LIST"),
-      checked = function() return ns.Tracker:IsOpen() end,
-      func = function() ns.Tracker:Toggle() end,
-    },
-  }
+  local items = {}
   if ns.Session:Current() then
     items[#items + 1] = { text = ns.T("MENU_WAYPOINT"), func = function() ns.Session:Waypoint() end }
   end
@@ -1668,7 +2169,6 @@ function ns.Mascot:MoreTree()
     text = ns.T("MENU_RESET"),
     func = function()
       self:ResetPosition()
-      ns.Tracker:ResetPosition()
     end,
   }
   return items
@@ -1692,6 +2192,9 @@ function ns.Mascot:MenuTree()
     items[#items + 1] = { text = ns.T("MENU_ROUTE"), func = function() self.ShowRoute() end }
   end
   items[#items + 1] = { text = ns.T("NEW_PLAN"), func = function() self:ShowChoice() end }
+  if ns.Session.undo then
+    items[#items + 1] = { text = ns.T("MENU_UNDO_PLAN"), func = function() ns.Session:UndoReplace() end }
+  end
   items[#items + 1] = { text = ns.T("MENU_ITEM"), func = function() self:StartPick() end }
   items[#items + 1] = { text = ns.T("MENU_ASK"), func = function() self:ShowAsk("ask") end }
   if ns.Session:PendingRequest() then

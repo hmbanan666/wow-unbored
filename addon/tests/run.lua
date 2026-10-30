@@ -42,6 +42,7 @@ local files = {
   "Core/Plan.lua",
   "Core/Complete.lua",
   "Core/Waypoint.lua",
+  "Core/Steps.lua",
   "Core/Session.lua",
   "Core/Events.lua",
   "Data/Exploration.lua",
@@ -58,7 +59,6 @@ local files = {
   "Providers/Farm.lua",
   "Companion/Plan.lua",
   "UI/Widgets.lua",
-  "UI/Tracker.lua",
   "UI/Mascot.lua",
   "UI/Items.lua",
   "UI/Import.lua",
@@ -546,16 +546,20 @@ check(ns.Session:FlowState() == "confirm" and ns.Session.Flow().budget == 45, "t
 ns.Session:FlowBack()
 check(ns.Session:FlowState() == "survey", "Back from Confirm is the Survey")
 ns.Session:SurveyDone("mount, stay in this zone", nil)
-check(ns.Session:Send(false) ~= nil, "send at logout queues it")
+check(ns.Session:Send() ~= nil and reloads == 1, "Send now writes the Request and reloads in the click")
 local req = UnboredCharDB.request
-check(req.state == "queued" and ns.Session:Locked(), "queued locks Wisp")
+check(req.state == "sent" and ns.Session:Locked(), "sent locks Wisp")
+-- A 0.7 SavedVariables file may still hold a Request queued for logout (D85).
+req.state, req.sentAt = "queued", nil
+reloads = 0
+check(ns.Session:Locked(), "a queued Request from 0.7 still locks Wisp")
 check(req and req.type == "plan" and req.mode == "farm" and req.budget == nil, "a plan Request with no time budget")
 check(req and req.wish == "mount, stay in this zone" and req.character == "player", "the Request keeps the wish")
 check(req and type(req.context) == "table" and req.context.mapID == 84, "the Request keeps the player context")
 check(req and near(req.context.x, 0.2) and req.context.zone == "Stormwind City", "context has position and zone")
 check(type(req.context.plan) == "table", "context has the active plan progress")
 check(ns.Session.requestNote == "sending", "a new request waits for the companion file")
-check(reloads == 0, "send at logout never reloads")
+check(reloads == 0, "a queued Request waits for logout without a reload")
 check(req.lang == "en" and req.onDisk == nil, "a new request has a language and is not on disk yet")
 check(ns.Session:RefreshOffer() == nil, "a queued Request offers no Refresh")
 ns.Session:OnEvent("PLAYER_LOGOUT")
