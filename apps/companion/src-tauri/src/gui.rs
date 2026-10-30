@@ -720,6 +720,7 @@ fn planner_state(
                     .filter(|value| value.is_object())
                     .cloned(),
                 updated_at: body.get("updatedAt").and_then(|value| value.as_u64()),
+                eta: body.get("eta").and_then(|value| value.as_u64()),
             });
         }
     }

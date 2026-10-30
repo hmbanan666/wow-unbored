@@ -134,7 +134,7 @@ Pasting a progress string into Import is an error. It does not replace the list.
 
 The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). When the UI loads (login, a character switch, or a Refresh the player clicks), a plan whose `requestId` matches this character's pending request is taken: it starts at once, or, over a running Quick plan, Wisp offers it first. A plan without a `requestId` starts once per character, and only when no request is pending. `/unbored companion` applies the file again. See `companion/README.md`.
 
-Alongside `requestId`, `requestStatus` (`pending`, `fulfilled`, `failed`), and `requestReason`, the file carries `requestType` (`plan`, `question`, `item`) and, for an answered request, `answer`:
+Alongside `requestId`, `requestStatus` (`pending`, `fulfilled`, `failed`), and `requestReason`, the file carries `requestType` (`plan`, `question`, `item`), `eta` for a pending request (seconds a plan usually takes, 60 to 900; Wisp offers one Refresh after it), and, for an answered request, `answer`:
 
 ```lua
 UnboredExternalPlan = {

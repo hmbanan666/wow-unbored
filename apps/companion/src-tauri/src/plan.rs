@@ -196,6 +196,9 @@ fn decode_b64(payload: &str) -> Result<Vec<u8>, PlanError> {
 
 /// Plan.lua for an in-game request: its status, and when it is answered,
 /// the reply text, the follow-up plan, or both.
+const ETA_MIN: u64 = 60;
+const ETA_MAX: u64 = 900;
+
 pub fn render_request_lua(request: &RequestState, status: &str, plan: Option<&Plan>) -> String {
     let mut extras = vec![("requestType", Value::String(request.kind.clone()))];
     if let Some(code) = request
@@ -207,6 +210,9 @@ pub fn render_request_lua(request: &RequestState, status: &str, plan: Option<&Pl
     }
     if let Some(answer) = request.answer.as_ref().filter(|_| status == "fulfilled") {
         extras.push(("answer", answer.clone()));
+    }
+    if let Some(eta) = request.eta.filter(|_| status == "pending") {
+        extras.push(("eta", Value::from(eta.clamp(ETA_MIN, ETA_MAX))));
     }
     if let Some(plan) = plan {
         let mut copy = plan.clone();
@@ -514,6 +520,8 @@ pub struct RequestState {
     pub plan: Option<Plan>,
     pub answer: Option<Value>,
     pub updated_at: Option<u64>,
+    /// Seconds a plan usually takes (Server p50), for Wisp's Refresh offer (D68).
+    pub eta: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -962,6 +970,26 @@ mod tests {
         newer.latest_plan_at = Some(30);
         let file = pick_plan_file(&newer).unwrap();
         assert!(file.body.contains("older") && file.ready_request.is_none());
+    }
+
+    #[test]
+    fn a_pending_request_carries_the_eta_clamped() {
+        let mut pending = request("pending", None, None);
+        pending.eta = Some(5000);
+        let file = render_request_lua(&pending, "pending", None);
+        let values = parse_saved_variables(&file).unwrap();
+        let external = values.get("UnboredExternalPlan").unwrap();
+        use crate::savedvars::table_get;
+        assert_eq!(
+            table_get(external, "eta").and_then(|v| v.as_u64()),
+            Some(900)
+        );
+        assert_eq!(
+            table_get(external, "requestId").and_then(|v| v.as_str()),
+            Some("req-1")
+        );
+        let failed = render_request_lua(&pending, "failed", None);
+        assert!(!failed.contains("eta"));
     }
 
     #[test]
