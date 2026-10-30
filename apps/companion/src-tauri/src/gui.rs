@@ -434,6 +434,29 @@ fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Resul
     Ok(snapshot(&app, &model))
 }
 
+const PRIVACY_URL: &str = "https://github.com/hmbanan666/wow-unbored#what-wisp-knows-about-you";
+
+/// D61: the first-run line links to the README privacy section. The URL is fixed
+/// here, never taken from the window.
+#[tauri::command]
+fn open_privacy() -> Result<(), String> {
+    open_in_browser(PRIVACY_URL)
+}
+
+#[cfg(windows)]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| format!("Could not open the browser. The page is {url}"))
+}
+
+#[cfg(not(windows))]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    Err(format!("Open {url} in your browser."))
+}
+
 #[tauri::command]
 fn set_endpoint(
     app: AppHandle,
@@ -1457,7 +1480,8 @@ pub fn run() {
             set_autostart,
             write_plan_text,
             fetch_plan,
-            rescan_progress
+            rescan_progress,
+            open_privacy
         ])
         .run(tauri::generate_context!())
         .expect("Unbored Companion failed to start");

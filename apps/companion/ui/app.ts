@@ -110,6 +110,10 @@ $("save-endpoint").addEventListener("click", () =>
     }),
   ).then(armPoll),
 );
+$("privacy").addEventListener("click", (event) => {
+  event.preventDefault();
+  invoke("open_privacy").catch(showError);
+});
 $("fetch").addEventListener("click", () => run(() => invoke("fetch_plan")));
 $("rescan").addEventListener("click", () => run(() => invoke("rescan_progress")));
 autostart.addEventListener("change", () =>

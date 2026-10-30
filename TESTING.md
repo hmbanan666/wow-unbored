@@ -17,6 +17,7 @@
 
 - [ ] Скачать `Unbored.Companion_0.6.0_x64-setup.exe` из релиза `companion-v0.6.0`. SmartScreen: «Подробнее» → «Выполнить в любом случае».
 - [ ] Окно Companion: «Connecting...», потом «Waiting for a one-time OK» с именем ПК.
+- [ ] Под «Start with Windows» строка «Wisp only learns about your own characters. What she knows». Клик по ссылке открывает в браузере раздел README «What Wisp knows about you».
 - [ ] В списке шагов: папка WoW найдена, Wisp установлен (0.6.0) — ещё до одобрения.
 - [ ] Одобрить ПК (MCP `list_devices` → `approve_device`).
 - [ ] Не позже чем через 30 с: тост «You're connected!» и «Connected! You're all set».

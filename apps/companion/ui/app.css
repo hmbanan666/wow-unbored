@@ -163,6 +163,14 @@ button.big {
   color: var(--soft);
   margin-top: 6px;
 }
+.privacy {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--soft);
+}
+.privacy a {
+  color: var(--teal);
+}
 
 details {
   margin-top: 26px;
