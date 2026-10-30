@@ -61,7 +61,7 @@ local function planProgress()
   return {
     title = ns.SafeString(state.note, 240),
     currentId = current and current.id or nil,
-    currentTitle = current and ns.SafeString(current.title, 240) or nil,
+    currentTitle = current and ns.SafeString(ns.Markup.Plain(current.title, current.npcs), 240) or nil,
     step = done + skipped + (current and 1 or 0),
     steps = done + skipped + remaining,
     done = done,

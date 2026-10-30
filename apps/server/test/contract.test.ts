@@ -47,7 +47,7 @@ for (const { name, body } of requests.cases) {
       assert.equal(stored.account, String(body.account ?? "").split("#")[0]);
       if (body.type === "plan") {
         assert.equal(stored.mode, body.mode);
-        assert.equal(stored.budget, body.budget);
+        assert.equal(stored.budget, body.budget ?? null);
       } else {
         assert.equal(stored.mode, "");
       }

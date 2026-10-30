@@ -1,5 +1,5 @@
 {
-  "about": "Request payloads shared by the Companion and Server tests (docs/adr/0013). Each case is what the addon writes to SavedVariables and the exact JSON body the Companion posts to /v1/requests. Item and question bodies carry no mode or budget.",
+  "about": "Request payloads shared by the Companion and Server tests (docs/adr/0013, 0037). Each case is what the addon writes to SavedVariables and the exact JSON body the Companion posts to /v1/requests. Item and question bodies carry no mode or budget. Plan bodies carry budget only when the player typed minutes into the custom form.",
   "cases": [
     {
       "name": "plan",
@@ -12,7 +12,6 @@
         "realm": "Silvermoon",
         "type": "plan",
         "mode": "farm",
-        "budget": 60,
         "wish": "a mount I can get today",
         "topic": "mount",
         "lang": "en",
@@ -24,6 +23,28 @@
           "y": 0.3321,
           "level": 80,
           "skyriding": true
+        }
+      }
+    },
+    {
+      "name": "custom",
+      "savedVariables": "custom.lua",
+      "account": "12345678#1",
+      "body": {
+        "id": "req-1793300300-0099",
+        "createdAt": 1793300300,
+        "character": "Mira",
+        "realm": "Silvermoon",
+        "type": "plan",
+        "mode": "fun",
+        "budget": 45,
+        "wish": "all of Hallowfall's exploration",
+        "lang": "en",
+        "account": "12345678#1",
+        "context": {
+          "mapID": 2215,
+          "zone": "Hallowfall",
+          "level": 80
         }
       }
     },

@@ -21,7 +21,6 @@ local TEAL = { 0.37, 0.89, 0.83 }
 local MUTED = { 0.62, 0.7, 0.7 }
 local COMBAT_ALPHA = 0.5
 local CHIP_HEIGHT = 26
-local TIME_CHIP_WIDTH = 44
 local SCALES = { 80, 100, 125, 150 }
 local ECHOES = 2
 local ECHO_SECONDS = 90
@@ -33,7 +32,7 @@ local DROP_TEACH = 3
 
 local PORTRAITS = {
   idle = "WispIdle128",
-  thinking = "WispThinking128",
+  thinking = "WispIdle128",
   happy = "WispHappy128",
 }
 
@@ -44,7 +43,6 @@ local ACTIONS = {
   skip = { icon = "IconSkip", tip = "TIP_SKIP" },
   list = { icon = "IconList", tip = "TIP_LIST" },
   send = { icon = "IconSend", tip = "SEND" },
-  ask = { icon = "IconSend", tip = "TIP_ASK" },
   back = { icon = "IconBack", tip = "BACK" },
   ok = { icon = "IconDone", tip = "GOT_IT" },
   cancel = { icon = "IconClose", tip = "CANCEL_REQUEST" },
@@ -57,6 +55,11 @@ local ACTIONS = {
   keep = { label = "OFFER_KEEP" },
   continue = { label = "CONTINUE" },
   new = { label = "SOMETHING_NEW" },
+  proper = { icon = "IconPlan", label = "WANT_PROPER", tip = "TIP_WANT_PROPER" },
+  next = { icon = "IconSend", label = "NEXT" },
+  sendnow = { icon = "IconSend", label = "SEND_NOW", tip = "TIP_SEND_NOW" },
+  sendlater = { label = "SEND_LOGOUT", tip = "TIP_SEND_LOGOUT" },
+  makeplan = { icon = "IconPlan", label = "MAKE_PLAN" },
 }
 
 local function db()
@@ -222,6 +225,26 @@ local function bob(region)
   return group
 end
 
+-- "Thinking" (D71): a slow alpha pulse on the one portrait texture.
+local function pulse(region)
+  if not region.CreateAnimationGroup then
+    return nil
+  end
+  local ok, group = pcall(region.CreateAnimationGroup, region)
+  if not ok or not group then
+    return nil
+  end
+  group:SetLooping("BOUNCE")
+  local anim = group:CreateAnimation("Alpha")
+  anim:SetFromAlpha(1)
+  anim:SetToAlpha(0.85)
+  anim:SetDuration(1.6)
+  if anim.SetSmoothing then
+    anim:SetSmoothing("IN_OUT")
+  end
+  return group
+end
+
 local function cursorHoldsItem()
   if type(GetCursorInfo) ~= "function" then
     return false
@@ -232,6 +255,10 @@ end
 local function takeCursorItem()
   if not cursorHoldsItem() then
     return false
+  end
+  if ns.Session:Locked() then
+    ns.Mascot:Busy()
+    return true
   end
   local item = ns.Items.FromCursor()
   if item then
@@ -319,6 +346,7 @@ function ns.Mascot:CreatePortrait()
   self.art:SetPoint("CENTER")
   self.art:SetTexture(ns.MEDIA .. PORTRAITS.idle)
   self.bob = bob(self.art)
+  self.pulse = pulse(self.art)
 
   -- Collapsed: a small "..." pill beside the portrait. A click brings the bubble back.
   local pill = framed(frame)
@@ -396,6 +424,18 @@ function ns.Mascot:CreateBubble()
   bubble:EnableMouse(true)
   bubble:SetScript("OnReceiveDrag", takeCursorItem)
   bubble:SetScript("OnMouseUp", takeCursorItem)
+  if bubble.SetHyperlinksEnabled then
+    bubble:SetHyperlinksEnabled(true)
+  end
+  bubble:SetScript("OnHyperlinkEnter", function(frame, link, text)
+    ns.Markup.OnEnter(frame, link, text)
+  end)
+  bubble:SetScript("OnHyperlinkLeave", function()
+    ns.Markup.OnLeave()
+  end)
+  bubble:SetScript("OnHyperlinkClick", function(_, link, text, button)
+    ns.Markup.OnClick(link, text, button)
+  end)
   ns.UI.ApplyBackdrop(bubble, { 0.03, 0.08, 0.09, 0.92 }, { TEAL[1], TEAL[2], TEAL[3], 0.9 })
   bubble:Hide()
   self.bubble = bubble
@@ -421,20 +461,19 @@ function ns.Mascot:CreateBubble()
     done = function() ns.Session:Done() end,
     skip = function() ns.Session:Skip() end,
     list = function() ns.Tracker:Toggle() end,
-    send = function()
-      if self.asking then
-        self:SendAsk()
-      else
-        self:SendWish()
-      end
-    end,
-    ask = function() self:AskItem() end,
+    send = function() self:SendAsk() end,
     back = function() self:Back() end,
     ok = function() self:OnOk() end,
     cancel = function() ns.Session:CancelRequest() end,
     plan = function() ns.Session:AnswerPlan() end,
     -- ReloadUI straight from the click: it needs the hardware event.
-    refresh = function() ns.Session.RefreshNow() end,
+    refresh = function()
+      if ns.Session:RefreshOffer() then
+        ns.Session:CheckAgain()
+      else
+        ns.Session.RefreshNow()
+      end
+    end,
     load = function() self.OnLoad() end,
     later = function() self:OnLater() end,
     retry = function() self:Retry() end,
@@ -445,13 +484,22 @@ function ns.Mascot:CreateBubble()
       ns.Session.welcomeBack = false
       self:ShowChoice()
     end,
+    proper = function()
+      ns.Session:ToSurvey()
+      self:FocusWish()
+    end,
+    next = function() self:SurveyNext() end,
+    -- Send now reloads in this click: it needs the hardware event (D66).
+    sendnow = function() ns.Session:Send(true) end,
+    sendlater = function() ns.Session:Send(false) end,
+    makeplan = function() self:PlanFromAnswer() end,
   }
   self.buttons = {}
   for name, spec in pairs(ACTIONS) do
     self.buttons[name] = actionButton(bubble, spec, handlers[name])
   end
 
-  -- The choice: one chip per preset, then "Something else...", then the time chips.
+  -- The choice: one chip per preset, then "Something else...".
   self.chips = {}
   for i = 1, #ns.Data.Presets do
     local preset = ns.Data.Presets[i]
@@ -464,25 +512,14 @@ function ns.Mascot:CreateBubble()
   self.otherChip = chip(bubble, "GameFontNormal", function()
     self:ShowWish()
   end)
-  self.timeLabel = font(bubble, "GameFontHighlightSmall")
-  self.timeLabel:SetTextColor(0.75, 0.82, 0.82)
-  self.timeChips = {}
-  for i = 1, #ns.Data.PresetBudgets do
-    local minutes = ns.Data.PresetBudgets[i]
-    local button = chip(bubble, "GameFontHighlightSmall", function()
-      ns.Session:SetBudget(minutes)
-    end)
-    button:SetSize(TIME_CHIP_WIDTH, 20)
-    button.label:ClearAllPoints()
-    button.label:SetPoint("CENTER")
-    button.minutes = minutes
-    self.timeChips[i] = button
-  end
 
   self.wishBox, self.wishEdit = ns.UI.MakeTextBox(bubble, ns.T("WISH_HINT"), 300, function()
     self.wishError = nil
   end, INNER, 64)
   self.wishBox:Hide()
+  -- Only the fully custom wish may carry minutes, and only when typed (docs/adr/0037).
+  self.minutesBox, self.minutesEdit = ns.UI.MakeNumberBox(bubble, ns.T("WISH_MINUTES_HINT"), 3, INNER)
+  self.minutesBox:Hide()
 
   self.echoFrames = {}
   for i = 1, ECHOES do
@@ -521,15 +558,29 @@ function ns.Mascot:SetMood(mood)
   if self.mood == mood then
     return
   end
+  local thinking = mood == "thinking"
   self.mood = mood
-  self.art:SetTexture(ns.MEDIA .. PORTRAITS[mood])
-  if self.bob then
-    if mood == "thinking" then
-      self.bob:Play()
-    else
-      self.bob:Stop()
+  -- The animations are made once and only played or stopped here, on a
+  -- change of mood; the texture never swaps while they loop (D71).
+  if not thinking then
+    self.art:SetTexture(ns.MEDIA .. PORTRAITS[mood])
+  end
+  if thinking ~= self.thinking then
+    self.thinking = thinking
+    for _, group in ipairs({ self.bob, self.pulse }) do
+      if thinking then
+        group:Play()
+      else
+        group:Stop()
+      end
     end
   end
+end
+
+-- Wisp is waiting on a Request: one short line instead of the new thing (D67).
+function ns.Mascot:Busy()
+  self:Echo(ns.T("BUSY_ONE"))
+  self:Reveal()
 end
 
 function ns.Mascot.RequestSummary(req)
@@ -544,9 +595,20 @@ function ns.Mascot.RequestSummary(req)
     return req.question and ("\"" .. req.question .. "\"") or nil
   end
   local preset = ns.Mascot.Preset(req.topic)
-  local text = (preset and ns.T(preset.label) or ns.ModeLabel(req.mode)) .. "  ·  " .. ns.Mascot.BudgetLabel(req.budget)
-  if not preset and type(req.wish) == "string" and req.wish ~= "" then
-    text = text .. "\n\"" .. req.wish .. "\""
+  local wish = type(req.wish) == "string" and req.wish ~= "" and req.wish or nil
+  local text
+  if preset then
+    text = ns.T(preset.label)
+    if type(req.extra) == "string" and req.extra ~= "" then
+      text = text .. "\n\"" .. req.extra .. "\""
+    end
+  elseif wish then
+    text = "\"" .. wish .. "\""
+  else
+    text = ns.ModeLabel(req.mode or ns.Session.ChosenMode())
+  end
+  if not preset and tonumber(req.budget) then
+    text = text .. "  ·  " .. ns.T("MINUTES", tonumber(req.budget))
   end
   return text
 end
@@ -558,26 +620,6 @@ function ns.Mascot.Preset(id)
     end
   end
   return nil
-end
-
-function ns.Mascot.BudgetLabel(minutes)
-  local label = ns.T("BUDGET_" .. tostring(minutes))
-  if label == "BUDGET_" .. tostring(minutes) then
-    label = ns.T("MINUTES", tonumber(minutes) or 0)
-  end
-  return label
-end
-
--- The time a preset is sent with: the player's last pick if it is one of
--- the chips, else the default.
-function ns.Mascot.Budget()
-  local chosen = ns.Session.ChosenBudget()
-  for i = 1, #ns.Data.PresetBudgets do
-    if ns.Data.PresetBudgets[i] == chosen then
-      return chosen
-    end
-  end
-  return ns.Data.PresetDefaultBudget
 end
 
 -- Nothing to do and nothing asked: a left click offers the presets.
@@ -611,6 +653,11 @@ local function progressMeta(session)
   return text
 end
 
+-- A name that loads after the Bubble was drawn draws it again.
+local function relink()
+  ns.Mascot:Refresh()
+end
+
 local function stepView(mascot, session, task)
   return {
     kind = "step",
@@ -618,8 +665,9 @@ local function stepView(mascot, session, task)
     mood = "idle",
     meta = progressMeta(session),
     header = leadText(mascot),
-    message = task.title or "",
-    sub = type(task.note) == "string" and task.note ~= "" and task.note or nil,
+    message = ns.Markup.Render(task.title or "", task.npcs, relink),
+    sub = type(task.note) == "string" and task.note ~= "" and ns.Markup.Render(task.note, task.npcs, relink) or nil,
+    npcs = task.npcs,
     where = ns.Tracker.CurrentMeta(task),
     buttons = { "done", "skip", "list" },
   }
@@ -639,7 +687,7 @@ local REASONS = {
   companion_offline = "COMPANION_STOPPED",
   server_unreachable = "COMPANION_OFFLINE",
   rejected = "REASON_REJECTED",
-  timeout = "WAIT_SLOW",
+  timeout = "EXPIRED",
   planner_failed = "REASON_PLANNER_FAILED",
 }
 
@@ -651,6 +699,9 @@ local function waitLine(session)
   end
   if session:IsSlow() then
     return ns.T("WAIT_SLOW"), true
+  end
+  if session:CheckedAgain() then
+    return ns.T("ETA_ALMOST"), false
   end
   return nil, false
 end
@@ -677,74 +728,33 @@ local function choiceView(session, task, answer)
   }
 end
 
-local function busy(session)
-  local note = session.requestNote
-  return note == "sending" or note == "preparing" or note == "ready"
-end
-
--- The Refresh offer for this Request id, folded into the view it belongs to.
-local function offerFor(session, requestId, lang)
-  local req = session:PendingRequest()
-  if not requestId or not req or req.id ~= requestId then
-    return nil
-  end
-  local offer = session:RefreshOffer()
-  if offer then
-    local key = offer.kind == "ready" and "READY_OFFER" or "REFRESH_AFTER"
-    return ns.TL(lang or ns.LANG, key), { "refresh", "later" }
-  end
-  local line = waitLine(session)
-  if line then
-    return line, nil
-  end
-  if req.later then
-    return ns.TL(lang or ns.LANG, "LATER_OK"), nil
-  end
-  return nil, nil
-end
-
-local function itemView(mascot, session, companion)
+local function itemView(mascot)
   local item = mascot.item
   if not item then
     return { kind = "item", mood = "idle", message = ns.T("ITEM_TITLE"), buttons = { "back" } }
   end
   local facts = mascot.itemFacts or {}
-  local view = {
+  return {
     kind = "item",
     key = item.itemID,
     mood = "idle",
     header = item.link or item.name or ns.T("ITEM_UNKNOWN"),
-    message = #facts > 0 and table.concat(facts, "\n\n") or nil,
+    message = #facts > 0 and table.concat(facts, "\n\n") or ns.T("ITEM_NOTHING_LOCAL"),
     buttons = { "back" },
   }
-  local line, actions = offerFor(session, mascot.itemAsked)
-  if mascot.itemAsked then
-    view.message = view.message or ns.T("ITEM_NOTHING")
-    view.sub = line
-    view.buttons = actions and { actions[1], actions[2], "back" } or { "back" }
-    return view
-  end
-  if not companion then
-    view.message = view.message or ns.T("ITEM_NOTHING_LOCAL")
-    view.sub = ns.T("NEED_COMPANION")
-    return view
-  end
-  view.sub = busy(session) and ns.T("BUSY_REPLACES") or nil
-  view.buttons = { "ask", "back" }
-  return view
 end
 
-local function askView(mascot, session, companion)
+local function askView(mascot)
   local mode = mascot.asking
   if mode == "item" then
-    return itemView(mascot, session, companion)
+    return itemView(mascot)
   end
   local nearby = mode == "nearby"
   return {
     kind = mode,
     mood = "idle",
     message = nearby and ns.T("NEARBY_TITLE") or ns.T("ASK_TITLE"),
-    sub = mascot.wishError or (busy(session) and companion and ns.T("BUSY_REPLACES")) or nil,
+    sub = mascot.wishError,
     wish = true,
     hint = nearby and ns.T("NEARBY_HINT") or ns.T("ASK_HINT"),
     buttons = { "send", "back" },
@@ -756,118 +766,128 @@ local function answerView(session, answer)
     or ns.Intents.Split(answer.message)
   local before = {}
   for i = 1, #messages - 1 do
-    before[i] = messages[i]
+    before[i] = ns.Markup.Plain(messages[i], answer.npcs)
   end
   local header = answer.itemLink
   if not header and type(answer.question) == "string" and answer.question ~= "" then
     header = "\"" .. answer.question .. "\""
   end
-  local line, actions = offerFor(session, answer.requestId, answer.lang)
   local buttons = {}
   if type(answer.tasks) == "table" and #answer.tasks > 0 then
     buttons[#buttons + 1] = "plan"
   end
-  if actions then
-    buttons[#buttons + 1] = actions[1]
-    buttons[#buttons + 1] = actions[2]
-  else
-    buttons[#buttons + 1] = "ok"
+  if answer.planWish and not session:Locked() then
+    buttons[#buttons + 1] = "makeplan"
   end
+  buttons[#buttons + 1] = "ok"
   return {
     kind = "answer",
     key = (answer.isLocal and "local:" or "") .. tostring(answer.requestId or answer.at),
     mood = "happy",
     header = header,
-    message = messages[#messages],
+    message = ns.Markup.Render(messages[#messages], answer.npcs, relink),
     before = before,
-    sub = line,
+    npcs = answer.npcs,
     buttons = buttons,
   }
 end
 
--- A Request is out: over a Quick plan the step stays doable and the line
--- goes on top; with no step it gets its own bubble until the player says ok.
-local function pendingView(mascot, session, task)
-  local req = session:PendingRequest()
-  if not req then
-    return nil
-  end
-  local offer = session:RefreshOffer()
+-- The Survey and Confirm (D65): what the player is about to ask for.
+local function flowSummary(req)
+  return ns.Mascot.RequestSummary(req)
+end
+
+local function surveyView(mascot, req)
+  return {
+    kind = "survey",
+    key = req.topic or "custom",
+    mood = "idle",
+    header = req.topic and flowSummary(req) or nil,
+    message = req.quickEmpty and ns.T("SURVEY_EMPTY") or (req.custom and ns.T("WISH_TITLE") or ns.T("SURVEY_TITLE")),
+    sub = mascot.wishError,
+    wish = true,
+    minutes = req.custom == true,
+    hint = req.custom and ns.T("WISH_HINT") or ns.T("SURVEY_HINT"),
+    buttons = { "next", "back" },
+  }
+end
+
+local function confirmView(req)
+  return {
+    kind = "confirm",
+    key = req.topic or "custom",
+    mood = "idle",
+    header = flowSummary(req),
+    message = ns.T("CONFIRM_TITLE"),
+    buttons = { "sendnow", "sendlater", "back" },
+  }
+end
+
+-- Queued or waiting: the only Bubble while locked (D67). Over a Quick plan
+-- the step stays doable and the line goes on top.
+local function waitingView(mascot, session, task, state)
+  local req = session.Flow()
+  local offer = state == "waiting" and session:RefreshOffer() or nil
   local line, slow = waitLine(session)
-  local planning = req.type ~= "question" and req.type ~= "item"
-  if planning and task and session.state.quick then
+  local message
+  if state == "queued" then
+    message = ns.T("QUEUED")
+  elseif offer then
+    message = ns.T("ETA_READY")
+  else
+    message = ns.T("WAITING_ON_IT")
+  end
+  local extra = {}
+  if state == "queued" then
+    extra[1] = "sendnow"
+  elseif offer then
+    extra[1] = "refresh"
+  elseif slow then
+    extra[1] = "retry"
+  end
+  local mood = (offer or state == "queued") and "happy" or (line and "idle" or "thinking")
+  if task then
     local view = stepView(mascot, session, task)
-    if offer then
-      view.header = ns.T(offer.kind == "ready" and "READY_OFFER" or "REFRESH_AFTER_PLAN")
-      view.buttons = { "done", "skip", "list", "refresh", "later" }
-    else
-      view.header = line or view.header or ns.T("QUICK_COOKING")
-      if slow then
-        view.buttons = { "done", "skip", "list", "retry" }
-      end
+    view.header = leadText(mascot) or (offer and message) or line or message
+    for i = 1, #extra do
+      view.buttons[#view.buttons + 1] = extra[i]
     end
     view.slow = slow
+    view.mood = mood
     return view
-  end
-  if offer and offer.kind == "ready" then
-    return {
-      kind = "ready",
-      key = req.id,
-      mood = "happy",
-      message = ns.T("READY_OFFER"),
-      buttons = { "refresh", "later" },
-    }
-  end
-  if (mascot.waitSeen or {})[req.id] then
-    return nil
-  end
-  local empty = planning and session.state and session.state.quick and not task
-  local buttons = { "ok", "cancel" }
-  if offer then
-    buttons = { "refresh", "later", "cancel" }
-  elseif slow then
-    buttons = { "retry", "cancel" }
   end
   return {
     kind = "waiting",
-    key = req.id,
-    mood = line and "idle" or "thinking",
-    header = ns.Mascot.RequestSummary(req),
-    message = empty and ns.T("QUICK_EMPTY") or (planning and ns.T("COOKING") or ns.T("THINKING")),
-    sub = offer and ns.TL(req.lang or ns.LANG, "REFRESH_AFTER") or line or ns.T("WAITING_QUIET"),
-    buttons = buttons,
+    key = (req and req.id or "") .. ":" .. state .. ":" .. (offer and "eta" or ""),
+    mood = mood,
+    header = req and flowSummary(req) or nil,
+    message = message,
+    sub = not offer and line or nil,
+    buttons = extra,
     slow = slow,
   }
 end
 
--- What the bubble says now. In order: what the player just opened (wish,
--- question, item, the presets), a failed Request, an unread Answer, the
--- welcome back, a Full plan on offer, an addon update, a Request that is
--- out, the presets when there is nothing to do, the current step.
 function ns.Mascot.View()
   local mascot = ns.Mascot
   local session = ns.Session
-  local companion = ns.UI.HasCompanion()
   local task = session:Current()
   local answer = session.UnreadAnswer()
-  if mascot.wishing then
-    return {
-      kind = "wish",
-      mood = "idle",
-      message = ns.T("WISH_TITLE"),
-      sub = mascot.wishError,
-      wish = true,
-      hint = ns.T("WISH_HINT"),
-      buttons = { "send", "back" },
-    }
-  end
+  local state = session:FlowState()
+  local req = session.Flow()
   if mascot.asking then
-    return askView(mascot, session, companion)
+    return askView(mascot)
+  end
+  if state == "survey" then
+    return surveyView(mascot, req)
+  end
+  if state == "confirm" then
+    return confirmView(req)
   end
   if mascot.forceChoice then
     return choiceView(session, task, answer)
   end
-  if session.requestNote == "failed" then
+  if state == "failed" then
     local code = session.requestReasonCode
     local reason = session.requestReason
     local planner = code == "planner_failed" and type(reason) == "string" and reason ~= ""
@@ -879,10 +899,13 @@ function ns.Mascot.View()
       buttons = { "retry", "ok" },
     }
   end
+  if state == "expired" then
+    return { kind = "expired", mood = "idle", message = ns.T("EXPIRED"), buttons = { "retry", "ok" } }
+  end
   if answer then
     return answerView(session, answer)
   end
-  if session.welcomeBack and task then
+  if session.welcomeBack and task and not session:Locked() then
     return {
       kind = "welcome",
       mood = "happy",
@@ -898,7 +921,7 @@ function ns.Mascot.View()
       key = offer.requestId or offer.key,
       mood = "happy",
       message = ns.T("BETTER_READY"),
-      sub = first and ns.T("BETTER_FIRST", #offer.plan.tasks, first.title or "") or nil,
+      sub = first and ns.T("BETTER_FIRST", #offer.plan.tasks, ns.Markup.Plain(first.title or "", first.npcs)) or nil,
       buttons = { "use", "keep" },
     }
   end
@@ -915,39 +938,34 @@ function ns.Mascot.View()
       buttons = { "load", "later" },
     }
   end
-  local pending = pendingView(mascot, session, task)
-  if pending then
-    return pending
+  if state == "queued" or state == "sent" or state == "waiting" then
+    return waitingView(mascot, session, task, state)
   end
   if not task then
     return choiceView(session, nil, nil)
   end
-  return stepView(mascot, session, task)
+  local view = stepView(mascot, session, task)
+  if state == "quick" then
+    view.buttons[#view.buttons + 1] = "proper"
+  end
+  return view
 end
 
 function ns.Mascot:OnOk()
   local view = self.view or {}
-  if view.kind == "failed" then
+  if view.kind == "failed" or view.kind == "expired" then
     ns.Session:CancelRequest()
   elseif view.kind == "answer" then
     ns.Session:DismissAnswer()
   elseif view.kind == "update" then
     self.updateLater = true
     self:Refresh()
-  elseif view.kind == "waiting" then
-    self.waitSeen = self.waitSeen or {}
-    self.waitSeen[view.key or ""] = true
-    self:Refresh()
   end
 end
 
 function ns.Mascot:OnLater()
-  if self.view and self.view.kind == "update" then
-    self.updateLater = true
-    self:Refresh()
-    return
-  end
-  ns.Session:Later()
+  self.updateLater = true
+  self:Refresh()
 end
 
 -- Load: ReloadUI in the same click. With an update waiting, it remembers
@@ -968,12 +986,10 @@ end
 
 function ns.Mascot:Reset()
   self.forceChoice = false
-  self.wishing = false
   self.wishError = nil
   self.asking = nil
   self.item = nil
   self.itemFacts = nil
-  self.itemAsked = nil
   if self.picking then
     self.picking = false
     if self.catcher then
@@ -983,6 +999,10 @@ function ns.Mascot:Reset()
 end
 
 function ns.Mascot:ShowChoice()
+  if ns.Session:Locked() then
+    self:Busy()
+    return
+  end
   self:Reset()
   ns.Session.welcomeBack = false
   self.forceChoice = true
@@ -991,6 +1011,10 @@ end
 
 -- A question ("ask"), what to do nearby ("nearby"), or an item ("item").
 function ns.Mascot:ShowAsk(mode, text)
+  if ns.Session:Locked() then
+    self:Busy()
+    return
+  end
   if mode == "item" then
     self:StartPick()
     return
@@ -1008,6 +1032,10 @@ end
 
 -- What is this item?: the next item picked up is read and put back.
 function ns.Mascot:StartPick()
+  if ns.Session:Locked() then
+    self:Busy()
+    return
+  end
   self:Reset()
   self.asking = "item"
   self.picking = true
@@ -1044,7 +1072,7 @@ function ns.Mascot:OnCursorChanged()
   end
 end
 
--- An unknown item goes straight to the Planner (docs/adr/0015).
+-- What Wisp knows about an item, from the game only (D64: no item Requests).
 function ns.Mascot:ShowItem(item)
   self:Reset()
   if self.dropHint then
@@ -1054,20 +1082,8 @@ function ns.Mascot:ShowItem(item)
   self.item = item
   if item then
     self.itemFacts = ns.Items.Facts(item.itemID, item.link, item)
-    if #self.itemFacts == 0 and ns.UI.HasCompanion() and not busy(ns.Session) then
-      self.itemAsked = ns.Session:Ask({ type = "item", item = item })
-    end
   end
   self:Reveal()
-end
-
-function ns.Mascot:AskItem()
-  local item = self.item
-  if not item then
-    return
-  end
-  self.itemAsked = ns.Session:Ask({ type = "item", item = item })
-  self:Refresh()
 end
 
 function ns.Mascot:SendAsk()
@@ -1087,22 +1103,52 @@ function ns.Mascot:SendAsk()
   self:Reveal()
 end
 
+-- "Something else...": the Survey with free text.
 function ns.Mascot:ShowWish()
+  if ns.Session:Locked() then
+    self:Busy()
+    return
+  end
   self:Reset()
-  self.wishing = true
+  local last = type(UnboredCharDB) == "table" and UnboredCharDB.lastWish
+  ns.Session:BeginSurvey({ wish = type(last) == "string" and last or nil })
+  self:FocusWish()
+end
+
+-- The Survey box starts with what the flow has, and gets the focus.
+function ns.Mascot:FocusWish()
+  local req = ns.Session.Flow()
   if self.wishEdit then
-    local last = type(UnboredCharDB) == "table" and UnboredCharDB.lastWish
-    self.wishEdit:SetText(type(last) == "string" and last or "")
+    self.wishEdit:SetText(req and req.custom and type(req.wish) == "string" and req.wish or "")
+  end
+  if self.minutesEdit then
+    self.minutesEdit:SetText("")
   end
   self:Reveal()
-  if self.wishEdit and self.view and self.view.kind == "wish" then
+  if self.wishEdit and self.view and self.view.wish then
     self.wishEdit:SetFocus()
   end
 end
 
+-- "Make a plan" under an Answer Wisp could not give here.
+function ns.Mascot:PlanFromAnswer()
+  local answer = ns.Session.UnreadAnswer()
+  local wish = answer and answer.planWish
+  if answer then
+    answer.seen = true
+  end
+  self:Reset()
+  ns.Session:BeginSurvey({ wish = wish })
+  self:FocusWish()
+end
+
 function ns.Mascot:Back()
-  if self.wishing or self.asking then
+  local state = ns.Session:FlowState()
+  if self.asking then
     self:Reset()
+  elseif state == "survey" or state == "confirm" then
+    self.wishError = nil
+    ns.Session:FlowBack()
   else
     self.forceChoice = false
   end
@@ -1119,40 +1165,55 @@ function ns.Mascot:CheckSlow()
   local due = ns.Session:RefreshOffer()
   local dueKind = due and due.kind or nil
   local lead = leadText(self) ~= nil
-  if dueKind ~= self.offerKind or lead ~= (self.leadShown or false) then
+  local state = ns.Session:FlowState()
+  if dueKind ~= self.offerKind or lead ~= (self.leadShown or false) or state ~= self.flowShown then
     self:Refresh()
   end
 end
 
--- One click: a Quick plan right away and, with the Companion, the Request
--- for the Full plan. Nothing reloads (docs/adr/0005, 0012).
+-- One click: a Quick plan right away and, with the Companion, one button
+-- for a proper plan. Nothing is sent yet (D65).
 function ns.Mascot:Choose(preset)
-  local budget = self.Budget()
-  self:Reset()
-  ns.Session:QuickPlan(preset, budget)
-  if not ns.UI.HasCompanion() then
+  if ns.Session:Locked() then
+    self:Busy()
     return
   end
-  ns.Session:Ask({ type = "plan", mode = preset.mode, budget = budget, topic = preset.id, wish = preset.wish })
+  self:Reset()
+  ns.Session:BeginQuick(preset)
+  if ns.Session:FlowState() == "survey" then
+    self:FocusWish()
+  end
 end
 
-function ns.Mascot:SendWish()
+-- Survey -> Confirm. A custom wish needs words; minutes are optional (docs/adr/0037).
+function ns.Mascot:SurveyNext()
+  local req = ns.Session.Flow()
+  if not req then
+    return
+  end
   local text = ns.Trim(self.wishEdit and self.wishEdit:GetText() or "")
-  if text == "" then
+  if req.custom and text == "" then
     self.wishError = ns.T("WISH_EMPTY")
     self:Refresh()
     return
   end
-  local budget = self.Budget()
-  local mode = ns.Session.ChosenMode()
-  self:Reset()
+  local budget = nil
+  local minutes = req.custom and ns.Trim(self.minutesEdit and self.minutesEdit:GetText() or "") or ""
+  if minutes ~= "" then
+    budget = tonumber(minutes)
+    if not budget or budget < 5 or budget > 240 or budget ~= math.floor(budget) then
+      self.wishError = ns.T("WISH_MINUTES_BAD")
+      self:Refresh()
+      return
+    end
+  end
+  self.wishError = nil
   if self.wishEdit.ClearFocus then
     self.wishEdit:ClearFocus()
   end
-  ns.Session:QuickPlan({ id = nil, mode = mode }, budget)
-  if ns.UI.HasCompanion() and ns.Session:Ask({ type = "plan", wish = text, budget = budget }) then
-    self.wishEdit:SetText("")
-  end
+  self.wishEdit:SetText("")
+  self.minutesEdit:SetText("")
+  ns.Session:SurveyDone(text, budget)
 end
 
 function ns.Mascot.ShowRoute()
@@ -1221,12 +1282,9 @@ local function clearBubble(mascot)
   for i = 1, #mascot.chips do
     mascot.chips[i]:Hide()
   end
-  for i = 1, #mascot.timeChips do
-    mascot.timeChips[i]:Hide()
-  end
   mascot.otherChip:Hide()
-  mascot.timeLabel:Hide()
   mascot.wishBox:Hide()
+  mascot.minutesBox:Hide()
 end
 
 function ns.Mascot:Refresh()
@@ -1263,7 +1321,8 @@ function ns.Mascot:Refresh()
     end
   end
   if changed and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice" or view.kind == "offer"
-    or view.kind == "update" or view.kind == "welcome" or view.kind == "ready") then
+    or view.kind == "update" or view.kind == "welcome" or view.kind == "survey" or view.kind == "confirm"
+    or view.kind == "expired" or ns.Session:RefreshOffer() ~= nil) then
     saved.collapsed = false
   end
   local stepped = changed and view.kind == "step" and old and old.kind == "step"
@@ -1272,6 +1331,7 @@ function ns.Mascot:Refresh()
   local due = ns.Session:RefreshOffer()
   self.offerKind = due and due.kind or nil
   self.leadShown = leadText(self) ~= nil
+  self.flowShown = ns.Session:FlowState()
   self:SetMood(view.mood)
   clearBubble(self)
   self:ExpireEchoes(true)
@@ -1347,6 +1407,7 @@ function ns.Mascot:Layout(view, right)
   else
     self.meta:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
   end
+  ns.Markup.UseNpcs(view.npcs)
   put(self.meta, view.meta or ns.MASCOT_NAME, 6, INNER - (TOP_ICON + 4) * 2 - 4)
   put(self.header, view.header, 4)
   put(self.message, view.message, 6)
@@ -1372,26 +1433,14 @@ function ns.Mascot:Layout(view, right)
       layoutChip(self.chips[i], ns.T(self.chips[i].preset.label), false)
     end
     layoutChip(self.otherChip, ns.T("PRESET_OTHER"), false)
-    y = y - 2
-    self.timeLabel:SetText(ns.T("CHOICE_TIME"))
-    local labelWidth = math.ceil(ns.AsNumber(self.timeLabel:GetStringWidth()) or 30)
-    self.timeLabel:SetSize(labelWidth + 2, 20)
-    self.timeLabel:SetJustifyV("MIDDLE")
-    place(self.timeLabel, PAD, 20)
-    local budget = self.Budget()
-    local x = PAD + labelWidth + 8
-    for i = 1, #self.timeChips do
-      local button = self.timeChips[i]
-      button.label:SetText(self.BudgetLabel(button.minutes))
-      styleChip(button, button.minutes == budget)
-      place(button, x, 20)
-      x = x + TIME_CHIP_WIDTH + 4
-    end
-    y = y - 20 - 4
   elseif view.wish then
     self.wishBox.placeholder:SetText(view.hint or ns.T("WISH_HINT"))
     y = y - place(self.wishBox, PAD, ns.AsNumber(self.wishBox:GetHeight()) or 64) - 6
     self.wishBox.UpdatePlaceholder()
+    if view.minutes then
+      y = y - place(self.minutesBox, PAD, 24) - 6
+      self.minutesBox.UpdatePlaceholder()
+    end
   end
 
   -- One action bar; a row that would not fit wraps.
@@ -1547,7 +1596,20 @@ local function sizeItems(current, set)
   return out
 end
 
--- Settings stay basic: sizes, lock, hide, keybinds. The rest is under More.
+-- Off keeps only the Sections a Plan Request needs (docs/adr/0031).
+function ns.Mascot:SetSharing(on)
+  ns.DB.shareData = on and true or false
+  if ns.Snapshot then
+    if on then
+      pcall(ns.Snapshot.LoginPass)
+    else
+      pcall(ns.Snapshot.ApplySharing)
+    end
+  end
+  self:Echo(ns.T(on and "SHARE_ON" or "SHARE_OFF"))
+end
+
+-- Settings stay basic: sizes, lock, hide, sharing, keybinds. The rest is under More.
 function ns.Mascot:SettingsTree()
   return {
     { text = ns.T("MENU_WISP_SIZE"), children = sizeItems(self.Scale, function(p) self:SetScale(p) end) },
@@ -1559,6 +1621,16 @@ function ns.Mascot:SettingsTree()
       text = ns.T("MENU_LOCK_MASCOT"),
       checked = function() return self:Locked() end,
       func = function() self:SetLocked(not self:Locked()) end,
+    },
+    {
+      text = ns.T("MENU_SHARE_DATA"),
+      checked = function() return ns.DB.shareData ~= false end,
+      func = function() self:SetSharing(ns.DB.shareData == false) end,
+    },
+    {
+      text = ns.T("MENU_TOOLTIP_LINES"),
+      checked = function() return ns.DB.tooltipLines ~= false end,
+      func = function() ns.DB.tooltipLines = ns.DB.tooltipLines == false end,
     },
     { text = ns.T("MENU_HIDE_MASCOT"), func = function() self:Hide() end },
     { text = ns.T("MENU_KEYBINDS"), func = function() ns.Print(ns.T("KEYBIND_INFO")) end },
@@ -1624,6 +1696,9 @@ function ns.Mascot:MenuTree()
   items[#items + 1] = { text = ns.T("MENU_ASK"), func = function() self:ShowAsk("ask") end }
   if ns.Session:PendingRequest() then
     items[#items + 1] = { text = ns.T("MENU_REFRESH"), func = function() ns.Session.RefreshNow() end }
+  end
+  if ns.Session:Locked() then
+    items[#items + 1] = { text = ns.T("MENU_CANCEL_REQUEST"), func = function() ns.Session:CancelRequest() end }
   end
   items[#items + 1] = { text = ns.T("MENU_SETTINGS"), children = self:SettingsTree() }
   return items

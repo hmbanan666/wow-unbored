@@ -28,5 +28,16 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0024. Vite+ for JavaScript](0024-vite-plus-toolchain.md)
 - [0025. Grouped dependency updates](0025-grouped-dependency-updates.md)
 - [0026. One release tag](0026-one-release-tag.md)
+- [0027. Game data snapshot](0027-game-data-snapshot.md) (supersedes the trimming parts of 0009 and 0011)
+- [0028. SavedVariables schema 2, Sections, Packed id sets, size budget](0028-sv-schema-2.md)
+- [0029. Snapshot upload and Server storage with Section history](0029-snapshot-upload-and-history.md)
+- [0030. Data read tools and Data explorer](0030-data-read-tools.md)
+- [0031. Privacy note and data opt-out](0031-privacy-note-and-opt-out.md)
+- [0032. Server Requests are plan-only](0032-plan-only-requests.md) (amends 0008, 0014, 0015)
+- [0033. Request flow state machine, ETA, lock while waiting](0033-request-flow-state-machine.md) (amends 0012, 0018)
+- [0034. Entity markup in Plans](0034-entity-markup.md)
+- [0035. Personal-only tooltip Advice](0035-personal-only-advice.md) (amends 0019)
+- [0036. Prefetch contents and budget](0036-prefetch-budget.md)
+- [0037. No time budget on Plans](0037-no-time-budget.md) (amends 0013, 0033)
 
-The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md).
+The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), and v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md).

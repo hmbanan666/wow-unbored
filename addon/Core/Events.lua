@@ -29,6 +29,9 @@ function ns.Events.Pulse()
   if ns.Profile and ns.Profile.Flush then
     pcall(ns.Profile.Flush)
   end
+  if ns.Snapshot and ns.Snapshot.Pulse then
+    pcall(ns.Snapshot.Pulse)
+  end
   if ns.Mascot and ns.Mascot.ExpireEchoes then
     ns.Mascot:ExpireEchoes()
     ns.Mascot:CheckSlow()
@@ -64,10 +67,12 @@ function ns.Events.Register(frame)
     pcall(frame.RegisterEvent, frame, WATCH[i])
   end
   pcall(frame.RegisterEvent, frame, "MOUNT_JOURNAL_SEARCH_UPDATED")
-  if ns.Profile and ns.Profile.Events then
-    local extra = ns.Profile.Events()
-    for i = 1, #extra do
-      pcall(frame.RegisterEvent, frame, extra[i])
+  for _, source in ipairs({ ns.Profile, ns.Snapshot }) do
+    if source and source.Events then
+      local extra = source.Events()
+      for i = 1, #extra do
+        pcall(frame.RegisterEvent, frame, extra[i])
+      end
     end
   end
 end
@@ -80,7 +85,10 @@ function ns.Events.OnEvent(event, ...)
     return
   end
   if ns.Profile then
-    pcall(ns.Profile.OnEvent, event)
+    pcall(ns.Profile.OnEvent, event, ...)
+  end
+  if ns.Snapshot then
+    pcall(ns.Snapshot.OnEvent, event, ...)
   end
   if ns.Session and ns.Session.OnEvent then
     ns.Session:OnEvent(event, ...)

@@ -27,7 +27,6 @@ Limits: 40 tasks, titles up to 240 bytes, notes up to 400 bytes, the whole paste
   "v": 1,
   "kind": "plan",
   "mode": "custom",
-  "budget": 60,
   "note": "evening session",
   "tasks": [
     {
@@ -51,11 +50,13 @@ Limits: 40 tasks, titles up to 240 bytes, notes up to 400 bytes, the whole paste
 }
 ```
 
-`mode` is `roam`, `quests`, `events`, `fun`, `farm`, or `custom`. `budget` is a whole number of minutes from 5 to 240. The three buttons in the window are 30, 60, and 120; an imported plan may use another value.
+`mode` is `roam`, `quests`, `events`, `fun`, `farm`, or `custom`. `budget` is optional: a whole number of minutes from 5 to 240, set only when the player typed minutes into the custom "Something else..." form. A Plan covers the whole goal (every criterion of an achievement, for example) in ordered tasks, up to 40, and is never cut to a time; `estMinutes` is a rough guess the player sees as information only ([ADR 0037](adr/0037-no-time-budget.md)).
 
 `x` and `y` are fractions of the map from 0 to 1, the same space as `C_Map.GetPlayerMapPosition`. They are not 0–100 wowhead coordinates. Divide those by 100.
 
 `id` may contain letters, numbers, `:`, `.`, `_`, and `-`.
+
+`title`, `note` and the plan `note` may carry entity tokens such as `{item:6948}` or `{npc:12345}`, which Wisp shows as native game links. An optional `entities` object names the npcs: `"entities": { "npc": { "12345": { "name": "Fixer Kev", "mapID": 2339, "x": 52.1, "y": 47.3 } } }`. Token and entity coordinates are map percent 0–100, unlike task `x`/`y`. The full rules are in [`packages/contracts/markup.md`](../packages/contracts/markup.md).
 
 ### Waypoint routes
 
@@ -114,7 +115,6 @@ Account-wide achievement completion counts as done (`GetAchievementInfo`'s `comp
   "v": 1,
   "kind": "progress",
   "mode": "custom",
-  "budget": 60,
   "exportedAt": 1761720000,
   "currentId": "mentor:ashes",
   "done": [{ "id": "mentor:fall", "at": 1761719000 }],
@@ -136,7 +136,7 @@ Pasting a progress string into Import is an error. It does not replace the list.
 
 The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). When the UI loads (login, a character switch, or a Refresh the player clicks), a plan whose `requestId` matches this character's pending request is taken: it starts at once, or, over a running Quick plan, Wisp offers it first. A plan without a `requestId` starts once per character, and only when no request is pending. `/unbored companion` applies the file again. See `companion/README.md`.
 
-Alongside `requestId`, `requestStatus` (`pending`, `fulfilled`, `failed`), and `requestReason`, the file carries `requestType` (`plan`, `question`, `item`) and, for an answered request, `answer`:
+Alongside `requestId`, `requestStatus` (`pending`, `fulfilled`, `failed`), and `requestReason`, the file carries `requestType` (`plan`, `question`, `item`), `eta` for a pending request (seconds a plan usually takes, 60 to 900; Wisp offers one Refresh after it), and, for an answered request, `answer`:
 
 ```lua
 UnboredExternalPlan = {
@@ -161,7 +161,6 @@ UnboredCompanionPlan = {
   kind = "plan",
   generatedAt = 1761720000,
   mode = "custom",
-  budget = 60,
   tasks = { },
 }
 ```

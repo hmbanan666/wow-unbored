@@ -6,6 +6,7 @@ import {
   cleanProgress,
   encodeUnb1,
   type Answer,
+  type MarkupCheck,
   type Plan,
   type RequestItem,
   type RequestType,
@@ -14,9 +15,25 @@ import {
   type ProgressPost,
 } from "./plan.ts";
 
+import { IdCache } from "./blizzard.ts";
+import {
+  DataStore,
+  type DigestAlt,
+  mergeProfile,
+  type CleanSnapshot,
+  type SnapshotResult,
+} from "./data.ts";
 import type { ProfileUpload } from "./profile.ts";
 
+export { mergeProfile };
+
 const PLAYER = "self";
+
+export const REQUEST_TIMEOUT_SECONDS = 60 * 60;
+export const ETA_DEFAULT_SECONDS = 180;
+export const ETA_MIN_SECONDS = 60;
+export const ETA_MAX_SECONDS = 900;
+const ETA_MIN_SAMPLES = 3;
 
 export type StoredProfile = {
   character: string;
@@ -27,28 +44,6 @@ export type StoredProfile = {
   updatedAt: number;
   profile: Record<string, unknown>;
 };
-
-type ProfileRow = {
-  character_name: string;
-  realm: string;
-  account: string | null;
-  device_id: string;
-  saved_at: number | null;
-  updated_at: number;
-  body_json: string;
-};
-
-function profileFromRow(row: ProfileRow): StoredProfile {
-  return {
-    character: row.character_name,
-    realm: row.realm,
-    account: row.account ?? "",
-    deviceId: row.device_id,
-    savedAt: row.saved_at,
-    updatedAt: row.updated_at,
-    profile: JSON.parse(row.body_json) as Record<string, unknown>,
-  };
-}
 
 export type StoredPlan = {
   id: number;
@@ -80,6 +75,8 @@ type ProgressRow = {
 
 export class Store {
   private db: DatabaseSync;
+  readonly data: DataStore;
+  readonly gameIds: IdCache;
 
   constructor(dataDir: string) {
     this.db = new DatabaseSync(sqlitePath(dataDir));
@@ -184,7 +181,10 @@ export class Store {
       ["answer_json", "TEXT"],
       ["lang", "TEXT"],
       ["account", "TEXT"],
+      ["reason_code", "TEXT"],
     ]);
+    this.data = new DataStore(this.db);
+    this.gameIds = new IdCache(this.db);
   }
 
   private addColumns(table: string, added: [string, string][]): void {
@@ -200,8 +200,12 @@ export class Store {
     this.db.close();
   }
 
-  putPlan(raw: unknown, nowSeconds = Math.floor(Date.now() / 1000)): StoredPlan {
-    const plan = cleanPlan(raw, nowSeconds);
+  putPlan(
+    raw: unknown,
+    nowSeconds = Math.floor(Date.now() / 1000),
+    check: MarkupCheck = {},
+  ): StoredPlan {
+    const plan = cleanPlan(raw, nowSeconds, check);
     const unb1 = encodeUnb1(plan);
     const createdAt = nowSeconds;
     const result = this.db
@@ -382,7 +386,7 @@ export class Store {
     character: string;
     realm: string;
     mode: string;
-    budget: number;
+    budget: number | null;
     wish: string | null;
     type?: RequestType;
     question?: string | null;
@@ -411,7 +415,7 @@ export class Store {
         input.character,
         input.realm,
         input.mode,
-        input.budget,
+        input.budget ?? 0,
         input.wish,
         input.nowSeconds,
         input.nowSeconds,
@@ -502,7 +506,7 @@ export class Store {
     const rows = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account
+                type, question, topic, item_json, answer_json, lang, account, reason_code
          FROM requests WHERE status = ? ORDER BY created_at DESC, id ASC LIMIT ?`,
       )
       .all(status, limit) as RequestRow[];
@@ -513,19 +517,23 @@ export class Store {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account
+                type, question, topic, item_json, answer_json, lang, account, reason_code
          FROM requests WHERE id = ?`,
       )
       .get(id) as RequestRow | undefined;
     return row ? requestFromRow(row) : undefined;
   }
 
+  /**
+   * The newest Request this device made. Ordered by creation, never by
+   * update: failing an old Request must not make it "latest" (D82).
+   */
   latestRequestForDevice(deviceId: string): PlanRequest | undefined {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account
-         FROM requests WHERE device_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`,
+                type, question, topic, item_json, answer_json, lang, account, reason_code
+         FROM requests WHERE device_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
       .get(deviceId) as RequestRow | undefined;
     return row ? requestFromRow(row) : undefined;
@@ -539,7 +547,7 @@ export class Store {
     if (!this.requestById(id)) return undefined;
     this.db
       .prepare(
-        `UPDATE requests SET status = 'fulfilled', plan_id = ?, reason = NULL, updated_at = ? WHERE id = ?`,
+        `UPDATE requests SET status = 'fulfilled', plan_id = ?, reason = NULL, reason_code = NULL, updated_at = ? WHERE id = ?`,
       )
       .run(planId, nowSeconds, id);
     const request = this.requestById(id);
@@ -558,7 +566,7 @@ export class Store {
     this.db
       .prepare(
         `UPDATE requests SET status = 'fulfilled', answer_json = ?, plan_id = COALESCE(?, plan_id), reason = NULL,
-           updated_at = ? WHERE id = ?`,
+           reason_code = NULL, updated_at = ? WHERE id = ?`,
       )
       .run(JSON.stringify(answer), planId, nowSeconds, id);
     const request = this.requestById(id);
@@ -579,108 +587,145 @@ export class Store {
     id: string,
     reason: string,
     nowSeconds = Math.floor(Date.now() / 1000),
+    reasonCode: string | null = null,
   ): PlanRequest | undefined {
     if (!this.requestById(id)) return undefined;
     this.db
-      .prepare(`UPDATE requests SET status = 'failed', reason = ?, updated_at = ? WHERE id = ?`)
-      .run(reason, nowSeconds, id);
+      .prepare(
+        `UPDATE requests SET status = 'failed', reason = ?, reason_code = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(reason, reasonCode, nowSeconds, id);
     const request = this.requestById(id);
     if (request) this.historyFor(request, "failed", { reason }, nowSeconds);
     return request;
   }
 
   /**
-   * One row per character: the newest upload wins, an older savedAt is ignored,
-   * and an empty field never overwrites a good one (docs/adr/0020).
+   * Requests still pending after an hour fail with Reason code `timeout`
+   * (D69). Only their status changes, so the game still gets the answer to
+   * the Request it waits for (D82).
+   */
+  expireRequests(nowSeconds = Math.floor(Date.now() / 1000)): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM requests WHERE status = 'pending' AND created_at <= ? ORDER BY created_at`,
+      )
+      .all(nowSeconds - REQUEST_TIMEOUT_SECONDS) as { id: string }[];
+    for (const row of rows) {
+      this.failRequest(row.id, "No plan came back within an hour.", nowSeconds, "timeout");
+    }
+    return rows.map((row) => row.id);
+  }
+
+  /** How long recent Plan Requests took (p50), for the game's ETA (D68). */
+  planEta(): number {
+    const rows = this.db
+      .prepare(
+        `SELECT updated_at - created_at AS took FROM requests
+         WHERE status = 'fulfilled' AND type = 'plan' AND updated_at >= created_at
+         ORDER BY updated_at DESC LIMIT 50`,
+      )
+      .all() as { took: number }[];
+    if (rows.length < ETA_MIN_SAMPLES) return ETA_DEFAULT_SECONDS;
+    const sorted = rows.map((row) => row.took).sort((a, b) => a - b);
+    const middle = sorted[Math.floor(sorted.length / 2)]!;
+    return Math.min(ETA_MAX_SECONDS, Math.max(ETA_MIN_SECONDS, Math.round(middle)));
+  }
+
+  /**
+   * A 0.6 profile upload, kept as the Character's `profile` Section: the
+   * newest upload wins, an older savedAt is ignored, and an empty field never
+   * overwrites a good one (docs/adr/0020, 0029).
    */
   putProfile(
     input: ProfileUpload & { deviceId: string },
     nowSeconds = Math.floor(Date.now() / 1000),
   ): { profile: StoredProfile; updated: boolean } {
-    const existing = this.exactProfile(input.character, input.realm);
-    if (existing && existing.savedAt && input.savedAt && input.savedAt < existing.savedAt) {
-      return { profile: existing, updated: false };
-    }
-    const merged = existing ? mergeProfile(existing.profile, input.profile) : input.profile;
-    const account = accountKey(input.account || existing?.account || "");
-    this.db
-      .prepare(
-        `INSERT INTO profiles (character_name, realm, device_id, saved_at, updated_at, body_json, account)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (character_name, realm) DO UPDATE SET
-           device_id = excluded.device_id, saved_at = excluded.saved_at,
-           updated_at = excluded.updated_at, body_json = excluded.body_json, account = excluded.account`,
-      )
-      .run(
-        input.character,
-        input.realm,
-        input.deviceId,
-        input.savedAt,
-        nowSeconds,
-        JSON.stringify(merged),
-        account,
-      );
-    if (!existing || existing.savedAt !== input.savedAt) {
-      this.db
-        .prepare(
-          `INSERT INTO profile_snapshots (at, account, character_name, realm, saved_at, body_json)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          nowSeconds,
-          account,
-          input.character,
-          input.realm,
-          input.savedAt,
-          JSON.stringify(merged),
-        );
+    const saved = this.data.ingestProfile(input, nowSeconds);
+    const profile = this.exactProfile(input.character, input.realm)!;
+    if (saved.updated) {
       this.addHistory({
         at: nowSeconds,
-        account,
+        account: profile.account,
         character: input.character,
         realm: input.realm,
         kind: "profile",
         ref: input.savedAt === null ? null : String(input.savedAt),
-        body: profileSummary(merged),
+        body: profileSummary(saved.body),
       });
     }
-    return { profile: this.exactProfile(input.character, input.realm)!, updated: true };
+    return { profile, updated: saved.updated };
+  }
+
+  /** A Game data snapshot upload (docs/adr/0029). */
+  putSnapshot(
+    snapshot: CleanSnapshot,
+    deviceId: string,
+    nowSeconds = Math.floor(Date.now() / 1000),
+  ): SnapshotResult {
+    const result = this.data.ingestSnapshot(snapshot, deviceId, nowSeconds);
+    if (result.stored.length > 0) {
+      const view = this.exactProfile(snapshot.character, snapshot.realm);
+      this.addHistory({
+        at: nowSeconds,
+        account: result.account,
+        character: snapshot.character,
+        realm: snapshot.realm,
+        kind: "profile",
+        ref: snapshot.savedAt === null ? null : String(snapshot.savedAt),
+        body: { ...profileSummary(view?.profile ?? {}), sections: result.stored },
+      });
+    }
+    return result;
   }
 
   private exactProfile(character: string, realm: string): StoredProfile | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT character_name, realm, account, device_id, saved_at, updated_at, body_json FROM profiles
-         WHERE character_name = ? AND realm = ?`,
-      )
-      .get(character, realm) as ProfileRow | undefined;
-    return row ? profileFromRow(row) : undefined;
+    const row = this.data.character(character, realm);
+    return row && row.realm === realm ? this.data.profileView(row) : undefined;
   }
 
   /** Every character of one Account (docs/adr/0021). */
   profilesForAccount(account: string): StoredProfile[] {
-    const rows = this.db
-      .prepare(
-        `SELECT character_name, realm, account, device_id, saved_at, updated_at, body_json FROM profiles
-         WHERE account = ? ORDER BY updated_at DESC`,
-      )
-      .all(accountKey(account)) as ProfileRow[];
-    return rows.map(profileFromRow);
+    return this.data.characters(account).map((row) => this.data.profileView(row));
   }
 
   listAccounts(): { account: string; characters: { character: string; realm: string }[] }[] {
-    const rows = this.db
-      .prepare(
-        `SELECT account, character_name, realm FROM profiles ORDER BY account, character_name`,
-      )
-      .all() as { account: string | null; character_name: string; realm: string }[];
     const out = new Map<string, { character: string; realm: string }[]>();
-    for (const row of rows) {
-      const key = row.account ?? "";
-      if (!out.has(key)) out.set(key, []);
-      out.get(key)!.push({ character: row.character_name, realm: row.realm });
+    for (const row of [...this.data.characters()].sort((a, b) =>
+      a.accountId === b.accountId
+        ? a.name.localeCompare(b.name)
+        : a.accountId.localeCompare(b.accountId),
+    )) {
+      if (!out.has(row.accountId)) out.set(row.accountId, []);
+      out.get(row.accountId)!.push({ character: row.name, realm: row.realm });
     }
     return [...out.entries()].map(([account, characters]) => ({ account, characters }));
+  }
+
+  /** Owner-only erasure of one Account: Game data, profiles, history and advice (D62). */
+  deleteAccountData(account: string) {
+    const key = accountKey(account);
+    const names = this.data.characters(key).map((row) => [row.name, row.realm] as const);
+    const removed = this.data.deleteAccount(key);
+    let legacy = 0;
+    for (const table of ["profiles", "profile_snapshots", "history", "advice"]) {
+      legacy += Number(this.db.prepare(`DELETE FROM ${table} WHERE account = ?`).run(key).changes);
+    }
+    legacy += Number(
+      this.db
+        .prepare(`DELETE FROM progress WHERE account = ? OR account LIKE ?`)
+        .run(key, `${key}#%`).changes,
+    );
+    for (const [name, realm] of names) {
+      for (const table of ["profiles", "profile_snapshots", "history", "advice"]) {
+        legacy += Number(
+          this.db
+            .prepare(`DELETE FROM ${table} WHERE character_name = ? AND realm = ?`)
+            .run(name, realm).changes,
+        );
+      }
+    }
+    return { account: key, ...removed, legacyRows: legacy };
   }
 
   addHistory(entry: {
@@ -783,6 +828,7 @@ export class Store {
     }));
   }
 
+  /** Whole 0.6 profile uploads, newest first, from the `profile` Section history. */
   profileSnapshots(filter: {
     account?: string;
     character?: string;
@@ -796,41 +842,32 @@ export class Store {
     savedAt: number | null;
     profile: unknown;
   }[] {
-    const where: string[] = [];
-    const args: (string | number)[] = [];
-    if (filter.account) {
-      where.push("account = ?");
-      args.push(accountKey(filter.account));
-    }
-    if (filter.character) {
-      where.push("character_name = ?");
-      args.push(filter.character);
-    }
-    if (filter.realm) {
-      where.push("realm = ?");
-      args.push(filter.realm);
-    }
-    const rows = this.db
-      .prepare(
-        `SELECT at, account, character_name, realm, saved_at, body_json FROM profile_snapshots
-         ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY at DESC, id DESC LIMIT ?`,
-      )
-      .all(...args, filter.limit) as {
-      at: number;
-      account: string;
-      character_name: string;
-      realm: string;
-      saved_at: number | null;
-      body_json: string;
-    }[];
-    return rows.map((row) => ({
-      at: row.at,
-      account: row.account,
-      character: row.character_name,
-      realm: row.realm,
-      savedAt: row.saved_at,
-      profile: parseJson<unknown>(row.body_json),
-    }));
+    const characters = (
+      filter.account ? this.data.characters(filter.account) : this.data.characters()
+    ).filter(
+      (row) =>
+        (!filter.character || row.name === filter.character) &&
+        (!filter.realm || row.realm === filter.realm),
+    );
+    const byId = new Map(characters.map((row) => [row.id, row]));
+    return this.data
+      .history({
+        owners: characters.map((row) => ({ kind: "char" as const, id: row.id })),
+        sections: ["profile"],
+        limit: filter.limit,
+      })
+      .filter((row) => row.kind === "full")
+      .map((row) => {
+        const owner = byId.get(row.ownerId)!;
+        return {
+          at: row.at,
+          account: owner.accountId,
+          character: owner.name,
+          realm: owner.realm,
+          savedAt: row.savedAt,
+          profile: row.body,
+        };
+      });
   }
 
   /** Personal advice for one character (docs/adr/0019). */
@@ -872,15 +909,16 @@ export class Store {
     return input.items.length;
   }
 
-  /** Advice for every character this device uploaded a profile for. */
-  adviceForDevice(
-    deviceId: string,
-  ): { character: string; realm: string; updatedAt: number; items: ItemAdvice[] }[] {
+  /**
+   * Advice for every character this device uploaded data for, with the Account
+   * digest (its Alts) so routing works for Alts seen on other PCs (D76).
+   */
+  adviceForDevice(deviceId: string): DeviceAdvice[] {
     const rows = this.db
       .prepare(
         `SELECT a.character_name, a.realm, a.item_id, a.body_json, a.updated_at FROM advice a
-         JOIN profiles p ON p.character_name = a.character_name AND p.realm = a.realm
-         WHERE p.device_id = ? OR ? = 'legacy' ORDER BY a.character_name, a.realm, a.item_id`,
+         JOIN characters c ON c.name = a.character_name AND c.realm = a.realm
+         WHERE c.device_id = ? OR ? = 'legacy' ORDER BY a.character_name, a.realm, a.item_id`,
       )
       .all(deviceId, deviceId) as {
       character_name: string;
@@ -889,14 +927,29 @@ export class Store {
       body_json: string;
       updated_at: number;
     }[];
-    const out = new Map<
-      string,
-      { character: string; realm: string; updatedAt: number; items: ItemAdvice[] }
-    >();
+    const out = new Map<string, DeviceAdvice>();
+    for (const character of this.data.characters()) {
+      if (deviceId !== "legacy" && character.deviceId !== deviceId) continue;
+      const key = `${character.realm}\0${character.name}`;
+      if (out.has(key)) continue;
+      out.set(key, {
+        character: character.name,
+        realm: character.realm,
+        updatedAt: 0,
+        items: [],
+        alts: this.data.accountAlts(character),
+      });
+    }
     for (const row of rows) {
       const key = `${row.realm}\0${row.character_name}`;
       if (!out.has(key))
-        out.set(key, { character: row.character_name, realm: row.realm, updatedAt: 0, items: [] });
+        out.set(key, {
+          character: row.character_name,
+          realm: row.realm,
+          updatedAt: 0,
+          items: [],
+          alts: [],
+        });
       const entry = out.get(key)!;
       entry.updatedAt = Math.max(entry.updatedAt, row.updated_at);
       entry.items.push({
@@ -909,35 +962,19 @@ export class Store {
 
   /** The named character, or the most recently updated one. */
   profileFor(character?: string, realm?: string): StoredProfile | undefined {
-    const row = (
-      character
-        ? this.db
-            .prepare(
-              `SELECT character_name, realm, account, device_id, saved_at, updated_at, body_json FROM profiles
-               WHERE character_name = ? AND (? IS NULL OR realm = ?) ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC LIMIT 1`,
-            )
-            .get(character, realm ?? null, realm ?? null)
-        : this.db
-            .prepare(
-              `SELECT character_name, realm, account, device_id, saved_at, updated_at, body_json FROM profiles
-               ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC LIMIT 1`,
-            )
-            .get()
-    ) as ProfileRow | undefined;
-    return row ? profileFromRow(row) : undefined;
+    const row = this.data.character(character, realm);
+    return row ? this.data.profileView(row) : undefined;
   }
 
   listProfiles(): Omit<StoredProfile, "profile">[] {
-    const rows = this.db
-      .prepare(
-        `SELECT character_name, realm, account, device_id, saved_at, updated_at, '{}' AS body_json FROM profiles
-         ORDER BY updated_at DESC, COALESCE(saved_at, 0) DESC`,
-      )
-      .all() as ProfileRow[];
-    return rows.map((row) => {
-      const { profile: _, ...summary } = profileFromRow(row);
-      return summary;
-    });
+    return this.data.characters().map((row) => ({
+      character: row.name,
+      realm: row.realm,
+      account: row.accountId,
+      deviceId: row.deviceId ?? "",
+      savedAt: row.savedAt || null,
+      updatedAt: row.lastSeen,
+    }));
   }
 
   private deviceById(id: string): Device | undefined {
@@ -1039,6 +1076,14 @@ function deviceFromRow(row: DeviceRow): Device {
 
 export type RequestStatus = "pending" | "fulfilled" | "failed";
 
+export type DeviceAdvice = {
+  character: string;
+  realm: string;
+  updatedAt: number;
+  items: ItemAdvice[];
+  alts: DigestAlt[];
+};
+
 export type WebhookDelivery = {
   attempts: number;
   deliveredAt: number | null;
@@ -1074,7 +1119,8 @@ export type PlanRequest = {
   character: string;
   realm: string;
   mode: string;
-  budget: number;
+  /** Only set when the player typed minutes in the custom form (ADR 0037). */
+  budget: number | null;
   wish: string | null;
   status: RequestStatus;
   reason: string | null;
@@ -1089,6 +1135,8 @@ export type PlanRequest = {
   answer: Answer | null;
   lang: string | null;
   account: string;
+  /** Why it failed (docs/adr/0013): `timeout` when no Plan came in 60 min (D69). */
+  reasonCode: string | null;
 };
 
 type RequestRow = {
@@ -1112,6 +1160,7 @@ type RequestRow = {
   answer_json: string | null;
   lang: string | null;
   account: string | null;
+  reason_code: string | null;
 };
 
 function parseJson<T>(text: string | null): T | null {
@@ -1132,7 +1181,7 @@ function requestFromRow(row: RequestRow): PlanRequest {
     character: row.character_name,
     realm: row.realm,
     mode: row.mode,
-    budget: row.budget,
+    budget: row.budget > 0 ? row.budget : null,
     wish: row.wish,
     status,
     reason: row.reason,
@@ -1147,6 +1196,7 @@ function requestFromRow(row: RequestRow): PlanRequest {
     answer: parseJson<Answer>(row.answer_json),
     lang: row.lang,
     account: row.account ?? "",
+    reasonCode: row.reason_code,
   };
 }
 
@@ -1161,7 +1211,7 @@ export function publicRequest(request: PlanRequest) {
     wish: request.wish,
     status: request.status,
     reason: request.reason,
-    reasonCode: request.status === "failed" ? "planner_failed" : null,
+    reasonCode: request.status === "failed" ? (request.reasonCode ?? "planner_failed") : null,
     planId: request.planId,
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
@@ -1191,7 +1241,7 @@ export function sessionSummary(stored: StoredPlan) {
     id: stored.id,
     createdAt: stored.createdAt,
     mode: stored.plan.mode,
-    budget: stored.plan.budget,
+    budget: stored.plan.budget ?? null,
     note: stored.plan.note ?? null,
     taskCount: stored.plan.tasks.length,
     unb1: stored.unb1,
@@ -1258,34 +1308,8 @@ export function accountKey(account: string): string {
   return account.trim().split("#")[0] ?? "";
 }
 
-function isEmpty(value: unknown): boolean {
-  if (value === undefined || value === null || value === "" || value === 0) return true;
-  if (Array.isArray(value)) return value.length === 0;
-  if (typeof value === "object") return Object.keys(value as object).length === 0;
-  return false;
-}
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** The new upload wins field by field, except where it is empty and the old one is not. */
-export function mergeProfile(
-  old: Record<string, unknown>,
-  fresh: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...old };
-  for (const [key, value] of Object.entries(fresh)) {
-    const previous = old[key];
-    if (isPlainObject(value) && isPlainObject(previous)) {
-      out[key] = mergeProfile(previous, value);
-    } else if (isEmpty(value) && !isEmpty(previous)) {
-      out[key] = previous;
-    } else {
-      out[key] = value;
-    }
-  }
-  return out;
 }
 
 function profileSummary(profile: Record<string, unknown>): Record<string, unknown> {

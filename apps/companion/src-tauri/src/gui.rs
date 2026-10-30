@@ -23,11 +23,15 @@ use crate::plan::{
     plan_from_value, render_request_lua, write_status, CompanionStatus, Plan, PlanFile,
     PlannerState, RequestState,
 };
-use crate::request::{reason, request_body};
+use crate::request::{reason, request_body, request_status_path, waited_request};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
+use crate::snapshot::{
+    build_upload, character_identity, data_from_saved_variables, gzip, DataFile,
+    MAX_COMPRESSED_BYTES,
+};
 use crate::wow::{
-    character_saved_variables, detect_installs, list_accounts, read_progress, retail_dir,
-    CharacterFile,
+    account_saved_variables, character_saved_variables, detect_installs, list_accounts,
+    read_progress, retail_dir, CharacterFile,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,7 +66,6 @@ struct ProgressView {
     realm: String,
     character: String,
     mode: String,
-    budget: u64,
     source: String,
     current_id: String,
     done: usize,
@@ -171,7 +174,6 @@ fn scan_progress(settings: &Settings) -> Vec<ProgressView> {
                 realm: file.realm,
                 character: file.character,
                 mode: progress.mode.unwrap_or_default(),
-                budget: progress.budget.unwrap_or(0),
                 source: progress.source.unwrap_or_default(),
                 current_id: progress.current_id.unwrap_or_default(),
                 done: progress.done.len(),
@@ -432,6 +434,29 @@ fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Resul
     Ok(snapshot(&app, &model))
 }
 
+const PRIVACY_URL: &str = "https://github.com/hmbanan666/wow-unbored#what-wisp-knows-about-you";
+
+/// D61: the first-run line links to the README privacy section. The URL is fixed
+/// here, never taken from the window.
+#[tauri::command]
+fn open_privacy() -> Result<(), String> {
+    open_in_browser(PRIVACY_URL)
+}
+
+#[cfg(windows)]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| format!("Could not open the browser. The page is {url}"))
+}
+
+#[cfg(not(windows))]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    Err(format!("Open {url} in your browser."))
+}
+
 #[tauri::command]
 fn set_endpoint(
     app: AppHandle,
@@ -669,7 +694,11 @@ fn get_json(
     response.json().map(Some).map_err(|err| err.to_string())
 }
 
-fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, String> {
+fn planner_state(
+    settings: &Settings,
+    secret: &str,
+    waiting: Option<&str>,
+) -> Result<PlannerState, String> {
     let url = effective_url(settings);
     validate_endpoint(&url)?;
     let client = http_client(Duration::from_secs(20))?;
@@ -681,7 +710,11 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
             state.latest_plan_at = body.get("createdAt").and_then(|value| value.as_u64());
         }
     }
-    if let Some(body) = get_json(&client, &join_url(&url, "v1/requests/latest"), secret)? {
+    if let Some(body) = get_json(
+        &client,
+        &join_url(&url, &request_status_path(waiting)),
+        secret,
+    )? {
         if let Some(id) = body.get("id").and_then(|value| value.as_str()) {
             state.request = Some(RequestState {
                 id: id.to_string(),
@@ -710,6 +743,7 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
                     .filter(|value| value.is_object())
                     .cloned(),
                 updated_at: body.get("updatedAt").and_then(|value| value.as_u64()),
+                eta: body.get("eta").and_then(|value| value.as_u64()),
             });
         }
     }
@@ -718,15 +752,13 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
 
 /// Sends every character's pending Request. Returns the ones the planner
 /// refused outright (a 4xx other than 401), so the game can be told, and the
-/// Server's reason for the Companion's own status line.
-fn post_requests(
-    settings: &Settings,
-    retail: &Path,
-    secret: &str,
-) -> Result<Vec<(RequestState, String)>, String> {
+/// Server's reason for the Companion's own status line. Also returns the id
+/// of the Request the game waits for.
+fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Posted, String> {
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
     let mut rejected = Vec::new();
+    let mut saved = Vec::new();
     for file in character_saved_variables(retail, None) {
         let Ok(text) = fs::read_to_string(&file.path) else {
             continue;
@@ -734,6 +766,7 @@ fn post_requests(
         let Ok(Some(request)) = request_from_saved_variables(&text) else {
             continue;
         };
+        saved.push(request.clone());
         let response = client
             .post(join_url(&url, "v1/requests"))
             .bearer_auth(secret)
@@ -767,10 +800,82 @@ fn post_requests(
             return Err(format!("Planner returned {code}."));
         }
     }
-    Ok(rejected)
+    Ok(Posted {
+        waiting: waited_request(&saved).map(str::to_string),
+        rejected,
+    })
 }
 
-/// Uploads each character's profile once per save (docs/adr/0011).
+struct Posted {
+    rejected: Vec<(RequestState, String)>,
+    waiting: Option<String>,
+}
+
+/// Uploads the Sections that changed for every character and its Account,
+/// gzip, on each SavedVariables write (docs/adr/0029). Characters whose addon
+/// has no snapshot yet (0.6) are left to `post_profiles`.
+fn post_snapshots(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
+    static SENT: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
+    let sent = SENT.get_or_init(|| Mutex::new(HashMap::new()));
+    let client = http_client(Duration::from_secs(30))?;
+    let url = effective_url(settings);
+    let mut accounts: HashMap<String, Option<DataFile>> = HashMap::new();
+    for file in character_saved_variables(retail, None) {
+        let Ok(text) = fs::read_to_string(&file.path) else {
+            continue;
+        };
+        let Ok(Some(char_file)) = data_from_saved_variables(&text, "UnboredCharDB") else {
+            continue;
+        };
+        let account_file = accounts
+            .entry(file.account.clone())
+            .or_insert_with(|| {
+                account_saved_variables(retail, &file.account)
+                    .and_then(|path| fs::read_to_string(path).ok())
+                    .and_then(|text| data_from_saved_variables(&text, "UnboredDB").ok().flatten())
+            })
+            .clone();
+        let (character, realm) = character_identity(Some(&char_file), &file.realm, &file.character);
+        let known = sent.lock().map_err(|err| err.to_string())?.clone();
+        let Some((body, remember)) = build_upload(
+            &file.account,
+            &character,
+            &realm,
+            Some(&char_file),
+            account_file.as_ref(),
+            &known,
+        ) else {
+            continue;
+        };
+        let bytes = gzip(body.to_string().as_bytes())?;
+        if bytes.len() > MAX_COMPRESSED_BYTES {
+            return Err("The game data is too big to send.".into());
+        }
+        let response = client
+            .post(join_url(&url, "v1/snapshot"))
+            .bearer_auth(secret)
+            .header("Content-Type", "application/json")
+            .header("Content-Encoding", "gzip")
+            .body(bytes)
+            .send()
+            .map_err(|err| err.to_string())?;
+        if response.status().as_u16() == 404 {
+            // A Server older than 0.7: the profile upload still carries the basics.
+            return Ok(());
+        }
+        if !response.status().is_success() {
+            return Err(format!(
+                "Planner returned {} for the game data.",
+                response.status()
+            ));
+        }
+        sent.lock().map_err(|err| err.to_string())?.extend(remember);
+    }
+    Ok(())
+}
+
+/// Uploads each character's profile once per save (docs/adr/0011). From 0.7
+/// only for characters whose addon has no Game data snapshot yet.
 fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
     static POSTED: std::sync::OnceLock<Mutex<HashMap<String, u64>>> = std::sync::OnceLock::new();
     let posted = POSTED.get_or_init(|| Mutex::new(HashMap::new()));
@@ -780,6 +885,12 @@ fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
         let Ok(text) = fs::read_to_string(&file.path) else {
             continue;
         };
+        if matches!(
+            data_from_saved_variables(&text, "UnboredCharDB"),
+            Ok(Some(_))
+        ) {
+            continue;
+        }
         let Ok(Some(profile)) = profile_from_saved_variables(&text) else {
             continue;
         };
@@ -836,8 +947,9 @@ fn sync_plans(
         return Ok(Some("Approved. Choose the Retail folder.".into()));
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
-    let rejected = post_requests(settings, &retail, secret)?;
-    // A profile or advice that fails must not hold back plans and answers.
+    let Posted { rejected, waiting } = post_requests(settings, &retail, secret)?;
+    // Game data, a profile or advice that fails must not hold back plans and answers.
+    let _ = post_snapshots(settings, &retail, secret);
     let _ = post_profiles(settings, &retail, secret);
     let _ = sync_advice(settings, &retail, secret);
     if let Some((request, why)) = rejected.first() {
@@ -852,7 +964,7 @@ fn sync_plans(
             .changed
             .then(|| format!("The planner refused a request: {why}")));
     }
-    let state = planner_state(settings, secret)?;
+    let state = planner_state(settings, secret, waiting.as_deref())?;
     let pending = state
         .request
         .as_ref()
@@ -1368,7 +1480,8 @@ pub fn run() {
             set_autostart,
             write_plan_text,
             fetch_plan,
-            rescan_progress
+            rescan_progress,
+            open_privacy
         ])
         .run(tauri::generate_context!())
         .expect("Unbored Companion failed to start");

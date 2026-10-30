@@ -1,13 +1,22 @@
+import { gunzipSync } from "node:zlib";
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { presentedBearer, requireRole, sha256Hex, tokenMatches } from "./auth.ts";
 import type { Config } from "./config.ts";
 import { clientIp, cleanRegistration, PENDING_CAP, RegisterLimiter } from "./devices.ts";
+import { cleanSnapshot, SNAPSHOT_MAX_COMPRESSED, SNAPSHOT_MAX_INFLATED } from "./data.ts";
+import {
+  blizzardFromEnv,
+  BlizzardIds,
+  type BlizzardConfig,
+  type GameDataFetch,
+} from "./blizzard.ts";
 import { handleMcp } from "./mcp.ts";
-import { cleanPlanRequest, PlanError } from "./plan.ts";
+import { cleanPlanRequest, PlanError, planMarkupIds } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";
-import { publicDevice, publicRequest, sessionSummary, Store } from "./store.ts";
+import { publicDevice, publicRequest, sessionSummary, Store, type PlanRequest } from "./store.ts";
 import { PlannerWebhook, webhookFromEnv, type FetchLike, type WebhookConfig } from "./webhook.ts";
 
 function limitOf(value: string | undefined, fallback: number): number {
@@ -21,6 +30,8 @@ export function createApp(
     webhook?: WebhookConfig;
     webhookFetch?: FetchLike;
     webhookNow?: () => number;
+    blizzard?: BlizzardConfig | null;
+    blizzardFetch?: GameDataFetch;
     /** One line per request (docs/adr/0013). Defaults to stdout. */
     log?: (line: string) => void;
   },
@@ -38,6 +49,12 @@ export function createApp(
     config.webhookNow,
   );
   log(webhook.describe());
+  const gameIds = new BlizzardIds(
+    config.blizzard === undefined ? blizzardFromEnv() : config.blizzard,
+    store.gameIds,
+    config.blizzardFetch,
+  );
+  log(gameIds.describe());
 
   // Method, path, status, and why a request was refused. Never headers or bodies.
   app.use("*", async (c, next) => {
@@ -64,6 +81,11 @@ export function createApp(
     if (!device || device.status !== "approved") return c.json({ error: "Unauthorized" }, 401);
     store.touchDevice(device.id);
     return { deviceId: device.id };
+  };
+
+  const requestWithPlan = (request: PlanRequest) => {
+    const plan = request.planId ? store.planById(request.planId) : undefined;
+    return { ...publicRequest(request), plan: plan?.unb1 ?? null, eta: store.planEta() };
   };
 
   app.use(
@@ -159,13 +181,21 @@ export function createApp(
   app.get("/v1/requests/latest", (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
+    store.expireRequests();
     const request = store.latestRequestForDevice(access.deviceId);
     if (!request) return c.json({ error: "No request yet." }, 404);
-    const plan = request.planId ? store.planById(request.planId) : undefined;
-    return c.json({
-      ...publicRequest(request),
-      plan: plan?.unb1 ?? null,
-    });
+    return c.json(requestWithPlan(request));
+  });
+
+  // The exact Request the game waits for (D82); another device's id is 404.
+  app.get("/v1/requests/:id", (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    store.expireRequests();
+    const request = store.requestById(c.req.param("id"));
+    if (!request || request.deviceId !== access.deviceId)
+      return c.json({ error: "No such request." }, 404);
+    return c.json(requestWithPlan(request));
   });
 
   // Personal advice for this device's characters (docs/adr/0019).
@@ -219,6 +249,42 @@ export function createApp(
     }
   });
 
+  // Game data Sections that changed, gzip JSON (docs/adr/0029).
+  app.post("/v1/snapshot", async (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    const declared = Number(c.req.header("content-length") ?? 0);
+    if (declared > SNAPSHOT_MAX_COMPRESSED) {
+      return c.json({ error: "The game data is too large." }, 413);
+    }
+    const raw = Buffer.from(await c.req.arrayBuffer());
+    if (raw.length > SNAPSHOT_MAX_COMPRESSED) {
+      return c.json({ error: "The game data is too large." }, 413);
+    }
+    let body: unknown;
+    try {
+      const gzip = (c.req.header("content-encoding") ?? "").toLowerCase().includes("gzip");
+      const bytes = gzip ? gunzipSync(raw, { maxOutputLength: SNAPSHOT_MAX_INFLATED }) : raw;
+      body = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      return c.json({ error: "The game data must be JSON, optionally gzip." }, 400);
+    }
+    try {
+      const result = store.putSnapshot(cleanSnapshot(body), access.deviceId);
+      return c.json({ ok: true, ...result });
+    } catch (error) {
+      if (error instanceof PlanError) return c.json({ error: error.message }, 400);
+      throw error;
+    }
+  });
+
+  // The Data explorer as JSON, for quick checks with the owner bearer (docs/adr/0030).
+  app.get("/owner/data", (c) => {
+    const denied = requireRole(c, "planner", tokens);
+    if (denied) return denied;
+    return c.json(store.data.catalog({ account: c.req.query("account") || undefined }));
+  });
+
   app.put("/v1/plan", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
@@ -233,7 +299,10 @@ export function createApp(
       if (requestId && !store.requestById(requestId)) {
         return c.json({ error: "No request with that id." }, 404);
       }
-      const stored = store.putPlan(stripRequestId(body));
+      const plan = stripRequestId(body);
+      const warnings: string[] = [];
+      const missing = await gameIds.missing(planMarkupIds(plan));
+      const stored = store.putPlan(plan, undefined, { missing, warnings });
       const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
       return c.json({
         id: stored.id,
@@ -241,6 +310,7 @@ export function createApp(
         plan: stored.unb1,
         stored: stored.plan,
         request: request ? publicRequest(request) : null,
+        warnings,
       });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
@@ -276,7 +346,7 @@ export function createApp(
   app.all("/mcp", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
-    return handleMcp(c, store, config.dataDir);
+    return handleMcp(c, store, config.dataDir, gameIds);
   });
 
   return {

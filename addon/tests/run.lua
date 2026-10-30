@@ -24,6 +24,17 @@ local files = {
   "Core/Util.lua",
   "Core/Context.lua",
   "Core/Profile.lua",
+  "Core/Pack.lua",
+  "Core/Data/Store.lua",
+  "Core/Data/Character.lua",
+  "Core/Data/Inventory.lua",
+  "Core/Data/Professions.lua",
+  "Core/Data/Quests.lua",
+  "Core/Data/Reputation.lua",
+  "Core/Data/Collections.lua",
+  "Core/Data/Progress.lua",
+  "Core/Data/World.lua",
+  "Core/Markup.lua",
   "Core/Intents.lua",
   "Core/Advice.lua",
   "Core/Codec.lua",
@@ -39,7 +50,6 @@ local files = {
   "Data/Holidays.lua",
   "Data/Farm.lua",
   "Data/Items.lua",
-  "Data/AdviceTable.lua",
   "Data/Presets.lua",
   "Providers/Roam.lua",
   "Providers/Quests.lua",
@@ -513,38 +523,85 @@ check(ns.Session:UseExternal() == true, "slash companion applies it again")
 check(ns.Session:Current() and ns.Session:Current().id == "ext:1", "the forced plan is current")
 
 UnboredDB.mode = "farm"
-UnboredDB.budget = 60
 local reloads = 0
 ReloadUI = function()
   reloads = reloads + 1
 end
-ns.Session:RequestPlan("mount, stay in this zone")
+local hasCompanion = ns.UI.HasCompanion
+ns.UI.HasCompanion = function()
+  return true
+end
+
+-- The Request flow (docs/adr/0033): quick -> survey -> confirm -> sent -> waiting.
+local mountPreset = ns.Data.Presets[2]
+local stateBefore = ns.Session.state
+ns.Session:BeginQuick(mountPreset)
+check(ns.Session:FlowState() == "quick" or ns.Session:FlowState() == "survey", "a preset starts the flow")
+check(ns.Session:PendingRequest() == nil and reloads == 0, "nothing is sent by a preset")
+ns.Session:BeginSurvey({ wish = "mount, stay in this zone" })
+check(ns.Session:FlowState() == "survey" and ns.Session.Flow().custom, "Something else opens the Survey")
+check(not ns.Session:Locked(), "the Survey does not lock Wisp")
+ns.Session:SurveyDone("mount, stay in this zone", 45)
+check(ns.Session:FlowState() == "confirm" and ns.Session.Flow().budget == 45, "typed minutes go with a custom wish")
+ns.Session:FlowBack()
+check(ns.Session:FlowState() == "survey", "Back from Confirm is the Survey")
+ns.Session:SurveyDone("mount, stay in this zone", nil)
+check(ns.Session:Send(false) ~= nil, "send at logout queues it")
 local req = UnboredCharDB.request
-check(req and req.mode == "farm" and req.budget == 60, "get plan saves mode and budget")
-check(req and req.wish == "mount, stay in this zone" and req.character == "player", "get plan saves the wish")
-check(req and type(req.context) == "table" and req.context.mapID == 84, "get plan saves the player context")
+check(req.state == "queued" and ns.Session:Locked(), "queued locks Wisp")
+check(req and req.type == "plan" and req.mode == "farm" and req.budget == nil, "a plan Request with no time budget")
+check(req and req.wish == "mount, stay in this zone" and req.character == "player", "the Request keeps the wish")
+check(req and type(req.context) == "table" and req.context.mapID == 84, "the Request keeps the player context")
 check(req and near(req.context.x, 0.2) and req.context.zone == "Stormwind City", "context has position and zone")
 check(type(req.context.plan) == "table", "context has the active plan progress")
 check(ns.Session.requestNote == "sending", "a new request waits for the companion file")
-check(reloads == 0, "asking never reloads")
+check(reloads == 0, "send at logout never reloads")
 check(req.lang == "en" and req.onDisk == nil, "a new request has a language and is not on disk yet")
-local offer = ns.Session:RefreshOffer()
-check(offer and offer.kind == "after", "a request made now offers one Refresh")
-ns.Session:Later()
-check(ns.Session:RefreshOffer() == nil and req.later == true, "Later puts the offer off")
-ns.Session.RefreshNow()
-check(reloads == 1, "Refresh reloads the UI")
+check(ns.Session:RefreshOffer() == nil, "a queued Request offers no Refresh")
+ns.Session:OnEvent("PLAYER_LOGOUT")
+check(req.state == "sent" and req.sentAt == ns.Now(), "logout sends a queued Request")
 ns.Session:MarkLoaded()
-check(req.onDisk == true, "after a load the request is on disk")
+check(req.onDisk == true and req.state == "waiting", "after a load it is on disk and waiting")
 check(ns.Session:RefreshOffer() == nil, "right after a load there is nothing to offer yet")
 local loadedAt = ns.Session.loadedAt
-ns.Session.loadedAt = loadedAt - ns.READY_GUESS_SECONDS - 1
-offer = ns.Session:RefreshOffer()
-check(offer and offer.kind == "ready", "a while after the load: New stuff is ready")
-ns.Session:Later()
-check(ns.Session:RefreshOffer() == nil, "Later on the ready offer holds for this load")
+req.sentAt = ns.Now() - ns.ETA_DEFAULT_SECONDS - 1
+check(ns.Session.requestNote == "sending" and ns.Session:RefreshOffer() == nil,
+  "no ETA offer while the Companion file does not name the request (D82)")
+local fileBefore = UnboredExternalPlan
+UnboredExternalPlan = { v = 1, kind = "plan", requestId = "req-old", requestStatus = "failed" }
+ns.Session:NoteRequest()
+check(ns.Session.requestNote == "sending" and ns.Session:RefreshOffer() == nil,
+  "a stale failed request in the file never offers a Refresh")
+UnboredExternalPlan = { v = 1, kind = "plan", requestId = req.id, requestStatus = "pending", eta = 600 }
+ns.Session:NoteRequest()
+check(ns.Session.Eta() == 600 and ns.Session:RefreshOffer() == nil, "the ETA comes from the Companion file")
+req.sentAt = ns.Now() - 601
+local offer = ns.Session:RefreshOffer()
+check(offer and offer.kind == "eta", "after the ETA: Should be ready")
+ns.Session:CheckAgain()
+check(reloads == 1 and req.checks == 1, "Refresh reloads from the click and counts the check")
+ns.Session:MarkLoaded()
+check(ns.Session:CheckedAgain() and ns.Session:RefreshOffer() == nil, "still pending: almost, wait a bit")
+ns.Session.loadedAt = ns.Now() - ns.ETA_AGAIN_SECONDS - 1
+check(ns.Session:RefreshOffer() ~= nil, "two minutes later one more offer")
+UnboredExternalPlan.eta = 5
+check(ns.Session.Eta() == 60, "the ETA is clamped")
+req.sentAt = ns.Now() - ns.REQUEST_EXPIRE_SECONDS - 1
+check(ns.Session:FlowState() == "expired" and not ns.Session:Locked(), "an hour without a plan: expired")
+check(ns.Session:Retry() and ns.Session:FlowState() == "confirm", "Try again goes back to Confirm")
+check(ns.Session.Flow().wish == "mount, stay in this zone" and ns.Session.Flow().id == nil, "with the same wish")
+check(ns.Session:Send(true) ~= nil and reloads == 2, "Send now reloads in the click")
+req = UnboredCharDB.request
+check(req.state == "sent" and req.sentAt == ns.Now(), "and the Request is sent")
+ns.Session:MarkLoaded()
+check(req.state == "waiting", "after the reload it waits")
+UnboredExternalPlan = fileBefore
+ns.Session:NoteRequest()
 ns.Session.loadedAt = loadedAt
-ns.Session.readyLater = nil
+UnboredCharDB.request = { state = "quick", mode = "farm", topic = "mount" }
+check(ns.Session:FlowState() == (ns.Session:Current() and "quick" or "idle"), "quick only while a step is there")
+UnboredCharDB.request = req
+ns.Session.state = stateBefore
 check(ns.Session:AutoApplyExternal() == false, "an old direct plan does not replace a pending request")
 check(UnboredCharDB.request ~= nil, "the request stays pending")
 UnboredCompanionStatus = { seenAt = ns.Now() - 30 * 60 }
@@ -631,11 +688,12 @@ for i = 1, 11 do
 end
 check(ns.DecodeImport(waypointPlan(many)) == nil, "more than ten route points is rejected")
 
-check(ns.Session:Ask({ type = "item", item = {} }) == nil, "an item request needs an itemID")
-check(ns.Session:Ask({ type = "question", question = "  " }) == nil, "a question request needs text")
 local asked = ns.Session:Ask({ type = "question", question = "Where is the bank?", topic = "Bad Topic" })
-check(asked and UnboredCharDB.request.topic == nil, "a bad topic is dropped")
-check(UnboredCharDB.request.mode == nil, "questions carry no mode")
+check(asked.type == "plan" and asked.topic == nil, "the addon only makes plan Requests; a bad topic is dropped")
+-- A 0.6 question Request still in SavedVariables is answered as before.
+UnboredCharDB.request =
+  { id = "req-q", type = "question", question = "Where is the bank?", createdAt = 1, onDisk = true }
+asked = "req-q"
 
 ns.Session.state = {
   version = 1,
@@ -660,6 +718,7 @@ ns.Session:DismissAnswer()
 check(ns.Session.UnreadAnswer() == nil, "a read answer is not shown again")
 
 UnboredExternalPlan = { requestId = "req-none", requestStatus = "fulfilled", answer = { message = 5 } }
+ns.UI.HasCompanion = hasCompanion
 check(ns.Session:AutoApplyExternal() == false, "a broken answer is ignored")
 
 UnboredDB.itemNotes = {}

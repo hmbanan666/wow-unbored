@@ -12,7 +12,6 @@ local function initDB()
       window = { point = "TOPRIGHT", rel = "TOPRIGHT", x = -80, y = -220 },
       useTomTom = false,
       mode = "roam",
-      budget = 60,
       companionPlan = companion,
     }
   end
@@ -24,11 +23,12 @@ local function initDB()
   if not UnboredDB.mode then
     UnboredDB.mode = "roam"
   end
-  if not UnboredDB.budget then
-    UnboredDB.budget = 60
-  end
+  UnboredDB.budget = nil
   if UnboredDB.tomtomArrow == nil then
     UnboredDB.tomtomArrow = true
+  end
+  if UnboredDB.tooltipLines == nil then
+    UnboredDB.tooltipLines = true
   end
   if UnboredDB.chatNotes == nil then
     UnboredDB.chatNotes = false
@@ -38,6 +38,12 @@ local function initDB()
   end
   if type(UnboredDB.mascot) ~= "table" then
     UnboredDB.mascot = {}
+  end
+  if UnboredDB.shareData == nil then
+    UnboredDB.shareData = true
+  end
+  if UnboredDB.tooltipLines == nil then
+    UnboredDB.tooltipLines = true
   end
   if type(UnboredDB.itemNotes) ~= "table" then
     UnboredDB.itemNotes = {}
@@ -62,6 +68,7 @@ end
 
 function ns.OnAddonLoaded()
   initDB()
+  ns.Markup.Hook()
   if ns.UI and ns.UI.Create then
     local ok, err = pcall(ns.UI.Create)
     if not ok then
@@ -103,6 +110,9 @@ function ns.OnEnteringWorld(initialLogin)
     pcall(ns.RegisterCompartment)
   end
   askForWorldData()
+  if ns.Snapshot then
+    pcall(ns.Snapshot.OnEnteringWorld)
+  end
   if ns.Session and ns.Session.Start then
     local ok, err = pcall(function()
       ns.Session:Start(initialLogin == true)
@@ -152,9 +162,6 @@ local function slash(message)
   elseif command == "roam" or command == "quests" or command == "events" or command == "fun" or command == "farm" then
     ns.Session:SetMode(command)
     ns.Mascot:ShowWish()
-  elseif command == "30" or command == "60" or command == "120" then
-    ns.Session:SetBudget(tonumber(command))
-    ns.Mascot:ShowChoice()
   elseif command == "tomtom" then
     ns.DB.tomtomArrow = not ns.DB.tomtomArrow
     ns.Print(ns.DB.tomtomArrow and ns.T("TOMTOM_ON") or ns.T("TOMTOM_OFF"))

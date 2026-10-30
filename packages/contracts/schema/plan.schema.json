@@ -6,12 +6,25 @@
   "additionalProperties": true,
   "required": ["v", "kind", "tasks"],
   "properties": {
-    "v": { "const": 1 },
-    "kind": { "const": "plan" },
-    "mode": { "type": "string" },
-    "budget": { "type": "integer" },
-    "note": { "type": "string" },
-    "generatedAt": { "type": "integer" },
+    "v": {
+      "const": 1
+    },
+    "kind": {
+      "const": "plan"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "budget": {
+      "type": "integer",
+      "description": "Optional. Information only; a Plan covers the whole goal (ADR 0037)."
+    },
+    "note": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "integer"
+    },
     "tasks": {
       "type": "array",
       "minItems": 1,
@@ -19,13 +32,69 @@
         "type": "object",
         "required": ["id", "title"],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "title": { "type": "string", "minLength": 1 },
-          "estMinutes": { "type": "integer" },
-          "mapID": { "type": "integer" },
-          "x": { "type": "number" },
-          "y": { "type": "number" },
-          "note": { "type": "string" }
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "May carry entity markup (markup.md)."
+          },
+          "estMinutes": {
+            "type": "integer"
+          },
+          "mapID": {
+            "type": "integer"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "note": {
+            "type": "string",
+            "description": "May carry entity markup (markup.md)."
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "description": "Side table for {npc:ID} tokens in titles, notes and messages (markup.md). x and y are map percent 0-100.",
+      "additionalProperties": false,
+      "properties": {
+        "npc": {
+          "type": "object",
+          "maxProperties": 40,
+          "propertyNames": {
+            "pattern": "^[1-9][0-9]{0,9}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mapID": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            }
+          }
         }
       }
     }

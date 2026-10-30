@@ -2,7 +2,7 @@
 
 **Bored in World of Warcraft? Wisp tells you what to do next.**
 
-Unbored puts Wisp, a small glowing spirit, on your screen. Tell her your mood and how much time you have, and she gives you one step at a time, with a map pin. She also answers questions about the world and tells you what to do with the items in your bags.
+Unbored puts Wisp, a small glowing spirit, on your screen. Tell her your mood, and she gives you one step at a time, with a map pin. She also answers questions about the world around you and tips you off about items that matter to you.
 
 [По-русски ниже](#по-русски)
 
@@ -22,11 +22,22 @@ No Windows, or prefer doing it by hand? Download `Unbored-v….zip` from the new
 
 ## What Wisp can do
 
-- **Plans for your mood.** One click: stay nearby, get a mount, collect pets and toys, level up, farm gold, or surprise me. A quick plan starts at once, one step at a time, with a pin on the map. A fuller plan follows from the Companion.
-- **Answers.** Ask "what can I do here?", "any rares around?", or anything else, in English or Russian. Common questions get an answer right away; bigger ones get a fuller answer a little later.
-- **Item tips.** Every item tooltip gets one short line from Wisp: junk to sell, a new mount or toy to learn, a quest to turn in, an upgrade, or "send it to your alchemist alt".
+- **Plans for your mood.** One click: stay nearby, get a mount, collect pets and toys, level up, farm gold, or surprise me. A quick plan starts at once, one step at a time, with a pin on the map. Want a proper plan? Answer one short question, send it, and Wisp shows she's working on it until it's ready. Proper plans cover the whole goal, not just what fits in half an hour.
+- **Links in steps.** Items, quests, achievements, spells and currencies in a step are real game links: hover for the tooltip. Click a place or an NPC to set the map pin.
+- **Answers.** Ask "what can I do here?", "any rares around?", or "what's left for my achievements?", in English or Russian. Anything bigger she offers to turn into a plan.
+- **Item tips, only when it's about you.** A short line in the tooltip only when the item is in your plan, new for your collection, starts a quest you haven't done, or should go to one of your alts ("Send to Mira (Alchemy 75): mail it"). Otherwise she stays quiet. You can turn the lines off in Wisp's settings.
 - **What is this item?** Drop any item on Wisp and she tells you what she knows.
 - **Stays out of the way.** She hides in combat, folds down to a small portrait, and has a minimap button. No slash commands needed.
+
+## What Wisp knows about you
+
+Wisp learns about **your own characters only**, so plans fit what you have and what you have left to do.
+
+- **What she reads:** level, class, spec and talents, item level, gold, gear, bags, your bank and warband bank (when you open them), currencies, professions and recipes (when you open the profession window), completed and active quests, reputations and renown, achievements, mounts, pets, toys, appearance counts, raid and dungeon lockouts, Mythic+ score and keystone, Great Vault progress, holidays from the calendar, time played, where you spent your sessions, and which helper addons you use (TomTom, Auctionator and the like).
+- **When:** the addon reads quietly after you log in and when something changes, never in combat. The game saves it to your addon files when you log out, switch characters or reload. The Companion then sends what changed to the Unbored server. The addon itself never goes online.
+- **What she never reads:** anything about other players. No chat or whispers, no mail senders, subjects or text, no group or guild lists, no other players' names, no combat log. No passwords and no Battle.net sign-in.
+- **What it's for:** your plans and tips, and the tips for your other characters (an alt you played on another PC can still get your reagents). It is kept per character, linked to your game account, and used only for Unbored.
+- **Turn it off:** right-click Wisp, **Settings**, untick **Share game data to make Wisp smarter**. Wisp then keeps only what a plan needs: your character, gear, quest log and recent sessions.
 
 ## FAQ
 
@@ -37,10 +48,10 @@ Yes, it follows the same rules as every other addon. Wisp only suggests things; 
 The game reads addon files only when your interface loads: when you log in, switch characters, or reload. Teleports and loading screens don't count. When the Companion has something new (a fuller plan or answer), Wisp asks once: "New stuff is ready. Refresh now?" Refresh reloads your interface for a few seconds. Later is fine too: it will be there next time you log in. Wisp never reloads by herself.
 
 **What data does it use?**
-The addon itself never goes online. The Companion sends your questions and your character's state (where you are, level, class, item level, gold, bags and bank, professions, collections, recent steps) to the Unbored server, so the planner can give answers that fit you and your other characters. It is stored per character, linked to your game account, and used only for Unbored. You never sign in to anything: no passwords, no Battle.net account, no chat logs.
+Only your own characters. See [What Wisp knows about you](#what-wisp-knows-about-you).
 
 **Does it work without the Companion?**
-Yes: quick plans, item tips and answers to common questions all work in the game alone. Fuller answers and full plans need the Companion.
+Yes: quick plans, item tips and answers all work in the game alone. Proper plans need the Companion.
 
 **Something looks wrong?**
 [Open an issue](https://github.com/hmbanan666/wow-unbored/issues). Wisp keeps a short error list for that: type `/unbored errors` in chat.
@@ -49,7 +60,7 @@ Yes: quick plans, item tips and answers to common questions all work in the game
 
 **Скучно в World of Warcraft? Висп подскажет, чем заняться.**
 
-Unbored добавляет на экран Виспа — маленького светящегося духа. Скажи, какое настроение и сколько есть времени, и он даст по одному шагу за раз, с меткой на карте. А ещё ответит на вопросы о мире и подскажет, что делать с предметами в сумках.
+Unbored добавляет на экран Виспа — маленького светящегося духа. Скажи, какое настроение, и он даст по одному шагу за раз, с меткой на карте. А ещё ответит на вопросы о мире вокруг и подскажет про предметы, которые важны именно тебе.
 
 ### Установка
 
@@ -63,11 +74,22 @@ Companion сам обновляет себя и Виспа. Чтобы зара�
 
 ### Что умеет Висп
 
-- **Планы под настроение.** Один клик: заняться чем-то рядом, добыть маунта, собрать питомцев и игрушки, качаться, фармить золото или «удиви меня». Быстрый план начинается сразу, по шагу за раз, с меткой на карте. Полный план приходит от Companion.
-- **Ответы.** Спроси «чем заняться рядом?», «есть рядом редкие?» или что угодно ещё, по-русски или по-английски. На частые вопросы ответ сразу, на сложные — полный ответ чуть позже.
-- **Подсказки к предметам.** В подсказке каждого предмета одна короткая строка от Виспа: хлам на продажу, новый маунт или игрушка, квест сдать, улучшение или «отправь своему алхимику».
+- **Планы под настроение.** Один клик: заняться чем-то рядом, добыть маунта, собрать питомцев и игрушки, качаться, фармить золото или «удиви меня». Быстрый план начинается сразу, по шагу за раз, с меткой на карте. Нужен настоящий план? Ответь на один короткий вопрос, отправь, и Висп покажет, что думает, пока план не будет готов. Настоящий план охватывает всю цель, а не то, что влезет в полчаса.
+- **Ссылки в шагах.** Предметы, квесты, достижения, заклинания и валюты в шаге — настоящие игровые ссылки: наведи, чтобы увидеть подсказку. Нажми на место или NPC, чтобы поставить метку на карте.
+- **Ответы.** Спроси «чем заняться рядом?», «есть рядом редкие?» или «что осталось по достижениям?», по-русски или по-английски. Если вопрос большой, Висп предложит сделать из него план.
+- **Подсказки к предметам — только про тебя.** Короткая строка в подсказке, только если предмет нужен для твоего плана, новый для коллекции, начинает квест, который ты ещё не делал, или пригодится твоему альту («Отправь Мире (алхимия 75): почтой»). В остальных случаях Висп молчит. Строки можно выключить в настройках Виспа.
 - **Что это за предмет?** Брось любой предмет на Виспа, и он расскажет, что знает.
 - **Не мешает.** Прячется в бою, сворачивается в маленький портрет, есть кнопка у миникарты. Команды в чате не нужны.
+
+### Что Висп знает о тебе
+
+Висп узнаёт **только о твоих персонажах**, чтобы планы подходили к тому, что у тебя есть и что осталось сделать.
+
+- **Что он читает:** уровень, класс, специализацию и таланты, уровень предметов, золото, экипировку, сумки, твой банк и банк отряда (когда ты их открываешь), валюты, профессии и рецепты (когда открываешь окно профессии), выполненные и текущие квесты, репутации и известность, достижения, маунтов, питомцев, игрушки, число собранных обликов, сохранения рейдов и подземелий, рейтинг М+ и ключ, прогресс Великого хранилища, праздники из календаря, время в игре, где проходили твои сессии и какие аддоны-помощники стоят (TomTom, Auctionator и подобные).
+- **Когда:** аддон тихо читает после входа в игру и когда что-то меняется, никогда в бою. Игра сохраняет это в файлы аддона при выходе, смене персонажа или перезагрузке. Потом Companion отправляет изменения на сервер Unbored. Сам аддон в интернет не ходит.
+- **Что он никогда не читает:** ничего о других игроках. Ни чата и шёпота, ни отправителей, тем и текста писем, ни списков группы или гильдии, ни имён других игроков, ни журнала боя. Никаких паролей и входа в Battle.net.
+- **Зачем:** для твоих планов и подсказок, в том числе для других персонажей (альт, которым ты играл на другом ПК, всё равно получит твои реагенты). Данные хранятся по персонажам, связаны с игровой учётной записью и используются только для Unbored.
+- **Как выключить:** правый клик по Виспу, **Настройки**, сними галочку **Делиться игровыми данными, чтобы Висп был умнее**. Тогда Висп хранит только то, что нужно для плана: персонажа, экипировку, журнал заданий и недавние сессии.
 
 ### Вопросы
 
@@ -78,10 +100,10 @@ Companion сам обновляет себя и Виспа. Чтобы зара�
 Игра читает файлы аддонов только при загрузке интерфейса: при входе, смене персонажа или перезагрузке. Телепорты и экраны загрузки не считаются. Когда у Companion появляется новое (полный план или ответ), Висп один раз спросит: «Есть кое-что новое. Обновить сейчас?» «Обновить» перезагрузит интерфейс на пару секунд. «Потом» — тоже нормально: всё будет при следующем входе. Сам Висп никогда ничего не перезагружает.
 
 **Какие данные используются?**
-Сам аддон в интернет не ходит. Companion отправляет на сервер Unbored твои вопросы и состояние персонажа (где ты, уровень, класс, уровень предметов, золото, сумки и банк, профессии, коллекции, недавние шаги), чтобы ответы подходили тебе и твоим другим персонажам. Данные хранятся по персонажам, связаны с игровой учётной записью и используются только для Unbored. Никаких паролей, входа в Battle.net и логов чата.
+Только твоих персонажей. Подробно — в разделе [Что Висп знает о тебе](#что-висп-знает-о-тебе).
 
 **Работает без Companion?**
-Да: быстрые планы, подсказки к предметам и ответы на частые вопросы работают в самой игре. Для полных ответов и полных планов нужен Companion.
+Да: быстрые планы, подсказки к предметам и ответы работают в самой игре. Для настоящих планов нужен Companion.
 
 **Что-то не так?**
 [Напиши нам](https://github.com/hmbanan666/wow-unbored/issues). Висп хранит короткий список ошибок: набери `/unbored errors` в чате.

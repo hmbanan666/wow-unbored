@@ -130,6 +130,36 @@ test("put plan, companion get, addon decodes UNB1", async () => {
   }
 });
 
+test("a plan with no budget is stored, encoded, and decoded without one", async () => {
+  const { app, close } = build();
+  try {
+    const { budget: _budget, ...whole } = sample;
+    const put = await app.request("/v1/plan", {
+      method: "PUT",
+      headers: { authorization: `Bearer ${planner}`, "content-type": "application/json" },
+      body: JSON.stringify(whole),
+    });
+    assert.equal(put.status, 200);
+    const unb1 = String((await json(put)).plan);
+    const payload = JSON.parse(Buffer.from(unb1.slice(5), "base64").toString("utf8"));
+    assert.equal("budget" in payload, false);
+    const root = path.resolve(import.meta.dirname, "../../../addon");
+    const decoded = execFileSync(
+      "lua5.1",
+      [path.join(import.meta.dirname, "decode.lua"), unb1, root],
+      { encoding: "utf8" },
+    )
+      .trim()
+      .split("\n");
+    assert.equal(decoded[4], "nil");
+    const sessions = await mcpCall(app, "list_sessions", {});
+    const rows = sessions.value.sessions as { budget: unknown }[];
+    assert.equal(rows[0]?.budget, null);
+  } finally {
+    close();
+  }
+});
+
 test("progress roundtrip and history", async () => {
   const { app, close } = build();
   try {
@@ -240,8 +270,14 @@ test("mcp lists the planner tools", async () => {
     assert.deepEqual(names, [
       "answer_request",
       "approve_device",
+      "check_ids",
+      "data_catalog",
+      "delete_account_data",
       "fail_request",
+      "get_account_overview",
       "get_current_plan",
+      "get_data_changes",
+      "get_game_data",
       "get_player_history",
       "get_player_profile",
       "get_progress",
@@ -256,6 +292,12 @@ test("mcp lists the planner tools", async () => {
     const put = tools.find((tool) => tool.name === "put_plan");
     assert.ok(put?.description.includes("0 to 1"));
     assert.ok(put?.description.includes("achievementID"));
+    const requests = tools.find((tool) => tool.name === "list_requests");
+    for (const tool of [put, requests]) {
+      assert.ok(tool?.description.includes("Plan the whole goal"), tool?.name);
+      assert.ok(tool?.description.includes("never cut to fit a time"), tool?.name);
+      assert.ok(!tool?.description.includes("3 to 7 steps;"), tool?.name);
+    }
 
     const called = await app.request("/mcp", {
       method: "POST",
@@ -653,6 +695,77 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
     await new Promise<void>((resolve, reject) =>
       hook.close((err) => (err ? reject(err) : resolve())),
     );
+  }
+});
+
+test("failing an old request never hides the answer to the newer one (D82)", async () => {
+  const { app, store, close } = createApp({
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-d82-")),
+    log: () => {},
+  });
+  try {
+    for (const [deviceId, secret] of [
+      ["d82-device", "d82-device-secret-long"],
+      ["d82-other", "d82-other-device-secret"],
+    ]) {
+      const registered = await app.request("/v1/devices/register", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.82" },
+        body: JSON.stringify({ deviceId, name: "PC", secret }),
+      });
+      assert.equal(registered.status, 201);
+      store.setDeviceStatus(deviceId, "approved");
+    }
+    const ask = (id: string, nowSeconds: number) =>
+      store.addRequest({
+        id,
+        deviceId: "d82-device",
+        character: "Hero",
+        realm: "Area 52",
+        mode: "fun",
+        budget: null,
+        wish: null,
+        nowSeconds,
+      });
+    ask("req-old", 1000);
+    ask("req-stale", 1500);
+    ask("req-new", 2000);
+    const plan = store.putPlan({ ...sample, requestId: "req-new" }, 2100);
+    store.fulfillRequest("req-new", plan.id, 2100);
+    store.failRequest("req-old", "timed out", 5000);
+
+    const get = async (url: string, secret = "d82-device-secret-long") => {
+      const response = await app.request(url, { headers: { authorization: `Bearer ${secret}` } });
+      return { status: response.status, body: await json(response) };
+    };
+    const latest = await get("/v1/requests/latest");
+    assert.equal(latest.body.id, "req-new");
+    assert.equal(latest.body.status, "fulfilled");
+    assert.equal(typeof latest.body.plan, "string");
+
+    const waited = await get("/v1/requests/req-new");
+    assert.equal(waited.status, 200);
+    assert.equal(waited.body.status, "fulfilled");
+    assert.equal(waited.body.plan, latest.body.plan);
+
+    assert.equal(waited.body.eta, 180, "too few answers yet: the default ETA");
+
+    const old = await get("/v1/requests/req-old");
+    assert.equal(old.body.status, "failed");
+    assert.equal(old.body.reasonCode, "planner_failed");
+    assert.equal(old.body.plan, null);
+
+    const stale = await get("/v1/requests/req-stale");
+    assert.equal(stale.body.status, "failed", "pending over an hour times out");
+    assert.equal(stale.body.reasonCode, "timeout");
+    assert.equal((await get("/v1/requests/latest")).body.id, "req-new", "and still hides nothing");
+
+    assert.equal((await get("/v1/requests/req-new", "d82-other-device-secret")).status, 404);
+    assert.equal((await get("/v1/requests/req-missing")).status, 404);
+  } finally {
+    close();
   }
 });
 
@@ -1059,7 +1172,7 @@ test("item and question requests are typed, webhooked, and answered", async () =
       topic: "mount",
       mode: "farm",
       budget: 60,
-      wish: "Get a mount I don't have yet, the best chance in the time I have.",
+      wish: "Get a mount I don't have yet, the one I have the best chance at.",
       character: "Hero",
       realm: "Area 52",
       context,
@@ -1143,6 +1256,37 @@ test("the companion uploads a player profile the planner reads over MCP", async 
     };
     assert.equal(heroProfile.savedAt, 1000);
     assert.equal(heroProfile.profile.bags[0].itemID, 6948);
+  } finally {
+    close();
+  }
+});
+
+test("the ETA is the p50 of recent plan answers, clamped", () => {
+  const { store, close } = build();
+  try {
+    const answer = (id: string, took: number) => {
+      store.addRequest({
+        id,
+        deviceId: "legacy",
+        character: "Hero",
+        realm: "Area 52",
+        mode: "fun",
+        budget: null,
+        wish: null,
+        nowSeconds: 10_000,
+      });
+      const plan = store.putPlan({ ...sample, requestId: id }, 10_000 + took);
+      store.fulfillRequest(id, plan.id, 10_000 + took);
+    };
+    answer("eta-1", 100);
+    answer("eta-2", 300);
+    assert.equal(store.planEta(), 180, "two answers are not enough");
+    answer("eta-3", 400);
+    assert.equal(store.planEta(), 300);
+    answer("eta-4", 5000);
+    answer("eta-5", 5000);
+    answer("eta-6", 5000);
+    assert.equal(store.planEta(), 900, "clamped to 15 minutes");
   } finally {
     close();
   }

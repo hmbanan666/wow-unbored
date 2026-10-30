@@ -8,6 +8,7 @@ pub mod mood;
 pub mod plan;
 pub mod request;
 pub mod savedvars;
+pub mod snapshot;
 pub mod wow;
 
 #[cfg(feature = "gui")]

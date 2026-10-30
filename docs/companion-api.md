@@ -52,7 +52,6 @@ Content-Type: application/json
     "v": 1,
     "kind": "progress",
     "mode": "custom",
-    "budget": 60,
     "source": "import",
     "currentId": "mentor:ashes",
     "done": [{ "id": "mentor:fall", "at": 1761719000 }],
@@ -107,7 +106,6 @@ The game sends three kinds of request, all through SavedVariables and the compan
   "character": "Hero",
   "realm": "Area 52",
   "mode": "farm",
-  "budget": 60,
   "wish": "mount, stay in this zone",
   "context": {
     "mapID": 2248,
@@ -133,7 +131,7 @@ The game sends three kinds of request, all through SavedVariables and the compan
 }
 ```
 
-`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) and `budget` (5–240 minutes) are required; the other types leave them out. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`.
+`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) is required, and `budget` (5–240 minutes) is sent only when the player typed minutes into the custom form ([ADR 0037](adr/0037-no-time-budget.md)); the other types leave both out. A stored Request without one reads back `budget: null`. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`.
 
 A question carries `question` (required, up to 600 bytes) and may carry `topic`, lowercase letters, `_`, or `-` (the game sends `nearby`):
 
@@ -154,15 +152,15 @@ An item request carries `item`: `itemID` is required; `link`, `name`, `bag`, `sl
 
 Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`, keep the route in one zone unless the wish says otherwise, and use `hearth`, `skyriding`, and `canFly` to judge travel.
 
-`GET {base}/v1/requests/latest` returns that request (with `type`, `question`, `topic`, `item`) plus `"plan": "UNB1:..."` when it was fulfilled with a plan, or `"plan": null` otherwise. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed. `answer` is set when the planner answered with `answer_request`:
+`GET {base}/v1/requests/{id}` returns the Request with that id, or 404 when it is not this device's. The companion asks for exactly the id the game waits for (`UnboredCharDB.request.id` in SavedVariables), so a newer status on an older Request never changes which answer the game gets. `GET {base}/v1/requests/latest` is the fallback when the game waits for nothing: it returns the device's newest Request by creation time (never by update time). Both return the request (with `type`, `question`, `topic`, `item`) plus `"plan": "UNB1:..."` when it was fulfilled with a plan, or `"plan": null` otherwise. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed, with `reasonCode` (`planner_failed`, or `timeout` when a Request was still pending after 60 minutes; that changes only its own status). `eta` is how long recent plan Requests took (p50 in seconds, 60 to 900, 180 until there are three answers); the Companion writes it into `Plan.lua` so Wisp knows when to offer a Refresh. `answer` is set when the planner answered with `answer_request`:
 
 ```json
 { "message": "A rare is east of you. I pinned it.", "waypoints": [{ "mapID": 2248, "x": 0.6, "y": 0.4, "label": "Rare" }], "answeredAt": 1761720500 }
 ```
 
-`message` is plain text up to 1,000 bytes, shown in the bubble as written. `waypoints` is optional (the same route points as in a plan, up to 10); the game turns them into one step in front of the current plan. An answer may also come with a plan, which then starts as usual. The companion writes the answer into `UnboredExternalPlan.answer`, with `requestType`; see [plan-format.md](plan-format.md#companion-file).
+`message` is text up to 1,000 bytes, shown in the bubble as written; it may carry [entity markup](../packages/contracts/markup.md) tokens, with `entities` beside it for npcs. `waypoints` is optional (the same route points as in a plan, up to 10); the game turns them into one step in front of the current plan. An answer may also come with a plan, which then starts as usual. The companion writes the answer into `UnboredExternalPlan.answer`, with `requestType`; see [plan-format.md](plan-format.md#companion-file).
 
-If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context }` to that URL (`context` is `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
+If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context }` to that URL (`budget` and `context` are `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
 
 ## GET /v1/advice
 
@@ -177,13 +175,18 @@ Personal advice for the characters whose profiles this device uploaded (docs/adr
       "updatedAt": 1761720000,
       "items": [
         { "itemID": 2447, "action": "send", "line": "Send to Mira (Alchemy): mail", "lineRu": "Отправь Мире (алхимия): почтой", "to": "Mira" }
+      ],
+      "alts": [
+        { "name": "Mira", "realm": "Area 52", "faction": "Horde", "seenAt": 1761710000, "professions": [{ "skillLine": 171, "name": "Alchemy", "skill": 75 }] }
       ]
     }
   ]
 }
 ```
 
-The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character:
+`alts` is the Account digest (D76): the other Characters on the same Account (at most 50), with faction and up to 6 professions, so the game can route items to Alts this PC has never seen. Every character this device uploaded is listed, even with no items.
+
+The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character, plus the `alts`. Advice.lua and Plan.lua together stay within 200 KB and 20,000 literals (D76): when they would not, the Companion keeps fewer items per character, then fewer Alts:
 
 ```lua
 UnboredAdvice = {
@@ -193,6 +196,9 @@ UnboredAdvice = {
       ["updatedAt"] = 1761720000,
       ["items"] = {
         [2447] = { ["action"] = "send", ["line"] = "Send to Mira (Alchemy): mail", ["lineRu"] = "...", ["to"] = "Mira", },
+      },
+      ["alts"] = {
+        { ["name"] = "Mira", ["realm"] = "Area 52", ["faction"] = "Horde", ["seenAt"] = 1761710000, ["professions"] = { { ["skillLine"] = 171, ["name"] = "Alchemy", ["skill"] = 75, }, }, },
       },
     },
   },

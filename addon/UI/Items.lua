@@ -1,4 +1,4 @@
--- Item help (docs/adr/0015, 0019): the Advice line in item tooltips and the
+-- Item help (docs/adr/0015, 0035): the Advice line in item tooltips and the
 -- item a player hands to Wisp (dropped on it, or picked up in pick mode).
 -- Everything here only reads game state. Bag buttons are never touched.
 
@@ -125,7 +125,7 @@ function ns.Items.Facts(itemID, link, where)
   local advice = ns.Advice.For(itemID, { link = link, bag = where.bag, slot = where.slot })
   local rule = advice and advice.rule
   if advice then
-    lines[#lines + 1] = advice.line2 and (advice.line .. "\n" .. advice.line2) or advice.line
+    lines[#lines + 1] = advice.line
   end
   local answer = ns.Session.ItemNote(itemID)
   if answer and rule ~= "answer" then
@@ -136,15 +136,13 @@ function ns.Items.Facts(itemID, link, where)
     lines[#lines + 1] = ns.T(key)
   end
   local mountFact, mountID = ns.Items.MountFact(itemID)
-  local task = rule ~= 1 and ns.Items.PlanTask(itemID, mountID)
+  local task = rule ~= "plan" and ns.Items.PlanTask(itemID, mountID)
   if task then
-    lines[#lines + 1] = ns.T("FACT_PLAN", task.title or "")
+    lines[#lines + 1] = ns.T("FACT_PLAN", ns.Markup.Plain(task.title or "", task.npcs))
   end
-  if rule ~= 5 and rule ~= 6 and rule ~= 7 then
+  if rule ~= "collection" then
     local collectible = mountFact or ns.Items.PetFact(itemID) or ns.Items.ToyFact(itemID)
-    if not collectible and rule ~= 9 then
-      collectible = ns.Items.LookFact(itemID, link)
-    end
+      or ns.Items.LookFact(itemID, link)
     if collectible then
       lines[#lines + 1] = collectible
     end
@@ -181,9 +179,12 @@ local function tooltipSlot(data)
   return ns.Call(location.GetBagAndSlot, location)
 end
 
--- One teal line in every item tooltip (two when a quest has a place).
+-- At most one teal line, and only when Wisp has something personal to say.
 function ns.Items.OnTooltip(tooltip, data)
   if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then
+    return
+  end
+  if ns.DB and ns.DB.tooltipLines == false then
     return
   end
   if ns.IsCombat() then
@@ -200,18 +201,11 @@ function ns.Items.OnTooltip(tooltip, data)
   end
   local bag, slot = tooltipSlot(data)
   local where = { link = link, bag = num(bag), slot = num(slot), lines = tooltipLines(data) }
-  local advice, why = ns.Advice.For(itemID, where)
-  local line = advice and advice.line
-  if not advice and why == "unmatched" and ns.UI.HasCompanion() then
-    line = ns.T("ADV_ASK", ns.MASCOT_NAME)
-  end
-  if not line then
+  local advice = ns.Advice.For(itemID, where)
+  if not advice or not advice.line then
     return
   end
-  tooltip:AddLine(TEAL .. ns.MASCOT_NAME .. ":|r " .. line, 1, 1, 1, true)
-  if advice and advice.line2 then
-    tooltip:AddLine("    " .. advice.line2, 0.8, 0.8, 0.8, true)
-  end
+  tooltip:AddLine(TEAL .. ns.MASCOT_NAME .. ":|r " .. advice.line, 1, 1, 1, true)
 end
 
 function ns.Items.FromLink(link)

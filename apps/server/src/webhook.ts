@@ -24,7 +24,7 @@ export type WebhookBody = {
   character: string;
   realm: string;
   mode: string;
-  budget: number;
+  budget: number | null;
   wish: string | null;
   context: PlayerContext | null;
   /** Answer in this language ("en" or "ru"). */

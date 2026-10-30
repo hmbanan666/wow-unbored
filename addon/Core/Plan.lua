@@ -48,6 +48,7 @@ function ns.NormalizeTask(task)
     estMinutes = est,
     note = type(task.note) == "string" and task.note or nil,
     waypoints = waypoints,
+    npcs = type(task.npcs) == "table" and ns.DeepCopy(task.npcs) or nil,
     wpIndex = tonumber(task.wpIndex),
     source = task.source,
     priority = tonumber(task.priority),

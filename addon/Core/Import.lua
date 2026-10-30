@@ -281,12 +281,8 @@ function ns.ValidatePlan(raw, loose)
     return nil, ns.T("ERR_MODE")
   end
   local budget = plain(raw.budget)
-  if budget == nil then
-    budget = 60
-  end
-  budget = whole(budget, 5, 240)
-  if not budget then
-    return nil, ns.T("ERR_BUDGET")
+  if budget ~= nil then
+    budget = whole(budget, 5, 240)
   end
   local note = plain(raw.note)
   if note ~= nil and type(note) ~= "string" then
@@ -296,6 +292,7 @@ function ns.ValidatePlan(raw, loose)
     note = note:sub(1, 400)
   end
 
+  local npcs = ns.Markup.CleanEntities(plain(raw.entities))
   local cleanTasks = {}
   for i = 1, #tasks do
     local task = plain(tasks[i])
@@ -363,6 +360,7 @@ function ns.ValidatePlan(raw, loose)
       estMinutes = est,
       note = taskNote,
       waypoints = waypoints,
+      npcs = ns.Markup.NpcsFor(npcs or ns.Markup.CleanEntities({ npc = plain(task.npcs) }), title, taskNote),
       source = "import",
       complete = complete,
     }
@@ -395,13 +393,23 @@ function ns.EncodePlan(plan)
   if not clean then
     clean = plan
   end
+  local npc, tasks = {}, {}
+  for i = 1, #(clean.tasks or {}) do
+    local task = ns.DeepCopy(clean.tasks[i]) or {}
+    for id, entry in pairs(task.npcs or {}) do
+      npc[id] = entry
+    end
+    task.npcs = nil
+    tasks[i] = task
+  end
   local payload = {
     v = 1,
     kind = "plan",
     mode = clean.mode or "custom",
-    budget = clean.budget or 60,
+    budget = clean.budget,
     note = clean.note,
-    tasks = clean.tasks,
+    tasks = tasks,
+    entities = next(npc) and { npc = npc } or nil,
   }
   return ns.EncodeMessage("UNB1", payload)
 end
@@ -411,7 +419,7 @@ function ns.EncodeProgress(progress)
     v = 1,
     kind = "progress",
     mode = progress.mode or "custom",
-    budget = progress.budget or 60,
+    budget = progress.budget,
     exportedAt = progress.exportedAt or ns.Now(),
     currentId = progress.currentId,
     done = progress.done or {},

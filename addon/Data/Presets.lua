@@ -16,7 +16,7 @@ ns.Data.Presets = {
     id = "mount",
     label = "PRESET_MOUNT",
     mode = "farm",
-    wish = "Get a mount I don't have yet, the best chance in the time I have.",
+    wish = "Get a mount I don't have yet, the one I have the best chance at.",
   },
   {
     id = "collect",
@@ -43,7 +43,3 @@ ns.Data.Presets = {
     wish = "Surprise me with something fun.",
   },
 }
-
--- The small time chips under the presets. The default is one hour.
-ns.Data.PresetBudgets = { 30, 60, 120 }
-ns.Data.PresetDefaultBudget = 60

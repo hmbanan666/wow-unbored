@@ -10,10 +10,21 @@ local function load(path)
   chunk("Unbored", ns)
 end
 
-load("Core/Namespace.lua")
-load("Core/Locale.lua")
-load("Core/Codec.lua")
-load("Core/Import.lua")
+-- Every file the game loads before the decoder, in Unbored.toc order, so a new
+-- dependency of Core/Import.lua is picked up here too.
+local toc = assert(io.open(root .. "/Unbored.toc"))
+for line in toc:lines() do
+  local file = line:match("^%s*([^#%s][^%s]*%.lua)%s*$")
+  if file then
+    file = file:gsub("\\", "/")
+    load(file)
+    if file == "Core/Import.lua" then
+      break
+    end
+  end
+end
+toc:close()
+assert(ns.DecodeImport, "Core/Import.lua is missing from Unbored.toc")
 
 local plan, err = ns.DecodeImport(unb1)
 if not plan then

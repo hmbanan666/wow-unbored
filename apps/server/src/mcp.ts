@@ -3,9 +3,17 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Context } from "hono";
 import { z } from "zod";
 
+import { markupIds } from "@unbored/contracts";
+
+import type { BlizzardIds } from "./blizzard.ts";
 import { resolveCriteria } from "./criteria.ts";
-import { ANSWER_MAX_BYTES, cleanAnswer, PlanError } from "./plan.ts";
+import { ID_KINDS, readable, changeSummary, type CharacterRow, type IdKind } from "./data.ts";
+import { ANSWER_MAX_BYTES, cleanAnswer, PlanError, planMarkupIds } from "./plan.ts";
 import { HISTORY_KINDS, publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
+
+const PLAN_SCOPE = `Plan the whole goal. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
+
+const MARKUP = `Links (title, note, the plan note and answer messages): name game things with tokens and Wisp shows them as native links with the game's own name and tooltip. {item:ID}, {quest:ID}, {ach:ID}, {spell:ID}, {currency:ID}, {npc:ID}, {pin:MAPID:X:Y}, each with an optional |label, for example {npc:12345|Fixer Kev} or {pin:2339:52.1:47.3|the forge}. Use only ids a tool gave you (get_player_profile, check_ids, the request, resolve_criteria); never guess an id, write the plain name instead. Pin X and Y are map percent 0 to 100 with at most one decimal (wowhead numbers), unlike task x/y. Every {npc:ID} needs entities.npc["ID"] = { name, mapID, x, y } on the plan (or the answer), x and y in percent too. At most 12 tokens per step. A bad token is replaced by its label and listed in warnings in the reply: read them and fix the plan if a link mattered.`;
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
@@ -13,18 +21,20 @@ Required shape:
 - v: 1
 - kind: "plan"
 - mode: roam, quests, events, fun, farm, or custom (default custom)
-- budget: whole minutes from 5 to 240 (default 60). The in-game buttons are 30, 60, and 120; other values are allowed.
+- budget: optional, whole minutes from 5 to 240. Leave it out unless the request carried one.
 - tasks: 1 to 40 objects
 
 Each task:
 - id: 1-80 characters, letters, digits, colon, dot, underscore, hyphen (example mentor:ashes)
 - title: non-empty, at most 240 bytes
-- estMinutes: 1 to 240 (default 15)
+- estMinutes: 1 to 240 (default 15), a rough guess the player sees as information only
 - mapID: optional ui map id
 - x and y: optional, both required together, fractions of the map from 0 to 1. Wowhead 0-100 coordinates must be divided by 100.
 - note: optional, at most 400 bytes. Shown in full in the in-game tracker; say where to go and what to do.
 - waypoints: optional, 1 to 10 points [{ mapID, x, y, label }] in route order. x and y are 0 to 1, label at most 80 bytes. The addon sets the native waypoint arrow (and TomTom when installed) on point 1 and moves to the next point when the player comes within about 30 yards. Use it for a multi-stop task. Without waypoints the task's own mapID, x, y is the single point.
 - complete: how the game finishes the task. Omit it and the player presses Done.
+
+${MARKUP}
 
 complete.kind:
 - manual
@@ -42,7 +52,9 @@ complete.kind:
 
 Routing: a request from list_requests carries context (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). Start the first task near context.mapID / x / y, order the rest as one sensible route, and only send the player to another continent when the wish asks for it or nothing nearby fits. context.hearth is where their hearthstone goes.
 
-The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Wisp's Refresh offer. Plans are 3 to 7 steps; the game shows one at a time.`;
+The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Wisp's Refresh offer. The game shows one step at a time and the full list on click.
+
+${PLAN_SCOPE}`;
 
 const ADVICE_ACTIONS = [
   "keep",
@@ -78,7 +90,23 @@ const waypointSchema = z
   })
   .strict();
 
-export function createMcpServer(store: Store, dataDir: string): McpServer {
+const entitiesSchema = z
+  .object({
+    npc: z
+      .record(
+        z.string(),
+        z.object({
+          name: z.string(),
+          mapID: z.number().optional(),
+          x: z.number().optional(),
+          y: z.number().optional(),
+        }),
+      )
+      .optional(),
+  })
+  .strict();
+
+export function createMcpServer(store: Store, dataDir: string, gameIds?: BlizzardIds): McpServer {
   const server = new McpServer({
     name: "unbored",
     version: "0.6.0",
@@ -110,6 +138,9 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
       note: z.string().optional(),
       generatedAt: z.number().optional(),
       tasks: z.array(taskSchema).min(1).max(40),
+      entities: entitiesSchema
+        .optional()
+        .describe("Npc names and places for {npc:ID} tokens. x and y are percent 0 to 100."),
     })
     .strict();
 
@@ -117,7 +148,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     "put_plan",
     {
       title: "Put a session plan",
-      description: `Store the latest session plan for the player. The companion will pick it up on its next poll. Write 3 to 7 steps, each one thing the player can just do; the game shows one at a time. A plan for a preset request replaces the quick plan the game built itself only if the player agrees, and steps they already finished there (same task id) are dropped, so reuse the game's ids (quest:<questID> and the like) when you mean the same thing.\n\n${SCHEMA}`,
+      description: `Store the latest session plan for the player. The companion will pick it up on its next poll. Each step is one thing the player can just do; the game shows one at a time. Cover the whole goal in order, all of it, not a time-sized slice. A plan for a preset request replaces the quick plan the game built itself only if the player agrees, and steps they already finished there (same task id) are dropped, so reuse the game's ids (quest:<questID> and the like) when you mean the same thing.\n\n${SCHEMA}`,
       inputSchema: {
         requestId: z
           .string()
@@ -131,7 +162,9 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
         if (requestId && !store.requestById(requestId)) {
           return failure(new Error("No request with that id."));
         }
-        const stored = store.putPlan(plan);
+        const warnings: string[] = [];
+        const missing = gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
+        const stored = store.putPlan(plan, undefined, { missing, warnings });
         const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
         return text({
           id: stored.id,
@@ -139,6 +172,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
           plan: stored.unb1,
           stored: stored.plan,
           request: request ? publicRequest(request) : null,
+          warnings,
         });
       } catch (error) {
         if (error instanceof PlanError || error instanceof Error) return failure(error);
@@ -266,8 +300,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     "list_requests",
     {
       title: "List in-game plan requests",
-      description:
-        "List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, budget, wish; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
+      description: `List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, wish, and budget only when the player typed minutes into the custom form; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic "nearby" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position. ${PLAN_SCOPE}`,
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -277,6 +310,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     },
     async ({ status }) =>
       text({
+        expired: store.expireRequests(),
         requests: store.listRequests(status ?? "pending").map((request) => {
           const delivery = store.webhookDelivery(request.id);
           return {
@@ -298,7 +332,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "Get the player profile",
       description:
-        "The latest player state the companion uploaded from the game, kept as a rolling snapshot (an empty value never overwrites a known one): context (location, level, class, spec, ilvl, gold, hearth, tracked quests, active plan), professions with skill levels, equipped items, bags, the last seen bank, reagent bank and warband bank (itemID and count), currencies, collections (mounts, pets, toys, achievement points), renown, recent sessions (start, stop, zones), recent finished or skipped steps, and unmatchedItems (item ids Wisp had no advice for). Read it before planning so you need not ask for anything. Pass character (and realm) for one character. Pass account (from list_requests or the accounts list) to get every character of that Account: use it for alt routing, e.g. an herb on one character that an Alchemist alt needs. Without arguments you get the most recently updated character, the list of known characters, and the accounts. savedAt is when the game wrote it.",
+        "The latest player state from the game, assembled from the Game data snapshot Sections (and the 0.6 profile upload for older addons; an empty value never overwrites a known one): context (location, level, class, spec, ilvl, gold, hearth, tracked quests, active plan), professions with skill levels, equipped items, bags, the last seen bank, reagent bank and warband bank (itemID and count), currencies, collections (mounts, pets, toys, achievement points), renown, recent sessions (start, stop, zones), recent finished or skipped steps, and unmatchedItems (item ids Wisp had no advice for). Read it before planning so you need not ask for anything. Pass character (and realm) for one character. Pass account (from list_requests or the accounts list) to get every character of that Account: use it for alt routing, e.g. an herb on one character that an Alchemist alt needs. Without arguments you get the most recently updated character, the list of known characters, and the accounts. savedAt is when the game wrote it. sections lists which Sections it was built from. For quest, achievement, mount, toy, pet or recipe ids use check_ids; for raw Sections use get_game_data.",
       inputSchema: {
         character: z.string().max(80).optional().describe("Character name, as in list_requests."),
         realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
@@ -332,7 +366,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     {
       title: "Get the player history",
       description:
-        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), and advice (a put_item_advice batch). Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
+        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), and advice (a put_item_advice batch). What changed in the game data itself (new quests done, mounts, item counts, gold) is in get_data_changes. Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
       inputSchema: {
         character: z.string().max(80).optional(),
         realm: z.string().max(80).optional(),
@@ -366,6 +400,177 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
         entries,
         snapshots: includeSnapshots ? store.profileSnapshots({ ...filter, limit: 10 }) : undefined,
       });
+    },
+  );
+
+  const data = store.data;
+  const pickCharacters = (input: { account?: string; character?: string; realm?: string }) => {
+    let rows: CharacterRow[] = input.account ? data.characters(input.account) : data.characters();
+    if (input.character) rows = rows.filter((row) => row.name === input.character);
+    if (input.realm) rows = rows.filter((row) => row.realm === input.realm);
+    if (!input.account && !input.character) rows = rows.slice(0, 1);
+    return rows;
+  };
+  const whoSchema = {
+    account: z.string().max(80).optional().describe("Account key from list_requests."),
+    character: z.string().max(80).optional().describe("Character name."),
+    realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
+  };
+
+  server.registerTool(
+    "get_account_overview",
+    {
+      title: "Overview of an Account",
+      description:
+        "Every Character of an Account (or of every Account) with class, spec, level, item level, gold, professions, last seen, and how fresh each Game data Section is. Start here before planning for a player with Alts.",
+      inputSchema: { account: whoSchema.account },
+    },
+    async ({ account }) => {
+      const accounts = account ? [data.account(account)].filter(Boolean) : data.accounts();
+      if (accounts.length === 0) return failure(new Error("No game data for that Account yet."));
+      return text({
+        accounts: accounts.map((row) => ({
+          account: row!.id,
+          lastSeen: row!.lastSeen,
+          sections: data
+            .sections("account", row!.id)
+            .map((s) => ({ name: s.section, at: s.at, savedAt: s.savedAt })),
+          characters: data.characters(row!.id).map((char) => data.overview(char)),
+        })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "get_game_data",
+    {
+      title: "Read Game data Sections",
+      description:
+        "The latest bodies of Game data Sections for one Character (Character Sections plus its Account Sections). Pass sections to pick some (data_catalog lists them). Packed id sets come back as counts; pass expand to get the ids (capped at 2000 per set, with more saying how many were cut). For a yes/no on specific ids use check_ids instead.",
+      inputSchema: {
+        ...whoSchema,
+        sections: z.array(z.string().max(40)).max(40).optional().describe("Section names."),
+        expand: z.boolean().optional().describe("Unpack id sets (capped)."),
+      },
+    },
+    async ({ account, character, realm, sections, expand }) => {
+      const row = pickCharacters({ account, character, realm })[0];
+      if (!row) return failure(new Error("No game data for that character yet."));
+      const all = data.sectionsFor(row);
+      const out: Record<string, unknown> = {};
+      for (const [name, section] of all) {
+        if (sections?.length && !sections.includes(name)) continue;
+        out[name] = {
+          scope: section.ownerKind,
+          v: section.v,
+          at: section.at,
+          savedAt: section.savedAt,
+          unknown: section.unknown,
+          body: readable(section.body, expand === true),
+        };
+      }
+      return text({
+        character: row.name,
+        realm: row.realm,
+        account: row.accountId,
+        sections: out,
+        missing: (sections ?? []).filter((name) => !all.has(name)),
+      });
+    },
+  );
+
+  server.registerTool(
+    "check_ids",
+    {
+      title: "Check ids against the game data",
+      description:
+        "Which of the given ids the player has: quest (completed, per Character), achievement (earned on the Account, and by each Character when known), mount, toy, pet (species, on the Account), recipe (learned, per Character; only professions whose window was opened). have is null when that Section was never read. Use it before suggesting something the player may already have, and never invent ids.",
+      inputSchema: {
+        kind: z.enum(ID_KINDS as [IdKind, ...IdKind[]]),
+        ids: z.array(z.number().int().min(1)).min(1).max(500),
+        ...whoSchema,
+      },
+    },
+    async ({ kind, ids, account, character, realm }) => {
+      const rows = pickCharacters({ account, character, realm });
+      if (rows.length === 0) return failure(new Error("No game data for that player yet."));
+      const first = rows[0]!;
+      const targets = character || !first.accountId ? rows : data.characters(first.accountId);
+      return text(data.checkIds(kind, ids, targets));
+    },
+  );
+
+  server.registerTool(
+    "get_data_changes",
+    {
+      title: "What changed in the game data",
+      description:
+        "Per-Section changes, newest first: ids added or removed (quests done, mounts, achievements, recipes), item counts that changed (bags, banks), and small fields that changed (gold, level, item level). Without since you get the last upload (the last session). initial means the first upload of that Section. Lists are capped at 2000.",
+      inputSchema: {
+        ...whoSchema,
+        since: z.number().int().optional().describe("Unix seconds; changes at or after it."),
+        sections: z.array(z.string().max(40)).max(40).optional(),
+        limit: z.number().int().min(1).max(200).optional().describe("Default 50."),
+      },
+    },
+    async ({ account, character, realm, since, sections, limit }) => {
+      const rows = pickCharacters({ account, character, realm });
+      if (rows.length === 0) return failure(new Error("No game data for that player yet."));
+      const owners = [
+        ...rows.map((row) => ({ kind: "char" as const, id: row.id })),
+        ...[...new Set(rows.map((row) => row.accountId).filter(Boolean))].map((id) => ({
+          kind: "account" as const,
+          id,
+        })),
+      ];
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      let entries = data.history({ owners, sections, since, limit: limit ?? 50 });
+      if (since === undefined && entries.length > 0) {
+        const last = Math.max(...entries.map((entry) => entry.savedAt ?? 0));
+        entries = entries.filter((entry) => (entry.savedAt ?? 0) === last);
+      }
+      return text({
+        changes: entries.map((entry) => ({
+          section: entry.section,
+          scope: entry.ownerKind,
+          character: entry.ownerKind === "char" ? (byId.get(entry.ownerId)?.name ?? null) : null,
+          at: entry.at,
+          savedAt: entry.savedAt,
+          summary: changeSummary(entry.kind, entry.body),
+          change: entry.body,
+        })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "data_catalog",
+    {
+      title: "Data explorer",
+      description:
+        "The Data explorer: every Account and Character with each Game data Section (version, read time, savedAt, size in bytes, id and item counts, the last change), Sections the addon dropped to stay small, and unknown Sections a newer addon sent. Use it to see what was collected; read bodies with get_game_data.",
+      inputSchema: { account: whoSchema.account },
+    },
+    async ({ account }) => text(data.catalog({ account })),
+  );
+
+  server.registerTool(
+    "delete_account_data",
+    {
+      title: "Delete an Account's data (owner only)",
+      description:
+        "Owner only. Erases every Game data Section, its history, the Characters, 0.6 profiles, Player history and personal advice of one Account. Requests and plans stay. This cannot be undone; pass confirm: true.",
+      inputSchema: {
+        account: z.string().min(1).max(80),
+        confirm: z.literal(true),
+      },
+    },
+    async ({ account }) => {
+      try {
+        return text(store.deleteAccountData(account));
+      } catch (error) {
+        return failure(error);
+      }
     },
   );
 
@@ -411,7 +616,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     "answer_request",
     {
       title: "Answer an in-game request",
-      description: `Reply to an item or question request (or add a message to a plan request). The player already got a quick local answer; yours arrives at their next login or when they accept Wisp's Refresh offer, so make it worth the wait. Write in the request's lang, like a friendly spoken chat reply: short sentences, no markdown, no links, at most ${ANSWER_MAX_BYTES} bytes. A blank line splits the reply into up to 3 chat bubbles. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for for this character and its Alts, and what to do with it (keep, bank, sell, send to an Alt).`,
+      description: `Reply to an item or question request (or add a message to a plan request). The player already got a quick local answer; yours arrives at their next login or when they accept Wisp's Refresh offer, so make it worth the wait. Write in the request's lang, like a friendly spoken chat reply: short sentences, no markdown and no web links, at most ${ANSWER_MAX_BYTES} bytes. A blank line splits the reply into up to 3 chat bubbles. The message may carry the same link tokens as a plan, with entities for npcs. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for for this character and its Alts, and what to do with it (keep, bank, sell, send to an Alt).`,
       inputSchema: {
         requestId: z.string().describe("Request id from list_requests"),
         message: z.string().describe(`The reply, at most ${ANSWER_MAX_BYTES} bytes`),
@@ -421,17 +626,25 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
           .optional()
           .describe("Optional route for the reply. Coordinates are 0 to 1."),
         plan: planSchema.optional().describe("Optional follow-up plan, same shape as put_plan."),
+        entities: entitiesSchema
+          .optional()
+          .describe("Npc names and places for {npc:ID} tokens in the message."),
       },
     },
-    async ({ requestId, message, waypoints, plan }) => {
+    async ({ requestId, message, waypoints, plan, entities }) => {
       try {
         if (!store.requestById(requestId)) return failure(new Error("No request with that id."));
-        const answer = cleanAnswer(message, waypoints, Math.floor(Date.now() / 1000));
-        const stored = plan ? store.putPlan(plan) : undefined;
+        const warnings: string[] = [];
+        const ids = [...markupIds(message), ...(plan ? planMarkupIds(plan) : [])];
+        const missing = gameIds ? await gameIds.missing(ids) : undefined;
+        const now = Math.floor(Date.now() / 1000);
+        const answer = cleanAnswer(message, waypoints, now, entities, { missing, warnings });
+        const stored = plan ? store.putPlan(plan, now, { missing, warnings }) : undefined;
         const request = store.answerRequest(requestId, answer, stored?.id ?? null);
         return text({
           request: request ? publicRequest(request) : null,
           plan: stored ? { id: stored.id, plan: stored.unb1 } : null,
+          warnings,
         });
       } catch (error) {
         return failure(error);
@@ -484,11 +697,16 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
   return server;
 }
 
-export async function handleMcp(c: Context, store: Store, dataDir: string): Promise<Response> {
+export async function handleMcp(
+  c: Context,
+  store: Store,
+  dataDir: string,
+  gameIds?: BlizzardIds,
+): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
   });
-  const server = createMcpServer(store, dataDir);
+  const server = createMcpServer(store, dataDir, gameIds);
   await server.connect(transport);
   return transport.handleRequest(c.req.raw);
 }

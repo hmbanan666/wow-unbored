@@ -121,7 +121,8 @@ test("history, account scope, and personal advice over MCP", async () => {
       200,
     );
     assert.equal(
-      (await profile("Mira", 1100, { context: { gold: 0, level: 80 }, bags: {} })).status,
+      (await profile("Mira", 1100, { context: { gold: 0, level: 80, zone: "Dornogal" }, bags: {} }))
+        .status,
       200,
     );
     assert.equal(
@@ -224,8 +225,9 @@ test("history, account scope, and personal advice over MCP", async () => {
     const body = (await download.json()) as {
       characters: { character: string; items: { itemID: number; to: string }[] }[];
     };
-    assert.equal(body.characters.length, 1);
-    assert.equal(body.characters[0]!.items[0]!.to, "Toma");
+    const withItems = body.characters.filter((row) => row.items.length > 0);
+    assert.equal(withItems.length, 1);
+    assert.equal(withItems[0]!.items[0]!.to, "Toma");
 
     const tools = await app.request("/mcp", {
       method: "POST",
