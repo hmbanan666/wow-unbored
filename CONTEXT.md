@@ -17,7 +17,7 @@ A one-click Plan starter chip in the Bubble, such as "Get a mount" or "Surprise 
 _Avoid_: wizard, mode card, option, filter.
 
 **Plan**
-What to do this session: 3 to 7 Steps. Wisp shows one Step at a time; the full list opens on click.
+What to do next: usually 3 to 7 Steps, but a Plan for one goal covers all of it in order, however many Steps that takes, never cut to a time (ADR 0037). Wisp shows one Step at a time; the full list opens on click.
 _Avoid_: route (a Waypoint list inside a Step), session, quest list, tracker.
 
 **Step**
@@ -37,7 +37,7 @@ What the player asks for from the Planner: a Full plan, after a short Survey. Sa
 _Avoid_: ticket, job, query, call.
 
 **Survey**
-The one or two chips Wisp asks before a Request: how much time, and an optional one-line wish. Then a summary with [Send now].
+The short question Wisp asks before a Request: an optional one-line wish, never how much time (ADR 0037). Then a summary with [Send now].
 _Avoid_: form, questionnaire, wizard.
 
 **ETA**
