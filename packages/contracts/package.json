@@ -10,7 +10,9 @@
     "./schema/request.json": "./schema/request.schema.json",
     "./schema/plan.json": "./schema/plan.schema.json",
     "./schema/profile.json": "./schema/profile.schema.json",
-    "./schema/snapshot.json": "./schema/snapshot.schema.json"
+    "./schema/snapshot.json": "./schema/snapshot.schema.json",
+    "./schema/suggestions.json": "./schema/suggestions.schema.json",
+    "./catalog.json": "./catalog/catalog.json"
   },
   "dependencies": {
     "zod": "^4.6.7"
