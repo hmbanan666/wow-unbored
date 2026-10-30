@@ -110,4 +110,4 @@ Companion сам обновляет себя и Виспа. Чтобы зара�
 
 ---
 
-Building, data tables, the plan format and releases: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). License: [MIT](LICENSE).
+Building, data tables, the plan format and releases: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Names, mascot and look: [BRAND.md](BRAND.md). License: [MIT](LICENSE).
