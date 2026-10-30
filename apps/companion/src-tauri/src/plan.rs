@@ -1580,7 +1580,7 @@ mod tests {
             table_get(shown, "seenAt").and_then(|v| v.as_u64()),
             Some(1_000_123 - 1_000_123 % 300)
         );
-        assert!(values.get("UnboredExternalPlan").is_none());
+        assert!(!values.contains_key("UnboredExternalPlan"));
 
         let plan = small_plan("with-status");
         assert!(install_plan(&retail, &plan).unwrap().changed);
@@ -1591,8 +1591,8 @@ mod tests {
         let text = fs::read_to_string(&lua).unwrap();
         let values = parse_saved_variables(&text).unwrap();
         assert!(
-            values.get("UnboredExternalPlan").is_some()
-                && values.get("UnboredCompanionStatus").is_some()
+            values.contains_key("UnboredExternalPlan")
+                && values.contains_key("UnboredCompanionStatus")
         );
 
         status.pairing = "approved".into();
