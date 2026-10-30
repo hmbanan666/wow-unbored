@@ -6,6 +6,12 @@
 # and git-cliff 2.14.2.
 # Usage: scripts/test-release-notes.sh [tag]   (default v0.7.0)
 set -euo pipefail
+# The synthetic squash is never pushed, but commit-tree still needs an
+# identity, and CI runners have none.
+export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-Unbored release notes}"
+export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-notes@unbored.invalid}"
+export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-$GIT_AUTHOR_NAME}"
+export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-$GIT_AUTHOR_EMAIL}"
 
 tag="${1:-v0.7.0}"
 root="$(git rev-parse --show-toplevel)"

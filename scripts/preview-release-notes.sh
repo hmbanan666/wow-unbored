@@ -7,6 +7,12 @@
 # Usage: scripts/preview-release-notes.sh <base> <head> "<PR title>" [number]
 # Locally: scripts/preview-release-notes.sh origin/main HEAD "feat: ..."
 set -euo pipefail
+# The synthetic squash is never pushed, but commit-tree still needs an
+# identity, and CI runners have none.
+export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-Unbored release notes}"
+export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-notes@unbored.invalid}"
+export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-$GIT_AUTHOR_NAME}"
+export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-$GIT_AUTHOR_EMAIL}"
 
 base="$(git rev-parse "$1^{commit}")"
 head="$(git rev-parse "$2^{commit}")"
