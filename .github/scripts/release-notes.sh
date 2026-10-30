@@ -18,7 +18,7 @@ range="$tag"
 if [ -n "$previous" ]; then
   range="${previous}..${tag}"
 fi
-notes="$(git cliff --config "${root}/cliff.toml" --strip all "$range" 2>/dev/null || true)"
+notes="$(git cliff --config "${root}/cliff.toml" --strip all "$range")"
 if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
   notes="Maintenance release: no changes players will notice."
 fi

@@ -2,23 +2,34 @@
 # One tag vX.Y.Z includes every scope. NOTES_SCOPE is unused by the
 # release script; "addon" and "companion" remain for a local preview.
 # Squash merges keep each commit as one "* type(scope): ..." line in the
-# body, so split_commits turns every line into its own entry. The
-# "chore(release)" title line, and a title that starts with a version
-# ("feat: v0.8.0 ..."), are dropped in the template, not by a skip parser:
-# git-cliff parses the whole commit before it splits it, so skipping the
-# title would drop every line of the squash. Players see
-# Features, Fixes and Performance only (D114); a line already shown, in any
-# group, is not shown again (D115).
+# body, so split_commits turns every line into its own entry. git-cliff
+# parses the whole commit before it splits it, so a skip parser that
+# matches the squash title ("chore: ...") drops every line of the squash.
+# Nothing here skips by type: maintenance types land in a hidden group the
+# template leaves out. The template also drops the "chore(release)" line,
+# a title that starts with a version ("feat: v0.8.0 ..."), and a squash
+# title whose body already lists player lines. Players see Features, Fixes
+# and Performance only (D114); a line already shown, in any group, is not
+# shown again (D115).
 
 [changelog]
 header = ""
 body = """
 {% set only = get_env(name="NOTES_SCOPE", default="") -%}
+{% set all = commits -%}
 {% set_global seen = [] -%}
 {% for group, commits in commits | group_by(attribute="group") -%}
+{% if group is containing("Maintenance") %}{% continue %}{% endif -%}
 {% set_global shown = [] -%}
 {% for commit in commits -%}
 {% if commit.scope == "release" %}{% continue %}{% endif -%}
+{% set family = all | filter(attribute="id", value=commit.id) -%}
+{% set head = family | first -%}
+{% if family | length > 1 and head.message == commit.message -%}
+{% set_global players = 0 -%}
+{% for sibling in family %}{% if sibling.group is not containing("Maintenance") %}{% set_global players = players + 1 %}{% endif %}{% endfor -%}
+{% if players > 1 %}{% continue %}{% endif -%}
+{% endif -%}
 {% if only == "companion" and commit.scope != "companion" %}{% continue %}{% endif -%}
 {% if only == "addon" and commit.scope in ["companion", "server"] %}{% continue %}{% endif -%}
 {% set line = commit.message | split(pat="\n") | first | trim | lower | trim_end_matches(pat=".") | trim -%}
@@ -56,5 +67,5 @@ commit_parsers = [
   { message = "^feat", group = "<!-- 0 -->Features" },
   { message = "^fix", group = "<!-- 1 -->Fixes" },
   { message = "^perf", group = "<!-- 2 -->Performance" },
-  { message = "^(refactor|docs|chore|test|ci|build|style|revert)", skip = true },
+  { message = "^(refactor|docs|chore|test|ci|build|style|revert)", group = "<!-- 9 -->Maintenance" },
 ]
