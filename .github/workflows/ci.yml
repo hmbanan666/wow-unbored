@@ -22,7 +22,7 @@ jobs:
           lua5.1 tests/run.lua
           lua5.1 tests/ui.lua
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
