@@ -13,6 +13,7 @@ end
 load("Core/Namespace.lua")
 load("Core/Locale.lua")
 load("Core/Codec.lua")
+load("Core/Markup.lua")
 load("Core/Import.lua")
 
 local plan, err = ns.DecodeImport(unb1)

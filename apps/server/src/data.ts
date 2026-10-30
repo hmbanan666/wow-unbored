@@ -72,6 +72,16 @@ export type SectionRow = {
   body: Record<string, unknown>;
 };
 
+export const MAX_DIGEST_ALTS = 50;
+
+export type DigestAlt = {
+  name: string;
+  realm: string;
+  faction?: string;
+  seenAt: number;
+  professions: { skillLine: number | null; name: string | null; skill: number | null }[];
+};
+
 export type CharacterRow = {
   id: string;
   accountId: string;
@@ -961,6 +971,40 @@ export class DataStore {
       for (const s of this.sections("account", row.accountId)) out.set(s.section, s);
     for (const s of this.sections("char", row.id)) out.set(s.section, s);
     return out;
+  }
+
+  /**
+   * The Account digest for the Companion (D76): every other Character on the
+   * same Account with its faction and professions, so Alt routing works for
+   * Alts never logged in on this PC.
+   */
+  accountAlts(row: CharacterRow, limit = MAX_DIGEST_ALTS): DigestAlt[] {
+    if (!row.accountId) return [];
+    return this.characters(row.accountId)
+      .filter((other) => other.id !== row.id)
+      .slice(0, limit)
+      .map((other) => {
+        const char = this.section("char", other.id, "char")?.body ?? {};
+        const legacy = this.section("char", other.id, "profile")?.body;
+        const raw = this.section("char", other.id, "professions")?.body.list ?? legacy?.professions;
+        const professions = (Array.isArray(raw) ? raw : [])
+          .filter(isObject)
+          .map((item) => ({
+            skillLine: typeof item.skillLine === "number" ? item.skillLine : null,
+            name: typeof item.name === "string" ? item.name.slice(0, 60) : null,
+            skill: typeof item.skill === "number" ? item.skill : null,
+          }))
+          .filter((item) => item.skillLine !== null)
+          .slice(0, 6);
+        const alt: DigestAlt = {
+          name: other.name,
+          realm: other.realm,
+          seenAt: other.lastSeen,
+          professions,
+        };
+        if (typeof char.faction === "string") alt.faction = char.faction.slice(0, 20);
+        return alt;
+      });
   }
 
   /**

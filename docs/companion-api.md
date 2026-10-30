@@ -175,13 +175,18 @@ Personal advice for the characters whose profiles this device uploaded (docs/adr
       "updatedAt": 1761720000,
       "items": [
         { "itemID": 2447, "action": "send", "line": "Send to Mira (Alchemy): mail", "lineRu": "Отправь Мире (алхимия): почтой", "to": "Mira" }
+      ],
+      "alts": [
+        { "name": "Mira", "realm": "Area 52", "faction": "Horde", "seenAt": 1761710000, "professions": [{ "skillLine": 171, "name": "Alchemy", "skill": 75 }] }
       ]
     }
   ]
 }
 ```
 
-The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character:
+`alts` is the Account digest (D76): the other Characters on the same Account (at most 50), with faction and up to 6 professions, so the game can route items to Alts this PC has never seen. Every character this device uploaded is listed, even with no items.
+
+The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character, plus the `alts`:
 
 ```lua
 UnboredAdvice = {
@@ -191,6 +196,9 @@ UnboredAdvice = {
       ["updatedAt"] = 1761720000,
       ["items"] = {
         [2447] = { ["action"] = "send", ["line"] = "Send to Mira (Alchemy): mail", ["lineRu"] = "...", ["to"] = "Mira", },
+      },
+      ["alts"] = {
+        { ["name"] = "Mira", ["realm"] = "Area 52", ["faction"] = "Horde", ["seenAt"] = 1761710000, ["professions"] = { { ["skillLine"] = 171, ["name"] = "Alchemy", ["skill"] = 75, }, }, },
       },
     },
   },

@@ -350,3 +350,45 @@ test("0.6 profiles are moved into Sections once", () => {
     second.close();
   }
 });
+
+test("advice carries the Account digest: each character's Alts with faction and professions", async () => {
+  const { app, close } = build();
+  try {
+    assert.equal((await post(app, fixture)).status, 200);
+    const alt = structuredClone(fixture);
+    alt.character = "Brew";
+    alt.savedAt = fixture.savedAt + 10;
+    const professions = {
+      list: [{ skillLine: 171, name: "Alchemy", skill: 75, max: 100 }],
+    };
+    alt.sections = {
+      char: {
+        ...fixture.sections.char,
+        body: { ...fixture.sections.char.body, name: "Brew", faction: "Horde" },
+      },
+      professions: { ...fixture.sections.char, body: professions, hash: sectionHash(professions) },
+    };
+    alt.sections.char.hash = sectionHash(alt.sections.char.body);
+    assert.equal((await post(app, alt)).status, 200);
+    const response = await app.request("/v1/advice", {
+      headers: { authorization: `Bearer ${companion}` },
+    });
+    const body = (await json(response)) as {
+      characters: { character: string; items: unknown[]; alts: Record<string, unknown>[] }[];
+    };
+    const mira = body.characters.find((row) => row.character === "Mira");
+    assert.ok(mira, JSON.stringify(body));
+    assert.deepEqual(mira.items, []);
+    assert.equal(mira.alts.length, 1);
+    assert.equal(mira.alts[0].name, "Brew");
+    assert.equal(mira.alts[0].faction, "Horde");
+    assert.deepEqual(mira.alts[0].professions, [{ skillLine: 171, name: "Alchemy", skill: 75 }]);
+    const brew = body.characters.find((row) => row.character === "Brew");
+    assert.deepEqual(
+      brew?.alts.map((row) => row.name),
+      ["Mira"],
+    );
+  } finally {
+    close();
+  }
+});

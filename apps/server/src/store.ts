@@ -16,7 +16,10 @@ import {
 } from "./plan.ts";
 
 import { IdCache } from "./blizzard.ts";
-import { DataStore, mergeProfile, type CleanSnapshot, type SnapshotResult } from "./data.ts";
+import {
+  DataStore,
+  type DigestAlt,
+  mergeProfile, type CleanSnapshot, type SnapshotResult } from "./data.ts";
 import type { ProfileUpload } from "./profile.ts";
 
 export { mergeProfile };
@@ -903,10 +906,11 @@ export class Store {
     return input.items.length;
   }
 
-  /** Advice for every character this device uploaded a profile for. */
-  adviceForDevice(
-    deviceId: string,
-  ): { character: string; realm: string; updatedAt: number; items: ItemAdvice[] }[] {
+  /**
+   * Advice for every character this device uploaded data for, with the Account
+   * digest (its Alts) so routing works for Alts seen on other PCs (D76).
+   */
+  adviceForDevice(deviceId: string): DeviceAdvice[] {
     const rows = this.db
       .prepare(
         `SELECT a.character_name, a.realm, a.item_id, a.body_json, a.updated_at FROM advice a
@@ -920,14 +924,29 @@ export class Store {
       body_json: string;
       updated_at: number;
     }[];
-    const out = new Map<
-      string,
-      { character: string; realm: string; updatedAt: number; items: ItemAdvice[] }
-    >();
+    const out = new Map<string, DeviceAdvice>();
+    for (const character of this.data.characters()) {
+      if (deviceId !== "legacy" && character.deviceId !== deviceId) continue;
+      const key = `${character.realm}\0${character.name}`;
+      if (out.has(key)) continue;
+      out.set(key, {
+        character: character.name,
+        realm: character.realm,
+        updatedAt: 0,
+        items: [],
+        alts: this.data.accountAlts(character),
+      });
+    }
     for (const row of rows) {
       const key = `${row.realm}\0${row.character_name}`;
       if (!out.has(key))
-        out.set(key, { character: row.character_name, realm: row.realm, updatedAt: 0, items: [] });
+        out.set(key, {
+          character: row.character_name,
+          realm: row.realm,
+          updatedAt: 0,
+          items: [],
+          alts: [],
+        });
       const entry = out.get(key)!;
       entry.updatedAt = Math.max(entry.updatedAt, row.updated_at);
       entry.items.push({
@@ -1053,6 +1072,14 @@ function deviceFromRow(row: DeviceRow): Device {
 }
 
 export type RequestStatus = "pending" | "fulfilled" | "failed";
+
+export type DeviceAdvice = {
+  character: string;
+  realm: string;
+  updatedAt: number;
+  items: ItemAdvice[];
+  alts: DigestAlt[];
+};
 
 export type WebhookDelivery = {
   attempts: number;
