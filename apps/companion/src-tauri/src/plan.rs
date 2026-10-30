@@ -40,6 +40,9 @@ pub struct Plan {
     #[serde(default)]
     pub request_reason: Option<String>,
     pub tasks: Vec<Task>,
+    /// Npc names and places for `{npc:ID}` tokens (packages/contracts/markup.md).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entities: Option<Value>,
 }
 
 fn default_mode() -> String {
@@ -621,6 +624,9 @@ fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
     for (key, value) in extras {
         push_pair(&mut out, 1, key, value);
     }
+    if let Some(entities) = plan.entities.as_ref().filter(|value| value.is_object()) {
+        push_pair(&mut out, 1, "entities", entities);
+    }
     out.push_str("  [\"tasks\"] = {\n");
     for task in &plan.tasks {
         out.push_str("    {\n");
@@ -808,6 +814,30 @@ mod tests {
             Some("Ashes \"of\" Al'ar\nline")
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn keeps_link_tokens_and_npc_entities_from_the_markup_fixture() {
+        const MARKUP: &str = include_str!("../../../../packages/contracts/fixtures/markup.json");
+        let doc: Value = serde_json::from_str(MARKUP).unwrap();
+        let plan = plan_from_value(doc["plan"].clone()).unwrap();
+        let text = render_plan_lua(&plan);
+        let values = parse_saved_variables(&text).unwrap();
+        let external = values.get("UnboredExternalPlan").unwrap();
+        let tasks = crate::savedvars::table_get(external, "tasks").unwrap();
+        let first = crate::savedvars::array_items(tasks)[0];
+        assert_eq!(
+            crate::savedvars::table_get(first, "title").and_then(|v| v.as_str()),
+            Some("Talk to {npc:12345}")
+        );
+        let npc = crate::savedvars::table_get(external, "entities")
+            .and_then(|v| crate::savedvars::table_get(v, "npc"))
+            .and_then(|v| crate::savedvars::table_get(v, "12345"))
+            .unwrap();
+        assert_eq!(
+            crate::savedvars::table_get(npc, "name").and_then(|v| v.as_str()),
+            Some("Fixer Kev")
+        );
     }
 
     #[test]
