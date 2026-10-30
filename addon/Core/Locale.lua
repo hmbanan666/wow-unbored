@@ -255,6 +255,10 @@ local en = {
   INTENT_PLAN = "Make it a plan",
   ASK_FORWARDED = "Good question! I passed it to the planner.",
   ASK_LOCAL_ONLY = "I can't answer that one here. With Unbored Companion on your PC, the planner can.",
+  MENU_SHARE_DATA = "Share game data to make Wisp smarter",
+  MENU_TOOLTIP_LINES = "Wisp lines in tooltips",
+  SHARE_OFF = "Okay. I'll keep only what a plan needs: your character, gear, quests and sessions.",
+  SHARE_ON = "Thanks! I'll get to know your characters better from now on.",
 }
 
 local ru = {
@@ -508,6 +512,10 @@ local ru = {
   INTENT_PLAN = "Сделать планом",
   ASK_FORWARDED = "Хороший вопрос! Я передал его планировщику.",
   ASK_LOCAL_ONLY = "Здесь я на это не отвечу. С Unbored Companion на ПК ответит планировщик.",
+  MENU_SHARE_DATA = "Делиться игровыми данными, чтобы Висп был умнее",
+  MENU_TOOLTIP_LINES = "Строки Виспа в подсказках",
+  SHARE_OFF = "Хорошо. Оставлю только то, что нужно для плана: персонажа, экипировку, задания и сессии.",
+  SHARE_ON = "Спасибо! Теперь я буду узнавать твоих персонажей лучше.",
 }
 
 ns.Locales = { en = en, ru = ru }

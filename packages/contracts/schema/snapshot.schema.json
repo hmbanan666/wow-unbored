@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unbored.kosarev.space/schema/snapshot.json",
+  "title": "Game data snapshot upload",
+  "description": "POST /v1/snapshot: the Sections of one Character and its Account that changed since the last upload (docs/adr/0028, 0029). Validation is structural; unknown Sections and future versions are accepted and stored raw.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "account", "character", "sections"],
+  "properties": {
+    "schema": { "const": 2 },
+    "account": { "type": "string", "minLength": 1 },
+    "character": { "type": "string", "minLength": 1 },
+    "realm": { "type": "string" },
+    "savedAt": { "type": ["integer", "null"] },
+    "sections": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/section" },
+      "properties": {
+        "questsDone": { "$ref": "#/$defs/idSection" },
+        "mounts": { "$ref": "#/$defs/idSection" },
+        "toys": { "$ref": "#/$defs/idSection" },
+        "achievements": { "$ref": "#/$defs/idSection" },
+        "achievementsMine": { "$ref": "#/$defs/idSection" },
+        "pets": {
+          "allOf": [
+            { "$ref": "#/$defs/section" },
+            { "properties": { "body": { "properties": { "species": { "$ref": "#/$defs/packedIdSet" } } } } }
+          ]
+        },
+        "bags": { "$ref": "#/$defs/itemSection" },
+        "bank": { "$ref": "#/$defs/itemSection" },
+        "reagentBank": { "$ref": "#/$defs/itemSection" },
+        "warband": { "$ref": "#/$defs/itemSection" },
+        "recipes": {
+          "allOf": [
+            { "$ref": "#/$defs/section" },
+            {
+              "properties": {
+                "body": {
+                  "properties": {
+                    "byProfession": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": { "learned": { "$ref": "#/$defs/packedIdSet" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "dropped": {
+      "type": "object",
+      "properties": {
+        "char": { "$ref": "#/$defs/dropped" },
+        "account": { "$ref": "#/$defs/dropped" }
+      }
+    }
+  },
+  "$defs": {
+    "section": {
+      "type": "object",
+      "required": ["scope", "v", "body"],
+      "properties": {
+        "scope": { "enum": ["char", "account"] },
+        "v": { "type": "integer", "minimum": 1 },
+        "at": { "type": ["integer", "null"] },
+        "src": { "type": "string" },
+        "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "body": { "type": "object" }
+      }
+    },
+    "idSection": {
+      "allOf": [
+        { "$ref": "#/$defs/section" },
+        { "properties": { "body": { "properties": { "ids": { "$ref": "#/$defs/packedIdSet" } } } } }
+      ]
+    },
+    "itemSection": {
+      "allOf": [
+        { "$ref": "#/$defs/section" },
+        { "properties": { "body": { "properties": { "items": { "$ref": "#/$defs/packedIdSet" } } } } }
+      ]
+    },
+    "packedIdSet": {
+      "description": "Sorted unique ids, delta-encoded, base36, comma-joined, in chunks of at most 4,000 characters after the tag; idv1 adds :value parts per id (docs/contract/README.md).",
+      "type": "array",
+      "prefixItems": [{ "enum": ["ids1", "idv1"] }],
+      "items": { "type": "string", "maxLength": 4000, "pattern": "^[0-9a-z:]+(,[0-9a-z:]+)*$" }
+    },
+    "dropped": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": { "at": { "type": "integer" }, "bytes": { "type": "integer" } }
+      }
+    }
+  }
+}

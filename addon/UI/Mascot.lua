@@ -1547,7 +1547,20 @@ local function sizeItems(current, set)
   return out
 end
 
--- Settings stay basic: sizes, lock, hide, keybinds. The rest is under More.
+-- Off keeps only the Sections a Plan Request needs (docs/adr/0031).
+function ns.Mascot:SetSharing(on)
+  ns.DB.shareData = on and true or false
+  if ns.Snapshot then
+    if on then
+      pcall(ns.Snapshot.LoginPass)
+    else
+      pcall(ns.Snapshot.ApplySharing)
+    end
+  end
+  self:Echo(ns.T(on and "SHARE_ON" or "SHARE_OFF"))
+end
+
+-- Settings stay basic: sizes, lock, hide, sharing, keybinds. The rest is under More.
 function ns.Mascot:SettingsTree()
   return {
     { text = ns.T("MENU_WISP_SIZE"), children = sizeItems(self.Scale, function(p) self:SetScale(p) end) },
@@ -1559,6 +1572,16 @@ function ns.Mascot:SettingsTree()
       text = ns.T("MENU_LOCK_MASCOT"),
       checked = function() return self:Locked() end,
       func = function() self:SetLocked(not self:Locked()) end,
+    },
+    {
+      text = ns.T("MENU_SHARE_DATA"),
+      checked = function() return ns.DB.shareData ~= false end,
+      func = function() self:SetSharing(ns.DB.shareData == false) end,
+    },
+    {
+      text = ns.T("MENU_TOOLTIP_LINES"),
+      checked = function() return ns.DB.tooltipLines ~= false end,
+      func = function() ns.DB.tooltipLines = ns.DB.tooltipLines == false end,
     },
     { text = ns.T("MENU_HIDE_MASCOT"), func = function() self:Hide() end },
     { text = ns.T("MENU_KEYBINDS"), func = function() ns.Print(ns.T("KEYBIND_INFO")) end },

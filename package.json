@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "pnpm --filter @unbored/server start",
     "test": "pnpm test:addon && pnpm exec vp test && pnpm test:companion",
-    "test:addon": "cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/ui.lua",
+    "test:addon": "cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/data.lua && lua5.1 tests/ui.lua",
     "test:companion": "cargo test --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features",
     "lint": "pnpm exec vp check && (cd addon && luacheck .) && cargo fmt --manifest-path apps/companion/src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features -- -D warnings",
     "build": "pnpm --filter @unbored/server build && pnpm --filter @unbored/companion build",

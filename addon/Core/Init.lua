@@ -39,6 +39,12 @@ local function initDB()
   if type(UnboredDB.mascot) ~= "table" then
     UnboredDB.mascot = {}
   end
+  if UnboredDB.shareData == nil then
+    UnboredDB.shareData = true
+  end
+  if UnboredDB.tooltipLines == nil then
+    UnboredDB.tooltipLines = true
+  end
   if type(UnboredDB.itemNotes) ~= "table" then
     UnboredDB.itemNotes = {}
   end
@@ -103,6 +109,9 @@ function ns.OnEnteringWorld(initialLogin)
     pcall(ns.RegisterCompartment)
   end
   askForWorldData()
+  if ns.Snapshot then
+    pcall(ns.Snapshot.OnEnteringWorld)
+  end
   if ns.Session and ns.Session.Start then
     local ok, err = pcall(function()
       ns.Session:Start(initialLogin == true)

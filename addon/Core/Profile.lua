@@ -4,7 +4,8 @@
 -- because bags, money and item level read empty during logout. A part that
 -- reads empty never replaces a part that had data.
 -- The account-wide Alt registry (docs/adr/0021) lives in UnboredDB.alts.
--- TODO(adr-0009): for a public product, trim this to what each Request needs.
+-- From 0.7 the Game data snapshot (Core/Data/, docs/adr/0027) is the source;
+-- this 0.6 table is still written for one release and goes in 0.8.
 
 local _, ns = ...
 
@@ -12,8 +13,10 @@ ns.Profile = {}
 
 local MAX_ITEMS = 600
 local MAX_CURRENCIES = 80
-local MAX_SESSIONS = 10
+local MAX_SESSIONS = 20
 local MAX_ZONES = 15
+local MAX_MAPS = 15
+local MAX_LEVELS = 20
 local MAX_RECENT = 30
 local MAX_UNMATCHED = 200
 local MAX_ALT_QUESTS = 60
@@ -369,20 +372,22 @@ end
 
 -- The bank can only be read while it is open, so the last look is kept.
 function ns.Profile.SeeBank()
-  local _, bank, warband, reagent = ns.Profile.BagIds()
+  local _, bank, _, reagent = ns.Profile.BagIds()
+  -- The banks live in the snapshot Sections now; the 0.6 copies in
+  -- UnboredCharDB.bank and UnboredDB.warbandBank only doubled the file size.
+  charDB().bank = nil
+  if ns.DB then
+    ns.DB.warbandBank = nil
+  end
+  local p = profile()
+  p.warband = nil
   local items = ns.Profile.CountItems(bank)
   if items and #items > 0 then
-    charDB().bank = { seenAt = ns.Now(), items = items }
-    profile().bank = charDB().bank
+    p.bank = { seenAt = ns.Now(), items = items }
   end
   local reagents = #reagent > 0 and ns.Profile.CountItems(reagent)
   if reagents and #reagents > 0 then
-    profile().reagentBank = { seenAt = ns.Now(), items = reagents }
-  end
-  local shared = ns.Profile.CountItems(warband)
-  if ns.DB and shared and #shared > 0 then
-    ns.DB.warbandBank = { seenAt = ns.Now(), items = shared }
-    profile().warband = ns.DB.warbandBank
+    p.reagentBank = { seenAt = ns.Now(), items = reagents }
   end
 end
 
@@ -468,7 +473,11 @@ function ns.Profile.StartSession(initial)
   p.sessions = db.sessions
   p.recentSteps = db.recentSteps
   p.bank = p.bank or db.bank
-  p.warband = p.warband or (ns.DB and ns.DB.warbandBank) or nil
+  db.bank = nil
+  p.warband = nil
+  if ns.DB then
+    ns.DB.warbandBank = nil
+  end
   pcall(ns.Profile.ReadAll)
 end
 
@@ -479,6 +488,12 @@ function ns.Profile.NoteZone()
     return
   end
   current.zones = type(current.zones) == "table" and current.zones or {}
+  if C_Map and C_Map.GetBestMapForUnit then
+    local mapID = ns.AsNumber(ns.Call(C_Map.GetBestMapForUnit, "player"))
+    if mapID and mapID ~= current.mapID then
+      ns.Profile.NoteMap(mapID)
+    end
+  end
   local zone = ns.SafeString(ns.Call(GetRealZoneText), 80)
   if not zone or zone == "" or current.zones[#current.zones] == zone then
     return
@@ -490,6 +505,65 @@ function ns.Profile.NoteZone()
   end
   if #current.zones < MAX_ZONES then
     current.zones[#current.zones + 1] = zone
+  end
+end
+
+-- Minutes per map in the current session: the time since the last map change
+-- is added to the map the player was on.
+function ns.Profile.NoteMap(mapID, now)
+  local sessions = charDB().sessions
+  local current = type(sessions) == "table" and sessions[#sessions] or nil
+  if type(current) ~= "table" then
+    return
+  end
+  now = now or ns.Now()
+  current.maps = type(current.maps) == "table" and current.maps or {}
+  local function entry(id)
+    for i = 1, #current.maps do
+      if current.maps[i].mapID == id then
+        return current.maps[i]
+      end
+    end
+    if #current.maps >= MAX_MAPS then
+      return nil
+    end
+    local new = { mapID = id, minutes = 0 }
+    current.maps[#current.maps + 1] = new
+    return new
+  end
+  local previous = ns.AsNumber(current.mapID)
+  local since = ns.AsNumber(current.mapSince)
+  if previous and since and now > since then
+    local spent = entry(previous)
+    if spent then
+      spent.minutes = math.floor(((spent.minutes or 0) + (now - since) / 60) * 10 + 0.5) / 10
+    end
+  end
+  mapID = ns.AsNumber(mapID)
+  if mapID then
+    entry(mapID)
+  end
+  current.mapID, current.mapSince = mapID, now
+end
+
+function ns.Profile.NoteDeath()
+  local sessions = charDB().sessions
+  local current = type(sessions) == "table" and sessions[#sessions] or nil
+  if type(current) == "table" then
+    current.deaths = (tonumber(current.deaths) or 0) + 1
+  end
+end
+
+function ns.Profile.NoteLevel(level)
+  local sessions = charDB().sessions
+  local current = type(sessions) == "table" and sessions[#sessions] or nil
+  level = ns.AsNumber(level)
+  if type(current) ~= "table" or not level then
+    return
+  end
+  current.levels = type(current.levels) == "table" and current.levels or {}
+  if #current.levels < MAX_LEVELS then
+    current.levels[#current.levels + 1] = { level = level, at = ns.Now() }
   end
 end
 
@@ -518,16 +592,25 @@ function ns.Profile.Save()
   local db = charDB()
   local sessions = db.sessions
   if type(sessions) == "table" and type(sessions[#sessions]) == "table" then
-    sessions[#sessions].stop = ns.Now()
+    local current = sessions[#sessions]
+    if current.mapID then
+      ns.Profile.NoteMap(current.mapID)
+    end
+    current.stop = ns.Now()
   end
   local p = profile()
   p.sessions = db.sessions
   p.savedAt = ns.Now()
 end
 
-function ns.Profile.OnEvent(event)
+function ns.Profile.OnEvent(event, arg1)
   if event == "PLAYER_LOGOUT" then
     ns.Profile.Save()
+  elseif event == "PLAYER_DEAD" then
+    ns.Profile.NoteDeath()
+  elseif event == "PLAYER_LEVEL_UP" then
+    ns.Profile.NoteLevel(arg1)
+    ns.Profile.Mark({ "context" })
   elseif event == "BANKFRAME_OPENED" or event == "PLAYERBANKSLOTS_CHANGED"
     or event == "PLAYERREAGENTBANKSLOTS_CHANGED" then
     ns.Profile.SeeBank()
@@ -543,7 +626,7 @@ function ns.Profile.OnEvent(event)
 end
 
 function ns.Profile.Events()
-  local out = { "PLAYERREAGENTBANKSLOTS_CHANGED" }
+  local out = { "PLAYERREAGENTBANKSLOTS_CHANGED", "PLAYER_DEAD" }
   for event in pairs(EVENT_PARTS) do
     out[#out + 1] = event
   end

@@ -9,6 +9,10 @@ files["tests/run.lua"] = {
   ignore = { "121", "122" },
 }
 
+files["tests/data.lua"] = {
+  ignore = { "121", "122" },
+}
+
 files["tests/ui.lua"] = {
   ignore = { "111", "112", "121", "122" },
 }
@@ -38,6 +42,28 @@ globals = {
 }
 
 read_globals = {
+  "C_ClassTalents",
+  "C_GossipInfo",
+  "ChatFrame_DisplayTimePlayed",
+  "ChatFrameUtil",
+  "C_MythicPlus",
+  "C_PlayerInfo",
+  "C_Reputation",
+  "C_TradeSkillUI",
+  "C_Traits",
+  "C_WeeklyRewards",
+  "debugprofilestop",
+  "GetCategoryList",
+  "GetCategoryNumAchievements",
+  "GetNumSavedWorldBosses",
+  "GetSavedInstanceEncounterInfo",
+  "GetSavedWorldBossInfo",
+  "GetXPExhaustion",
+  "IsInGuild",
+  "RequestTimePlayed",
+  "UnitRace",
+  "UnitXP",
+  "UnitXPMax",
   "C_AddOns",
   "C_Calendar",
   "C_CurrencyInfo",
