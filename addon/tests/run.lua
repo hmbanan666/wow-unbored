@@ -843,16 +843,17 @@ C_Container = {
   GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end,
   GetContainerItemInfo = function() return { itemID = 2589, stackCount = 4 } end,
 }
-ns.Profile.ReadAll()
-local rolling = UnboredCharDB.profile
-check(rolling.professions and rolling.professions[1].skillLine == 171, "the profile keeps professions")
-check(rolling.bags and rolling.bags[1].itemID == 2589 and rolling.bags[1].count == 4, "the profile reads bags")
-C_Container.GetContainerNumSlots = function() return 0 end
+UnboredCharDB.profile = { v = 1, bags = { { itemID = 1, count = 1 } } }
+UnboredCharDB.bank = { items = {} }
+ns.Profile.StartSession(true)
+check(UnboredCharDB.profile == nil and UnboredCharDB.bank == nil, "the 0.6 profile is removed at login (D113)")
 ns.Profile.OnEvent("BAG_UPDATE_DELAYED")
+ns.Profile.OnEvent("SKILL_LINES_CHANGED")
 ns.Profile.Flush(true)
-check(rolling.bags and rolling.bags[1].itemID == 2589, "bags that read empty never replace bags with data")
 ns.Profile.OnEvent("PLAYER_LOGOUT")
-check(type(rolling.savedAt) == "number" and rolling.bags[1].count == 4, "logout only stamps the time")
+check(UnboredCharDB.profile == nil, "and never written again")
+check(type(UnboredCharDB.sessions) == "table" and UnboredCharDB.sessions[#UnboredCharDB.sessions].stop == ns.Now(),
+  "logout only stamps the session's time")
 local altKey = ns.Profile.AltKey(UnitName("player"), GetRealmName())
 check(UnboredDB.alts and UnboredDB.alts[altKey] and UnboredDB.alts[altKey].professions[1].skillLine == 171,
   "this character is in the alt registry")
@@ -861,7 +862,11 @@ UnboredDB.alts["Other-Bob"] = { name = "Bob", realm = "Other", seenAt = 1 }
 check(#ns.Profile.Alts() == 1 and ns.Profile.Alts()[1].name == "Bob", "the alt list has the other characters")
 ns.Profile.NoteUnmatched(42)
 ns.Profile.NoteUnmatched(42)
-check(#rolling.unmatchedItems == 1, "an unmatched item is logged once")
+local unmatched = 0
+for _, entry in ipairs((ns.Snapshot.Body("unresolvedIds") or {}).list or {}) do
+  unmatched = unmatched + ((entry.kind == "advice" and entry.id == 42) and 1 or 0)
+end
+check(unmatched == 1, "an unmatched item is logged once, with the unresolved ids")
 GetProfessions, GetProfessionInfo, C_Container = savedProfessions, nil, savedContainer
 UnitName, GetRealmName = nil, nil
 

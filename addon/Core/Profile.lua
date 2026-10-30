@@ -1,26 +1,21 @@
--- The player profile the Companion uploads (docs/adr/0011, 0020): a rolling
--- snapshot in UnboredCharDB.profile. Each part is refreshed by the game event
--- that changes it, while the game is fully loaded; logout only stamps the time,
--- because bags, money and item level read empty during logout. A part that
--- reads empty never replaces a part that had data.
--- The account-wide Alt registry (docs/adr/0021) lives in UnboredDB.alts.
--- From 0.7 the Game data snapshot (Core/Data/, docs/adr/0027) is the source;
--- this 0.6 table is still written for one release and goes in 0.8.
+-- What is left of the 0.6 player profile: the account-wide Alt registry
+-- (docs/adr/0021) in UnboredDB.alts, and this character's sessions and recent
+-- steps. The Game data snapshot (Core/Data/, docs/adr/0027) carries the rest;
+-- the old UnboredCharDB.profile table is no longer written and is removed at
+-- login (D113). Logout only stamps the time.
 
 local _, ns = ...
 
 ns.Profile = {}
 
 local MAX_ITEMS = 600
-local MAX_CURRENCIES = 80
 local MAX_SESSIONS = 20
 local MAX_ZONES = 15
 local MAX_MAPS = 15
 local MAX_LEVELS = 20
 local MAX_RECENT = 30
-local MAX_UNMATCHED = 200
 local MAX_ALT_QUESTS = 60
--- Bag and money events come in bursts; parts are read at most this often.
+-- Profession and quest events come in bursts; the Alt entry is read at most this often.
 local SETTLE_SECONDS = 2
 
 local function charDB()
@@ -28,14 +23,6 @@ local function charDB()
     UnboredCharDB = {}
   end
   return UnboredCharDB
-end
-
-local function profile()
-  local db = charDB()
-  if type(db.profile) ~= "table" then
-    db.profile = { v = 1 }
-  end
-  return db.profile
 end
 
 -- Bag ids by kind. Enum.BagIndex names change between expansions, so they
@@ -98,83 +85,6 @@ function ns.Profile.CountItems(bagIds)
   return out
 end
 
-local function currencies()
-  local api = C_CurrencyInfo
-  if not api or not api.GetCurrencyListSize or not api.GetCurrencyListInfo then
-    return nil
-  end
-  local out = {}
-  local size = ns.AsNumber(ns.Call(api.GetCurrencyListSize)) or 0
-  for i = 1, size do
-    local info = ns.Call(api.GetCurrencyListInfo, i)
-    if type(info) == "table" and not info.isHeader then
-      local quantity = ns.AsNumber(info.quantity)
-      if quantity and quantity > 0 then
-        local id
-        if api.GetCurrencyListLink and api.GetCurrencyIDFromLink then
-          id = ns.AsNumber(ns.Call(api.GetCurrencyIDFromLink, ns.Call(api.GetCurrencyListLink, i)))
-        end
-        out[#out + 1] = { id = id, name = ns.SafeString(info.name, 80), quantity = quantity }
-        if #out >= MAX_CURRENCIES then
-          break
-        end
-      end
-    end
-  end
-  return out
-end
-
-local function collections()
-  local out = {}
-  if C_MountJournal and C_MountJournal.GetMountIDs and C_MountJournal.GetMountInfoByID then
-    local ids = ns.Call(C_MountJournal.GetMountIDs)
-    if type(ids) == "table" then
-      local owned = 0
-      for i = 1, #ids do
-        local collected = select(11, ns.Call(C_MountJournal.GetMountInfoByID, ids[i]))
-        if ns.Flag(collected) then
-          owned = owned + 1
-        end
-      end
-      out.mounts = owned
-    end
-  end
-  if C_PetJournal and C_PetJournal.GetNumPets then
-    local _, owned = ns.Call(C_PetJournal.GetNumPets)
-    out.pets = ns.AsNumber(owned)
-  end
-  if C_ToyBox and C_ToyBox.GetNumLearnedDisplayedToys then
-    out.toys = ns.AsNumber(ns.Call(C_ToyBox.GetNumLearnedDisplayedToys))
-  end
-  if type(GetTotalAchievementPoints) == "function" then
-    out.achievementPoints = ns.AsNumber(ns.Call(GetTotalAchievementPoints))
-  end
-  return next(out) and out or nil
-end
-
-local function renown()
-  local api = C_MajorFactions
-  if not api or not api.GetMajorFactionIDs or not api.GetMajorFactionData then
-    return nil
-  end
-  local ids = ns.Call(api.GetMajorFactionIDs, LE_EXPANSION_LEVEL_CURRENT)
-  if type(ids) ~= "table" then
-    return nil
-  end
-  local out = {}
-  for i = 1, #ids do
-    local data = ns.Call(api.GetMajorFactionData, ids[i])
-    if type(data) == "table" then
-      out[#out + 1] = {
-        id = ns.AsNumber(ids[i]),
-        name = ns.SafeString(data.name, 80),
-        level = ns.AsNumber(data.renownLevel),
-      }
-    end
-  end
-  return #out > 0 and out or nil
-end
-
 -- Primary professions, archaeology, fishing and cooking, with skill.
 function ns.Profile.Professions()
   if type(GetProfessions) ~= "function" or type(GetProfessionInfo) ~= "function" then
@@ -195,33 +105,6 @@ function ns.Profile.Professions()
           max = ns.AsNumber(maxSkill) or 0,
         }
       end
-    end
-  end
-  return #out > 0 and out or nil
-end
-
-local EQUIP_SLOTS = 19
-
-local function itemLevel(link)
-  if not link then
-    return nil
-  end
-  if C_Item and C_Item.GetDetailedItemLevelInfo then
-    return ns.AsNumber(ns.Call(C_Item.GetDetailedItemLevelInfo, link))
-  end
-  return nil
-end
-
-function ns.Profile.Equipped()
-  if type(GetInventoryItemLink) ~= "function" then
-    return nil
-  end
-  local out = {}
-  for slot = 1, EQUIP_SLOTS do
-    local link = ns.Call(GetInventoryItemLink, "player", slot)
-    local itemID = type(link) == "string" and ns.AsNumber(tonumber(link:match("item:(%d+)") or ""))
-    if itemID then
-      out[#out + 1] = { slot = slot, itemID = itemID, ilvl = itemLevel(link) }
     end
   end
   return #out > 0 and out or nil
@@ -263,70 +146,18 @@ local function keep(target, key, value)
   end
 end
 
-local READERS = {
-  context = function(p)
-    local ok, context = pcall(ns.PlayerContext)
-    if not ok or type(context) ~= "table" then
-      return
-    end
-    p.context = type(p.context) == "table" and p.context or {}
-    for key, value in pairs(context) do
-      if value ~= 0 and value ~= "" then
-        p.context[key] = value
-      elseif p.context[key] == nil then
-        p.context[key] = value
-      end
-    end
-  end,
-  bags = function(p)
-    local bags = ns.Profile.BagIds()
-    keep(p, "bags", ns.Profile.CountItems(bags))
-  end,
-  equipped = function(p)
-    keep(p, "equipped", ns.Profile.Equipped())
-  end,
-  professions = function(p)
-    keep(p, "professions", ns.Profile.Professions())
-  end,
-  currencies = function(p)
-    keep(p, "currencies", currencies())
-  end,
-  collections = function(p)
-    keep(p, "collections", collections())
-  end,
-  renown = function(p)
-    keep(p, "renown", renown())
-  end,
-  quests = function(p)
-    keep(p, "quests", activeQuests())
-  end,
-}
-
+-- Events that change this character's Alt entry.
 local EVENT_PARTS = {
-  BAG_UPDATE_DELAYED = { "bags" },
-  PLAYER_MONEY = { "context" },
-  PLAYER_EQUIPMENT_CHANGED = { "equipped", "context" },
-  PLAYER_SPECIALIZATION_CHANGED = { "context" },
-  ACTIVE_TALENT_GROUP_CHANGED = { "context" },
-  PLAYER_LEVEL_UP = { "context" },
+  PLAYER_LEVEL_UP = { "level" },
   SKILL_LINES_CHANGED = { "professions" },
   TRADE_SKILL_LIST_UPDATE = { "professions" },
-  CURRENCY_DISPLAY_UPDATE = { "currencies" },
-  NEW_MOUNT_ADDED = { "collections" },
-  NEW_PET_ADDED = { "collections" },
-  NEW_TOY_ADDED = { "collections" },
-  TOYS_UPDATED = { "collections" },
   QUEST_ACCEPTED = { "quests" },
   QUEST_TURNED_IN = { "quests" },
-  ZONE_CHANGED_NEW_AREA = { "context" },
 }
 
--- Every part, once the world is loaded.
+-- The Alt entry, once the world is loaded.
 function ns.Profile.ReadAll()
-  ns.Profile.dirty = {}
-  for name in pairs(READERS) do
-    ns.Profile.dirty[name] = true
-  end
+  ns.Profile.dirty = { all = true }
   ns.Profile.Flush(true)
 end
 
@@ -348,66 +179,17 @@ function ns.Profile.Flush(now)
     return false
   end
   ns.Profile.dirty, ns.Profile.dirtyAt = {}, nil
-  local p = profile()
-  p.v = 1
-  p.character = ns.SafeString(ns.Call(UnitName, "player"), 80) or p.character
-  p.realm = ns.SafeString(ns.Call(GetRealmName), 80) or p.realm
-  for name in pairs(dirty) do
-    local reader = READERS[name]
-    if reader then
-      pcall(reader, p)
-    end
-  end
-  p.updatedAt = ns.Now()
-  if dirty.professions or dirty.context then
-    pcall(ns.Profile.NoteAlt)
-  end
+  pcall(ns.Profile.NoteAlt)
   return true
 end
 
--- Kept for callers and tests: the rolling profile as it stands.
-function ns.Profile.Snapshot()
-  return profile()
-end
-
--- The bank can only be read while it is open, so the last look is kept.
-function ns.Profile.SeeBank()
-  local _, bank, _, reagent = ns.Profile.BagIds()
-  -- The banks live in the snapshot Sections now; the 0.6 copies in
-  -- UnboredCharDB.bank and UnboredDB.warbandBank only doubled the file size.
-  charDB().bank = nil
-  if ns.DB then
-    ns.DB.warbandBank = nil
-  end
-  local p = profile()
-  p.warband = nil
-  local items = ns.Profile.CountItems(bank)
-  if items and #items > 0 then
-    p.bank = { seenAt = ns.Now(), items = items }
-  end
-  local reagents = #reagent > 0 and ns.Profile.CountItems(reagent)
-  if reagents and #reagents > 0 then
-    p.reagentBank = { seenAt = ns.Now(), items = reagents }
-  end
-end
-
--- An item Wisp had no Advice for (docs/adr/0019): only the id, to grow the rules.
+-- An item Bory had no Advice for (docs/adr/0019): only the id, to grow the
+-- rules. It goes with the unresolved Plan ids, marked "advice".
+-- TODO: confirm with the owner that unresolvedIds is the right Section for these.
 function ns.Profile.NoteUnmatched(itemID)
   itemID = ns.AsNumber(itemID)
-  if not itemID then
-    return
-  end
-  local p = profile()
-  p.unmatchedItems = type(p.unmatchedItems) == "table" and p.unmatchedItems or {}
-  local list = p.unmatchedItems
-  for i = 1, #list do
-    if list[i] == itemID then
-      return
-    end
-  end
-  list[#list + 1] = itemID
-  while #list > MAX_UNMATCHED do
-    table.remove(list, 1)
+  if itemID and ns.Snapshot and ns.Snapshot.NoteUnresolved then
+    ns.Snapshot.NoteUnresolved("advice", itemID)
   end
 end
 
@@ -517,12 +299,9 @@ function ns.Profile.StartSession(initial)
     end
   end
   ns.Profile.NoteZone()
-  local p = profile()
-  p.sessions = db.sessions
-  p.recentSteps = db.recentSteps
-  p.bank = p.bank or db.bank
+  -- The 0.6 tables: the snapshot Sections hold all of this now (D113).
+  db.profile = nil
   db.bank = nil
-  p.warband = nil
   if ns.DB then
     ns.DB.warbandBank = nil
   end
@@ -632,7 +411,6 @@ function ns.Profile.NoteStep(task, bucket)
   while #db.recentSteps > MAX_RECENT do
     table.remove(db.recentSteps, 1)
   end
-  profile().recentSteps = db.recentSteps
 end
 
 -- Logout: only the time. The parts were kept fresh while playing.
@@ -646,9 +424,6 @@ function ns.Profile.Save()
     end
     current.stop = ns.Now()
   end
-  local p = profile()
-  p.sessions = db.sessions
-  p.savedAt = ns.Now()
 end
 
 function ns.Profile.OnEvent(event, arg1)
@@ -658,10 +433,7 @@ function ns.Profile.OnEvent(event, arg1)
     ns.Profile.NoteDeath()
   elseif event == "PLAYER_LEVEL_UP" then
     ns.Profile.NoteLevel(arg1)
-    ns.Profile.Mark({ "context" })
-  elseif event == "BANKFRAME_OPENED" or event == "PLAYERBANKSLOTS_CHANGED"
-    or event == "PLAYERREAGENTBANKSLOTS_CHANGED" then
-    ns.Profile.SeeBank()
+    ns.Profile.Mark({ "level" })
   else
     if event == "ZONE_CHANGED_NEW_AREA" then
       ns.Profile.NoteZone()
@@ -674,7 +446,7 @@ function ns.Profile.OnEvent(event, arg1)
 end
 
 function ns.Profile.Events()
-  local out = { "PLAYERREAGENTBANKSLOTS_CHANGED", "PLAYER_DEAD" }
+  local out = { "PLAYER_DEAD", "ZONE_CHANGED_NEW_AREA" }
   for event in pairs(EVENT_PARTS) do
     out[#out + 1] = event
   end

@@ -112,7 +112,7 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 | `calendar` | account | C_Calendar, today to +14 days | 15 s after entering the world, once per login | |
 | `sessions` | char | zones with mapID and minutes, deaths, level ups (last 20) | events | 24 KB |
 | `addons` | account | C_AddOns.IsAddOnLoaded for TomTom, Auctionator, TSM, Bagnon | login | |
-| `unresolvedIds` | char | Plan ids the game could not resolve | when a link fails | |
+| `unresolvedIds` | char | Plan ids the game could not resolve, and items Bory had no tooltip advice for (`kind = "advice"`, was the 0.6 profile's `unmatchedItems`) | when a link fails, when an item has no line | |
 
 "Share game data to make Bory smarter" (`UnboredDB.shareData`, on by default) off keeps only `char`, `gear`, `questLog` and `sessions`, the Sections a Plan Request needs. The owner sees what arrived with the MCP tools `data_catalog` and `get_game_data`.
 

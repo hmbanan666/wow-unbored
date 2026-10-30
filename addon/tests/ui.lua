@@ -954,10 +954,9 @@ check(tip(901):find("Send to Alty (Alchemy 50): mail it", 1, true), "a reagent f
 UnboredDB.alts["Area 52-Alty"].realm = "Stormrage"
 check(tip(901):find("warband bank", 1, true), "another realm: the warband bank")
 check(tip(902) == "", "an item Wisp has nothing personal about: no line, no drop hint")
-local profile = UnboredCharDB.profile
 local logged = false
-for _, id in ipairs(profile and profile.unmatchedItems or {}) do
-  logged = logged or (type(id) == "table" and id.itemID or id) == 902
+for _, seen in ipairs((ns.Snapshot.Body("unresolvedIds") or {}).list or {}) do
+  logged = logged or (seen.kind == "advice" and seen.id == 902)
 end
 check(logged, "an unmatched item is logged for the Planner")
 check(tip(42) == "", "nothing until the game has the item")
@@ -1451,11 +1450,11 @@ ns.ReportError("again")
 check(#printed == lines + 1 and not printed[#printed]:find("Mascot.lua", 1, true), "one friendly line, no trace")
 check(#UnboredDB.errors == 2, "the details are kept")
 
--- The profile is kept current and saved with the game.
+-- The 0.6 profile is gone (D113); the snapshot is what the Companion uploads.
 driver.scripts.OnEvent(driver, "PLAYER_LOGOUT")
-profile = UnboredCharDB.profile
-check(profile and profile.character == "Hero" and profile.realm == "Area 52", "a profile is saved")
-check(profile and profile.context and profile.context.mapID == 84, "the profile has the player context")
+check(UnboredCharDB.profile == nil, "no 0.6 profile is saved")
+check(type(UnboredCharDB.data) == "table" and type(UnboredCharDB.data.sections) == "table",
+  "the snapshot is saved with the game")
 
 check(reloads == 4, "only the Send now, Refresh and Load clicks ever reloaded: " .. reloads)
 ns.Now = realNow

@@ -669,15 +669,6 @@ for i = 1, 20 do
 end
 S.Write("sessions", { list = sessions }, "event")
 
--- The 0.6 profile is written alongside for one release; it counts too,
--- with its own bag and bank rows (600 each at most).
-UnboredCharDB.profile = { v = 1, bags = {}, bank = { items = {} }, sessions = UnboredCharDB.sessions }
-for i = 1, 250 do
-  UnboredCharDB.profile.bags[i] = { itemID = 100000 + i, count = 1 }
-end
-for i = 1, 588 do
-  UnboredCharDB.profile.bank.items[i] = { itemID = 106000 + i, count = 1 }
-end
 local quests = {}
 for i = 1, 35 do
   quests[i] = { questID = 80000 + i, title = "A quest title of usual length " .. i, level = 80, complete = false,

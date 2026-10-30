@@ -226,7 +226,7 @@ The Companion fetches it on every sync and writes `Unbored_Plan/Suggestions.lua`
 
 ## POST /v1/profile
 
-The player profile (docs/adr/0011). The addon keeps `UnboredCharDB.profile` current from game events (bags, money, equipment, professions) and the game saves it at logout or a Refresh; the companion posts it once per `savedAt`, with the companion bearer:
+The 0.6 player profile (docs/adr/0011), kept for older addons. Addons 0.6 and 0.7 keep `UnboredCharDB.profile` current from game events (bags, money, equipment, professions) and the game saves it at logout or a Refresh; from 0.8 the addon no longer writes it and removes the old table at login (D113), and the Game data snapshot carries the same facts. When the table is there, the companion posts it once per `savedAt`, with the companion bearer:
 
 ```json
 { "character": "Hero", "realm": "Area 52", "savedAt": 1761720000,
