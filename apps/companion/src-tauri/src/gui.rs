@@ -19,9 +19,9 @@ use crate::device::{self, DeviceCredential};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::plan::{
-    decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file, pick_plan_file,
-    plan_from_value, render_request_lua, write_status, CompanionStatus, Plan, PlanFile,
-    PlannerState, RequestState,
+    decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file,
+    install_suggestions, pick_plan_file, plan_from_value, render_request_lua, write_status,
+    CompanionStatus, Plan, PlanFile, PlannerState, RequestState,
 };
 use crate::request::{reason, request_body, request_status_path, waited_request};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
@@ -935,6 +935,16 @@ fn sync_advice(settings: &Settings, retail: &Path, secret: &str) -> Result<bool,
     install_advice(retail, &body["characters"]).map_err(|err| err.0)
 }
 
+/// Bory's ideas for this PC's characters, into Suggestions.lua (D107).
+fn sync_suggestions(settings: &Settings, retail: &Path, secret: &str) -> Result<bool, String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let url = join_url(&effective_url(settings), "v1/suggestions");
+    let Some(body) = get_json(&client, &url, secret)? else {
+        return Ok(false);
+    };
+    install_suggestions(retail, &body).map_err(|err| err.0)
+}
+
 /// Sends in-game requests, then writes the one Plan.lua the game should see.
 /// Returns a status line when the file changed.
 fn sync_plans(
@@ -951,6 +961,7 @@ fn sync_plans(
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(settings, &retail, secret);
     let _ = post_profiles(settings, &retail, secret);
+    let _ = sync_suggestions(settings, &retail, secret);
     let _ = sync_advice(settings, &retail, secret);
     if let Some((request, why)) = rejected.first() {
         // Only the Reason code goes to the game; Wisp says its own line.

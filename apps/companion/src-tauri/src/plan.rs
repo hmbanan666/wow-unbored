@@ -18,6 +18,7 @@ pub const HELPER_TOC: &str = "\
 
 Plan.lua
 Advice.lua
+Suggestions.lua
 ";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -285,6 +286,20 @@ pub struct Written {
 
 const EMPTY_PLAN_LUA: &str = "-- Written by Unbored Companion. No plan yet.\n";
 const EMPTY_ADVICE_LUA: &str = "-- Written by Unbored Companion. No Personal advice yet.\n";
+const EMPTY_SUGGESTIONS_LUA: &str = "-- Written by Unbored Companion. No ideas yet.\n";
+
+/// D107: Suggestions.lua has its own small share of the D76 budget.
+pub const SUGGESTIONS_MAX_BYTES: usize = 20 * 1024;
+pub const SUGGESTIONS_MAX_LITERALS: usize = 2_000;
+const MAX_SUGGESTIONS: usize = 6;
+const SUGGESTION_TEXT: [(&str, usize); 6] = [
+    ("id", 120),
+    ("kind", 20),
+    ("title", 40),
+    ("titleToken", 60),
+    ("goal", 140),
+    ("why", 100),
+];
 
 /// Per character; the game holds all of it in memory.
 pub const MAX_ADVICE_ITEMS: usize = 500;
@@ -485,14 +500,135 @@ pub fn render_advice_within(characters: &Value, used_bytes: usize, used_literals
     EMPTY_ADVICE_LUA.to_string()
 }
 
+fn clip(text: &str, max_bytes: usize) -> String {
+    let mut end = text.len().min(max_bytes);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_string()
+}
+
+/// Only the fields the addon reads (D106), each within its limit.
+fn clean_suggestion(item: &Value) -> Option<Value> {
+    let mut out = serde_json::Map::new();
+    for (field, limit) in SUGGESTION_TEXT {
+        if let Some(text) = item[field].as_str().filter(|text| !text.trim().is_empty()) {
+            out.insert(field.into(), Value::String(clip(text, limit)));
+        }
+    }
+    if !(out.contains_key("id") && out.contains_key("title") && out.contains_key("goal")) {
+        return None;
+    }
+    let rewards: Vec<Value> = item["rewards"]
+        .as_array()
+        .map(|list| list.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|token| token.as_str())
+        .take(3)
+        .map(|token| Value::String(clip(token, 120)))
+        .collect();
+    out.insert("rewards".into(), Value::Array(rewards));
+    for field in ["mapID", "expiresAt"] {
+        if let Some(number) = item[field].as_u64() {
+            out.insert(field.into(), Value::from(number));
+        }
+    }
+    let reason = &item["reason"];
+    if let Some(kind) = reason["kind"].as_str() {
+        let mut why = serde_json::Map::new();
+        why.insert("kind".into(), Value::String(clip(kind, 20)));
+        for field in ["at", "count", "mapID"] {
+            if let Some(number) = reason[field].as_u64() {
+                why.insert(field.into(), Value::from(number));
+            }
+        }
+        out.insert("reason".into(), Value::Object(why));
+    }
+    let request = &item["request"];
+    if let Some(wish) = request["wish"].as_str() {
+        let mut ask = serde_json::Map::new();
+        ask.insert("topic".into(), Value::String("suggestion".into()));
+        ask.insert("suggestionId".into(), out["id"].clone());
+        ask.insert("wish".into(), Value::String(clip(wish, 300)));
+        out.insert("request".into(), Value::Object(ask));
+    }
+    Some(Value::Object(out))
+}
+
+fn render_suggestions_capped(body: &Value, per_character: usize) -> String {
+    let mut out =
+        String::from("-- Written by Unbored Companion. Bory's ideas, read at login or Refresh.\n");
+    out.push_str("UnboredSuggestions = {\n");
+    push_pair(&mut out, 1, "v", &Value::from(1));
+    push_pair(
+        &mut out,
+        1,
+        "computedAt",
+        &Value::from(body["computedAt"].as_u64().unwrap_or(0)),
+    );
+    let mut characters = serde_json::Map::new();
+    if let Some(map) = body["characters"].as_object() {
+        for (key, list) in map {
+            let items: Vec<Value> = list
+                .as_array()
+                .map(|list| list.as_slice())
+                .unwrap_or_default()
+                .iter()
+                .filter_map(clean_suggestion)
+                .take(per_character)
+                .collect();
+            if !items.is_empty() {
+                characters.insert(clip(key, 120), Value::Array(items));
+            }
+        }
+    }
+    push_pair(&mut out, 1, "characters", &Value::Object(characters));
+    out.push_str("}\n");
+    out
+}
+
+/// Suggestions.lua from GET /v1/suggestions (D107), fewer per character until it fits.
+pub fn render_suggestions_lua(body: &Value) -> String {
+    let fits = |text: &String| {
+        text.len() <= SUGGESTIONS_MAX_BYTES && count_lua_literals(text) <= SUGGESTIONS_MAX_LITERALS
+    };
+    for per_character in (1..=MAX_SUGGESTIONS).rev() {
+        let text = render_suggestions_capped(body, per_character);
+        if fits(&text) {
+            return text;
+        }
+    }
+    EMPTY_SUGGESTIONS_LUA.to_string()
+}
+
+/// Writes Suggestions.lua only when it changed. Returns true when it did.
+pub fn install_suggestions(retail: &Path, body: &Value) -> Result<bool, PlanError> {
+    let dir = helper_dir(retail);
+    fs::create_dir_all(&dir)
+        .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
+    write_helper_toc(&dir)?;
+    let text = render_suggestions_lua(body);
+    let path = dir.join("Suggestions.lua");
+    if fs::read_to_string(&path).ok().as_deref() == Some(text.as_str()) {
+        return Ok(false);
+    }
+    let tmp = dir.join("Suggestions.lua.tmp");
+    fs::write(&tmp, &text).map_err(|err| PlanError(format!("Could not write the ideas: {err}")))?;
+    fs::rename(&tmp, &path)
+        .map_err(|err| PlanError(format!("Could not replace the ideas: {err}")))?;
+    Ok(true)
+}
+
 /// Writes Advice.lua only when it changed. Returns true when it did.
 pub fn install_advice(retail: &Path, characters: &Value) -> Result<bool, PlanError> {
     let dir = helper_dir(retail);
     fs::create_dir_all(&dir)
         .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
     write_helper_toc(&dir)?;
-    let plan = fs::read_to_string(dir.join("Plan.lua")).unwrap_or_default();
-    let body = render_advice_within(characters, plan.len(), count_lua_literals(&plan));
+    let mut used = fs::read_to_string(dir.join("Plan.lua")).unwrap_or_default();
+    used.push_str(&fs::read_to_string(dir.join("Suggestions.lua")).unwrap_or_default());
+    let body = render_advice_within(characters, used.len(), count_lua_literals(&used));
     let path = dir.join("Advice.lua");
     if fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
         return Ok(false);
@@ -625,6 +761,11 @@ pub fn ensure_helper(retail: &Path) -> Result<(), PlanError> {
     if !advice_path.is_file() {
         fs::write(&advice_path, EMPTY_ADVICE_LUA)
             .map_err(|err| PlanError(format!("Could not write the advice: {err}")))?;
+    }
+    let ideas_path = dir.join("Suggestions.lua");
+    if !ideas_path.is_file() {
+        fs::write(&ideas_path, EMPTY_SUGGESTIONS_LUA)
+            .map_err(|err| PlanError(format!("Could not write the ideas: {err}")))?;
     }
     Ok(())
 }
@@ -1112,6 +1253,72 @@ mod tests {
             count_lua_literals("-- 12 \"x\"\nT = { [\"a\"] = 12, b2 = \"q\\\"z\" }\n"),
             3
         );
+    }
+
+    #[test]
+    fn writes_the_ideas_the_addon_reads_within_budget() {
+        const IDEAS: &str =
+            include_str!("../../../../packages/contracts/fixtures/suggestions.json");
+        const IDEAS_LUA: &str =
+            include_str!("../../../../packages/contracts/fixtures/suggestions.lua");
+        let body: Value = serde_json::from_str(IDEAS).unwrap();
+        let lua = render_suggestions_lua(&body);
+        if std::env::var_os("UNBORED_WRITE_FIXTURES").is_some() {
+            fs::write(
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../packages/contracts/fixtures/suggestions.lua"
+                ),
+                &lua,
+            )
+            .unwrap();
+            return;
+        }
+        assert_eq!(
+            lua, IDEAS_LUA,
+            "suggestions.lua is what the Companion writes"
+        );
+        let values = parse_saved_variables(&lua).unwrap();
+        let get = crate::savedvars::table_get;
+        let chars = get(values.get("UnboredSuggestions").unwrap(), "characters").unwrap();
+        let list = crate::savedvars::array_items(get(chars, "Silvermoon-Mira").unwrap());
+        assert_eq!(list.len(), 4);
+        assert_eq!(get(list[0], "kind").and_then(|v| v.as_str()), Some("event"));
+
+        let many: serde_json::Map<String, Value> = (0..200)
+            .map(|n| {
+                (
+                    format!("Realm-Char{n}"),
+                    body["characters"]["Silvermoon-Mira"].clone(),
+                )
+            })
+            .collect();
+        let big = serde_json::json!({ "v": 1, "computedAt": 1, "characters": many });
+        let text = render_suggestions_lua(&big);
+        assert!(text.len() <= SUGGESTIONS_MAX_BYTES);
+        assert!(count_lua_literals(&text) <= SUGGESTIONS_MAX_LITERALS);
+        assert!(parse_saved_variables(&text).is_ok());
+    }
+
+    #[test]
+    fn an_unchanged_ideas_file_is_not_rewritten() {
+        let root = std::env::temp_dir().join(format!("unbored-ideas-test-{}", std::process::id()));
+        let retail = root.join("_retail_");
+        ensure_helper(&retail).unwrap();
+        let dir = retail.join("Interface").join("AddOns").join("Unbored_Plan");
+        assert!(fs::read_to_string(dir.join("Unbored_Plan.toc"))
+            .unwrap()
+            .contains("Suggestions.lua"));
+        assert!(dir.join("Suggestions.lua").is_file());
+        let body: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/suggestions.json"
+        ))
+        .unwrap();
+        assert!(install_suggestions(&retail, &body).unwrap());
+        assert!(!install_suggestions(&retail, &body).unwrap());
+        let empty = serde_json::json!({ "v": 1, "computedAt": 0, "characters": {} });
+        assert!(install_suggestions(&retail, &empty).unwrap());
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
