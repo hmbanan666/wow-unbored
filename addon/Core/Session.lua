@@ -509,8 +509,8 @@ function ns.Session:IsSlow()
   if not req or not req.onDisk or (note ~= "sending" and note ~= "preparing") then
     return false
   end
-  local created = tonumber(req.createdAt)
-  return created ~= nil and (self.loadedAt or ns.Now()) - created > ns.SLOW_SECONDS
+  local sent = tonumber(req.sentAt) or tonumber(req.createdAt)
+  return sent ~= nil and (self.loadedAt or ns.Now()) - sent > ns.SLOW_SECONDS
 end
 
 -- What the Companion said about itself when it last wrote Plan.lua.
@@ -577,97 +577,221 @@ function ns.Session.UpdateWaiting()
   return nil
 end
 
--- Saves the Request into SavedVariables. Nothing reloads: the game writes the
--- file at the next Refresh or logout, the Companion prepares the Answer in the
--- background, and it is read at the next load (docs/adr/0012).
--- ask: { type = "plan" | "question" | "item", wish, question, topic, item, lang }
+-- The Request flow (docs/adr/0033, D65): one state machine kept in
+-- UnboredCharDB.request.state, so it survives a reload, logout or character
+-- switch. idle -> quick -> survey -> confirm -> queued | sent -> waiting ->
+-- (offer) -> idle, with failed and expired on the side. Before it is sent the
+-- table has no id, so the Companion does not see it.
+ns.REQUEST_EXPIRE_SECONDS = 60 * 60
+ns.ETA_DEFAULT_SECONDS = 180
+ns.ETA_AGAIN_SECONDS = 120
+local LOCKED = { queued = true, sent = true, waiting = true }
+
+function ns.Session.Flow()
+  local req = type(UnboredCharDB) == "table" and UnboredCharDB.request or nil
+  return type(req) == "table" and req or nil
+end
+
+local function sentAt(req)
+  return tonumber(req.sentAt) or tonumber(req.createdAt)
+end
+
+function ns.Session:FlowState()
+  local req = self.Flow()
+  if not req then
+    return "idle"
+  end
+  local state = req.state
+  if state == nil then
+    -- A Request saved by 0.6 has an id and no state.
+    state = type(req.id) == "string" and req.id ~= "" and "waiting" or "idle"
+  end
+  if state == "quick" and not self:Current() then
+    return "idle"
+  end
+  if LOCKED[state] and self.requestNote == "failed" then
+    return "failed"
+  end
+  if state == "waiting" then
+    local at = sentAt(req)
+    if at and ns.Now() - at > ns.REQUEST_EXPIRE_SECONDS then
+      return "expired"
+    end
+  end
+  return state
+end
+
+-- Waiting locks Wisp to the waiting Bubble; the Steps stay usable (D67).
+function ns.Session:Locked()
+  return LOCKED[self:FlowState()] == true
+end
+
+local function setFlow(fields)
+  if type(UnboredCharDB) ~= "table" then
+    UnboredCharDB = {}
+  end
+  UnboredCharDB.request = fields
+end
+
+-- A preset: the Quick plan at once and, with the Companion, one button for a
+-- proper plan. An empty Quick plan goes straight to the Survey.
+function ns.Session:BeginQuick(preset)
+  self:QuickPlan(preset)
+  if not (ns.UI and ns.UI.HasCompanion()) or self.rebuildQueued then
+    return
+  end
+  local empty = self:Current() == nil
+  setFlow({
+    state = empty and "survey" or "quick",
+    mode = preset.mode,
+    topic = preset.id,
+    wish = preset.wish,
+    quickEmpty = empty or nil,
+  })
+  self:NoteRequest()
+  self:RefreshUI()
+end
+
+-- "Something else..." or "Make a plan" under an Answer: the Survey with
+-- free text, where minutes may be typed (docs/adr/0037).
+function ns.Session:BeginSurvey(fields)
+  fields = type(fields) == "table" and fields or {}
+  setFlow({ state = "survey", custom = true, wish = fields.wish })
+  self:NoteRequest()
+  self:RefreshUI()
+end
+
+function ns.Session:ToSurvey()
+  local req = self.Flow()
+  if req and req.state == "quick" then
+    req.state = "survey"
+  end
+  self:RefreshUI()
+end
+
+-- wish: the optional line (required for a custom wish); budget: typed minutes.
+function ns.Session:SurveyDone(wish, budget)
+  local req = self.Flow()
+  if not req or req.state ~= "survey" then
+    return
+  end
+  wish = ns.Utf8Truncate(ns.Trim(type(wish) == "string" and wish or ""), 300)
+  if wish ~= "" then
+    req.extra = req.topic and wish or nil
+    if not req.topic then
+      req.wish = wish
+    end
+  end
+  req.budget = req.custom and budget or nil
+  req.state = "confirm"
+  self:RefreshUI()
+end
+
+-- Back from the Survey goes to the Quick plan (or nothing); from Confirm to the Survey.
+function ns.Session:FlowBack()
+  local req = self.Flow()
+  if not req then
+    return
+  end
+  if req.state == "confirm" then
+    req.state = "survey"
+  elseif req.state == "survey" and req.topic and not req.quickEmpty and self:Current() then
+    req.state = "quick"
+  elseif req.state == "survey" or req.state == "quick" then
+    UnboredCharDB.request = nil
+  end
+  self:RefreshUI()
+end
+
+-- Turns the confirmed flow into a plan Request (the only type the addon
+-- sends, D64). Nothing reloads here.
 function ns.Session:Ask(ask)
   ask = type(ask) == "table" and ask or {}
-  local kind = ask.type
-  if kind ~= "question" and kind ~= "item" then
-    kind = "plan"
-  end
   local name = ns.SafeString(ns.Call(UnitName, "player"), 80) or "player"
   local realm = ns.SafeString(ns.Call(GetRealmName), 80) or ""
   local function text(value, limit)
     value = ns.Utf8Truncate(ns.Trim(type(value) == "string" and value or ""), limit)
     return value ~= "" and value or nil
   end
-  if type(UnboredCharDB) ~= "table" then
-    UnboredCharDB = {}
-  end
   local okContext, context = pcall(ns.PlayerContext)
-  local id = string.format("req-%d-%04d", ns.Now(), math.random(0, 9999))
+  local wish = text(ask.wish, 600)
+  local extra = text(ask.extra, 300)
+  if extra then
+    wish = wish and (wish .. ". " .. extra) or extra
+  end
   local request = {
-    id = id,
-    type = kind,
+    id = string.format("req-%d-%04d", ns.Now(), math.random(0, 9999)),
+    type = "plan",
     createdAt = ns.Now(),
     character = name,
     realm = realm,
-    wish = text(ask.wish, 600),
-    question = text(ask.question, 600),
+    wish = wish,
     context = okContext and type(context) == "table" and context or nil,
+    mode = ns.MODE_IDS[ask.mode] and ask.mode ~= "custom" and ask.mode or self.ChosenMode(),
+    custom = ask.custom or nil,
   }
-  local lang = ask.lang or (request.question and ns.Intents.Lang(request.question))
-    or (request.wish and ns.Intents.Lang(request.wish)) or ns.LANG
+  local lang = wish and ns.Intents.Lang(wish) or ns.LANG
   request.lang = (lang == "ru" or lang == "en") and lang or "en"
-  if kind == "plan" then
-    UnboredCharDB.offer = nil
-    request.mode = ns.MODE_IDS[ask.mode] and ask.mode ~= "custom" and ask.mode or self.ChosenMode()
-    local budget = tonumber(ask.budget)
-    if budget and budget >= 5 and budget <= 240 then
-      request.budget = math.floor(budget)
-    end
-    if not ask.topic then
-      UnboredCharDB.lastWish = request.wish
-    end
+  local budget = tonumber(ask.budget)
+  if budget and budget >= 5 and budget <= 240 then
+    request.budget = math.floor(budget)
   end
   if type(ask.topic) == "string" and ask.topic:match("^[a-z_-]+$") and #ask.topic <= 40 then
     request.topic = ask.topic
   end
-  if kind == "item" then
-    local item = type(ask.item) == "table" and ask.item or {}
-    local itemID = ns.AsNumber(item.itemID)
-    if not itemID then
-      return nil
-    end
-    request.item = {
-      itemID = math.floor(itemID),
-      link = ns.SafeString(item.link, 400),
-      name = ns.SafeString(item.name, 120),
-      bag = ns.AsNumber(item.bag),
-      slot = ns.AsNumber(item.slot),
-      count = ns.AsNumber(item.count),
-    }
-  elseif kind == "question" and not request.question then
-    return nil
+  if type(UnboredCharDB) ~= "table" then
+    UnboredCharDB = {}
   end
-  UnboredCharDB.request = request
-  self:NoteRequest()
-  self:RefreshUI()
-  return id
+  UnboredCharDB.offer = nil
+  if not request.topic and wish then
+    UnboredCharDB.lastWish = wish
+  end
+  return request
 end
 
--- Sends the pending Request again as a new one.
+-- Send now (D66): the Request is written and the game reloads in this click.
+-- Send at logout: it waits in SavedVariables for the next logout or reload.
+function ns.Session:Send(now)
+  local req = self.Flow()
+  if req and req.state == "queued" and now then
+    req.state = "sent"
+    req.sentAt = ns.Now()
+    self.RefreshNow()
+    return req.id
+  end
+  if not req or req.state ~= "confirm" then
+    return nil
+  end
+  local request = self:Ask(req)
+  request.state = now and "sent" or "queued"
+  request.sentAt = now and ns.Now() or nil
+  UnboredCharDB.request = request
+  self:NoteRequest()
+  if now then
+    self.RefreshNow()
+  else
+    self:RefreshUI()
+  end
+  return request.id
+end
+
+-- Try again after a failure or an expiry: back to Confirm with the same wish.
 function ns.Session:Retry()
-  local req = self:PendingRequest()
+  local req = self.Flow()
   if not req then
     return nil
   end
-  return self:Ask({
-    type = req.type,
+  setFlow({
+    state = "confirm",
     mode = req.mode,
-    budget = req.budget,
     topic = req.topic,
     wish = req.wish,
-    question = req.question,
-    item = req.item,
-    lang = req.lang,
+    budget = req.budget,
+    custom = req.custom or (not req.topic) or nil,
   })
-end
-
-function ns.Session:RequestPlan(wish)
-  return self:Ask({ type = "plan", wish = wish })
+  self:NoteRequest()
+  self:RefreshUI()
+  return true
 end
 
 function ns.Session:CancelRequest()
@@ -678,62 +802,71 @@ function ns.Session:CancelRequest()
   self:RefreshUI()
 end
 
--- Only ever called from a click on Refresh or Load (ReloadUI needs the
--- hardware event), never per message.
+-- Only ever called from a click on Refresh, Send now or Load (ReloadUI needs
+-- the hardware event), never per message.
 function ns.Session.RefreshNow()
   if type(ReloadUI) == "function" then
     ReloadUI()
   end
 end
 
--- Minutes after a load before Wisp guesses the Companion has written the
--- Answer. Nothing in the game can tell; see Friction in docs/adr/0012.
--- TODO(owner): tune once real answer times are known.
-ns.READY_GUESS_SECONDS = 3 * 60
+-- The ETA Refresh: counted, so a Request still pending after it waits two
+-- more minutes before the next offer (D68).
+function ns.Session:CheckAgain()
+  local req = self:PendingRequest()
+  if req then
+    req.checks = (tonumber(req.checks) or 0) + 1
+  end
+  self.RefreshNow()
+end
 
--- The one Refresh offer (docs/adr/0012): "after" for a Request made in this
--- session (it reaches the Companion only after a Refresh or logout), "ready"
--- for one that was already on disk at the last load and that the Companion
--- file already named as being prepared. Each is shown once;
--- Later puts it off until the next login.
+-- A queued Request is written at logout, so it counts as sent from then.
+function ns.Session:OnLogout()
+  local req = self.Flow()
+  if req and req.state == "queued" then
+    req.state = "sent"
+    req.sentAt = ns.Now()
+  end
+end
+
+function ns.Session.Eta()
+  local plan = UnboredExternalPlan
+  local eta = type(plan) == "table" and tonumber(plan.eta) or nil
+  eta = eta or ns.ETA_DEFAULT_SECONDS
+  return math.max(60, math.min(900, eta))
+end
+
+-- The one Refresh offer (D68): when the ETA has passed for a Request the
+-- Companion file names as being prepared. Without that id in the file a
+-- Refresh would find nothing, so Wisp never guesses then (D82).
 function ns.Session:RefreshOffer()
   local req = self:PendingRequest()
-  if not req or self.requestNote == "failed" or self.CompanionProblem() then
+  if not req or self:FlowState() ~= "waiting" or self.CompanionProblem() then
     return nil
   end
-  if not req.onDisk then
-    if req.later then
-      return nil
-    end
-    return { kind = "after", request = req }
-  end
-  -- Only a Companion file that names this Request id can turn into its
-  -- Answer; without it a Refresh would find nothing (D82).
   if self.requestNote ~= "preparing" then
     return nil
   end
-  if (self.readyLater or {})[req.id] or self:IsSlow() then
+  local due
+  if (tonumber(req.checks) or 0) > 0 then
+    due = (self.loadedAt or ns.Now()) + ns.ETA_AGAIN_SECONDS
+  else
+    due = (sentAt(req) or ns.Now()) + self.Eta()
+  end
+  if ns.Now() < due then
     return nil
   end
-  if ns.Now() - (self.loadedAt or ns.Now()) < ns.READY_GUESS_SECONDS then
-    return nil
-  end
-  return { kind = "ready", request = req }
+  return { kind = "eta", request = req }
 end
 
-function ns.Session:Later()
-  local offer = self:RefreshOffer()
-  if offer and offer.kind == "after" then
-    offer.request.later = true
-  elseif offer then
-    self.readyLater = self.readyLater or {}
-    self.readyLater[offer.request.id] = true
-  end
-  self:RefreshUI()
+-- Pending after an ETA Refresh: "Almost. Give me a couple more minutes."
+function ns.Session:CheckedAgain()
+  local req = self:PendingRequest()
+  return req ~= nil and (tonumber(req.checks) or 0) > 0 and self.requestNote == "preparing"
 end
 
--- A question: the local answer at once (docs/adr/0014), and with the
--- Companion the same question goes to the Planner for a fuller one.
+-- A question: the local answer at once (docs/adr/0014). What the intents
+-- cannot answer becomes "Want a plan from it?" through the Survey (D64).
 function ns.Session:AskQuestion(question, topic)
   question = ns.Utf8Truncate(ns.Trim(type(question) == "string" and question or ""), 600)
   if question == "" then
@@ -742,17 +875,14 @@ function ns.Session:AskQuestion(question, topic)
   local lang = ns.Intents.Lang(question)
   local intent = topic == "nearby" and "here" or ns.Intents.Detect(question)
   local found = intent and ns.Intents.Answer(intent, lang) or nil
-  local id
-  if ns.UI and ns.UI.HasCompanion() then
-    id = self:Ask({ type = "question", question = question, topic = topic, lang = lang })
-  end
-  local messages = found and found.messages or { ns.TL(lang, id and "ASK_FORWARDED" or "ASK_LOCAL_ONLY") }
+  local toPlan = not found and ns.UI and ns.UI.HasCompanion()
+  local messages = found and found.messages or { ns.TL(lang, toPlan and "ASK_TO_PLAN" or "ASK_LOCAL_ONLY") }
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
   end
   UnboredCharDB.answer = {
-    requestId = id,
     type = "question",
+    planWish = toPlan and question or nil,
     question = question,
     message = table.concat(messages, "\n\n"),
     messages = messages,
@@ -763,7 +893,7 @@ function ns.Session:AskQuestion(question, topic)
     at = ns.Now(),
   }
   self:RefreshUI()
-  return id or true
+  return true
 end
 
 -- "Make it a plan" under a local answer.
@@ -1022,6 +1152,10 @@ function ns.Session:MarkLoaded()
   local req = self:PendingRequest()
   if req then
     req.onDisk = true
+    if req.state == "sent" or req.state == "queued" then
+      req.state = "waiting"
+      req.sentAt = req.sentAt or self.loadedAt
+    end
   end
 end
 
@@ -1112,6 +1246,10 @@ function ns.Session:ProgressTable()
 end
 
 function ns.Session:OnEvent(event, ...)
+  if event == "PLAYER_LOGOUT" then
+    self:OnLogout()
+    return
+  end
   if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
     if event == "PLAYER_REGEN_ENABLED" then
       self:OnCombatEnd()
