@@ -41,8 +41,14 @@ test("packed id sets round-trip exactly like the shared fixture", () => {
   };
   for (const item of doc.valueCases) {
     const rows = unpackRows(item.packed);
-    expect(rows.map((row) => row.id), item.name).toEqual(item.ids);
-    expect(rows.map((row) => row.values), item.name).toEqual(item.values);
+    expect(
+      rows.map((row) => row.id),
+      item.name,
+    ).toEqual(item.ids);
+    expect(
+      rows.map((row) => row.values),
+      item.name,
+    ).toEqual(item.values);
   }
   for (const item of doc.cases) {
     expect(packIds(item.input ?? item.ids), item.name).toEqual(item.packed);

@@ -24,7 +24,11 @@
         "pets": {
           "allOf": [
             { "$ref": "#/$defs/section" },
-            { "properties": { "body": { "properties": { "species": { "$ref": "#/$defs/packedIdSet" } } } } }
+            {
+              "properties": {
+                "body": { "properties": { "species": { "$ref": "#/$defs/packedIdSet" } } }
+              }
+            }
           ]
         },
         "bags": { "$ref": "#/$defs/itemSection" },
@@ -83,7 +87,9 @@
     "itemSection": {
       "allOf": [
         { "$ref": "#/$defs/section" },
-        { "properties": { "body": { "properties": { "items": { "$ref": "#/$defs/packedIdSet" } } } } }
+        {
+          "properties": { "body": { "properties": { "items": { "$ref": "#/$defs/packedIdSet" } } } }
+        }
       ]
     },
     "packedIdSet": {
