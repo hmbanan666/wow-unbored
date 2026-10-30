@@ -22,6 +22,8 @@ No Windows, or prefer doing it by hand? Download `Unbored-v….zip` from the new
 
 ## What Bory can do
 
+- **Ideas from your own data.** Not sure what you want? Bory opens with up to four ideas made for this character: a holiday that ends soon, a mount none of your characters has, a rare near where you play. One click and he plans it. **More ideas** brings back the usual choices.
+- **One calm plan card.** A short title, the step to do now, why it matters and what you get. **Show more** opens the whole plan in place: progress, the goal, every step, and the rewards.
 - **Plans for your mood.** One click: stay nearby, get a mount, collect pets and toys, level up, farm gold, or surprise me. A quick plan starts at once, one step at a time, with a pin on the map. Want a proper plan? Answer one short question, send it, and Bory shows he's working on it until it's ready. Proper plans cover the whole goal, not just what fits in half an hour.
 - **Links in steps.** Items, quests, achievements, spells and currencies in a step are real game links: hover for the tooltip. Click a place or an NPC to set the map pin.
 - **Answers.** Ask "what can I do here?", "any rares around?", or "what's left for my achievements?", in English or Russian. Anything bigger he offers to turn into a plan.
@@ -74,6 +76,8 @@ Companion сам обновляет себя и Бори. Чтобы зараб�
 
 ### Что умеет Бори
 
+- **Идеи из твоих данных.** Не знаешь, чего хочется? Бори начинает с четырёх идей именно для этого персонажа: праздник, который скоро закончится, маунт, которого нет ни у одного твоего персонажа, редкий монстр там, где ты играешь. Один клик, и он составит план. **Ещё идеи** вернут обычный выбор.
+- **Одна спокойная карточка плана.** Короткое название, шаг на сейчас, зачем он и что получишь. **Подробнее** раскрывает весь план на месте: прогресс, цель, все шаги и награды.
 - **Планы под настроение.** Один клик: заняться чем-то рядом, добыть маунта, собрать питомцев и игрушки, качаться, фармить золото или «удиви меня». Быстрый план начинается сразу, по шагу за раз, с меткой на карте. Нужен настоящий план? Ответь на один короткий вопрос, отправь, и Бори покажет, что думает, пока план не будет готов. Настоящий план охватывает всю цель, а не то, что влезет в полчаса.
 - **Ссылки в шагах.** Предметы, квесты, достижения, заклинания и валюты в шаге — настоящие игровые ссылки: наведи, чтобы увидеть подсказку. Нажми на место или NPC, чтобы поставить метку на карте.
 - **Ответы.** Спроси «чем заняться рядом?», «есть рядом редкие?» или «что осталось по достижениям?», по-русски или по-английски. Если вопрос большой, Бори предложит сделать из него план.
