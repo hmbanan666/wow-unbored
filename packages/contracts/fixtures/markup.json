@@ -1,0 +1,141 @@
+{
+  "about": "Entity markup cases (markup.md). text is what the Planner sends; clean is what the Server stores; plain is what a place without links shows; tokens are the links the Bubble renders, in order.",
+  "entities": {
+    "npc": {
+      "12345": { "name": "Fixer Kev", "mapID": 2339, "x": 52.1, "y": 47.3 },
+      "777": { "name": "Old Ma" }
+    }
+  },
+  "cases": [
+    {
+      "name": "plain text has no tokens",
+      "text": "Fly to the bank.",
+      "clean": "Fly to the bank.",
+      "plain": "Fly to the bank.",
+      "issues": 0,
+      "tokens": []
+    },
+    {
+      "name": "an item without a label takes its name from the game",
+      "text": "Use {item:6948} to go home.",
+      "clean": "Use {item:6948} to go home.",
+      "plain": "Use  to go home.",
+      "issues": 0,
+      "tokens": [{ "type": "item", "id": 6948 }]
+    },
+    {
+      "name": "every id type with a label",
+      "text": "{quest:78713|The Weight} then {ach:964|Going Down?}, {spell:2006|Resurrection}, {currency:2815|Resonance Crystals}.",
+      "clean": "{quest:78713|The Weight} then {ach:964|Going Down?}, {spell:2006|Resurrection}, {currency:2815|Resonance Crystals}.",
+      "plain": "The Weight then Going Down?, Resurrection, Resonance Crystals.",
+      "issues": 0,
+      "tokens": [
+        { "type": "quest", "id": 78713, "label": "The Weight" },
+        { "type": "ach", "id": 964, "label": "Going Down?" },
+        { "type": "spell", "id": 2006, "label": "Resurrection" },
+        { "type": "currency", "id": 2815, "label": "Resonance Crystals" }
+      ]
+    },
+    {
+      "name": "an npc with an entity",
+      "text": "Talk to {npc:12345}.",
+      "clean": "Talk to {npc:12345}.",
+      "plain": "Talk to Fixer Kev.",
+      "issues": 0,
+      "tokens": [{ "type": "npc", "id": 12345 }]
+    },
+    {
+      "name": "an npc label wins over the entity name",
+      "text": "Talk to {npc:12345|Kev}.",
+      "clean": "Talk to {npc:12345|Kev}.",
+      "plain": "Talk to Kev.",
+      "issues": 0,
+      "tokens": [{ "type": "npc", "id": 12345, "label": "Kev" }]
+    },
+    {
+      "name": "a pin with one decimal",
+      "text": "Meet at {pin:2339:52.1:47.3|the forge}.",
+      "clean": "Meet at {pin:2339:52.1:47.3|the forge}.",
+      "plain": "Meet at the forge.",
+      "issues": 0,
+      "tokens": [{ "type": "pin", "mapID": 2339, "x": 52.1, "y": 47.3, "label": "the forge" }]
+    },
+    {
+      "name": "an npc without an entity keeps only its label",
+      "text": "Ask {npc:999|the guard} for directions.",
+      "clean": "Ask the guard for directions.",
+      "plain": "Ask the guard for directions.",
+      "issues": 1,
+      "tokens": [{ "type": "npc", "id": 999, "label": "the guard" }]
+    },
+    {
+      "name": "an unknown type falls back to its label",
+      "text": "Ride {mount:183|Ashes of Al'ar} today.",
+      "clean": "Ride Ashes of Al'ar today.",
+      "plain": "Ride Ashes of Al'ar today.",
+      "issues": 1,
+      "tokens": []
+    },
+    {
+      "name": "a malformed id without a label is dropped",
+      "text": "Loot {item:abc} now.",
+      "clean": "Loot now.",
+      "plain": "Loot  now.",
+      "issues": 1,
+      "tokens": []
+    },
+    {
+      "name": "a pin out of range or with two decimals is dropped",
+      "text": "Go {pin:2339:120:4.25|there}, then {pin:2339:52.15:47}.",
+      "clean": "Go there, then.",
+      "plain": "Go there, then .",
+      "issues": 2,
+      "tokens": []
+    },
+    {
+      "name": "braces that are not tokens stay text",
+      "text": "Press {Space} twice.",
+      "clean": "Press {Space} twice.",
+      "plain": "Press {Space} twice.",
+      "issues": 0,
+      "tokens": []
+    },
+    {
+      "name": "the thirteenth token keeps only its label",
+      "text": "{item:1}{item:2}{item:3}{item:4}{item:5}{item:6}{item:7}{item:8}{item:9}{item:10}{item:11}{item:12}{item:13|thirteen}",
+      "clean": "{item:1}{item:2}{item:3}{item:4}{item:5}{item:6}{item:7}{item:8}{item:9}{item:10}{item:11}{item:12}thirteen",
+      "plain": "thirteen",
+      "issues": 1,
+      "tokens": [
+        { "type": "item", "id": 1 },
+        { "type": "item", "id": 2 },
+        { "type": "item", "id": 3 },
+        { "type": "item", "id": 4 },
+        { "type": "item", "id": 5 },
+        { "type": "item", "id": 6 },
+        { "type": "item", "id": 7 },
+        { "type": "item", "id": 8 },
+        { "type": "item", "id": 9 },
+        { "type": "item", "id": 10 },
+        { "type": "item", "id": 11 },
+        { "type": "item", "id": 12 },
+        { "type": "item", "id": 13, "label": "thirteen" }
+      ]
+    }
+  ],
+  "plan": {
+    "v": 1,
+    "kind": "plan",
+    "mode": "custom",
+    "generatedAt": 1767225600,
+    "tasks": [
+      {
+        "id": "kev",
+        "title": "Talk to {npc:12345}",
+        "estMinutes": 5,
+        "note": "He is at {pin:2339:52.1:47.3|the forge}. Bring {item:6948}."
+      }
+    ],
+    "entities": { "npc": { "12345": { "name": "Fixer Kev", "mapID": 2339, "x": 52.1, "y": 47.3 } } }
+  }
+}

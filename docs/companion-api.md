@@ -158,7 +158,7 @@ Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`,
 { "message": "A rare is east of you. I pinned it.", "waypoints": [{ "mapID": 2248, "x": 0.6, "y": 0.4, "label": "Rare" }], "answeredAt": 1761720500 }
 ```
 
-`message` is plain text up to 1,000 bytes, shown in the bubble as written. `waypoints` is optional (the same route points as in a plan, up to 10); the game turns them into one step in front of the current plan. An answer may also come with a plan, which then starts as usual. The companion writes the answer into `UnboredExternalPlan.answer`, with `requestType`; see [plan-format.md](plan-format.md#companion-file).
+`message` is text up to 1,000 bytes, shown in the bubble as written; it may carry [entity markup](../packages/contracts/markup.md) tokens, with `entities` beside it for npcs. `waypoints` is optional (the same route points as in a plan, up to 10); the game turns them into one step in front of the current plan. An answer may also come with a plan, which then starts as usual. The companion writes the answer into `UnboredExternalPlan.answer`, with `requestType`; see [plan-format.md](plan-format.md#companion-file).
 
 If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context }` to that URL (`budget` and `context` are `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
 

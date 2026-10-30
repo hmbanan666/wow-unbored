@@ -5,7 +5,12 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "vite-plus/test";
 
 import {
+  cleanEntities,
+  cleanMarkup,
+  type Entities,
   packIds,
+  parseMarkup,
+  plainText,
   planSchema,
   playerProfileSchema,
   requestBodySchema,
@@ -67,4 +72,46 @@ test("the snapshot fixture matches the schema and its Section hashes", () => {
   }
   const quests = body.sections.questsDone.body as { ids: string[]; count: number };
   expect(unpackIds(quests.ids)).toHaveLength(quests.count);
+});
+
+test("markup fixtures parse, clean and flatten the same everywhere", () => {
+  const doc = read("markup.json") as {
+    entities: Entities;
+    cases: {
+      name: string;
+      text: string;
+      clean: string;
+      plain: string;
+      issues: number;
+      tokens: Record<string, unknown>[];
+    }[];
+    plan: unknown;
+  };
+  for (const item of doc.cases) {
+    const tokens = parseMarkup(item.text)
+      .filter((part) => typeof part !== "string")
+      .map(({ raw: _raw, ...rest }) => rest);
+    expect(tokens, item.name).toEqual(item.tokens);
+    expect(plainText(item.text, doc.entities), item.name).toBe(item.plain);
+    const cleaned = cleanMarkup(item.text, { entities: doc.entities });
+    expect(cleaned.text, item.name).toBe(item.clean);
+    expect(cleaned.issues, item.name).toHaveLength(item.issues);
+  }
+  expect(planSchema.safeParse(doc.plan).success).toBe(true);
+});
+
+test("entities keep only well-formed npc entries", () => {
+  const { entities, issues } = cleanEntities({
+    npc: {
+      "1": { name: "Kev", mapID: 84, x: 40.04, y: 50 },
+      "2": { name: "" },
+      abc: { name: "Bad" },
+      "3": { name: "Far", x: 120, y: 3 },
+    },
+  });
+  expect(entities).toEqual({
+    npc: { "1": { name: "Kev", mapID: 84, x: 40, y: 50 }, "3": { name: "Far" } },
+  });
+  expect(issues).toHaveLength(3);
+  expect(cleanEntities("nope").issues).toHaveLength(1);
 });

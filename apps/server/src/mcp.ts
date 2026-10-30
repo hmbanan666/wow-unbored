@@ -3,12 +3,17 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Context } from "hono";
 import { z } from "zod";
 
+import { markupIds } from "@unbored/contracts";
+
+import type { BlizzardIds } from "./blizzard.ts";
 import { resolveCriteria } from "./criteria.ts";
 import { ID_KINDS, readable, changeSummary, type CharacterRow, type IdKind } from "./data.ts";
-import { ANSWER_MAX_BYTES, cleanAnswer, PlanError } from "./plan.ts";
+import { ANSWER_MAX_BYTES, cleanAnswer, PlanError, planMarkupIds } from "./plan.ts";
 import { HISTORY_KINDS, publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
 
 const PLAN_SCOPE = `Plan the whole goal. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
+
+const MARKUP = `Links (title, note, the plan note and answer messages): name game things with tokens and Wisp shows them as native links with the game's own name and tooltip. {item:ID}, {quest:ID}, {ach:ID}, {spell:ID}, {currency:ID}, {npc:ID}, {pin:MAPID:X:Y}, each with an optional |label, for example {npc:12345|Fixer Kev} or {pin:2339:52.1:47.3|the forge}. Use only ids a tool gave you (get_player_profile, check_ids, the request, resolve_criteria); never guess an id, write the plain name instead. Pin X and Y are map percent 0 to 100 with at most one decimal (wowhead numbers), unlike task x/y. Every {npc:ID} needs entities.npc["ID"] = { name, mapID, x, y } on the plan (or the answer), x and y in percent too. At most 12 tokens per step. A bad token is replaced by its label and listed in warnings in the reply: read them and fix the plan if a link mattered.`;
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
@@ -28,6 +33,8 @@ Each task:
 - note: optional, at most 400 bytes. Shown in full in the in-game tracker; say where to go and what to do.
 - waypoints: optional, 1 to 10 points [{ mapID, x, y, label }] in route order. x and y are 0 to 1, label at most 80 bytes. The addon sets the native waypoint arrow (and TomTom when installed) on point 1 and moves to the next point when the player comes within about 30 yards. Use it for a multi-stop task. Without waypoints the task's own mapID, x, y is the single point.
 - complete: how the game finishes the task. Omit it and the player presses Done.
+
+${MARKUP}
 
 complete.kind:
 - manual
@@ -83,7 +90,27 @@ const waypointSchema = z
   })
   .strict();
 
-export function createMcpServer(store: Store, dataDir: string): McpServer {
+const entitiesSchema = z
+  .object({
+    npc: z
+      .record(
+        z.string(),
+        z.object({
+          name: z.string(),
+          mapID: z.number().optional(),
+          x: z.number().optional(),
+          y: z.number().optional(),
+        }),
+      )
+      .optional(),
+  })
+  .strict();
+
+export function createMcpServer(
+  store: Store,
+  dataDir: string,
+  gameIds?: BlizzardIds,
+): McpServer {
   const server = new McpServer({
     name: "unbored",
     version: "0.6.0",
@@ -115,6 +142,9 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
       note: z.string().optional(),
       generatedAt: z.number().optional(),
       tasks: z.array(taskSchema).min(1).max(40),
+      entities: entitiesSchema
+        .optional()
+        .describe("Npc names and places for {npc:ID} tokens. x and y are percent 0 to 100."),
     })
     .strict();
 
@@ -136,7 +166,9 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
         if (requestId && !store.requestById(requestId)) {
           return failure(new Error("No request with that id."));
         }
-        const stored = store.putPlan(plan);
+        const warnings: string[] = [];
+        const missing = gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
+        const stored = store.putPlan(plan, undefined, { missing, warnings });
         const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
         return text({
           id: stored.id,
@@ -144,6 +176,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
           plan: stored.unb1,
           stored: stored.plan,
           request: request ? publicRequest(request) : null,
+          warnings,
         });
       } catch (error) {
         if (error instanceof PlanError || error instanceof Error) return failure(error);
@@ -587,7 +620,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     "answer_request",
     {
       title: "Answer an in-game request",
-      description: `Reply to an item or question request (or add a message to a plan request). The player already got a quick local answer; yours arrives at their next login or when they accept Wisp's Refresh offer, so make it worth the wait. Write in the request's lang, like a friendly spoken chat reply: short sentences, no markdown, no links, at most ${ANSWER_MAX_BYTES} bytes. A blank line splits the reply into up to 3 chat bubbles. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for for this character and its Alts, and what to do with it (keep, bank, sell, send to an Alt).`,
+      description: `Reply to an item or question request (or add a message to a plan request). The player already got a quick local answer; yours arrives at their next login or when they accept Wisp's Refresh offer, so make it worth the wait. Write in the request's lang, like a friendly spoken chat reply: short sentences, no markdown and no web links, at most ${ANSWER_MAX_BYTES} bytes. A blank line splits the reply into up to 3 chat bubbles. The message may carry the same link tokens as a plan, with entities for npcs. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for for this character and its Alts, and what to do with it (keep, bank, sell, send to an Alt).`,
       inputSchema: {
         requestId: z.string().describe("Request id from list_requests"),
         message: z.string().describe(`The reply, at most ${ANSWER_MAX_BYTES} bytes`),
@@ -597,17 +630,25 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
           .optional()
           .describe("Optional route for the reply. Coordinates are 0 to 1."),
         plan: planSchema.optional().describe("Optional follow-up plan, same shape as put_plan."),
+        entities: entitiesSchema
+          .optional()
+          .describe("Npc names and places for {npc:ID} tokens in the message."),
       },
     },
-    async ({ requestId, message, waypoints, plan }) => {
+    async ({ requestId, message, waypoints, plan, entities }) => {
       try {
         if (!store.requestById(requestId)) return failure(new Error("No request with that id."));
-        const answer = cleanAnswer(message, waypoints, Math.floor(Date.now() / 1000));
-        const stored = plan ? store.putPlan(plan) : undefined;
+        const warnings: string[] = [];
+        const ids = [...markupIds(message), ...(plan ? planMarkupIds(plan) : [])];
+        const missing = gameIds ? await gameIds.missing(ids) : undefined;
+        const now = Math.floor(Date.now() / 1000);
+        const answer = cleanAnswer(message, waypoints, now, entities, { missing, warnings });
+        const stored = plan ? store.putPlan(plan, now, { missing, warnings }) : undefined;
         const request = store.answerRequest(requestId, answer, stored?.id ?? null);
         return text({
           request: request ? publicRequest(request) : null,
           plan: stored ? { id: stored.id, plan: stored.unb1 } : null,
+          warnings,
         });
       } catch (error) {
         return failure(error);
@@ -660,11 +701,16 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
   return server;
 }
 
-export async function handleMcp(c: Context, store: Store, dataDir: string): Promise<Response> {
+export async function handleMcp(
+  c: Context,
+  store: Store,
+  dataDir: string,
+  gameIds?: BlizzardIds,
+): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
   });
-  const server = createMcpServer(store, dataDir);
+  const server = createMcpServer(store, dataDir, gameIds);
   await server.connect(transport);
   return transport.handleRequest(c.req.raw);
 }

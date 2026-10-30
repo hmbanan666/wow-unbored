@@ -56,6 +56,8 @@ Limits: 40 tasks, titles up to 240 bytes, notes up to 400 bytes, the whole paste
 
 `id` may contain letters, numbers, `:`, `.`, `_`, and `-`.
 
+`title`, `note` and the plan `note` may carry entity tokens such as `{item:6948}` or `{npc:12345}`, which Wisp shows as native game links. An optional `entities` object names the npcs: `"entities": { "npc": { "12345": { "name": "Fixer Kev", "mapID": 2339, "x": 52.1, "y": 47.3 } } }`. Token and entity coordinates are map percent 0–100, unlike task `x`/`y`. The full rules are in [`packages/contracts/markup.md`](../packages/contracts/markup.md).
+
 ### Waypoint routes
 
 A task may carry an optional route instead of, or as well as, its single pin:

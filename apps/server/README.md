@@ -21,6 +21,8 @@ The process listens on `PORT` (default `3000`) and stores SQLite at `$UNBORED_DA
 | `UNBORED_PLANNER_WEBHOOK_URL` | no | Where a new in-game request is POSTed. Empty skips the webhook. |
 | `UNBORED_PLANNER_WEBHOOK_KEY` | no | Secret sent as `Authorization: Bearer <key>`. |
 | `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` | no | Extra header name that also receives the key. |
+| `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET` | no | Blizzard Game Data API client. When both are set, `put_plan` and `answer_request` check that linked item, quest, achievement, spell and npc ids exist ([markup](../../packages/contracts/markup.md)); results are cached in SQLite. Unset: structure checks only. Never logged. |
+| `BLIZZARD_REGION` | no | `us` (default), `eu`, `kr` or `tw`. |
 
 `GET /health` needs no token and returns `{"ok":true,"webhook":"on"}`, or `"off"` when `UNBORED_PLANNER_WEBHOOK_URL` is empty. Every other route rejects a missing or wrong bearer token.
 

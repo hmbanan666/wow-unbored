@@ -7,8 +7,9 @@ import { presentedBearer, requireRole, sha256Hex, tokenMatches } from "./auth.ts
 import type { Config } from "./config.ts";
 import { clientIp, cleanRegistration, PENDING_CAP, RegisterLimiter } from "./devices.ts";
 import { cleanSnapshot, SNAPSHOT_MAX_COMPRESSED, SNAPSHOT_MAX_INFLATED } from "./data.ts";
+import { blizzardFromEnv, BlizzardIds, type BlizzardConfig, type GameDataFetch } from "./blizzard.ts";
 import { handleMcp } from "./mcp.ts";
-import { cleanPlanRequest, PlanError } from "./plan.ts";
+import { cleanPlanRequest, PlanError, planMarkupIds } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";
 import { publicDevice, publicRequest, sessionSummary, Store, type PlanRequest } from "./store.ts";
 import { PlannerWebhook, webhookFromEnv, type FetchLike, type WebhookConfig } from "./webhook.ts";
@@ -24,6 +25,8 @@ export function createApp(
     webhook?: WebhookConfig;
     webhookFetch?: FetchLike;
     webhookNow?: () => number;
+    blizzard?: BlizzardConfig | null;
+    blizzardFetch?: GameDataFetch;
     /** One line per request (docs/adr/0013). Defaults to stdout. */
     log?: (line: string) => void;
   },
@@ -41,6 +44,12 @@ export function createApp(
     config.webhookNow,
   );
   log(webhook.describe());
+  const gameIds = new BlizzardIds(
+    config.blizzard === undefined ? blizzardFromEnv() : config.blizzard,
+    store.gameIds,
+    config.blizzardFetch,
+  );
+  log(gameIds.describe());
 
   // Method, path, status, and why a request was refused. Never headers or bodies.
   app.use("*", async (c, next) => {
@@ -285,7 +294,10 @@ export function createApp(
       if (requestId && !store.requestById(requestId)) {
         return c.json({ error: "No request with that id." }, 404);
       }
-      const stored = store.putPlan(stripRequestId(body));
+      const plan = stripRequestId(body);
+      const warnings: string[] = [];
+      const missing = await gameIds.missing(planMarkupIds(plan));
+      const stored = store.putPlan(plan, undefined, { missing, warnings });
       const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
       return c.json({
         id: stored.id,
@@ -293,6 +305,7 @@ export function createApp(
         plan: stored.unb1,
         stored: stored.plan,
         request: request ? publicRequest(request) : null,
+        warnings,
       });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
@@ -328,7 +341,7 @@ export function createApp(
   app.all("/mcp", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
-    return handleMcp(c, store, config.dataDir);
+    return handleMcp(c, store, config.dataDir, gameIds);
   });
 
   return {

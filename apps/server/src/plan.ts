@@ -1,3 +1,4 @@
+import { cleanEntities, cleanMarkup, markupIds, type Entities } from "@unbored/contracts";
 import type {
   Plan,
   PlanRequestInput,
@@ -16,6 +17,52 @@ const REQUEST_MODES = new Set(["roam", "quests", "events", "fun", "farm"]);
 export const MAX_WAYPOINTS = 10;
 
 export class PlanError extends Error {}
+
+/** How markup is checked while a plan or answer is cleaned (packages/contracts/markup.md). */
+export type MarkupCheck = {
+  /** `type:id` the Blizzard Game Data API says do not exist. */
+  missing?: ReadonlySet<string>;
+  /** Filled with one line per token or entity that was changed. */
+  warnings?: string[];
+};
+
+type MarkupScope = {
+  entities: Entities;
+  npcs: Set<string>;
+  check: MarkupCheck;
+};
+
+function markupScope(raw: unknown, check: MarkupCheck, where: string): MarkupScope {
+  const { entities, issues } = cleanEntities(raw);
+  for (const issue of issues) check.warnings?.push(`${where}: ${issue}`);
+  return { entities, npcs: new Set(), check };
+}
+
+function cleanText(
+  text: string,
+  scope: MarkupScope,
+  where: string,
+  used: { count: number },
+): string {
+  const result = cleanMarkup(text, {
+    entities: scope.entities,
+    used,
+    missing: scope.check.missing,
+    npcs: scope.npcs,
+  });
+  for (const issue of result.issues) {
+    scope.check.warnings?.push(`${where}: ${issue.raw} ${issue.problem}; kept the label only`);
+  }
+  return result.text;
+}
+
+/** Only the npcs some kept token links to. */
+function usedEntities(scope: MarkupScope): Entities | undefined {
+  const npc = scope.entities.npc;
+  if (!npc) return undefined;
+  const kept = Object.fromEntries(Object.entries(npc).filter(([id]) => scope.npcs.has(id)));
+  return Object.keys(kept).length > 0 ? { npc: kept } : undefined;
+}
 
 function byteLength(text: string): number {
   return Buffer.byteLength(text, "utf8");
@@ -161,11 +208,25 @@ function cleanComplete(raw: unknown, index: number, depth: number): Record<strin
   throw new PlanError(`Task ${index} has an unknown completion kind ${kind}.`);
 }
 
-export function cleanPlan(raw: unknown, nowSeconds: number): Plan {
+/** Every `type:id` a raw plan's text links to, for the existence check before cleaning. */
+export function planMarkupIds(raw: unknown): string[] {
+  if (typeof raw !== "object" || raw === null) return [];
+  const body = raw as { note?: unknown; tasks?: unknown };
+  const texts: unknown[] = [body.note];
+  if (Array.isArray(body.tasks)) {
+    for (const task of body.tasks as { title?: unknown; note?: unknown }[]) {
+      texts.push(task?.title, task?.note);
+    }
+  }
+  return texts.flatMap((item) => (typeof item === "string" ? markupIds(item) : []));
+}
+
+export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck = {}): Plan {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new PlanError("The plan must be a JSON object.");
   }
   const body = raw as Record<string, unknown>;
+  const scope = markupScope(body.entities, check, "Plan");
   if (body.kind !== undefined && body.kind !== "plan") {
     throw new PlanError('The JSON kind must be "plan".');
   }
@@ -191,7 +252,7 @@ export function cleanPlan(raw: unknown, nowSeconds: number): Plan {
     if (byteLength(body.note) > 400) {
       throw new PlanError("The plan note is longer than 400 bytes.");
     }
-    note = body.note;
+    note = cleanText(body.note, scope, "Plan note", { count: 0 }) || undefined;
   }
   if (!Array.isArray(body.tasks) || body.tasks.length < 1) {
     throw new PlanError("The plan has no tasks.");
@@ -199,7 +260,7 @@ export function cleanPlan(raw: unknown, nowSeconds: number): Plan {
   if (body.tasks.length > 40) {
     throw new PlanError("Too many tasks (max 40).");
   }
-  const tasks = body.tasks.map((item, index) => cleanTask(item, index + 1));
+  const tasks = body.tasks.map((item, index) => cleanTask(item, index + 1, scope));
   const generatedAt =
     body.generatedAt === undefined ? nowSeconds : integer(body.generatedAt, 0, 4_000_000_000);
   if (generatedAt === undefined) {
@@ -207,10 +268,12 @@ export function cleanPlan(raw: unknown, nowSeconds: number): Plan {
   }
   const plan: Plan = { v: 1, kind: "plan", mode, note, generatedAt, tasks };
   if (budget !== undefined) plan.budget = budget;
+  const entities = usedEntities(scope);
+  if (entities) plan.entities = entities;
   return plan;
 }
 
-function cleanTask(raw: unknown, index: number): Task {
+function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new PlanError(`Task ${index} must be an object.`);
   }
@@ -249,11 +312,15 @@ function cleanTask(raw: unknown, index: number): Task {
     }
     note = task.note;
   }
+  const used = { count: 0 };
+  const title = cleanText(task.title.trim(), scope, `Task ${index} title`, used);
+  if (!title) throw new PlanError(`Task ${index} needs a title.`);
+  if (note !== undefined) note = cleanText(note, scope, `Task ${index} note`, used) || undefined;
   const waypoints = cleanWaypoints(task.waypoints, index);
   const complete = cleanComplete(task.complete, index, 1);
   const cleaned: Task = {
     id: task.id,
-    title: task.title.trim(),
+    title,
     estMinutes,
     complete,
   };
@@ -309,6 +376,7 @@ export function encodeUnb1(plan: Plan): string {
   };
   if (plan.budget !== undefined) payload.budget = plan.budget;
   if (plan.note !== undefined) payload.note = plan.note;
+  if (plan.entities !== undefined) payload.entities = plan.entities;
   const text = `UNB1:${Buffer.from(JSON.stringify(payload), "utf8").toString("base64")}`;
   if (text.length > 20_000) {
     throw new PlanError("The encoded plan is longer than 20000 characters.");
@@ -371,20 +439,31 @@ export const REQUEST_TYPES = new Set<RequestType>(["plan", "item", "question"]);
 export type Answer = {
   message: string;
   waypoints?: Waypoint[];
+  entities?: Entities;
   answeredAt: number;
 };
 
 export const ANSWER_MAX_BYTES = 1000;
 
-export function cleanAnswer(message: unknown, waypoints: unknown, nowSeconds: number): Answer {
+export function cleanAnswer(
+  message: unknown,
+  waypoints: unknown,
+  nowSeconds: number,
+  entities?: unknown,
+  check: MarkupCheck = {},
+): Answer {
   if (typeof message !== "string" || !message.trim()) {
     throw new PlanError("message must be a non-empty string.");
   }
-  const text = message.trim();
-  if (byteLength(text) > ANSWER_MAX_BYTES) {
+  if (byteLength(message.trim()) > ANSWER_MAX_BYTES) {
     throw new PlanError(`message must be at most ${ANSWER_MAX_BYTES} bytes.`);
   }
+  const scope = markupScope(entities, check, "Answer");
+  const text = cleanText(message.trim(), scope, "Answer", { count: 0 });
+  if (!text) throw new PlanError("message must be a non-empty string.");
   const answer: Answer = { message: text, answeredAt: nowSeconds };
+  const kept = usedEntities(scope);
+  if (kept) answer.entities = kept;
   const points = cleanWaypoints(waypoints, "Answer");
   if (points) answer.waypoints = points;
   return answer;

@@ -6,6 +6,7 @@ import {
   cleanProgress,
   encodeUnb1,
   type Answer,
+  type MarkupCheck,
   type Plan,
   type RequestItem,
   type RequestType,
@@ -14,6 +15,7 @@ import {
   type ProgressPost,
 } from "./plan.ts";
 
+import { IdCache } from "./blizzard.ts";
 import { DataStore, mergeProfile, type CleanSnapshot, type SnapshotResult } from "./data.ts";
 import type { ProfileUpload } from "./profile.ts";
 
@@ -68,6 +70,7 @@ type ProgressRow = {
 export class Store {
   private db: DatabaseSync;
   readonly data: DataStore;
+  readonly gameIds: IdCache;
 
   constructor(dataDir: string) {
     this.db = new DatabaseSync(sqlitePath(dataDir));
@@ -175,6 +178,7 @@ export class Store {
       ["reason_code", "TEXT"],
     ]);
     this.data = new DataStore(this.db);
+    this.gameIds = new IdCache(this.db);
   }
 
   private addColumns(table: string, added: [string, string][]): void {
@@ -190,8 +194,12 @@ export class Store {
     this.db.close();
   }
 
-  putPlan(raw: unknown, nowSeconds = Math.floor(Date.now() / 1000)): StoredPlan {
-    const plan = cleanPlan(raw, nowSeconds);
+  putPlan(
+    raw: unknown,
+    nowSeconds = Math.floor(Date.now() / 1000),
+    check: MarkupCheck = {},
+  ): StoredPlan {
+    const plan = cleanPlan(raw, nowSeconds, check);
     const unb1 = encodeUnb1(plan);
     const createdAt = nowSeconds;
     const result = this.db

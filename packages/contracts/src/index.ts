@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
+import type { Entities } from "./markup.ts";
+
 /** A Plan the Server stores and the Companion writes into the game. */
 export type Plan = {
   v: 1;
@@ -12,6 +14,8 @@ export type Plan = {
   note?: string;
   generatedAt: number;
   tasks: Task[];
+  /** Npc names and places for `{npc:ID}` tokens (markup.md). */
+  entities?: Entities;
 };
 
 export type Waypoint = {
@@ -316,3 +320,5 @@ export const snapshotBodySchema = z
     dropped: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
   })
   .passthrough();
+
+export * from "./markup.ts";
