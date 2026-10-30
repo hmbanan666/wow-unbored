@@ -44,6 +44,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Install, check, and test
         run: pnpm install --frozen-lockfile && pnpm exec vp check && pnpm exec vp test
+      - name: Typecheck (erasableSyntaxOnly matches Node strip-types)
+        run: pnpm --filter @unbored/server build
       - name: Start like the Dockerfile and answer /health
         run: scripts/server-smoke.sh
       - name: Docker image
