@@ -11,7 +11,10 @@ import { cleanPlan } from "../src/plan.ts";
 const companion = "companion-test-token";
 const planner = "planner-test-token";
 const fixture = JSON.parse(
-  readFileSync(new URL("../../../packages/contracts/fixtures/markup.json", import.meta.url), "utf8"),
+  readFileSync(
+    new URL("../../../packages/contracts/fixtures/markup.json", import.meta.url),
+    "utf8",
+  ),
 ) as { plan: Record<string, unknown> };
 
 type Built = ReturnType<typeof createApp>;
@@ -45,7 +48,9 @@ async function mcpCall(app: Built["app"], name: string, args: Record<string, unk
       params: { name, arguments: args },
     }),
   });
-  const body = (await response.json()) as { result: { isError?: boolean; content: { text: string }[] } };
+  const body = (await response.json()) as {
+    result: { isError?: boolean; content: { text: string }[] };
+  };
   return {
     isError: body.result.isError === true,
     value: JSON.parse(body.result.content[0].text) as Record<string, unknown>,
@@ -79,14 +84,21 @@ test("put_plan keeps good links and the npcs they use, and warns about the rest"
       entities?: { npc: Record<string, unknown> };
     };
     assert.equal(stored.tasks[0].title, "Talk to {npc:12345}");
-    assert.equal(stored.tasks[0].note, "He is at {pin:2339:52.1:47.3|the forge}. Bring {item:6948}.");
+    assert.equal(
+      stored.tasks[0].note,
+      "He is at {pin:2339:52.1:47.3|the forge}. Bring {item:6948}.",
+    );
     assert.equal(stored.tasks[1].title, "Ask the guard about");
     assert.equal(stored.tasks[1].note, "Then and the gate.");
     assert.deepEqual(Object.keys(stored.entities?.npc ?? {}), ["12345"], "unused npcs are dropped");
     const warnings = value.warnings as string[];
     assert.equal(warnings.length, 4, warnings.join("\n"));
     assert.ok(warnings[0].startsWith("Task 2 title: {npc:999|the guard} npc needs an entry"));
-    assert.deepEqual(decode(value.plan).entities, stored.entities, "the UNB1 string carries entities");
+    assert.deepEqual(
+      decode(value.plan).entities,
+      stored.entities,
+      "the UNB1 string carries entities",
+    );
   } finally {
     close();
   }
@@ -141,7 +153,11 @@ test("with Blizzard credentials, ids that do not exist lose their link; answers 
     calls.push(url);
     if (url.startsWith("https://oauth.battle.net/")) {
       assert.match(init.headers.authorization, /^Basic /);
-      return { ok: true, status: 200, json: async () => ({ access_token: "tok", expires_in: 86400 }) };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: "tok", expires_in: 86400 }),
+      };
     }
     assert.equal(init.headers.authorization, "Bearer tok");
     const missing = url.includes("/item/999999") || url.includes("/creature/12345");
@@ -154,10 +170,16 @@ test("with Blizzard credentials, ids that do not exist lose their link; answers 
     const first = await mcpCall(app, "put_plan", { plan });
     const stored = first.value.stored as { tasks: { title: string }[]; entities?: unknown };
     assert.equal(stored.tasks[0].title, "Talk to", "a missing creature loses its npc link");
-    assert.equal(stored.tasks[1].title, "Get the fake and {currency:2815}", "currency is not checked");
+    assert.equal(
+      stored.tasks[1].title,
+      "Get the fake and {currency:2815}",
+      "currency is not checked",
+    );
     assert.equal(stored.entities, undefined);
     assert.ok(
-      calls.some((url) => url.startsWith("https://eu.api.blizzard.com/data/wow/item/6948?namespace=static-eu")),
+      calls.some((url) =>
+        url.startsWith("https://eu.api.blizzard.com/data/wow/item/6948?namespace=static-eu"),
+      ),
     );
     assert.ok(!calls.some((url) => url.includes("/currency/")));
     const count = calls.length;

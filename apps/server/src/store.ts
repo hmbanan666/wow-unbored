@@ -19,7 +19,10 @@ import { IdCache } from "./blizzard.ts";
 import {
   DataStore,
   type DigestAlt,
-  mergeProfile, type CleanSnapshot, type SnapshotResult } from "./data.ts";
+  mergeProfile,
+  type CleanSnapshot,
+  type SnapshotResult,
+} from "./data.ts";
 import type { ProfileUpload } from "./profile.ts";
 
 export { mergeProfile };

@@ -113,7 +113,10 @@ export function plainText(text: string, entities?: Entities): string {
 }
 
 function tidy(text: string): string {
-  return text.replace(/[ \t]{2,}/g, " ").replace(/ +([,.!?;:])/g, "$1").trim();
+  return text
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ +([,.!?;:])/g, "$1")
+    .trim();
 }
 
 export type CleanMarkupOptions = {
@@ -143,7 +146,8 @@ export function cleanMarkup(
     }
     if (token && !problem && token.id !== undefined) {
       const kind = token.type === "npc" ? "npc" : token.type;
-      if (options.missing?.has(`${kind}:${token.id}`)) problem = `${kind} ${token.id} does not exist`;
+      if (options.missing?.has(`${kind}:${token.id}`))
+        problem = `${kind} ${token.id} does not exist`;
     }
     if (token && !problem && used.count >= MAX_TOKENS) problem = `more than ${MAX_TOKENS} tokens`;
     if (problem) {

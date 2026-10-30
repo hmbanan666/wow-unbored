@@ -7,7 +7,12 @@ import { presentedBearer, requireRole, sha256Hex, tokenMatches } from "./auth.ts
 import type { Config } from "./config.ts";
 import { clientIp, cleanRegistration, PENDING_CAP, RegisterLimiter } from "./devices.ts";
 import { cleanSnapshot, SNAPSHOT_MAX_COMPRESSED, SNAPSHOT_MAX_INFLATED } from "./data.ts";
-import { blizzardFromEnv, BlizzardIds, type BlizzardConfig, type GameDataFetch } from "./blizzard.ts";
+import {
+  blizzardFromEnv,
+  BlizzardIds,
+  type BlizzardConfig,
+  type GameDataFetch,
+} from "./blizzard.ts";
 import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError, planMarkupIds } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";

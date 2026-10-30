@@ -106,11 +106,7 @@ const entitiesSchema = z
   })
   .strict();
 
-export function createMcpServer(
-  store: Store,
-  dataDir: string,
-  gameIds?: BlizzardIds,
-): McpServer {
+export function createMcpServer(store: Store, dataDir: string, gameIds?: BlizzardIds): McpServer {
   const server = new McpServer({
     name: "unbored",
     version: "0.6.0",
