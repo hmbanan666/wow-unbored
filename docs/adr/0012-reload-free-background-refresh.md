@@ -1,5 +1,5 @@
 # 0012. Reload-free: local first, background prefetch, one Refresh offer
 
-Status: accepted (supersedes [0001](0001-savedvariables-bridge.md))
+Status: accepted (supersedes [0001](0001-savedvariables-bridge.md); amended by [0033](0033-request-flow-state-machine.md))
 
 Normal interaction never reloads the UI: Wisp answers locally first (tooltips, Alt routing, zone and achievement data, Presets and Quick plans), while the Companion prepares Answers, Personal advice and Full plans in the background and writes them to the helper addon's data file. The game reads them only at login or a character switch (teleports and loading screens do not), or when the player accepts the single Bubble "New stuff is ready. Refresh now?" [Refresh] [Later]; for an Ask that also went to the Server, Wisp says once "I'll have a fuller answer after a refresh" with the same choice. Rejected: a clipboard bridge (Ctrl+C / Ctrl+V strings), too hacky for casual players, plus the LoadOnDemand mailbox trick, chat log, whispers, addon messages and the combat log (D1-D8 as changed by the owner).

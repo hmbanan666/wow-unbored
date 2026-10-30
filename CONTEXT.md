@@ -33,8 +33,20 @@ A detailed Plan from the Planner. Replaces the Quick plan only when the player a
 _Avoid_: server plan, AI plan, real plan.
 
 **Request**
-What the player asks for: a Plan, an item, or a question. Saved in SavedVariables, which the game writes at a Refresh or logout; the Companion then sends it to the Server.
+What the player asks for from the Planner: a Full plan, after a short Survey. Saved in SavedVariables, which the game writes at Send now, a Refresh or logout; the Companion then sends it to the Server. Items and questions are answered locally (ADR 0032).
 _Avoid_: ticket, job, query, call.
+
+**Survey**
+The one or two chips Wisp asks before a Request: how much time, and an optional one-line wish. Then a summary with [Send now].
+_Avoid_: form, questionnaire, wizard.
+
+**ETA**
+Wisp's estimate of when a Full plan should be ready, from the Server's recent planner times, written by the Companion. After it passes Wisp offers one Refresh.
+_Avoid_: timer, countdown, progress bar.
+
+**Entity token**
+A short id in Plan text, such as `{item:ID}`, `{quest:ID}` or `{pin:MAPID:X:Y}`, that Wisp turns into a native game link with the name from the game. Code and contract word only.
+_Avoid_ (in UI copy): token, markup, tag, id.
 
 **Answer**
 The Planner's fuller reply to an item or question Request, after Wisp's instant Local answer. Shown in a Bubble at the next login or Refresh.
@@ -73,7 +85,7 @@ A short machine word for why a Request failed (`not_approved`, `companion_offlin
 _Avoid_: error code, status text (in UI copy).
 
 **Advice**
-The one teal "Wisp: <action>" line in an item tooltip: what to do with this item, for this character and its Account. From local rules, the bundled Advice table, or Personal advice; the first match wins.
+The one teal "Wisp: <action>" line in an item tooltip, shown only with a personal signal: Alt routing, needed for your Plan, new for your collection, a quest you have not done, or Personal advice. No line is the default (ADR 0035).
 _Avoid_: hint, tip, recommendation engine, rule.
 
 **Personal advice**
@@ -109,8 +121,24 @@ The snapshot of the character sent with a Request: location, level, class, gold,
 _Avoid_: telemetry, tracking, stats.
 
 **Player profile**
-The fuller, up-to-date player state the Server keeps per character (Player context plus bags, bank, currencies, collections, recent sessions), uploaded by the Companion after each natural load and linked to the Account. It is a rolling snapshot: an empty field never overwrites a good one.
+The fuller, up-to-date player state the Server keeps per character (Player context plus bags, bank, currencies, collections, recent sessions), uploaded by the Companion after each natural load and linked to the Account. It is a rolling snapshot: an empty field never overwrites a good one. From 0.7 it is read from the Game data snapshot Sections.
 _Avoid_: account data, telemetry, tracking, dossier.
+
+**Game data snapshot**
+Everything the game legally tells the addon about the player's own characters and Account, kept in SavedVariables in Sections and uploaded by the Companion when the game writes them. Never anything about other players.
+_Avoid_: telemetry, tracking, dossier, dump (in anything the player sees: "what Wisp knows about you").
+
+**Section**
+One named, versioned part of the Game data snapshot (`char`, `bags`, `questsDone`, `mounts`, ...), with its version, read time, source and body.
+_Avoid_: table, chunk, blob.
+
+**Packed id set**
+How a big list of ids is stored in a Section: sorted, delta-encoded, base36, in chunks of at most 4,000 characters after `"ids1"`. Keeps SavedVariables small and safe to load.
+_Avoid_: compressed list, bitmap, hash.
+
+**Data explorer**
+The owner's view of what was collected: MCP `data_catalog` (and `GET /owner/data`), listing every Account, Character and Section with freshness, size and counts.
+_Avoid_: dashboard, admin panel, analytics.
 
 **Knowledge base**
 The small tables bundled with the addon (`Data/*.lua`) that let Wisp answer locally.
