@@ -1160,6 +1160,22 @@ for _, case in ipairs(markup.cases) do
 end
 C_Item, C_Map = savedItem, savedMap
 
+-- The shared plan fixtures: what the Companion writes for 0.8, and a 0.7 plan.
+local savedPlan = UnboredExternalPlan
+assert(loadfile("../packages/contracts/fixtures/plan-card.lua"))()
+local card = assert(ns.ValidatePlan(UnboredExternalPlan, false))
+UnboredExternalPlan = savedPlan
+check(card.title == "Ashes in one evening" and card.goal and card.details and #card.rewards == 2,
+  "plan-card.lua keeps the plan card fields")
+check(card.tasks[1].why and #card.tasks[1].rewards == 1, "and a Step's why and rewards")
+check(card.tasks[2].condition and card.tasks[2].condition.check.kind == "level"
+  and card.tasks[2].condition.check.id == 70, "and its condition")
+local reEncoded = ns.DecodeImport(ns.EncodePlan(card))
+check(reEncoded.title == card.title and reEncoded.tasks[2].condition.text == card.tasks[2].condition.text,
+  "the card fields survive an export")
+local old = assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan.json"), false))
+check(old.title == nil and old.rewards == nil and #old.tasks == 2, "a 0.7 plan still loads, with no card fields")
+
 -- A plan with links: the Bubble shows native links, other places plain names.
 local linked = assert(ns.ValidatePlan(markup.plan, false))
 check(linked.tasks[1].npcs and linked.tasks[1].npcs["12345"].name == "Fixer Kev", "a Step keeps the npcs it links")

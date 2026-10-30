@@ -12,6 +12,14 @@ export type Plan = {
   /** Minutes the player typed in the custom form; Plans are never cut to it (ADR 0037). */
   budget?: number;
   note?: string;
+  /** A short human name like a quest title, 3 to 40 characters, no tokens (ADR 0038). */
+  title?: string;
+  /** One sentence: what you do and why it is worth it; may carry tokens. */
+  goal?: string;
+  /** Facts and state ("you have 3,200 badges"); shown under Show more. */
+  details?: string;
+  /** Up to 6 single link tokens, such as "{mount:183}". */
+  rewards?: string[];
   generatedAt: number;
   tasks: Task[];
   /** Npc names and places for `{npc:ID}` tokens (markup.md). */
@@ -33,8 +41,22 @@ export type Task = {
   x?: number;
   y?: number;
   note?: string;
+  /** One short reason, at most 120 bytes; may carry tokens. */
+  why?: string;
+  /** Up to 3 single link tokens. */
+  rewards?: string[];
+  condition?: TaskCondition;
   waypoints?: Waypoint[];
   complete?: Record<string, unknown>;
+};
+
+export const CONDITION_KINDS = ["currency", "item", "level", "quest", "ach"] as const;
+export type ConditionKind = (typeof CONDITION_KINDS)[number];
+
+/** "If you have 5,000 {currency:1166}": the text is shown, the check is run live in the game (D95). */
+export type TaskCondition = {
+  text: string;
+  check?: { kind: ConditionKind; id: number; atLeast?: number };
 };
 
 export type RequestType = "plan" | "item" | "question";
@@ -173,8 +195,35 @@ export const planSchema = z
     mode: z.string(),
     budget: z.number().int().optional(),
     note: z.string().optional(),
+    title: z.string().optional(),
+    goal: z.string().optional(),
+    details: z.string().optional(),
+    rewards: z.array(z.string()).max(6).optional(),
     generatedAt: z.number().optional(),
-    tasks: z.array(z.object({ id: z.string(), title: z.string() }).passthrough()).min(1),
+    tasks: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            title: z.string(),
+            why: z.string().optional(),
+            rewards: z.array(z.string()).max(3).optional(),
+            condition: z
+              .object({
+                text: z.string(),
+                check: z
+                  .object({
+                    kind: z.enum(["currency", "item", "level", "quest", "ach"]),
+                    id: z.number().int(),
+                    atLeast: z.number().int().optional(),
+                  })
+                  .optional(),
+              })
+              .optional(),
+          })
+          .passthrough(),
+      )
+      .min(1),
   })
   .passthrough();
 

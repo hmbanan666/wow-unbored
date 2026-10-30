@@ -1,4 +1,13 @@
-import { cleanEntities, cleanMarkup, markupIds, type Entities } from "@unbored/contracts";
+import {
+  CONDITION_KINDS,
+  cleanEntities,
+  cleanMarkup,
+  markupIds,
+  parseMarkup,
+  type ConditionKind,
+  type Entities,
+  type TaskCondition,
+} from "@unbored/contracts";
 import type {
   Plan,
   PlanRequestInput,
@@ -24,7 +33,187 @@ export type MarkupCheck = {
   missing?: ReadonlySet<string>;
   /** Filled with one line per token or entity that was changed. */
   warnings?: string[];
+  /** The Request's wish, so a title that only repeats it is flagged. */
+  wish?: string | null;
 };
+
+/** Card limits (ADR 0038): short on purpose, the card is for casual players. */
+export const CARD_LIMITS = {
+  titleMin: 3,
+  titleMax: 40,
+  goal: 160,
+  details: 600,
+  rewards: 6,
+  why: 120,
+  stepRewards: 3,
+  condition: 160,
+} as const;
+
+const PRESET_KEYS = [
+  "roam",
+  "quests",
+  "events",
+  "fun",
+  "farm",
+  "custom",
+  "surprise",
+  "nearby",
+  "mount",
+  "collect",
+  "grind",
+  "gold",
+  "plan",
+  "request",
+  "mode",
+];
+
+/** Cut at the last word boundary that fits, without an ellipsis (D94). */
+function cutWords(text: string, fits: (value: string) => boolean): string {
+  if (fits(text)) return text;
+  const words = text.split(/\s+/);
+  let out = "";
+  for (const word of words) {
+    const next = out ? `${out} ${word}` : word;
+    if (!fits(next)) break;
+    out = next;
+  }
+  if (!out) {
+    out = text;
+    while (out && !fits(out)) out = out.slice(0, -1);
+  }
+  return out.replace(/[\s,;:.-]+$/, "");
+}
+
+/** The Plan title: a human name like a quest title. Problems are warnings, never errors (D94). */
+export function cleanTitle(raw: unknown, check: MarkupCheck = {}): string | undefined {
+  const warn = (line: string) => check.warnings?.push(`Plan title: ${line}`);
+  if (raw === undefined || raw === null || (typeof raw === "string" && !raw.trim())) {
+    warn("add a short human title, like a quest name; Wisp shows the preset name meanwhile");
+    return undefined;
+  }
+  if (typeof raw !== "string") throw new PlanError("The plan title must be a string.");
+  let title = raw.replace(/\s+/g, " ").trim();
+  if (title.includes("{")) {
+    warn("no link tokens in the title; they were made plain. Put links in goal or rewards");
+    title = parseMarkup(title)
+      .map((part) => (typeof part === "string" ? part : (part.label ?? "")))
+      .join("")
+      .replace(/[{}]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  const chars = (value: string) => [...value].length;
+  if (chars(title) > CARD_LIMITS.titleMax) {
+    warn(`longer than ${CARD_LIMITS.titleMax} characters; cut at a word. Keep it short and catchy`);
+    title = cutWords(title, (value) => chars(value) <= CARD_LIMITS.titleMax);
+  }
+  if (chars(title) < CARD_LIMITS.titleMin) {
+    warn(`shorter than ${CARD_LIMITS.titleMin} characters; dropped`);
+    return undefined;
+  }
+  if ((title.match(/\d+(?:[.,]\d+)*/g) ?? []).length > 1) {
+    warn("more than one number; state facts go in details, not the title");
+  }
+  const first = title.toLowerCase().split(/[^a-z]+/)[0] ?? "";
+  if (PRESET_KEYS.includes(first)) {
+    warn(`starts with "${first}"; name the goal like a quest title instead`);
+  }
+  if (/\byou have\b/i.test(title)) {
+    warn('"you have" is a fact; state facts go in details');
+  }
+  const wish = check.wish?.replace(/\s+/g, " ").trim().toLowerCase();
+  if (wish && wish === title.toLowerCase()) {
+    warn("repeats the wish word for word; give it a name of its own");
+  }
+  return title;
+}
+
+/** Optional short text with tokens; over the limit it is cut at a word with a warning. */
+function cardText(
+  raw: unknown,
+  max: number,
+  scope: MarkupScope,
+  where: string,
+  used: { count: number },
+): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "string") throw new PlanError(`${where} must be a string.`);
+  let text = raw.trim();
+  if (!text) return undefined;
+  if (byteLength(text) > max) {
+    scope.check.warnings?.push(`${where}: longer than ${max} bytes; cut at a word. Keep it short`);
+    text = cutWords(text, (value) => byteLength(value) <= max && !/\{[^}]*$/.test(value));
+  }
+  return cleanText(text, scope, where, used) || undefined;
+}
+
+const REWARD_TYPES = new Set(["item", "ach", "currency", "mount", "toy", "pet"]);
+
+/** Reward tokens: each entry one whole link token, at most max (D93). */
+function cleanRewards(
+  raw: unknown,
+  max: number,
+  scope: MarkupScope,
+  where: string,
+): string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) throw new PlanError(`${where} must be an array of link tokens.`);
+  const out: string[] = [];
+  for (const [n, item] of raw.entries()) {
+    const label = `${where} ${n + 1}`;
+    if (out.length >= max) {
+      scope.check.warnings?.push(`${where}: more than ${max}; the rest are dropped`);
+      break;
+    }
+    const text = typeof item === "string" ? item.trim() : "";
+    const parts = text ? parseMarkup(text) : [];
+    const token = parts.length === 1 && typeof parts[0] !== "string" ? parts[0] : undefined;
+    if (!token || token.raw !== text || !REWARD_TYPES.has(token.type)) {
+      scope.check.warnings?.push(
+        `${label}: must be one link token like {mount:ID} or {ach:ID}; dropped`,
+      );
+      continue;
+    }
+    const kept = cleanText(text, scope, label, { count: 0 });
+    if (kept === text && !out.includes(text)) out.push(text);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function cleanCondition(
+  raw: unknown,
+  index: number,
+  scope: MarkupScope,
+  used: { count: number },
+): TaskCondition | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new PlanError(`Task ${index} condition must be an object with text.`);
+  }
+  const body = raw as Record<string, unknown>;
+  const where = `Task ${index} condition`;
+  const text = cardText(body.text, CARD_LIMITS.condition, scope, where, used);
+  if (!text) throw new PlanError(`${where} needs text, such as "If you have 5,000 badges".`);
+  const out: TaskCondition = { text };
+  if (body.check !== undefined && body.check !== null) {
+    const check = body.check as Record<string, unknown>;
+    const kind = typeof check?.kind === "string" ? check.kind : "";
+    const id = integer(check?.id, 1, 2_147_483_647);
+    const atLeast =
+      check?.atLeast === undefined ? undefined : integer(check.atLeast, 1, 2_000_000_000);
+    if (!(CONDITION_KINDS as readonly string[]).includes(kind) || id === undefined) {
+      throw new PlanError(
+        `${where} check needs kind currency, item, level, quest or ach and a whole-number id.`,
+      );
+    }
+    if (check?.atLeast !== undefined && atLeast === undefined) {
+      throw new PlanError(`${where} check atLeast must be a positive whole number.`);
+    }
+    out.check = { kind: kind as ConditionKind, id };
+    if (atLeast !== undefined) out.check.atLeast = atLeast;
+  }
+  return out;
+}
 
 type MarkupScope = {
   entities: Entities;
@@ -211,12 +400,13 @@ function cleanComplete(raw: unknown, index: number, depth: number): Record<strin
 /** Every `type:id` a raw plan's text links to, for the existence check before cleaning. */
 export function planMarkupIds(raw: unknown): string[] {
   if (typeof raw !== "object" || raw === null) return [];
-  const body = raw as { note?: unknown; tasks?: unknown };
-  const texts: unknown[] = [body.note];
-  if (Array.isArray(body.tasks)) {
-    for (const task of body.tasks as { title?: unknown; note?: unknown }[]) {
-      texts.push(task?.title, task?.note);
-    }
+  const body = raw as Record<string, unknown>;
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  const texts: unknown[] = [body.note, body.goal, body.details, ...list(body.rewards)];
+  for (const item of list(body.tasks)) {
+    const task = (item ?? {}) as Record<string, unknown>;
+    const condition = (task.condition ?? {}) as Record<string, unknown>;
+    texts.push(task.title, task.note, task.why, condition.text, ...list(task.rewards));
   }
   return texts.flatMap((item) => (typeof item === "string" ? markupIds(item) : []));
 }
@@ -260,6 +450,12 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
   if (body.tasks.length > 40) {
     throw new PlanError("Too many tasks (max 40).");
   }
+  const title = cleanTitle(body.title, check);
+  const goal = cardText(body.goal, CARD_LIMITS.goal, scope, "Plan goal", { count: 0 });
+  const details = cardText(body.details, CARD_LIMITS.details, scope, "Plan details", {
+    count: 0,
+  });
+  const rewards = cleanRewards(body.rewards, CARD_LIMITS.rewards, scope, "Plan reward");
   const tasks = body.tasks.map((item, index) => cleanTask(item, index + 1, scope));
   const generatedAt =
     body.generatedAt === undefined ? nowSeconds : integer(body.generatedAt, 0, 4_000_000_000);
@@ -268,6 +464,10 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
   }
   const plan: Plan = { v: 1, kind: "plan", mode, note, generatedAt, tasks };
   if (budget !== undefined) plan.budget = budget;
+  if (title !== undefined) plan.title = title;
+  if (goal !== undefined) plan.goal = goal;
+  if (details !== undefined) plan.details = details;
+  if (rewards !== undefined) plan.rewards = rewards;
   const entities = usedEntities(scope);
   if (entities) plan.entities = entities;
   return plan;
@@ -316,6 +516,14 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
   const title = cleanText(task.title.trim(), scope, `Task ${index} title`, used);
   if (!title) throw new PlanError(`Task ${index} needs a title.`);
   if (note !== undefined) note = cleanText(note, scope, `Task ${index} note`, used) || undefined;
+  const why = cardText(task.why, CARD_LIMITS.why, scope, `Task ${index} why`, used);
+  const condition = cleanCondition(task.condition, index, scope, used);
+  const rewards = cleanRewards(
+    task.rewards,
+    CARD_LIMITS.stepRewards,
+    scope,
+    `Task ${index} reward`,
+  );
   const waypoints = cleanWaypoints(task.waypoints, index);
   const complete = cleanComplete(task.complete, index, 1);
   const cleaned: Task = {
@@ -330,6 +538,9 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
     cleaned.y = y;
   }
   if (note !== undefined) cleaned.note = note;
+  if (why !== undefined) cleaned.why = why;
+  if (rewards !== undefined) cleaned.rewards = rewards;
+  if (condition !== undefined) cleaned.condition = condition;
   if (waypoints) cleaned.waypoints = waypoints;
   return cleaned;
 }
@@ -376,6 +587,9 @@ export function encodeUnb1(plan: Plan): string {
   };
   if (plan.budget !== undefined) payload.budget = plan.budget;
   if (plan.note !== undefined) payload.note = plan.note;
+  for (const key of ["title", "goal", "details", "rewards"] as const) {
+    if (plan[key] !== undefined) payload[key] = plan[key];
+  }
   if (plan.entities !== undefined) payload.entities = plan.entities;
   const text = `UNB1:${Buffer.from(JSON.stringify(payload), "utf8").toString("base64")}`;
   if (text.length > 20_000) {

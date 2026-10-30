@@ -1,0 +1,35 @@
+{
+  "v": 1,
+  "kind": "plan",
+  "mode": "custom",
+  "generatedAt": 1767225600,
+  "title": "Ashes in one evening",
+  "goal": "Clear {zone:109|Netherstorm}'s Tempest Keep for a shot at {mount:183|Ashes of Al'ar}.",
+  "details": "You already have {ach:964|Going Down?}.",
+  "rewards": ["{mount:183|Ashes of Al'ar}", "{ach:964|Going Down?}"],
+  "tasks": [
+    {
+      "id": "mentor:fall",
+      "title": "Fall from a great height",
+      "why": "It is a quick {ach:964} on the way",
+      "estMinutes": 5,
+      "rewards": ["{ach:964}"],
+      "complete": { "kind": "achievement", "achievementID": 964 }
+    },
+    {
+      "id": "mentor:ashes",
+      "title": "Defeat Kael'thas in Tempest Keep",
+      "why": "He drops the mount",
+      "mapID": 109,
+      "x": 0.739,
+      "y": 0.637,
+      "estMinutes": 20,
+      "note": "Tempest Keep, Kael'thas.",
+      "condition": {
+        "text": "If you are level 70 or higher",
+        "check": { "kind": "level", "id": 70 }
+      },
+      "complete": { "kind": "mount", "mountID": 183 }
+    }
+  ]
+}

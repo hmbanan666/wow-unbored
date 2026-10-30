@@ -12,6 +12,8 @@ const DOCUMENTS: Record<string, string> = {
   ach: "achievement",
   spell: "spell",
   npc: "creature",
+  mount: "mount",
+  pet: "pet",
 };
 
 const FOUND_TTL = 30 * 86_400;

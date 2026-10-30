@@ -22,6 +22,29 @@
     "note": {
       "type": "string"
     },
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 40,
+      "description": "A short human name like a quest title; no tokens. Server warns and cuts (ADR 0038)."
+    },
+    "goal": {
+      "type": "string",
+      "description": "One sentence, at most 160 bytes. May carry entity markup."
+    },
+    "details": {
+      "type": "string",
+      "description": "Facts and state, at most 600 bytes. May carry entity markup."
+    },
+    "rewards": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "string",
+        "pattern": "^\\{[a-z]+:[^{}]+\\}$",
+        "description": "One link token of kind mount, ach, item, toy, currency or pet."
+      }
+    },
     "generatedAt": {
       "type": "integer"
     },
@@ -56,6 +79,50 @@
           "note": {
             "type": "string",
             "description": "May carry entity markup (markup.md)."
+          },
+          "why": {
+            "type": "string",
+            "description": "One short reason, at most 120 bytes. May carry entity markup."
+          },
+          "rewards": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "pattern": "^\\{[a-z]+:[^{}]+\\}$"
+            }
+          },
+          "condition": {
+            "type": "object",
+            "required": ["text"],
+            "additionalProperties": false,
+            "description": "Shown before the step; check runs live in the game (D95).",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "description": "At most 160 bytes. May carry entity markup."
+              },
+              "check": {
+                "type": "object",
+                "required": ["kind", "id"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": ["currency", "item", "level", "quest", "ach"]
+                  },
+                  "id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "For level, the level."
+                  },
+                  "atLeast": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
           }
         }
       }

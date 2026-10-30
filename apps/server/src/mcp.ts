@@ -13,7 +13,20 @@ import { HISTORY_KINDS, publicDevice, publicRequest, sessionSummary, type Store 
 
 const PLAN_SCOPE = `Plan the whole goal. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
 
-const MARKUP = `Links (title, note, the plan note and answer messages): name game things with tokens and Wisp shows them as native links with the game's own name and tooltip. {item:ID}, {quest:ID}, {ach:ID}, {spell:ID}, {currency:ID}, {npc:ID}, {pin:MAPID:X:Y}, each with an optional |label, for example {npc:12345|Fixer Kev} or {pin:2339:52.1:47.3|the forge}. Use only ids a tool gave you (get_player_profile, check_ids, the request, resolve_criteria); never guess an id, write the plain name instead. Pin X and Y are map percent 0 to 100 with at most one decimal (wowhead numbers), unlike task x/y. Every {npc:ID} needs entities.npc["ID"] = { name, mapID, x, y } on the plan (or the answer), x and y in percent too. At most 12 tokens per step. A bad token is replaced by its label and listed in warnings in the reply: read them and fix the plan if a link mattered.`;
+const MARKUP = `Links (step title, note, why, condition text, plan goal, details and rewards, the plan note, answer messages): every game object you name is a token when you have its id from a tool; otherwise plain text. Wisp shows a token as a native link with the game's own name and tooltip. Kinds, each with an optional |label:
+- {item:ID} an item, e.g. {item:6948|Hearthstone}
+- {quest:ID} a quest, e.g. {quest:78713|The Weight}
+- {ach:ID} an achievement, e.g. {ach:964|Going Down?}
+- {spell:ID} a spell, e.g. {spell:2006|Resurrection}
+- {currency:ID} a currency, e.g. {currency:2815|Resonance Crystals}
+- {mount:MOUNTID} a mount by mount journal id (not the item or spell), e.g. {mount:183|Ashes of Al'ar}
+- {toy:ITEMID} a toy by its item id
+- {pet:SPECIESID} a battle pet by species id
+- {zone:UIMAPID} a zone by ui map id; a click opens the world map there
+- {instance:JOURNALINSTANCEID} a dungeon or raid by Adventure Guide instance id; a click opens the guide
+- {npc:ID} an npc; needs entities.npc["ID"] = { name, mapID, x, y } on the plan (or the answer), x and y in percent
+- {pin:MAPID:X:Y} a map point, e.g. {pin:2339:52.1:47.3|the forge}; X and Y are map percent 0 to 100 with at most one decimal (wowhead numbers), unlike task x/y
+Use only ids a tool gave you (get_player_profile, get_game_data, check_ids, get_suggestions, the request, resolve_criteria); never guess an id, write the plain name instead. check_ids confirms mount, toy and pet ids against the player's data. At most 12 tokens per step and 12 in goal plus details. A bad token is replaced by its label and listed in warnings in the reply: read them and fix the plan if a link mattered.`;
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
@@ -24,13 +37,24 @@ Required shape:
 - budget: optional, whole minutes from 5 to 240. Leave it out unless the request carried one.
 - tasks: 1 to 40 objects
 
+The card (all optional, but a plan without a title gets a warning):
+- title: 3 to 40 characters, a human, catchy name like a quest title. No tokens, no ids, at most one number, no "you have". State facts go in details.
+  Good: "Badges for a Timereaver", "Hallow's End in one evening". Bad: "Warlords Timewalking: you have 3200 currency", "Plan for request mode surprise".
+- goal: one sentence, at most 160 bytes: what the player does and why it is worth it. May carry tokens.
+- details: at most 600 bytes of facts and state (currency counts, what Alts already did). May carry tokens.
+- rewards: up to 6 strings, each exactly one token of kind mount, ach, item, toy, currency or pet, e.g. ["{mount:183}", "{ach:964}"].
+Wisp shows a calm card: closed it is only the title, the step, its why and the first reward; everything else opens on "Show more". So keep every text short: a step title is one line of what to do, why is one short reason, and long text belongs in note or details. No walls of text.
+
 Each task:
 - id: 1-80 characters, letters, digits, colon, dot, underscore, hyphen (example mentor:ashes)
 - title: non-empty, at most 240 bytes
 - estMinutes: 1 to 240 (default 15), a rough guess the player sees as information only
 - mapID: optional ui map id
 - x and y: optional, both required together, fractions of the map from 0 to 1. Wowhead 0-100 coordinates must be divided by 100.
-- note: optional, at most 400 bytes. Shown in full in the in-game tracker; say where to go and what to do.
+- why: optional, at most 120 bytes, one short reason shown under the step. May carry tokens.
+- note: optional, at most 400 bytes. Shown under Show more; say where to go and what to do.
+- rewards: optional, up to 3 single tokens this step gives, same kinds as the plan rewards.
+- condition: optional { text, check }. text (at most 160 bytes) is shown before the step, e.g. "If you have 5,000 {currency:1166}". check = { kind: currency | item | level | quest | ach, id, atLeast? } is evaluated live in the game: met shows Ready; unmet shows the live count and Skip moves past without counting it as skipped. For level, id is the level. Never guess the player's numbers; let the check read them.
 - waypoints: optional, 1 to 10 points [{ mapID, x, y, label }] in route order. x and y are 0 to 1, label at most 80 bytes. The addon sets the native waypoint arrow (and TomTom when installed) on point 1 and moves to the next point when the player comes within about 30 yards. Use it for a multi-stop task. Without waypoints the task's own mapID, x, y is the single point.
 - complete: how the game finishes the task. Omit it and the player presses Done.
 
@@ -52,7 +76,7 @@ complete.kind:
 
 Routing: a request from list_requests carries context (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). Start the first task near context.mapID / x / y, order the rest as one sensible route, and only send the player to another continent when the wish asks for it or nothing nearby fits. context.hearth is where their hearthstone goes.
 
-The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Wisp's Refresh offer. The game shows one step at a time and the full list on click.
+The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Wisp's Refresh offer. The game shows one step at a time; the full list opens in the same card.
 
 ${PLAN_SCOPE}`;
 
@@ -109,7 +133,7 @@ const entitiesSchema = z
 export function createMcpServer(store: Store, dataDir: string, gameIds?: BlizzardIds): McpServer {
   const server = new McpServer({
     name: "unbored",
-    version: "0.6.0",
+    version: "0.8.0",
   });
 
   const taskSchema = z
@@ -121,6 +145,23 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       x: z.number().optional(),
       y: z.number().optional(),
       note: z.string().optional(),
+      why: z.string().optional().describe("One short reason, at most 120 bytes"),
+      rewards: z.array(z.string()).max(3).optional().describe("Up to 3 single link tokens"),
+      condition: z
+        .object({
+          text: z.string(),
+          check: z
+            .object({
+              kind: z.enum(["currency", "item", "level", "quest", "ach"]),
+              id: z.number(),
+              atLeast: z.number().optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict()
+        .optional()
+        .describe("Shown before the step; check is run live in the game"),
       waypoints: z
         .array(waypointSchema)
         .max(10)
@@ -136,6 +177,14 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       mode: z.string().optional(),
       budget: z.number().optional(),
       note: z.string().optional(),
+      title: z.string().optional().describe("3 to 40 characters, like a quest title"),
+      goal: z.string().optional().describe("One sentence, at most 160 bytes"),
+      details: z.string().optional().describe("Facts and state, at most 600 bytes"),
+      rewards: z
+        .array(z.string())
+        .max(6)
+        .optional()
+        .describe('Up to 6 single link tokens, like "{mount:183}"'),
       generatedAt: z.number().optional(),
       tasks: z.array(taskSchema).min(1).max(40),
       entities: entitiesSchema
@@ -159,12 +208,13 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     },
     async ({ plan, requestId }) => {
       try {
-        if (requestId && !store.requestById(requestId)) {
+        const asked = requestId ? store.requestById(requestId) : undefined;
+        if (requestId && !asked) {
           return failure(new Error("No request with that id."));
         }
         const warnings: string[] = [];
         const missing = gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
-        const stored = store.putPlan(plan, undefined, { missing, warnings });
+        const stored = store.putPlan(plan, undefined, { missing, warnings, wish: asked?.wish });
         const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
         return text({
           id: stored.id,
@@ -633,13 +683,16 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     },
     async ({ requestId, message, waypoints, plan, entities }) => {
       try {
-        if (!store.requestById(requestId)) return failure(new Error("No request with that id."));
+        const asked = store.requestById(requestId);
+        if (!asked) return failure(new Error("No request with that id."));
         const warnings: string[] = [];
         const ids = [...markupIds(message), ...(plan ? planMarkupIds(plan) : [])];
         const missing = gameIds ? await gameIds.missing(ids) : undefined;
         const now = Math.floor(Date.now() / 1000);
         const answer = cleanAnswer(message, waypoints, now, entities, { missing, warnings });
-        const stored = plan ? store.putPlan(plan, now, { missing, warnings }) : undefined;
+        const stored = plan
+          ? store.putPlan(plan, now, { missing, warnings, wish: asked.wish })
+          : undefined;
         const request = store.answerRequest(requestId, answer, stored?.id ?? null);
         return text({
           request: request ? publicRequest(request) : null,

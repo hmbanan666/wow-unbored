@@ -73,7 +73,7 @@ test("put_plan keeps good links and the npcs they use, and warns about the rest"
     };
     plan.tasks.push({
       id: "guard",
-      title: "Ask {npc:999|the guard} about {mount:1}",
+      title: "Ask {npc:999|the guard} about {faction:1}",
       note: "Then {item:abc} and {pin:84:150:20|the gate}.",
     });
     plan.entities.npc["4242"] = { name: "Nobody links me" };
@@ -182,6 +182,21 @@ test("with Blizzard credentials, ids that do not exist lose their link; answers 
       ),
     );
     assert.ok(!calls.some((url) => url.includes("/currency/")));
+    await mcpCall(app, "put_plan", {
+      plan: {
+        title: "Mounts and pets",
+        tasks: [{ id: "m", title: "Ride {mount:183} with {pet:39}" }],
+      },
+    });
+    assert.ok(
+      calls.some((url) => url.includes("/data/wow/mount/183?")),
+      "mount ids are checked",
+    );
+    assert.ok(
+      calls.some((url) => url.includes("/data/wow/pet/39?")),
+      "pet ids are checked",
+    );
+    assert.ok(!calls.some((url) => url.includes("/toy/")), "toys are not checked");
     const count = calls.length;
     await mcpCall(app, "put_plan", { plan });
     assert.equal(calls.length, count, "the second plan is answered from the cache");
