@@ -164,6 +164,9 @@ pub struct SavedRequest {
     pub item: Option<serde_json::Value>,
     /// The language of the question, "en" or "ru".
     pub lang: Option<String>,
+    /// With topic "suggestion": the picked Suggestion and a copy of it (D109).
+    pub suggestion_id: Option<String>,
+    pub suggestion: Option<serde_json::Value>,
 }
 
 pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, String> {
@@ -216,6 +219,10 @@ pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, 
             .map(LuaValue::to_json)
             .filter(serde_json::Value::is_object),
         lang: text_field(request, "lang"),
+        suggestion_id: text_field(request, "suggestionId"),
+        suggestion: table_get(request, "suggestion")
+            .map(LuaValue::to_json)
+            .filter(serde_json::Value::is_object),
     }))
 }
 
