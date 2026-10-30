@@ -487,7 +487,10 @@ export function mergeProfile(old: Raw, fresh: Raw): Raw {
 }
 
 export class DataStore {
-  constructor(private db: DatabaseSync) {
+  private db: DatabaseSync;
+
+  constructor(db: DatabaseSync) {
+    this.db = db;
     db.exec(`
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,

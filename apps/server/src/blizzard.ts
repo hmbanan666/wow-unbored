@@ -31,7 +31,10 @@ export function blizzardFromEnv(env: NodeJS.ProcessEnv = process.env): BlizzardC
 }
 
 export class IdCache {
-  constructor(private db: DatabaseSync) {
+  private db: DatabaseSync;
+
+  constructor(db: DatabaseSync) {
+    this.db = db;
     db.exec(`
       CREATE TABLE IF NOT EXISTS game_ids (
         kind TEXT NOT NULL,
@@ -70,12 +73,22 @@ export class IdCache {
 export class BlizzardIds {
   private token: { value: string; until: number } | null = null;
 
+  private config: BlizzardConfig | null;
+  private cache: IdCache;
+  private fetchImpl: GameDataFetch;
+  private now: () => number;
+
   constructor(
-    private config: BlizzardConfig | null,
-    private cache: IdCache,
-    private fetchImpl: GameDataFetch = fetch,
-    private now: () => number = () => Math.floor(Date.now() / 1000),
-  ) {}
+    config: BlizzardConfig | null,
+    cache: IdCache,
+    fetchImpl: GameDataFetch = fetch,
+    now: () => number = () => Math.floor(Date.now() / 1000),
+  ) {
+    this.config = config;
+    this.cache = cache;
+    this.fetchImpl = fetchImpl;
+    this.now = now;
+  }
 
   get enabled(): boolean {
     return this.config !== null;
