@@ -698,6 +698,68 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
   }
 });
 
+test("failing an old request never hides the answer to the newer one (D82)", async () => {
+  const { app, store, close } = createApp({
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-d82-")),
+    log: () => {},
+  });
+  try {
+    for (const [deviceId, secret] of [
+      ["d82-device", "d82-device-secret-long"],
+      ["d82-other", "d82-other-device-secret"],
+    ]) {
+      const registered = await app.request("/v1/devices/register", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.82" },
+        body: JSON.stringify({ deviceId, name: "PC", secret }),
+      });
+      assert.equal(registered.status, 201);
+      store.setDeviceStatus(deviceId, "approved");
+    }
+    const ask = (id: string, nowSeconds: number) =>
+      store.addRequest({
+        id,
+        deviceId: "d82-device",
+        character: "Hero",
+        realm: "Area 52",
+        mode: "fun",
+        budget: null,
+        wish: null,
+        nowSeconds,
+      });
+    ask("req-old", 1000);
+    ask("req-new", 2000);
+    const plan = store.putPlan({ ...sample, requestId: "req-new" }, 2100);
+    store.fulfillRequest("req-new", plan.id, 2100);
+    store.failRequest("req-old", "timed out", 5000);
+
+    const get = async (url: string, secret = "d82-device-secret-long") => {
+      const response = await app.request(url, { headers: { authorization: `Bearer ${secret}` } });
+      return { status: response.status, body: await json(response) };
+    };
+    const latest = await get("/v1/requests/latest");
+    assert.equal(latest.body.id, "req-new");
+    assert.equal(latest.body.status, "fulfilled");
+    assert.equal(typeof latest.body.plan, "string");
+
+    const waited = await get("/v1/requests/req-new");
+    assert.equal(waited.status, 200);
+    assert.equal(waited.body.status, "fulfilled");
+    assert.equal(waited.body.plan, latest.body.plan);
+
+    const old = await get("/v1/requests/req-old");
+    assert.equal(old.body.status, "failed");
+    assert.equal(old.body.plan, null);
+
+    assert.equal((await get("/v1/requests/req-new", "d82-other-device-secret")).status, 404);
+    assert.equal((await get("/v1/requests/req-missing")).status, 404);
+  } finally {
+    close();
+  }
+});
+
 test("criteria tree ids map to criteriaID and index", () => {
   const tree = [
     "ID,Description_lang,Parent,Amount,Operator,CriteriaID,OrderIndex,Flags",

@@ -152,7 +152,7 @@ An item request carries `item`: `itemID` is required; `link`, `name`, `bag`, `sl
 
 Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`, keep the route in one zone unless the wish says otherwise, and use `hearth`, `skyriding`, and `canFly` to judge travel.
 
-`GET {base}/v1/requests/latest` returns that request (with `type`, `question`, `topic`, `item`) plus `"plan": "UNB1:..."` when it was fulfilled with a plan, or `"plan": null` otherwise. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed. `answer` is set when the planner answered with `answer_request`:
+`GET {base}/v1/requests/{id}` returns the Request with that id, or 404 when it is not this device's. The companion asks for exactly the id the game waits for (`UnboredCharDB.request.id` in SavedVariables), so a newer status on an older Request never changes which answer the game gets. `GET {base}/v1/requests/latest` is the fallback when the game waits for nothing: it returns the device's newest Request by creation time (never by update time). Both return the request (with `type`, `question`, `topic`, `item`) plus `"plan": "UNB1:..."` when it was fulfilled with a plan, or `"plan": null` otherwise. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed. `answer` is set when the planner answered with `answer_request`:
 
 ```json
 { "message": "A rare is east of you. I pinned it.", "waypoints": [{ "mapID": 2248, "x": 0.6, "y": 0.4, "label": "Rare" }], "answeredAt": 1761720500 }

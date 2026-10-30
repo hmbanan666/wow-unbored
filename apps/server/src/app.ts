@@ -10,7 +10,7 @@ import { cleanSnapshot, SNAPSHOT_MAX_COMPRESSED, SNAPSHOT_MAX_INFLATED } from ".
 import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";
-import { publicDevice, publicRequest, sessionSummary, Store } from "./store.ts";
+import { publicDevice, publicRequest, sessionSummary, Store, type PlanRequest } from "./store.ts";
 import { PlannerWebhook, webhookFromEnv, type FetchLike, type WebhookConfig } from "./webhook.ts";
 
 function limitOf(value: string | undefined, fallback: number): number {
@@ -67,6 +67,11 @@ export function createApp(
     if (!device || device.status !== "approved") return c.json({ error: "Unauthorized" }, 401);
     store.touchDevice(device.id);
     return { deviceId: device.id };
+  };
+
+  const requestWithPlan = (request: PlanRequest) => {
+    const plan = request.planId ? store.planById(request.planId) : undefined;
+    return { ...publicRequest(request), plan: plan?.unb1 ?? null };
   };
 
   app.use(
@@ -164,11 +169,17 @@ export function createApp(
     if (access instanceof Response) return access;
     const request = store.latestRequestForDevice(access.deviceId);
     if (!request) return c.json({ error: "No request yet." }, 404);
-    const plan = request.planId ? store.planById(request.planId) : undefined;
-    return c.json({
-      ...publicRequest(request),
-      plan: plan?.unb1 ?? null,
-    });
+    return c.json(requestWithPlan(request));
+  });
+
+  // The exact Request the game waits for (D82); another device's id is 404.
+  app.get("/v1/requests/:id", (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    const request = store.requestById(c.req.param("id"));
+    if (!request || request.deviceId !== access.deviceId)
+      return c.json({ error: "No such request." }, 404);
+    return c.json(requestWithPlan(request));
   });
 
   // Personal advice for this device's characters (docs/adr/0019).

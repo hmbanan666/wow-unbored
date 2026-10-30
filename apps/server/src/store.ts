@@ -503,12 +503,16 @@ export class Store {
     return row ? requestFromRow(row) : undefined;
   }
 
+  /**
+   * The newest Request this device made. Ordered by creation, never by
+   * update: failing an old Request must not make it "latest" (D82).
+   */
   latestRequestForDevice(deviceId: string): PlanRequest | undefined {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
                 type, question, topic, item_json, answer_json, lang, account
-         FROM requests WHERE device_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`,
+         FROM requests WHERE device_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
       .get(deviceId) as RequestRow | undefined;
     return row ? requestFromRow(row) : undefined;
