@@ -43,6 +43,7 @@ local files = {
   "Core/Complete.lua",
   "Core/Waypoint.lua",
   "Core/Steps.lua",
+  "Core/Suggestions.lua",
   "Core/Session.lua",
   "Core/Events.lua",
   "Data/Exploration.lua",
@@ -720,6 +721,88 @@ check(ns.Session:Current().title == "Bank" and ns.Session.state.tasks[2].id == "
 check(UnboredCharDB.answer.message == "Go here." and ns.Session.UnreadAnswer() ~= nil, "the answer waits to be read")
 ns.Session:DismissAnswer()
 check(ns.Session.UnreadAnswer() == nil, "a read answer is not shown again")
+
+-- Ideas (D106-D111): the Companion's file, a live local idea, one per reward.
+assert(loadfile("../packages/contracts/fixtures/suggestions.lua"))()
+local savedName, savedRealm, savedNow = UnitName, GetRealmName, ns.Now
+UnitName = function() return "Mira" end
+GetRealmName = function() return "Silvermoon" end
+ns.Now = function() return UnboredSuggestions.computedAt end
+local ideas = ns.Suggestions.Read()
+check(#ideas == 4 and ideas[1].kind == "event" and ideas[3].id == "mount:183", "the Companion's ideas are read")
+check(ideas[3].rewards[1] == "{mount:183}" and ideas[3].mapID == 109, "an idea keeps its reward and map")
+check(ideas[1].wish ~= nil and ideas[1].quick == nil, "a Server idea has its wish and no Quick plan")
+check(ns.Suggestions.Line(ideas[1]) == "Ends soon" and ns.Suggestions.Line(ideas[3]) ==
+  "None of your 2 characters has it yet", "the line under a title comes from the reason")
+check(ns.Suggestions.Line(ideas[2]) == "Near where you play", "a rare near where you play")
+ns.Now = function() return UnboredSuggestions.computedAt + 3 * 86400 end
+check(#ns.Suggestions.Read() == 3, "an idea that ran out is not shown")
+ns.Now = function() return UnboredSuggestions.computedAt end
+GetRealmName = function() return "Elsewhere" end
+check(#ns.Suggestions.Read() == 0, "another character's ideas are not shown")
+GetRealmName = function() return "Silvermoon" end
+check(ns.Suggestions.Clean({ id = "x", kind = "weird", title = "T", goal = "G" }) == nil, "an unknown kind is dropped")
+check(ns.Suggestions.Clean({ id = "x", kind = "rare", title = "", goal = "G" }) == nil, "an idea needs a title")
+local cleaned = ns.Suggestions.Clean({ id = "x", kind = "rare", title = "T", goal = "G",
+  rewards = { "{mount:1}", "mount:2", "{ach:3}", "{item:4}", "{toy:5}" } })
+check(#cleaned.rewards == 3 and cleaned.rewards[2] == "{ach:3}", "only tokens, at most three rewards")
+local localIdeas = {
+  { id = "event:local:hallow's end", kind = "event", title = "Hallow's End", goal = "g", rewards = {}, quick = true },
+  { id = "rare:other", kind = "rare", title = "Other", goal = "g", rewards = { "{mount:183}" }, quick = true },
+  { id = "rare:new", kind = "rare", title = "New", goal = "g", rewards = {}, quick = true },
+}
+local merged = ns.Suggestions.Merge(ideas, localIdeas, 4)
+check(#merged == 4 and merged[1].id == ideas[1].id and merged[4].id == ideas[4].id,
+  "Server ideas come first and only four are shown")
+merged = ns.Suggestions.Merge({ ideas[1], ideas[3] }, localIdeas, 4)
+check(#merged == 3 and merged[3].id == "rare:new", "the same holiday or reward is shown once")
+
+ns.Suggestions.cache = nil
+local savedMapFor = C_Map.GetBestMapForUnit
+C_Map.GetBestMapForUnit = function() return 554 end
+local savedRares = ns.Data.Rares
+ns.Data.Rares = { { id = "rare-huolon", fallbackTitle = "Huolon", mapID = 554, questID = 33311 } }
+local live = ns.Suggestions.Local()
+local sawHuolon = false
+for i = 1, #live do
+  sawHuolon = sawHuolon or (live[i].id == "rare:rare-huolon" and live[i].quick == true)
+end
+check(sawHuolon and #live <= 2, "a curated rare in this zone is a live idea")
+check(#ns.Suggestions.Merge(ideas, live, 4) == 4, "and the Server's Huolon is not shown twice")
+ns.Data.Rares = savedRares
+C_Map.GetBestMapForUnit = savedMapFor
+ns.Suggestions.cache = nil
+
+-- Picking a Server idea: straight to Confirm, then a Request with its copy and no time.
+local keepRequest, keepState = UnboredCharDB.request, ns.Session.state
+UnboredCharDB.request = nil
+ns.Session:BeginSuggestion(ideas[3])
+local flow = ns.Session.Flow()
+check(ns.Session:FlowState() == "confirm" and flow.topic == "suggestion" and flow.mode == "farm",
+  "a Server idea goes straight to Confirm with its mode")
+check(flow.budget == nil and flow.suggestionId == "mount:183", "with its id and no time")
+local sent = ns.Session:Ask(flow)
+check(sent.topic == "suggestion" and sent.suggestionId == "mount:183" and sent.suggestion.title == "Tempest Keep",
+  "the Request carries the idea")
+check(sent.suggestion.rewards[1] == "{mount:183}" and sent.suggestion.request == nil and sent.budget == nil,
+  "only the idea's own fields travel, never a time")
+ns.Session:Send()
+check(UnboredCharDB.request.suggestionId == "mount:183" and UnboredCharDB.request.state == "sent",
+  "Send now writes it")
+UnboredCharDB.request.state = "waiting"
+UnboredCharDB.request.sentAt = ns.Now() - ns.REQUEST_EXPIRE_SECONDS - 1
+check(ns.Session:Retry() and ns.Session.Flow().suggestion.id == "mount:183", "Try again keeps the idea")
+UnboredCharDB.request = nil
+ns.Session:BeginSuggestion({ id = "rare:here", kind = "rare", title = "Rare Beast", goal = "Hunt Rare Beast.",
+  rewards = {}, quick = true })
+check(ns.Session.state.title == "Rare Beast" and ns.Session.state.mode == "roam",
+  "a live idea starts its Quick plan at once, named after it")
+check(ns.Session:FlowState() == "quick" and ns.Session.Flow().suggestionId == "rare:here",
+  "and offers a proper plan for the same idea")
+UnboredCharDB.request = keepRequest
+ns.Session.state = keepState
+UnitName, GetRealmName, ns.Now = savedName, savedRealm, savedNow
+UnboredSuggestions = nil
 
 UnboredExternalPlan = { requestId = "req-none", requestStatus = "fulfilled", answer = { message = 5 } }
 ns.UI.HasCompanion = hasCompanion

@@ -1141,6 +1141,57 @@ check(mascot.view.kind == "item", "no Companion: the item still opens")
 mascot.buttons.back:Click()
 C_AddOns.IsAddOnLoaded = loaded
 
+-- Ideas first (D108): up to four chips, Surprise me and Something else, More ideas.
+local savedHas = ns.UI.HasCompanion
+ns.UI.HasCompanion = function() return true end
+UnboredCharDB.request = nil
+UnboredSuggestions = { v = 1, computedAt = clock, characters = { ["Area 52-Hero"] = {
+  { id = "mount:183", kind = "collection", title = "Tempest Keep", goal = "Run Tempest Keep for {item:6948}.",
+    rewards = { "{item:6948}" }, reason = { kind = "alts", count = 2 },
+    request = { topic = "suggestion", suggestionId = "mount:183", wish = "Tempest Keep: a mount." } },
+  { id = "rare:x", kind = "rare", title = "Huolon", goal = "Hunt Huolon.", rewards = {}, reason = { kind = "near" } },
+} } }
+ns.Suggestions.cache = { at = clock, list = {} }
+local savedIcon = C_Item.GetItemIconByID
+C_Item.GetItemIconByID = function(id) return id == 6948 and 134414 or nil end
+mascot:ShowChoice()
+check(mascot.view.kind == "choice" and #mascot.view.ideas == 2, "the choice leads with ideas")
+check(mascot.ideaChips[1]:IsShown() and textOf(mascot.ideaChips[1].label) == "Tempest Keep",
+  "an idea chip shows its title")
+check(textOf(mascot.ideaChips[1].sub) == "None of your 2 characters has it yet", "and a muted line under it")
+check(mascot.ideaChips[1].icon:IsShown() and not mascot.ideaChips[2].icon:IsShown(),
+  "one reward picture on the right, none without a reward")
+check(not mascot.ideaChips[3]:IsShown(), "only as many chips as ideas")
+local surpriseAt, otherAt = mascot.surpriseChip.points[1], mascot.otherChip.points[1]
+check(mascot.surpriseChip:IsShown() and mascot.otherChip:IsShown() and surpriseAt[5] == otherAt[5]
+  and surpriseAt[4] < otherAt[4], "Surprise me and Something else sit side by side")
+check(textOf(mascot.surpriseChip.label) == "Surprise me" and textOf(mascot.otherChip.label) == "Something else...",
+  "with their labels")
+check(not mascot.chips[1]:IsShown() and mascot.moreIdeas:IsShown() and textOf(mascot.moreIdeas.label) == "More ideas",
+  "the presets wait behind More ideas")
+mascot.moreIdeas:Click()
+local presetsShown = 0
+for i = 1, #mascot.chips do
+  presetsShown = presetsShown + (mascot.chips[i]:IsShown() and 1 or 0)
+end
+check(presetsShown == 5 and not mascot.chips[6]:IsShown(), "More ideas shows the other five presets")
+check(textOf(mascot.moreIdeas.label) == "Show less", "and folds back")
+check(not mascot.minutesBox:IsShown(), "ideas never ask for time (D110)")
+mascot.ideaChips[1]:Click()
+check(mascot.view.kind == "confirm" and textOf(mascot.header) == "Tempest Keep", "an idea goes straight to Confirm")
+check(textOf(mascot.sub):find("You will get:", 1, true) ~= nil, "Confirm shows its rewards")
+check(shownButtons() == "sendnow,back", "with Send now and Back")
+check(UnboredCharDB.request.topic == "suggestion" and UnboredCharDB.request.suggestionId == "mount:183",
+  "the flow remembers the idea")
+ns.Session:CancelRequest()
+UnboredSuggestions = nil
+mascot:ShowChoice()
+check(mascot.chips[6]:IsShown() and not mascot.surpriseChip:IsShown() and not mascot.moreIdeas:IsShown(),
+  "no ideas: the six presets as before")
+ns.Suggestions.cache = nil
+ns.UI.HasCompanion = savedHas
+C_Item.GetItemIconByID = savedIcon
+
 -- Entity markup: the shared fixture parses the same as on the Server.
 local function readJson(path)
   local file = assert(io.open(path, "r"))

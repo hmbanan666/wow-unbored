@@ -242,6 +242,15 @@ local en = {
   LINK_PET_OWNED = "Collected: %d/%d",
   LINK_OPEN_MAP = "Click: open the map",
   LINK_OPEN_GUIDE = "Click: open the Adventure Guide",
+  MORE_IDEAS = "More ideas",
+  IDEA_ENDS_SOON = "Ends soon",
+  IDEA_ENDS_DAYS = "Ends in %d days",
+  IDEA_ALTS = "None of your %d characters has it yet",
+  IDEA_ALTS_ONE = "You don't have it yet",
+  IDEA_NEAR = "Near where you play",
+  IDEA_HERE = "Right here in this zone",
+  IDEA_NOW = "On right now",
+  IDEA_RARE_GOAL = "Hunt %s in this zone.",
 }
 
 local ru = {
@@ -480,6 +489,15 @@ local ru = {
   LINK_PET_OWNED = "Собрано: %d/%d",
   LINK_OPEN_MAP = "Клик: открыть карту",
   LINK_OPEN_GUIDE = "Клик: открыть путеводитель",
+  MORE_IDEAS = "Ещё идеи",
+  IDEA_ENDS_SOON = "Скоро закончится",
+  IDEA_ENDS_DAYS = "Закончится через %d дн.",
+  IDEA_ALTS = "Нет ни у одного из твоих %d персонажей",
+  IDEA_ALTS_ONE = "У тебя этого ещё нет",
+  IDEA_NEAR = "Рядом с местами, где ты играешь",
+  IDEA_HERE = "Прямо в этой зоне",
+  IDEA_NOW = "Идёт прямо сейчас",
+  IDEA_RARE_GOAL = "Поохоться на %s в этой зоне.",
 }
 
 ns.Locales = { en = en, ru = ru }

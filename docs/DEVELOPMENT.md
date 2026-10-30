@@ -7,7 +7,7 @@ Read [`CONTEXT.md`](../CONTEXT.md) (the words we use) and [`docs/adr/`](adr/) (t
 ## The pieces
 
 - **The addon** (`addon/`): Bory, the Bubble, Quick plans from the Providers, tooltip Advice, local answers. Lua for the Retail client, no required libraries. It is not a JavaScript package.
-- **The Companion** (`apps/companion/`): a Windows tray app (Tauri, Rust, window in `ui/`). It installs and updates the addon, sends Requests and profiles from SavedVariables to the Server, and writes `Interface/AddOns/Unbored_Plan/Plan.lua` and `Advice.lua`. See [`apps/companion/README.md`](../apps/companion/README.md).
+- **The Companion** (`apps/companion/`): a Windows tray app (Tauri, Rust, window in `ui/`). It installs and updates the addon, sends Requests and profiles from SavedVariables to the Server, and writes `Interface/AddOns/Unbored_Plan/Plan.lua`, `Advice.lua` and `Suggestions.lua`. See [`apps/companion/README.md`](../apps/companion/README.md).
 - **The Server** (`apps/server/`): Node, Hono and SQLite at `https://unbored.kosarev.space`. Devices, Requests, Plans, Player profiles, history, Personal advice, and the MCP tools the Planner uses. Contract: [`companion-api.md`](companion-api.md), plan format: [`plan-format.md`](plan-format.md).
 - **Shared types** (`packages/contracts/`): Request, Plan, and Player profile types and JSON Schema. The Server and the Companion window import them. The Rust contract test reads the JSON Schema.
 - **`apps/web/`**: a placeholder for a future player website. No app yet.
@@ -148,7 +148,7 @@ Done, Skip, the queue, a pending request, and the last answer are saved per char
 
 ## Blizzard rules
 
-The addon never touches the network; the Companion carries Requests and answers through SavedVariables and its own `Unbored_Plan` addon (`Plan.lua` and `Advice.lua`). `ReloadUI` runs only from a click on Refresh or Load, or the Refresh keybind, never per message ([ADR 0012](adr/0012-reload-free-background-refresh.md)). Bag buttons are not replaced, re-scripted or hooked: the tooltip line uses `TooltipDataProcessor.AddTooltipPostCall`, and an item reaches Bory by being dropped on him or picked up in pick mode (`GetCursorInfo`, then `ClearCursor` puts it back). There are no `hooksecurefunc` hooks and no protected calls outside a hardware event.
+The addon never touches the network; the Companion carries Requests and answers through SavedVariables and its own `Unbored_Plan` addon (`Plan.lua`, `Advice.lua` and `Suggestions.lua`). `ReloadUI` runs only from a click on Refresh or Load, or the Refresh keybind, never per message ([ADR 0012](adr/0012-reload-free-background-refresh.md)). Bag buttons are not replaced, re-scripted or hooked: the tooltip line uses `TooltipDataProcessor.AddTooltipPostCall`, and an item reaches Bory by being dropped on him or picked up in pick mode (`GetCursorInfo`, then `ClearCursor` puts it back). There are no `hooksecurefunc` hooks and no protected calls outside a hardware event.
 
 ## Auto-complete
 

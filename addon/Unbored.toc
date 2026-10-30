@@ -37,6 +37,7 @@ Core\Plan.lua
 Core\Complete.lua
 Core\Waypoint.lua
 Core\Steps.lua
+Core\Suggestions.lua
 Core\Session.lua
 Core\Events.lua
 Data\Exploration.lua

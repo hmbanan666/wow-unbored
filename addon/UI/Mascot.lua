@@ -28,6 +28,7 @@ local MUTED = P.muted
 local CREAM = P.cream
 local COMBAT_ALPHA = 0.5
 local CHIP_HEIGHT = 26
+local IDEA_ICON = 20
 local SCALES = { 80, 100, 125, 150 }
 local ECHOES = 2
 local ECHO_SECONDS = 90
@@ -190,6 +191,29 @@ local function chip(parent, template, onClick)
     onClick(button)
   end)
   button:Hide()
+  return button
+end
+
+-- An idea: its title, a muted line under it, one reward picture on the right.
+local function ideaChip(parent, onClick)
+  local button = chip(parent, "GameFontHighlight", onClick)
+  button.sub = font(button, "GameFontHighlightSmall")
+  button.sub:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  button.icon = button:CreateTexture(nil, "ARTWORK")
+  button.icon:SetSize(IDEA_ICON, IDEA_ICON)
+  button.icon:SetPoint("RIGHT", -8, 0)
+  button.icon:Hide()
+  tooltip(button, function()
+    local idea = button.idea
+    if not idea then
+      return ""
+    end
+    local lines = { idea.title, ns.Markup.Plain(idea.goal) }
+    for i = 1, #idea.rewards do
+      lines[#lines + 1] = "- " .. (ns.Markup.Plain(idea.rewards[i]) or "")
+    end
+    return table.concat(lines, "\n")
+  end)
   return button
 end
 
@@ -737,6 +761,22 @@ function ns.Mascot:CreateBubble()
     self:ShowWish()
   end)
 
+  -- Ideas first (D108): up to four, then Surprise me and Something else side
+  -- by side, and "More ideas" for the other presets.
+  self.ideaChips = {}
+  for i = 1, ns.Suggestions.MAX do
+    self.ideaChips[i] = ideaChip(bubble, function(button)
+      self:ChooseSuggestion(button.idea)
+    end)
+  end
+  self.surpriseChip = chip(bubble, "GameFontNormal", function()
+    self:Choose(self.Preset("surprise"))
+  end)
+  self.moreIdeas = textToggle(bubble, function()
+    self.showPresets = not self.showPresets
+    self:Refresh()
+  end)
+
   self.wishBox, self.wishEdit = ns.UI.MakeTextBox(bubble, ns.T("WISH_HINT"), 300, function()
     self.wishError = nil
   end, INNER, 64)
@@ -863,8 +903,14 @@ function ns.Mascot.RequestSummary(req)
   end
   local preset = ns.Mascot.Preset(req.topic)
   local wish = type(req.wish) == "string" and req.wish ~= "" and req.wish or nil
+  local idea = req.topic == "suggestion" and type(req.suggestion) == "table" and req.suggestion or nil
   local text
-  if preset then
+  if idea and type(idea.title) == "string" and idea.title ~= "" then
+    text = idea.title
+    if type(req.extra) == "string" and req.extra ~= "" then
+      text = text .. "\n\"" .. req.extra .. "\""
+    end
+  elseif preset then
     text = ns.T(preset.label)
     if type(req.extra) == "string" and req.extra ~= "" then
       text = text .. "\n\"" .. req.extra .. "\""
@@ -1103,6 +1149,7 @@ local function choiceView(session, task, answer)
     mood = mood,
     message = message,
     choice = true,
+    ideas = ns.Suggestions.List(),
     buttons = (task or answer) and { "back" } or {},
   }
 end
@@ -1191,13 +1238,31 @@ local function surveyView(mascot, req)
   }
 end
 
+-- An idea shows its goal and rewards above the question (D109).
+local function ideaLines(req)
+  local idea = req.topic == "suggestion" and type(req.suggestion) == "table" and req.suggestion or nil
+  if not idea or type(idea.goal) ~= "string" then
+    return nil
+  end
+  local lines = { render(idea.goal) }
+  local shown = {}
+  for _, token in ipairs(type(idea.rewards) == "table" and idea.rewards or {}) do
+    shown[#shown + 1] = ns.Markup.RenderReward(token, relink)
+  end
+  if #shown > 0 then
+    lines[#lines + 1] = ns.T("REWARDS") .. " " .. table.concat(shown, "  ")
+  end
+  return table.concat(lines, "\n")
+end
+
 local function confirmView(req)
   return {
     kind = "confirm",
-    key = req.topic or "custom",
+    key = (req.topic or "custom") .. ":" .. tostring(req.suggestionId or ""),
     mood = "idle",
     header = flowSummary(req),
     message = ns.T("CONFIRM_TITLE"),
+    sub = ideaLines(req),
     buttons = { "sendnow", "back" },
   }
 end
@@ -1387,6 +1452,7 @@ function ns.Mascot:ShowChoice()
   self:Reset()
   ns.Session.welcomeBack = false
   self.forceChoice = true
+  self.showPresets = false
   self:Reveal()
 end
 
@@ -1561,6 +1627,22 @@ function ns.Mascot:Choose(preset)
   end
   self:Reset()
   ns.Session:BeginQuick(preset)
+  if ns.Session:FlowState() == "survey" then
+    self:FocusWish()
+  end
+end
+
+-- An idea chip: its Quick plan or straight to Confirm (D109).
+function ns.Mascot:ChooseSuggestion(idea)
+  if not idea then
+    return
+  end
+  if ns.Session:Locked() then
+    self:Busy()
+    return
+  end
+  self:Reset()
+  ns.Session:BeginSuggestion(idea)
   if ns.Session:FlowState() == "survey" then
     self:FocusWish()
   end
@@ -1745,6 +1827,12 @@ local function clearBubble(mascot)
     mascot.chips[i]:Hide()
   end
   mascot.otherChip:Hide()
+  for i = 1, #mascot.ideaChips do
+    mascot.ideaChips[i]:Hide()
+    mascot.ideaChips[i].idea = nil
+  end
+  mascot.surpriseChip:Hide()
+  mascot.moreIdeas:Hide()
   mascot.wishBox:Hide()
   mascot.minutesBox:Hide()
   for _, region in ipairs({ mascot.title, mascot.pipRow, mascot.goal, mascot.condition, mascot.why,
@@ -1921,7 +2009,66 @@ function ns.Mascot:Layout(view, right)
     styleChip(button, selected)
     y = y - place(button, PAD, height) - 4
   end
-  if view.choice then
+  local function layoutIdea(button, idea)
+    button.idea = idea
+    button.label:SetText(idea.title)
+    local line = ns.Suggestions.Line(idea)
+    button.sub:SetText(line or "")
+    local icon = idea.rewards[1] and ns.Markup.RewardIcon(idea.rewards[1])
+    local width = inner - 20 - (icon and IDEA_ICON + 6 or 0)
+    local height = ns.UI.Measure(button.label, width) + 10
+    button.label:ClearAllPoints()
+    button.label:SetPoint("TOPLEFT", 10, -5)
+    button.sub:ClearAllPoints()
+    if line then
+      button.sub:SetPoint("TOPLEFT", button.label, "BOTTOMLEFT", 0, -2)
+      height = height + ns.UI.Measure(button.sub, width) + 2
+      button.sub:Show()
+    else
+      button.sub:Hide()
+    end
+    if icon then
+      button.icon:SetTexture(icon)
+      button.icon:Show()
+    else
+      button.icon:Hide()
+    end
+    height = math.max(CHIP_HEIGHT, height)
+    button:SetSize(inner, height)
+    styleChip(button, false)
+    y = y - place(button, PAD, height) - 4
+  end
+  -- Two small chips on one row.
+  local function layoutPair(left, leftText, rightChip, rightText)
+    local half = math.floor((inner - 4) / 2)
+    left.label:SetText(leftText)
+    rightChip.label:SetText(rightText)
+    local height = math.max(CHIP_HEIGHT, ns.UI.Measure(left.label, half - 20) + 10,
+      ns.UI.Measure(rightChip.label, inner - half - 24) + 10)
+    left:SetSize(half, height)
+    rightChip:SetSize(inner - half - 4, height)
+    styleChip(left, false)
+    styleChip(rightChip, false)
+    place(left, PAD, height)
+    place(rightChip, PAD + half + 4, height)
+    y = y - height - 4
+  end
+  if view.choice and #(view.ideas or {}) > 0 then
+    y = y - 2
+    for i = 1, math.min(#view.ideas, #self.ideaChips) do
+      layoutIdea(self.ideaChips[i], view.ideas[i])
+    end
+    layoutPair(self.surpriseChip, ns.T("PRESET_SURPRISE"), self.otherChip, ns.T("PRESET_OTHER"))
+    self.moreIdeas:SetOpen(self.showPresets and ns.T("LESS") or ns.T("MORE_IDEAS"), self.showPresets)
+    y = y - place(self.moreIdeas, PAD, 16) - 4
+    if self.showPresets then
+      for i = 1, #self.chips do
+        if self.chips[i].preset.id ~= "surprise" then
+          layoutChip(self.chips[i], ns.T(self.chips[i].preset.label), false)
+        end
+      end
+    end
+  elseif view.choice then
     y = y - 2
     for i = 1, #self.chips do
       layoutChip(self.chips[i], ns.T(self.chips[i].preset.label), false)

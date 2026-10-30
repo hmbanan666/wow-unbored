@@ -684,6 +684,39 @@ function ns.Session:BeginQuick(preset)
   self:RefreshUI()
 end
 
+-- An idea (D109): a live local one starts its Quick plan as a preset does;
+-- a Server one goes straight to Confirm. Never a time field (D110).
+function ns.Session:BeginSuggestion(idea)
+  local mode = ns.Suggestions.MODE[idea.kind] or "roam"
+  local companion = ns.UI and ns.UI.HasCompanion()
+  if idea.quick or not companion then
+    self:QuickPlan({ id = "suggestion", mode = mode })
+    if self.rebuildQueued then
+      return
+    end
+    if self.state and self:Current() then
+      self.state.title, self.state.goal = idea.title, idea.goal
+      self.state.rewards = #idea.rewards > 0 and ns.DeepCopy(idea.rewards, 1) or self.state.rewards
+      self:Save()
+    end
+    if not companion then
+      return
+    end
+  end
+  local empty = idea.quick and self:Current() == nil
+  setFlow({
+    state = idea.quick and (empty and "survey" or "quick") or "confirm",
+    mode = mode,
+    topic = "suggestion",
+    suggestionId = idea.id,
+    suggestion = ns.Suggestions.Copy(idea),
+    wish = idea.wish or ns.Markup.Plain(idea.goal),
+    quickEmpty = empty or nil,
+  })
+  self:NoteRequest()
+  self:RefreshUI()
+end
+
 -- "Something else..." or "Make a plan" under an Answer: the Survey with
 -- free text, where minutes may be typed (docs/adr/0037).
 function ns.Session:BeginSurvey(fields)
@@ -771,6 +804,13 @@ function ns.Session:Ask(ask)
   if type(ask.topic) == "string" and ask.topic:match("^[a-z_-]+$") and #ask.topic <= 40 then
     request.topic = ask.topic
   end
+  if request.topic == "suggestion" and type(ask.suggestion) == "table" then
+    local idea = ns.Suggestions.Clean(ask.suggestion)
+    if idea then
+      request.suggestionId = idea.id
+      request.suggestion = ns.Suggestions.Copy(idea)
+    end
+  end
   if type(UnboredCharDB) ~= "table" then
     UnboredCharDB = {}
   end
@@ -813,6 +853,8 @@ function ns.Session:Retry()
     state = "confirm",
     mode = req.mode,
     topic = req.topic,
+    suggestionId = req.suggestionId,
+    suggestion = req.suggestion,
     wish = req.wish,
     budget = req.budget,
     custom = req.custom or (not req.topic) or nil,

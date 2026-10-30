@@ -438,6 +438,17 @@ function M.RenderReward(text, onChange)
   return shown
 end
 
+-- Only the picture of a Reward token, for an idea chip; nil when there is none.
+function M.RewardIcon(text)
+  for _, part in ipairs(M.Parse(text)) do
+    if type(part) == "table" then
+      local icon = icons[part.type] and icons[part.type](part.id)
+      return icon or nil
+    end
+  end
+  return nil
+end
+
 -- Text without links (the step list, chat, uploads): game names when cached, else labels.
 function M.Plain(text, npcs)
   if type(text) ~= "string" or not M.HasTokens(text) then

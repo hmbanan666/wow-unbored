@@ -73,7 +73,7 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 
 Unbored reads the global `UnboredExternalPlan` from that addon when the UI loads: at login, a character switch, or a Refresh the player clicks (teleports and loading screens do not read it; docs/adr/0012). A plan for this character's pending request is taken then; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast from Bory, "Your plan is ready in the game" (or "Your answer is ready in the game"), once per fulfilled request.
 
-`_retail_/Interface/AddOns/Unbored_Plan/Advice.lua` holds Personal advice (below), written the same way and read at the same moments.
+`_retail_/Interface/AddOns/Unbored_Plan/Advice.lua` holds Personal advice (below), written the same way and read at the same moments. `Suggestions.lua` holds Bory's ideas for the choice Bubble ([GET /v1/suggestions](#get-v1suggestions)), the same way again.
 
 ### Companion status
 
@@ -131,7 +131,7 @@ The game sends three kinds of request, all through SavedVariables and the compan
 }
 ```
 
-`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) is required, and `budget` (5–240 minutes) is sent only when the player typed minutes into the custom form ([ADR 0037](adr/0037-no-time-budget.md)); the other types leave both out. A stored Request without one reads back `budget: null`. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`.
+`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) is required, and `budget` (5–240 minutes) is sent only when the player typed minutes into the custom form ([ADR 0037](adr/0037-no-time-budget.md)); the other types leave both out. A stored Request without one reads back `budget: null`. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`. A plan from an idea chip has `topic: "suggestion"`, `suggestionId`, and `suggestion`, a copy of the idea (`id`, `kind`, `title`, `goal`, `why`, `rewards`, `mapID`, `expiresAt`, at most 2,000 bytes); its tokens are the ids the Planner may trust ([ADR 0040](adr/0040-suggestions-from-data.md)). It never has a `budget`.
 
 A question carries `question` (required, up to 600 bytes) and may carry `topic`, lowercase letters, `_`, or `-` (the game sends `nearby`):
 
@@ -206,6 +206,23 @@ UnboredAdvice = {
 ```
 
 The addon checks every line again: it drops lines that say delete, never shows sell for epic or bind-on-equip items, and never shows send for soulbound items. Live game rules (quest items, uncollected mounts, toys, pets and looks, upgrades) still come first. A failed fetch never holds back plans and answers.
+
+## GET /v1/suggestions
+
+Ideas for the choice Bubble ([ADR 0040](adr/0040-suggestions-from-data.md)), for the characters this device uploaded, with the companion bearer. The Server makes them without an LLM from the player's Game data and the Catalog (`packages/contracts/catalog/catalog.json`, exported from `addon/Data/*.lua`), 30 seconds after the last snapshot upload of the Account, at most 6 per character. The shape is `packages/contracts/schema/suggestions.schema.json`; the fixture is `packages/contracts/fixtures/suggestions.json`:
+
+```json
+{ "v": 1, "computedAt": 1793361600, "characters": { "Silvermoon-Mira": [
+  { "id": "mount:183", "kind": "collection", "title": "Tempest Keep", "goal": "Run Tempest Keep for {mount:183}.",
+    "why": "None of your 2 characters has it yet", "rewards": ["{mount:183}"], "mapID": 109,
+    "reason": { "kind": "alts", "count": 2 },
+    "request": { "topic": "suggestion", "suggestionId": "mount:183", "wish": "Tempest Keep: Run Tempest Keep for a mount." } }
+] } }
+```
+
+`kind` is `event`, `achievement`, `rare` or `collection`. `reason` lets the game write the line under the title in the player's language (`ends` with `at`, `alts` with `count`, `near` with `mapID`); `why` is the English fallback. An idea with `expiresAt` in the past is not shown.
+
+The Companion fetches it on every sync and writes `Unbored_Plan/Suggestions.lua` (`UnboredSuggestions = {...}`, the same shape) only when it changed, within 20 KB and 2,000 literals, dropping the last ideas of each character until it fits. The game reads it when the UI loads, shows up to 4 ideas with the Server's first, and adds up to 2 live ones of its own (an active holiday, a curated rare in this zone), one per id, reward or holiday. The MCP tool `get_suggestions` returns the same ideas to the Planner.
 
 ## POST /v1/profile
 
