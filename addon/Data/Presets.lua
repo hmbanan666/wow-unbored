@@ -16,7 +16,7 @@ ns.Data.Presets = {
     id = "mount",
     label = "PRESET_MOUNT",
     mode = "farm",
-    wish = "Get a mount I don't have yet, the best chance in the time I have.",
+    wish = "Get a mount I don't have yet, the one I have the best chance at.",
   },
   {
     id = "collect",

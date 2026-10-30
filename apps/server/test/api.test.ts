@@ -1172,7 +1172,7 @@ test("item and question requests are typed, webhooked, and answered", async () =
       topic: "mount",
       mode: "farm",
       budget: 60,
-      wish: "Get a mount I don't have yet, the best chance in the time I have.",
+      wish: "Get a mount I don't have yet, the one I have the best chance at.",
       character: "Hero",
       realm: "Area 52",
       context,
