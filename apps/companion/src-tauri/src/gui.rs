@@ -23,7 +23,7 @@ use crate::plan::{
     plan_from_value, render_request_lua, write_status, CompanionStatus, Plan, PlanFile,
     PlannerState, RequestState,
 };
-use crate::request::{reason, request_body};
+use crate::request::{reason, request_body, request_status_path, waited_request};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
 use crate::snapshot::{
     build_upload, character_identity, data_from_saved_variables, gzip, DataFile,
@@ -671,7 +671,11 @@ fn get_json(
     response.json().map(Some).map_err(|err| err.to_string())
 }
 
-fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, String> {
+fn planner_state(
+    settings: &Settings,
+    secret: &str,
+    waiting: Option<&str>,
+) -> Result<PlannerState, String> {
     let url = effective_url(settings);
     validate_endpoint(&url)?;
     let client = http_client(Duration::from_secs(20))?;
@@ -683,7 +687,11 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
             state.latest_plan_at = body.get("createdAt").and_then(|value| value.as_u64());
         }
     }
-    if let Some(body) = get_json(&client, &join_url(&url, "v1/requests/latest"), secret)? {
+    if let Some(body) = get_json(
+        &client,
+        &join_url(&url, &request_status_path(waiting)),
+        secret,
+    )? {
         if let Some(id) = body.get("id").and_then(|value| value.as_str()) {
             state.request = Some(RequestState {
                 id: id.to_string(),
@@ -720,15 +728,13 @@ fn planner_state(settings: &Settings, secret: &str) -> Result<PlannerState, Stri
 
 /// Sends every character's pending Request. Returns the ones the planner
 /// refused outright (a 4xx other than 401), so the game can be told, and the
-/// Server's reason for the Companion's own status line.
-fn post_requests(
-    settings: &Settings,
-    retail: &Path,
-    secret: &str,
-) -> Result<Vec<(RequestState, String)>, String> {
+/// Server's reason for the Companion's own status line. Also returns the id
+/// of the Request the game waits for.
+fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Posted, String> {
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
     let mut rejected = Vec::new();
+    let mut saved = Vec::new();
     for file in character_saved_variables(retail, None) {
         let Ok(text) = fs::read_to_string(&file.path) else {
             continue;
@@ -736,6 +742,7 @@ fn post_requests(
         let Ok(Some(request)) = request_from_saved_variables(&text) else {
             continue;
         };
+        saved.push(request.clone());
         let response = client
             .post(join_url(&url, "v1/requests"))
             .bearer_auth(secret)
@@ -769,7 +776,15 @@ fn post_requests(
             return Err(format!("Planner returned {code}."));
         }
     }
-    Ok(rejected)
+    Ok(Posted {
+        waiting: waited_request(&saved).map(str::to_string),
+        rejected,
+    })
+}
+
+struct Posted {
+    rejected: Vec<(RequestState, String)>,
+    waiting: Option<String>,
 }
 
 /// Uploads the Sections that changed for every character and its Account,
@@ -908,7 +923,7 @@ fn sync_plans(
         return Ok(Some("Approved. Choose the Retail folder.".into()));
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
-    let rejected = post_requests(settings, &retail, secret)?;
+    let Posted { rejected, waiting } = post_requests(settings, &retail, secret)?;
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(settings, &retail, secret);
     let _ = post_profiles(settings, &retail, secret);
@@ -925,7 +940,7 @@ fn sync_plans(
             .changed
             .then(|| format!("The planner refused a request: {why}")));
     }
-    let state = planner_state(settings, secret)?;
+    let state = planner_state(settings, secret, waiting.as_deref())?;
     let pending = state
         .request
         .as_ref()

@@ -58,6 +58,40 @@ pub fn request_body(request: &SavedRequest, account: Option<&str>) -> Value {
     Value::Object(out)
 }
 
+/// The Request the game waits for: the newest one saved in any character's
+/// SavedVariables (docs/decisions-v0.7.md, D82).
+pub fn waited_request(requests: &[SavedRequest]) -> Option<&str> {
+    requests
+        .iter()
+        .max_by(|a, b| {
+            a.created_at
+                .unwrap_or(0)
+                .cmp(&b.created_at.unwrap_or(0))
+                .then_with(|| a.id.cmp(&b.id))
+        })
+        .map(|request| request.id.as_str())
+}
+
+/// Where the Companion reads the Request's status. With a waited id it asks
+/// for exactly that one, so a status change on an older Request (failed,
+/// timed out) can never replace the answer the game is waiting for.
+pub fn request_status_path(waiting: Option<&str>) -> String {
+    match waiting {
+        Some(id) => {
+            let mut path = String::from("v1/requests/");
+            for byte in id.bytes() {
+                if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                    path.push(byte as char);
+                } else {
+                    path.push_str(&format!("%{byte:02X}"));
+                }
+            }
+            path
+        }
+        None => "v1/requests/latest".into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +155,25 @@ mod tests {
         }
         assert_schema(PLAN_SCHEMA, PLAN_FIXTURE, "plan");
         assert_schema(PROFILE_SCHEMA, PROFILE_FIXTURE, "player profile");
+    }
+
+    #[test]
+    fn the_newest_saved_request_is_the_one_read_by_id() {
+        let base = request_from_saved_variables(saved("plan.lua"))
+            .unwrap()
+            .unwrap();
+        let at = |id: &str, created_at: u64| SavedRequest {
+            id: id.into(),
+            created_at: Some(created_at),
+            ..base.clone()
+        };
+        let requests = vec![at("req-new", 2000), at("req-old", 1000)];
+        let waiting = waited_request(&requests);
+        assert_eq!(waiting, Some("req-new"));
+        assert_eq!(request_status_path(waiting), "v1/requests/req-new");
+        assert_eq!(request_status_path(Some("a b/c")), "v1/requests/a%20b%2Fc");
+        assert_eq!(waited_request(&[]), None);
+        assert_eq!(request_status_path(None), "v1/requests/latest");
     }
 
     #[test]
