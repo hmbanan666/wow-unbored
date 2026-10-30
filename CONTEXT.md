@@ -4,12 +4,13 @@ The words we use for Unbored. Use them in code, docs, UI copy, and talk with the
 
 Goal: a helper players want to use, that never annoys and genuinely helps.
 
-**Wisp**
-The mascot: a small glowing spirit, and the whole in-game companion UI. Russian: Висп. Voice: warm, light humour, short, no cringe.
+**Bory**
+The mascot: a calm ginger cat in a burgundy scarf, and the whole in-game companion UI (BRAND.md). Russian: Бори (not declined). Voice: warm, light humour, short, no cringe. He replaced Bory in 0.8; code may still say `wisp` inside.
+_Avoid_: Bory, Висп (in anything the player sees).
 _Avoid_: tracker, window, panel, helper, assistant.
 
 **Bubble**
-One chat-style message from Wisp, to the right of its portrait. The newest one is the current thing; at most three stay stacked, and older ones fade after 90 seconds. Never a heavy list.
+One chat-style message from Bory, to the right of its portrait. The newest one is the current thing; at most three stay stacked, and older ones fade after 90 seconds. Never a heavy list.
 _Avoid_: popup, tooltip, frame, toast (the toast is the Companion's Windows notification).
 
 **Preset**
@@ -17,7 +18,7 @@ A one-click Plan starter chip in the Bubble, such as "Get a mount" or "Surprise 
 _Avoid_: wizard, mode card, option, filter.
 
 **Plan**
-What to do next: usually 3 to 7 Steps, but a Plan for one goal covers all of it in order, however many Steps that takes, never cut to a time (ADR 0037). Wisp shows one Step at a time; the full list opens on click.
+What to do next: usually 3 to 7 Steps, but a Plan for one goal covers all of it in order, however many Steps that takes, never cut to a time (ADR 0037). Bory shows it as one card: the current Step, a short Next preview, and the full list inline on click (ADR 0038).
 _Avoid_: route (a Waypoint list inside a Step), session, quest list, tracker.
 
 **Step**
@@ -37,19 +38,19 @@ What the player asks for from the Planner: a Full plan, after a short Survey. Sa
 _Avoid_: ticket, job, query, call.
 
 **Survey**
-The short question Wisp asks before a Request: an optional one-line wish, never how much time (ADR 0037). Then a summary with [Send now].
+The short question Bory asks before a Request: an optional one-line wish, never how much time (ADR 0037). Then a summary with [Send now].
 _Avoid_: form, questionnaire, wizard.
 
 **ETA**
-Wisp's estimate of when a Full plan should be ready, from the Server's recent planner times, written by the Companion. After it passes Wisp offers one Refresh.
+Bory's estimate of when a Full plan should be ready, from the Server's recent planner times, written by the Companion. After it passes Bory offers one Refresh.
 _Avoid_: timer, countdown, progress bar.
 
 **Entity token**
-A short id in Plan text, such as `{item:ID}`, `{quest:ID}` or `{pin:MAPID:X:Y}`, that Wisp turns into a native game link with the name from the game. Code and contract word only.
+A short id in Plan text, such as `{item:ID}`, `{quest:ID}` or `{pin:MAPID:X:Y}`, that Bory turns into a native game link with the name from the game. Code and contract word only.
 _Avoid_ (in UI copy): token, markup, tag, id.
 
 **Answer**
-The Planner's fuller reply to an item or question Request, after Wisp's instant Local answer. Shown in a Bubble at the next login or Refresh.
+The Planner's fuller reply to an item or question Request, after Bory's instant Local answer. Shown in a Bubble at the next login or Refresh.
 _Avoid_: response, result, reply message.
 
 **Companion**
@@ -77,15 +78,15 @@ The Companion writing Full plans, Answers and Personal advice into the helper ad
 _Avoid_: cache, preload, download.
 
 **Local answer**
-An Answer Wisp builds at once in the game from live APIs and the Knowledge base, with no Request.
+An Answer Bory builds at once in the game from live APIs and the Knowledge base, with no Request.
 _Avoid_: offline answer, fallback.
 
 **Reason code**
-A short machine word for why a Request failed (`not_approved`, `companion_offline`, `server_unreachable`, `rejected`, `timeout`, `planner_failed`). Wisp turns each into its own friendly line; the player never sees the code.
+A short machine word for why a Request failed (`not_approved`, `companion_offline`, `server_unreachable`, `rejected`, `timeout`, `planner_failed`). Bory turns each into its own friendly line; the player never sees the code.
 _Avoid_: error code, status text (in UI copy).
 
 **Advice**
-The one teal "Wisp: <action>" line in an item tooltip, shown only with a personal signal: Alt routing, needed for your Plan, new for your collection, a quest you have not done, or Personal advice. No line is the default (ADR 0035).
+The one gold "Bory: <action>" line in an item tooltip, shown only with a personal signal: Alt routing, needed for your Plan, new for your collection, a quest you have not done, or Personal advice. No line is the default (ADR 0035).
 _Avoid_: hint, tip, recommendation engine, rule.
 
 **Personal advice**
@@ -126,7 +127,7 @@ _Avoid_: account data, telemetry, tracking, dossier.
 
 **Game data snapshot**
 Everything the game legally tells the addon about the player's own characters and Account, kept in SavedVariables in Sections and uploaded by the Companion when the game writes them. Never anything about other players.
-_Avoid_: telemetry, tracking, dossier, dump (in anything the player sees: "what Wisp knows about you").
+_Avoid_: telemetry, tracking, dossier, dump (in anything the player sees: "what Bory knows about you").
 
 **Section**
 One named, versioned part of the Game data snapshot (`char`, `bags`, `questsDone`, `mounts`, ...), with its version, read time, source and body.
@@ -140,8 +141,32 @@ _Avoid_: compressed list, bitmap, hash.
 The owner's view of what was collected: MCP `data_catalog` (and `GET /owner/data`), listing every Account, Character and Section with freshness, size and counts.
 _Avoid_: dashboard, admin panel, analytics.
 
+**Plan title**
+The short human name of a Plan, like a quest title: 3 to 40 characters, no ids, no counts ("Badges for a Timereaver"). Facts go in the Plan details, never in the title.
+_Avoid_: name, header, label, summary.
+
+**Goal**
+One sentence on a Plan card: what you will do and why it is worth it. May carry Entity tokens.
+_Avoid_: objective, description, mission.
+
+**Rewards**
+What the player gets from a Plan or Step, shown quest style under "You will get:" as native links (up to 6 per Plan, 3 per Step).
+_Avoid_: loot, drops, prizes.
+
+**Condition**
+An optional "If ..." on a Step that the addon checks live from the game (a currency, item, level, quest or achievement); met shows "Ready", unmet shows the progress and marks the Step "not yet".
+_Avoid_: requirement, prerequisite, gate, rule.
+
+**Suggestion**
+A ready idea for this Character, computed by the Server from the Game data snapshot and the Catalog (or by the addon from what it sees live), shown as a chip in the choice Bubble. Picking one sends a Request.
+_Avoid_: recommendation, quest, offer (that word is the Refresh offer), AI idea.
+
+**Catalog**
+The vetted ids from the Knowledge base (`addon/Data/*.lua`), exported to `packages/contracts/catalog/catalog.json` for the Server. Every row has a primary source URL.
+_Avoid_: database, game DB, wiki dump.
+
 **Knowledge base**
-The small tables bundled with the addon (`Data/*.lua`) that let Wisp answer locally.
+The small tables bundled with the addon (`Data/*.lua`) that let Bory answer locally.
 _Avoid_: database, wiki, cache.
 
-**Avoid in anything user-facing**: tracker, wizard, token, URL, server address, API key, registration, login, delete (Advice never says it).
+**Avoid in anything user-facing**: tracker, All steps (window), wizard, token, URL, server address, API key, registration, login, delete (Advice never says it).

@@ -56,9 +56,6 @@ function ns.Events.Pulse()
   if ns.Mascot and ns.Mascot.UpdateDistance then
     ns.Mascot:UpdateDistance()
   end
-  if ns.Tracker and ns.Tracker.UpdateDistance then
-    ns.Tracker:UpdateDistance()
-  end
 end
 
 function ns.Events.Register(frame)

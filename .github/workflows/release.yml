@@ -3,19 +3,54 @@ name: Release
 # One tag vX.Y.Z publishes the addon zip, the Companion installer, and the
 # updater feed. Installed Companions keep reading latest.json from the
 # companion-updater release (docs/adr/0026). Do not tag companion-v*.
+#
+# Run it by hand (workflow_dispatch) for a dry run (D117): the same builds,
+# asset names, latest.json check and release notes, uploaded as workflow
+# artifacts only. Nothing is published unless the ref is a v* tag and it is
+# a tag push or a manual run with dry_run off.
 
 on:
   push:
     tags:
       - "v[0-9]*"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and check everything, publish nothing"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
 
+env:
+  PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.dry_run == false) }}
+
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: The version this run releases
+        id: pick
+        run: |
+          set -euo pipefail
+          if [ "$PUBLISH" = "true" ]; then
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+          else
+            version="$(jq -r .version apps/companion/src-tauri/tauri.conf.json)"
+            tag="v${version}"
+          fi
+          echo "Releasing ${version} (publish: ${PUBLISH})"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
   addon:
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,6 +64,7 @@ jobs:
       # run (deleting a tag turns its release into a draft). Start clean so
       # the packager makes exactly one release and no asset is duplicated.
       - name: Remove an earlier release of this tag
+        if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -42,11 +78,45 @@ jobs:
             done
 
       - uses: BigWigsMods/packager@v2
+        if: env.PUBLISH == 'true'
         env:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Package without uploading
+        if: env.PUBLISH != 'true'
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -d
+
+      - name: Name the zip as the release would
+        if: env.PUBLISH != 'true'
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(.release/*.zip)
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "::error::expected one addon zip, found ${#zips[@]}"
+            ls -la .release || true
+            exit 1
+          fi
+          mkdir -p dry-run
+          cp "${zips[0]}" "dry-run/Unbored-v${VERSION}.zip"
+          unzip -l "dry-run/Unbored-v${VERSION}.zip" | grep -q " Unbored/Unbored.toc$" || {
+            echo "::error::the zip has no Unbored/Unbored.toc"
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v7
+        if: env.PUBLISH != 'true'
+        with:
+          name: dry-run-addon
+          if-no-files-found: error
+          path: dry-run/*.zip
+
   companion:
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -81,6 +151,9 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm exec tauri build ${{ steps.sign.outputs.args }}
+      - name: Check the window ships every Bory picture
+        shell: bash
+        run: scripts/check-companion-dist.sh apps/companion/dist
       - name: Upload the installer
         uses: actions/upload-artifact@v7
         with:
@@ -100,7 +173,7 @@ jobs:
           path: signed.txt
 
   publish:
-    needs: [addon, companion]
+    needs: [version, addon, companion]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -109,42 +182,29 @@ jobs:
           pattern: companion-*
           merge-multiple: true
           path: bundle
+      - name: Check the installer names and the updater feed
+        id: collect
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/collect-bundle.sh "$VERSION" "${GITHUB_REPOSITORY}" bundle | tee collect.log
+          tail -n 1 collect.log >> "$GITHUB_OUTPUT"
       - name: Attach the installer and refresh the updater feed
+        if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          SIGNED: ${{ steps.collect.outputs.signed }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          version="${TAG#v}"
-          # The artifact keeps the nsis/ and msi/ folders, and GitHub stores a
-          # space in an asset name as a dot, which latest.json must match.
-          find bundle -mindepth 2 -type f -exec mv -t bundle {} +
-          for file in bundle/*" "*; do
-            mv "$file" "${file// /.}"
-          done
           files=(bundle/*.exe bundle/*.msi bundle/*.sig)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::the Companion build produced no installer"
-            exit 1
-          fi
           gh release upload "$TAG" "${files[@]}" --clobber
-          signed="$(tr -d '[:space:]' < bundle/signed.txt)"
-          if [ "$signed" != "true" ]; then
+          if [ "$SIGNED" != "true" ]; then
             echo "Updater feed left unchanged."
             exit 0
           fi
-          nsis=(bundle/*-setup.exe)
-          nsis_sig=(bundle/*-setup.exe.sig)
-          msi=(bundle/*.msi)
-          msi_sig=(bundle/*.msi.sig)
-          if [ "${#nsis[@]}" -ne 1 ] || [ "${#nsis_sig[@]}" -ne 1 ] || [ "${#msi[@]}" -ne 1 ] || [ "${#msi_sig[@]}" -ne 1 ]; then
-            echo "::error::expected one nsis installer, one msi, and a signature for each"
-            printf '%s\n' bundle/*
-            exit 1
-          fi
-          bash .github/scripts/updater-json.sh "$version" "${GITHUB_REPOSITORY}" \
-            "${nsis[0]}" "${nsis_sig[0]}" "${msi[0]}" "${msi_sig[0]}" > bundle/latest.json
           gh release upload "$TAG" bundle/latest.json --clobber
           if ! gh release view companion-updater >/dev/null 2>&1; then
             gh release create companion-updater --prerelease --target "$GITHUB_SHA" \
@@ -152,11 +212,21 @@ jobs:
               --notes "Holds latest.json for Companions already installed. Do not delete."
           fi
           gh release upload companion-updater bundle/latest.json --clobber
+      - uses: actions/upload-artifact@v7
+        if: env.PUBLISH != 'true'
+        with:
+          name: dry-run-companion
+          if-no-files-found: error
+          path: |
+            bundle/*.exe
+            bundle/*.msi
+            bundle/*.sig
+            bundle/latest.json
 
   # Runs once the addon job made the release, so a failed installer upload
   # never leaves the packager's full CHANGELOG as the release body.
   notes:
-    needs: addon
+    needs: [version, addon]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -166,8 +236,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
+          set -euo pipefail
           pipx install git-cliff==2.14.2
-          bash .github/scripts/release-notes.sh "$TAG" > notes.md
+          if [ "$PUBLISH" = "true" ]; then
+            bash .github/scripts/release-notes.sh "$TAG" > notes.md
+          else
+            bash .github/scripts/release-notes.sh HEAD "$VERSION" > notes.md
+          fi
           cat notes.md
-          gh release edit "$TAG" --notes-file notes.md
+          if [ "$PUBLISH" = "true" ]; then
+            gh release edit "$TAG" --notes-file notes.md
+          fi
+      - uses: actions/upload-artifact@v7
+        if: env.PUBLISH != 'true'
+        with:
+          name: dry-run-notes
+          path: notes.md

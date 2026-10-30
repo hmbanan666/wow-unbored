@@ -281,6 +281,7 @@ test("mcp lists the planner tools", async () => {
       "get_player_history",
       "get_player_profile",
       "get_progress",
+      "get_suggestions",
       "list_devices",
       "list_requests",
       "list_sessions",

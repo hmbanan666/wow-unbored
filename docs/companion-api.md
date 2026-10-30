@@ -71,9 +71,9 @@ The plan is not posted into SavedVariables. Those files are rewritten by WoW on 
 
 `_retail_/Interface/AddOns/Unbored_Plan/Plan.lua`
 
-Unbored reads the global `UnboredExternalPlan` from that addon when the UI loads: at login, a character switch, or a Refresh the player clicks (teleports and loading screens do not read it; docs/adr/0012). A plan for this character's pending request is taken then; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast from Wisp, "Your plan is ready in the game" (or "Your answer is ready in the game"), once per fulfilled request.
+Unbored reads the global `UnboredExternalPlan` from that addon when the UI loads: at login, a character switch, or a Refresh the player clicks (teleports and loading screens do not read it; docs/adr/0012). A plan for this character's pending request is taken then; see [plan-format.md](plan-format.md#companion-file). The companion rewrites the file only when its content changes and shows a Windows toast from Bory, "Your plan is ready in the game" (or "Your answer is ready in the game"), once per fulfilled request.
 
-`_retail_/Interface/AddOns/Unbored_Plan/Advice.lua` holds Personal advice (below), written the same way and read at the same moments.
+`_retail_/Interface/AddOns/Unbored_Plan/Advice.lua` holds Personal advice (below), written the same way and read at the same moments. `Suggestions.lua` holds Bory's ideas for the choice Bubble ([GET /v1/suggestions](#get-v1suggestions)), the same way again.
 
 ### Companion status
 
@@ -90,11 +90,11 @@ UnboredCompanionStatus = {
 }
 ```
 
-The game reads it only when the UI loads, like the plan. Wisp turns it into one line: not approved yet, disconnected, can't reach the planner, or "the Companion isn't running" when `seenAt` was more than 15 minutes old at that load (a long session alone never counts as stopped). An `addonVersion` newer than the running addon means an update is on disk; Wisp says "Press Load to finish the update", and asks for a game restart if Load did not pick it up. A missing block (Companion 0.4 or older) shows nothing.
+The game reads it only when the UI loads, like the plan. Bory turns it into one line: not approved yet, disconnected, can't reach the planner, or "the Companion isn't running" when `seenAt` was more than 15 minutes old at that load (a long session alone never counts as stopped). An `addonVersion` newer than the running addon means an update is on disk; Bory says "Press Load to finish the update", and asks for a game restart if Load did not pick it up. A missing block (Companion 0.4 or older) shows nothing.
 
 ## Requests
 
-The game sends three kinds of request, all through SavedVariables and the companion: `plan` (a preset chip or Something else... in Wisp's bubble), `question` (Ask something, and What to do nearby? with `topic: "nearby"`), and `item` (What is this item?). One request is pending per character at a time.
+The game sends three kinds of request, all through SavedVariables and the companion: `plan` (a preset chip or Something else... in Bory's bubble), `question` (Ask something, and What to do nearby? with `topic: "nearby"`), and `item` (What is this item?). One request is pending per character at a time.
 
 `POST {base}/v1/requests` with the companion bearer (device secret or `UNBORED_COMPANION_TOKEN`):
 
@@ -131,7 +131,7 @@ The game sends three kinds of request, all through SavedVariables and the compan
 }
 ```
 
-`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) is required, and `budget` (5–240 minutes) is sent only when the player typed minutes into the custom form ([ADR 0037](adr/0037-no-time-budget.md)); the other types leave both out. A stored Request without one reads back `budget: null`. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`.
+`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) is required, and `budget` (5–240 minutes) is sent only when the player typed minutes into the custom form ([ADR 0037](adr/0037-no-time-budget.md)); the other types leave both out. A stored Request without one reads back `budget: null`. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`. A plan from an idea chip has `topic: "suggestion"`, `suggestionId`, and `suggestion`, a copy of the idea (`id`, `kind`, `title`, `goal`, `why`, `rewards`, `mapID`, `expiresAt`, at most 2,000 bytes); its tokens are the ids the Planner may trust ([ADR 0040](adr/0040-suggestions-from-data.md)). It never has a `budget`.
 
 A question carries `question` (required, up to 600 bytes) and may carry `topic`, lowercase letters, `_`, or `-` (the game sends `nearby`):
 
@@ -152,7 +152,7 @@ An item request carries `item`: `itemID` is required; `link`, `name`, `bag`, `sl
 
 Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`, keep the route in one zone unless the wish says otherwise, and use `hearth`, `skyriding`, and `canFly` to judge travel.
 
-`GET {base}/v1/requests/{id}` returns the Request with that id, or 404 when it is not this device's. The companion asks for exactly the id the game waits for (`UnboredCharDB.request.id` in SavedVariables), so a newer status on an older Request never changes which answer the game gets. `GET {base}/v1/requests/latest` is the fallback when the game waits for nothing: it returns the device's newest Request by creation time (never by update time). Both return the request (with `type`, `question`, `topic`, `item`) plus `"plan": "UNB1:..."` when it was fulfilled with a plan, or `"plan": null` otherwise. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed, with `reasonCode` (`planner_failed`, or `timeout` when a Request was still pending after 60 minutes; that changes only its own status). `eta` is how long recent plan Requests took (p50 in seconds, 60 to 900, 180 until there are three answers); the Companion writes it into `Plan.lua` so Wisp knows when to offer a Refresh. `answer` is set when the planner answered with `answer_request`:
+`GET {base}/v1/requests/{id}` returns the Request with that id, or 404 when it is not this device's. The companion asks for exactly the id the game waits for (`UnboredCharDB.request.id` in SavedVariables), so a newer status on an older Request never changes which answer the game gets. `GET {base}/v1/requests/latest` is the fallback when the game waits for nothing: it returns the device's newest Request by creation time (never by update time). Both return the request (with `type`, `question`, `topic`, `item`) plus `"plan": "UNB1:..."` when it was fulfilled with a plan, or `"plan": null` otherwise. `status` is `pending`, `fulfilled`, or `failed`. `reason` is set when it failed, with `reasonCode` (`planner_failed`, or `timeout` when a Request was still pending after 60 minutes; that changes only its own status). `eta` is how long recent plan Requests took (p50 in seconds, 60 to 900, 180 until there are three answers); the Companion writes it into `Plan.lua` so Bory knows when to offer a Refresh. `answer` is set when the planner answered with `answer_request`:
 
 ```json
 { "message": "A rare is east of you. I pinned it.", "waypoints": [{ "mapID": 2248, "x": 0.6, "y": 0.4, "label": "Rare" }], "answeredAt": 1761720500 }
@@ -207,9 +207,26 @@ UnboredAdvice = {
 
 The addon checks every line again: it drops lines that say delete, never shows sell for epic or bind-on-equip items, and never shows send for soulbound items. Live game rules (quest items, uncollected mounts, toys, pets and looks, upgrades) still come first. A failed fetch never holds back plans and answers.
 
+## GET /v1/suggestions
+
+Ideas for the choice Bubble ([ADR 0040](adr/0040-suggestions-from-data.md)), for the characters this device uploaded, with the companion bearer. The Server makes them without an LLM from the player's Game data and the Catalog (`packages/contracts/catalog/catalog.json`, exported from `addon/Data/*.lua`), 30 seconds after the last snapshot upload of the Account, at most 6 per character. The shape is `packages/contracts/schema/suggestions.schema.json`; the fixture is `packages/contracts/fixtures/suggestions.json`:
+
+```json
+{ "v": 1, "computedAt": 1793361600, "characters": { "Silvermoon-Mira": [
+  { "id": "mount:183", "kind": "collection", "title": "Tempest Keep", "goal": "Run Tempest Keep for {mount:183}.",
+    "why": "None of your 2 characters has it yet", "rewards": ["{mount:183}"], "mapID": 109,
+    "reason": { "kind": "alts", "count": 2 },
+    "request": { "topic": "suggestion", "suggestionId": "mount:183", "wish": "Tempest Keep: Run Tempest Keep for a mount." } }
+] } }
+```
+
+`kind` is `event`, `achievement`, `rare` or `collection`. `reason` lets the game write the line under the title in the player's language (`ends` with `at`, `alts` with `count`, `near` with `mapID`); `why` is the English fallback. An idea with `expiresAt` in the past is not shown.
+
+The Companion fetches it on every sync and writes `Unbored_Plan/Suggestions.lua` (`UnboredSuggestions = {...}`, the same shape) only when it changed, within 20 KB and 2,000 literals, dropping the last ideas of each character until it fits. The game reads it when the UI loads, shows up to 4 ideas with the Server's first, and adds up to 2 live ones of its own (an active holiday, a curated rare in this zone), one per id, reward or holiday. The MCP tool `get_suggestions` returns the same ideas to the Planner.
+
 ## POST /v1/profile
 
-The player profile (docs/adr/0011). The addon keeps `UnboredCharDB.profile` current from game events (bags, money, equipment, professions) and the game saves it at logout or a Refresh; the companion posts it once per `savedAt`, with the companion bearer:
+The 0.6 player profile (docs/adr/0011), kept for older addons. Addons 0.6 and 0.7 keep `UnboredCharDB.profile` current from game events (bags, money, equipment, professions) and the game saves it at logout or a Refresh; from 0.8 the addon no longer writes it and removes the old table at login (D113), and the Game data snapshot carries the same facts. When the table is there, the companion posts it once per `savedAt`, with the companion bearer:
 
 ```json
 { "character": "Hero", "realm": "Area 52", "savedAt": 1761720000,

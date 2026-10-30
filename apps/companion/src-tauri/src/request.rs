@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 use crate::savedvars::SavedRequest;
 
-/// Why a Request did not get an Answer. Wisp has one friendly line per code.
+/// Why a Request did not get an Answer. Bory has one friendly line per code.
 pub mod reason {
     pub const NOT_APPROVED: &str = "not_approved";
     pub const SERVER_UNREACHABLE: &str = "server_unreachable";
@@ -55,6 +55,8 @@ pub fn request_body(request: &SavedRequest, account: Option<&str>) -> Value {
     );
     put(&mut out, "item", request.item.clone());
     put(&mut out, "context", request.context.clone());
+    put(&mut out, "suggestionId", text(&request.suggestion_id));
+    put(&mut out, "suggestion", request.suggestion.clone());
     Value::Object(out)
 }
 
@@ -114,6 +116,9 @@ mod tests {
             "custom.lua" => include_str!("../../../../packages/contracts/fixtures/custom.lua"),
             "item.lua" => include_str!("../../../../packages/contracts/fixtures/item.lua"),
             "question.lua" => include_str!("../../../../packages/contracts/fixtures/question.lua"),
+            "suggestion.lua" => {
+                include_str!("../../../../packages/contracts/fixtures/suggestion.lua")
+            }
             other => panic!("unknown fixture {other}"),
         }
     }

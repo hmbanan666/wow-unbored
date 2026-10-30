@@ -74,11 +74,7 @@ local function equippable(ctx)
 end
 
 local function myProfessions()
-  local profile = type(UnboredCharDB) == "table" and UnboredCharDB.profile or nil
-  local list = type(profile) == "table" and profile.professions or nil
-  if type(list) ~= "table" and ns.Profile and ns.Profile.Professions then
-    list = ns.Profile.Professions()
-  end
+  local list = ns.Profile and ns.Profile.Professions and ns.Profile.Professions()
   return type(list) == "table" and list or {}
 end
 

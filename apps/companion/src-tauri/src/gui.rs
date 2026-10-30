@@ -19,9 +19,9 @@ use crate::device::{self, DeviceCredential};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::plan::{
-    decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file, pick_plan_file,
-    plan_from_value, render_request_lua, write_status, CompanionStatus, Plan, PlanFile,
-    PlannerState, RequestState,
+    decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file,
+    install_suggestions, pick_plan_file, plan_from_value, render_request_lua, write_status,
+    CompanionStatus, Plan, PlanFile, PlannerState, RequestState,
 };
 use crate::request::{reason, request_body, request_status_path, waited_request};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
@@ -264,7 +264,7 @@ fn scan_status(posting: bool, progress_len: usize, result: Result<usize, String>
         Err(err) => err,
         Ok(sent) if sent > 0 => format!("Progress sent for {sent} character file(s)."),
         Ok(_) if progress_len == 0 => {
-            "Nothing from the game yet. Log in once and pick a plan with Wisp.".into()
+            "Nothing from the game yet. Log in once and pick a plan with Bory.".into()
         }
         Ok(_) if posting => "Progress is already on the planner.".into(),
         Ok(_) => "Progress read from SavedVariables.".into(),
@@ -280,7 +280,7 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
     }
     let written = install_plan(&retail, plan).map_err(|err| err.0)?;
     Ok(format!(
-        "Wrote {}. Wisp picks it up next time you log in, or click Refresh in Wisp's bubble.",
+        "Wrote {}. Bory picks it up next time you log in, or click Refresh in Bory's bubble.",
         written.path.display()
     ))
 }
@@ -324,8 +324,8 @@ fn setup_steps(model: &Model) -> Vec<SetupStep> {
         },
         SetupStep {
             label: match &addon {
-                Some(version) => format!("Wisp is in the game (addon {version})"),
-                None => "Putting Wisp into the game".into(),
+                Some(version) => format!("Bory is in the game (addon {version})"),
+                None => "Putting Bory into the game".into(),
             },
             done: addon.is_some(),
         },
@@ -434,7 +434,7 @@ fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Resul
     Ok(snapshot(&app, &model))
 }
 
-const PRIVACY_URL: &str = "https://github.com/hmbanan666/wow-unbored#what-wisp-knows-about-you";
+const PRIVACY_URL: &str = "https://github.com/hmbanan666/wow-unbored#what-bory-knows-about-you";
 
 /// D61: the first-run line links to the README privacy section. The URL is fixed
 /// here, never taken from the window.
@@ -935,6 +935,16 @@ fn sync_advice(settings: &Settings, retail: &Path, secret: &str) -> Result<bool,
     install_advice(retail, &body["characters"]).map_err(|err| err.0)
 }
 
+/// Bory's ideas for this PC's characters, into Suggestions.lua (D107).
+fn sync_suggestions(settings: &Settings, retail: &Path, secret: &str) -> Result<bool, String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let url = join_url(&effective_url(settings), "v1/suggestions");
+    let Some(body) = get_json(&client, &url, secret)? else {
+        return Ok(false);
+    };
+    install_suggestions(retail, &body).map_err(|err| err.0)
+}
+
 /// Sends in-game requests, then writes the one Plan.lua the game should see.
 /// Returns a status line when the file changed.
 fn sync_plans(
@@ -951,9 +961,10 @@ fn sync_plans(
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(settings, &retail, secret);
     let _ = post_profiles(settings, &retail, secret);
+    let _ = sync_suggestions(settings, &retail, secret);
     let _ = sync_advice(settings, &retail, secret);
     if let Some((request, why)) = rejected.first() {
-        // Only the Reason code goes to the game; Wisp says its own line.
+        // Only the Reason code goes to the game; Bory says its own line.
         let file = PlanFile {
             body: render_request_lua(request, "failed", None),
             ready_request: None,
@@ -997,7 +1008,7 @@ fn sync_plans(
         Some(request) if request.status == "failed" => {
             "The planner could not answer that one.".into()
         }
-        _ => "New plan ready. Wisp picks it up next time you log in.".into(),
+        _ => "New plan ready. Bory picks it up next time you log in.".into(),
     }))
 }
 
@@ -1122,9 +1133,9 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
     set_busy(
         app,
         Some(if toc_existed {
-            "Updating Wisp in the game..."
+            "Updating Bory in the game..."
         } else {
-            "Putting Wisp into the game..."
+            "Putting Bory into the game..."
         }),
     );
     let installed = client
@@ -1149,12 +1160,12 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
             }
             notify(
                 app,
-                "I updated Wisp. Click Load in Wisp's bubble once to finish.",
+                "I updated Bory. Click Load in Bory's bubble once to finish.",
             );
         } else {
             notify(
                 app,
-                "Wisp is in the game now. Restart World of Warcraft once to meet her.",
+                "Bory is in the game now. Restart World of Warcraft once to meet him.",
             );
         }
     }
@@ -1278,7 +1289,7 @@ fn sync_planner(
     if just_approved {
         notify(
             app,
-            "You're connected! Start World of Warcraft and click Wisp to pick a plan.",
+            "You're connected! Start World of Warcraft and click Bory to pick a plan.",
         );
     }
     if pairing_changed || status != "approved" {

@@ -1,7 +1,9 @@
--- Entity tokens in Plan text (packages/contracts/markup.md, docs/adr/0034):
--- {item:ID}, {quest:ID}, {ach:ID}, {spell:ID}, {currency:ID}, {npc:ID} and
--- {pin:MAPID:X:Y}, each with an optional |label. The Bubble shows native
--- hyperlinks with names from the game; everywhere else gets plain text.
+-- Entity tokens in Plan text (packages/contracts/markup.md, docs/adr/0034,
+-- 0039): {item:ID}, {quest:ID}, {ach:ID}, {spell:ID}, {currency:ID},
+-- {mount:ID}, {toy:ITEMID}, {pet:SPECIESID}, {zone:UIMAPID},
+-- {instance:JOURNALINSTANCEID}, {npc:ID} and {pin:MAPID:X:Y}, each with an
+-- optional |label. The Bubble shows native hyperlinks with names from the
+-- game; everywhere else gets plain text.
 
 local _, ns = ...
 
@@ -14,7 +16,21 @@ M.MAX_NPCS = 40
 -- How long a name may take to load before the token falls back to its label.
 M.LOAD_SECONDS = 3
 
-local TYPES = { item = true, quest = true, ach = true, spell = true, currency = true, npc = true, pin = true }
+local TYPES = {
+  item = true,
+  quest = true,
+  ach = true,
+  spell = true,
+  currency = true,
+  mount = true,
+  toy = true,
+  pet = true,
+  zone = true,
+  instance = true,
+  npc = true,
+  pin = true,
+}
+M.TYPES = TYPES
 local TOKEN = "{(%l+):([^{}|]*)(|?)([^{}]*)}"
 local LINK_PREFIX = "addon:Unbored:"
 
@@ -196,7 +212,79 @@ local resolvers = {
       return link:match("|h%[(.-)%]|h") or "", link
     end
   end,
+  -- The mount's own spell link, so the tooltip is the game's (D98).
+  mount = function(id)
+    if not C_MountJournal or not C_MountJournal.GetMountInfoByID then
+      return nil
+    end
+    local name, spellID, _, _, _, _, _, _, _, _, collected = ns.Call(C_MountJournal.GetMountInfoByID, id)
+    if type(name) ~= "string" or name == "" then
+      return nil
+    end
+    local link = spellID and C_Spell and C_Spell.GetSpellLink and ns.Call(C_Spell.GetSpellLink, spellID)
+    if type(link) ~= "string" then
+      return nil
+    end
+    return name, link, ns.Flag(collected)
+  end,
+  -- TODO(verify-in-game): C_ToyBox.GetToyLink in 12.x.
+  toy = function(id)
+    local link = C_ToyBox and C_ToyBox.GetToyLink and ns.Call(C_ToyBox.GetToyLink, id)
+    if type(link) == "string" then
+      return link:match("|h%[(.-)%]|h") or "", link
+    end
+    if C_Item and C_Item.GetItemInfo then
+      local name, itemLink = ns.Call(C_Item.GetItemInfo, id)
+      if type(name) == "string" and type(itemLink) == "string" then
+        return name, itemLink
+      end
+    end
+  end,
+  pet = function(id)
+    local name = C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID and ns.Call(C_PetJournal.GetPetInfoBySpeciesID, id)
+    if type(name) == "string" and name ~= "" then
+      return name, string.format("|cffffd100|H%spet:%d|h[%s]|h|r", LINK_PREFIX, id, name)
+    end
+  end,
+  zone = function(id)
+    local name = zoneName(id)
+    if name then
+      return name, string.format("|cff66ccff|H%szone:%d|h[%s]|h|r", LINK_PREFIX, id, name)
+    end
+  end,
+  instance = function(id)
+    local name = type(EJ_GetInstanceInfo) == "function" and ns.Call(EJ_GetInstanceInfo, id)
+    if type(name) == "string" and name ~= "" then
+      return name, string.format("|cffffd100|H%sinstance:%d|h[%s]|h|r", LINK_PREFIX, id, name)
+    end
+  end,
 }
+
+-- A small picture for a Reward; nil when the game has none for it.
+local icons = {
+  item = function(id)
+    return C_Item and C_Item.GetItemIconByID and ns.Call(C_Item.GetItemIconByID, id)
+  end,
+  mount = function(id)
+    return C_MountJournal and C_MountJournal.GetMountInfoByID
+      and select(3, ns.Call(C_MountJournal.GetMountInfoByID, id))
+  end,
+  pet = function(id)
+    return C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID
+      and select(2, ns.Call(C_PetJournal.GetPetInfoBySpeciesID, id))
+  end,
+  ach = function(id)
+    return type(GetAchievementInfo) == "function" and select(10, ns.Call(GetAchievementInfo, id))
+  end,
+  currency = function(id)
+    local info = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and ns.Call(C_CurrencyInfo.GetCurrencyInfo, id)
+    return type(info) == "table" and info.iconFileID
+  end,
+  spell = function(id)
+    return C_Spell and C_Spell.GetSpellTexture and ns.Call(C_Spell.GetSpellTexture, id)
+  end,
+}
+icons.toy = icons.item
 
 -- Ask the game to load a name; calls back once it is there.
 local loaders = {
@@ -217,6 +305,15 @@ local loaders = {
     if C_QuestLog and C_QuestLog.RequestLoadQuestByID then
       pcall(C_QuestLog.RequestLoadQuestByID, id)
       return true
+    end
+  end,
+  toy = function(id, done)
+    if Item and Item.CreateFromItemID then
+      local item = ns.Call(Item.CreateFromItemID, Item, id)
+      if item and item.ContinueOnItemLoad and not (item.IsItemEmpty and item:IsItemEmpty()) then
+        pcall(item.ContinueOnItemLoad, item, done)
+        return true
+      end
     end
   end,
   spell = function(id, done)
@@ -272,9 +369,12 @@ local function renderToken(token, npcs, onChange)
     return string.format("|cffffd100|H%snpc:%d|h[%s]|h|r", LINK_PREFIX, token.id, name)
   end
   local key = token.type .. ":" .. token.id
-  local name, link = resolvers[token.type](token.id)
+  local name, link, collected = resolvers[token.type](token.id)
   if link then
     M.asked[key] = nil
+    if collected then
+      return link .. " " .. ns.Hex(ns.PALETTE.muted) .. ns.T("LINK_COLLECTED") .. "|r"
+    end
     return link
   end
   local fallback = token.label or ""
@@ -315,7 +415,41 @@ function M.Render(text, npcs, onChange)
   return (table.concat(out):gsub("  +", " "))
 end
 
--- Text without links (tracker, chat, uploads): game names when cached, else labels.
+-- One Reward: its picture and its link, or its label once the game gave up.
+function M.RenderReward(text, onChange)
+  local token
+  for _, part in ipairs(M.Parse(text)) do
+    if type(part) == "table" then
+      token = part
+      break
+    end
+  end
+  if not token or token.type == "npc" or token.type == "pin" then
+    return nil
+  end
+  local shown = renderToken(token, nil, onChange)
+  if not shown or shown == "" then
+    return nil
+  end
+  local icon = icons[token.type] and icons[token.type](token.id)
+  if icon then
+    return "|T" .. tostring(icon) .. ":16:16|t " .. shown
+  end
+  return shown
+end
+
+-- Only the picture of a Reward token, for an idea chip; nil when there is none.
+function M.RewardIcon(text)
+  for _, part in ipairs(M.Parse(text)) do
+    if type(part) == "table" then
+      local icon = icons[part.type] and icons[part.type](part.id)
+      return icon or nil
+    end
+  end
+  return nil
+end
+
+-- Text without links (the step list, chat, uploads): game names when cached, else labels.
 function M.Plain(text, npcs)
   if type(text) ~= "string" or not M.HasTokens(text) then
     return text
@@ -351,6 +485,10 @@ local function readOwn(link)
   if mapID then
     return { type = "pin", mapID = tonumber(mapID), x = tonumber(x), y = tonumber(y) }
   end
+  local kind, other = rest:match("^(%l+):(%d+)$")
+  if kind == "pet" or kind == "zone" or kind == "instance" then
+    return { type = kind, id = tonumber(other) }
+  end
   return { type = "unknown" }
 end
 
@@ -382,8 +520,14 @@ function M.OnEnter(owner, link, text)
     GameTooltip:Show()
     return
   end
+  local label = type(text) == "string" and text:match("%[(.-)%]") or nil
+  if own.type == "pet" or own.type == "zone" or own.type == "instance" then
+    M.OwnTooltip(own, label)
+    GameTooltip:Show()
+    return
+  end
   local mapID, x, y, name = place(own)
-  local title = name or (type(text) == "string" and text:match("%[(.-)%]")) or ns.MASCOT_NAME
+  local title = name or label or ns.MASCOT_NAME
   GameTooltip:AddLine(title, 1, 0.82, 0)
   local zone = zoneName(mapID)
   if zone then
@@ -394,6 +538,51 @@ function M.OnEnter(owner, link, text)
     GameTooltip:AddLine(ns.T("LINK_SET_WAYPOINT"), 0.3, 0.85, 0.85)
   end
   GameTooltip:Show()
+end
+
+-- Our tooltip for the links the game has no hyperlink for (D98).
+-- TODO(verify-in-game): the pet tooltip; BattlePetTooltip is not used.
+function M.OwnTooltip(own, label)
+  local name = (resolvers[own.type](own.id)) or label or ns.MASCOT_NAME
+  GameTooltip:AddLine(name, 1, 0.82, 0)
+  if own.type == "pet" then
+    local api = C_PetJournal
+    local source = api and api.GetPetInfoBySpeciesID and select(5, ns.Call(api.GetPetInfoBySpeciesID, own.id))
+    if type(source) == "string" and source ~= "" then
+      GameTooltip:AddLine(source, 1, 1, 1, true)
+    end
+    local owned, limit
+    if api and api.GetNumCollectedInfo then
+      owned, limit = ns.Call(api.GetNumCollectedInfo, own.id)
+    end
+    owned, limit = ns.AsNumber(owned), ns.AsNumber(limit)
+    if owned and limit and limit > 0 then
+      GameTooltip:AddLine(ns.T("LINK_PET_OWNED", owned, limit), 0.8, 0.8, 0.8)
+    end
+  elseif own.type == "zone" then
+    local info = C_Map and C_Map.GetMapInfo and ns.Call(C_Map.GetMapInfo, own.id)
+    local parent = type(info) == "table" and zoneName(ns.AsNumber(info.parentMapID)) or nil
+    if parent and parent ~= name then
+      GameTooltip:AddLine(parent, 1, 1, 1)
+    end
+    GameTooltip:AddLine(ns.T("LINK_OPEN_MAP"), 0.3, 0.85, 0.85)
+  else
+    GameTooltip:AddLine(ns.T("LINK_OPEN_GUIDE"), 0.3, 0.85, 0.85)
+  end
+end
+
+-- The Adventure Guide on one instance. It is a load-on-demand addon.
+-- TODO(verify-in-game): EncounterJournal_OpenJournal(difficulty, instanceID).
+local function openGuide(id)
+  if type(EncounterJournal_OpenJournal) ~= "function" then
+    local load = C_AddOns and C_AddOns.LoadAddOn or LoadAddOn
+    if load then
+      pcall(load, "Blizzard_EncounterJournal")
+    end
+  end
+  if type(EncounterJournal_OpenJournal) == "function" then
+    pcall(EncounterJournal_OpenJournal, nil, id)
+  end
 end
 
 function M.OnLeave()
@@ -410,6 +599,16 @@ function M.OnClick(link, text, button)
       pcall(SetItemRef, link, text, button)
     end
     return false
+  end
+  if own.type == "zone" then
+    if type(OpenWorldMap) == "function" then
+      pcall(OpenWorldMap, own.id)
+    end
+    return true
+  end
+  if own.type == "instance" then
+    openGuide(own.id)
+    return true
   end
   local mapID, x, y, name = place(own)
   if mapID and x and y then

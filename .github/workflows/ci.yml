@@ -21,6 +21,7 @@ jobs:
           luacheck .
           lua5.1 tests/run.lua
           lua5.1 tests/ui.lua
+          lua5.1 tests/data.lua
 
       - uses: actions/setup-node@v7
         with:
@@ -55,3 +56,15 @@ jobs:
           assert nsis["signature"] == "sig-nsis"
           print("updater json shape ok")
           PY
+
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Release notes are for players (D116)
+        run: |
+          pipx install git-cliff==2.14.2
+          bash scripts/test-release-notes.sh v0.7.0

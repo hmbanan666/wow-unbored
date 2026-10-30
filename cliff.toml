@@ -1,21 +1,26 @@
-# Release notes for one release only (docs/adr/0022, docs/adr/0026).
+# Release notes for one release only (docs/adr/0022, docs/adr/0026, 0041).
 # One tag vX.Y.Z includes every scope. NOTES_SCOPE is unused by the
 # release script; "addon" and "companion" remain for a local preview.
 # Squash merges keep each commit as one "* type(scope): ..." line in the
 # body, so split_commits turns every line into its own entry. The
-# "chore(release)" title line is dropped in the template: a skip parser
-# would drop the whole squash commit before it is split.
+# "chore(release)" title line is dropped in the template. Players see
+# Features, Fixes and Performance only (D114); a line already shown, in any
+# group, is not shown again (D115).
 
 [changelog]
 header = ""
 body = """
 {% set only = get_env(name="NOTES_SCOPE", default="") -%}
+{% set_global seen = [] -%}
 {% for group, commits in commits | group_by(attribute="group") -%}
 {% set_global shown = [] -%}
 {% for commit in commits -%}
 {% if commit.scope == "release" %}{% continue %}{% endif -%}
 {% if only == "companion" and commit.scope != "companion" %}{% continue %}{% endif -%}
 {% if only == "addon" and commit.scope in ["companion", "server"] %}{% continue %}{% endif -%}
+{% set line = commit.message | split(pat="\n") | first | trim | lower | trim_end_matches(pat=".") | trim -%}
+{% if line in seen %}{% continue %}{% endif -%}
+{% set_global seen = seen | concat(with=line) -%}
 {% set_global shown = shown | concat(with=commit) -%}
 {% endfor -%}
 {% if shown | length > 0 %}
@@ -47,5 +52,5 @@ commit_parsers = [
   { message = "^feat", group = "<!-- 0 -->Features" },
   { message = "^fix", group = "<!-- 1 -->Fixes" },
   { message = "^perf", group = "<!-- 2 -->Performance" },
-  { message = "^(refactor|docs|chore|test|ci|build|style|revert)", group = "<!-- 3 -->Other" },
+  { message = "^(refactor|docs|chore|test|ci|build|style|revert)", skip = true },
 ]

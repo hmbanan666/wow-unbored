@@ -1,6 +1,6 @@
 //! The one status line the window and tray show, in plain words.
 
-pub const MASCOT_NAME: &str = "Wisp";
+pub const MASCOT_NAME: &str = "Bory";
 
 /// How long "ready in the game" stays up after a plan or answer arrives.
 pub const READY_SECONDS: u64 = 15 * 60;
@@ -64,7 +64,7 @@ pub fn current(input: &MoodInput) -> Mood {
         return mood(
             "setup",
             "Show me where World of Warcraft is",
-            "I need your World of Warcraft folder to set up Wisp in the game.",
+            "I need your World of Warcraft folder to set up Bory in the game.",
         );
     }
     if input.error {
@@ -98,8 +98,8 @@ pub fn current(input: &MoodInput) -> Mood {
     if recent(input.addon_updated_at, input.now, READY_SECONDS) {
         return mood(
             "ready",
-            "Wisp was updated, press Load in game",
-            "Click Load in Wisp's bubble once to finish the update.",
+            "Bory was updated, press Load in game",
+            "Click Load in Bory's bubble once to finish the update.",
         );
     }
     if let Some((kind, at)) = &input.ready {
@@ -107,7 +107,7 @@ pub fn current(input: &MoodInput) -> Mood {
             return mood(
                 "ready",
                 ready_text(kind),
-                "Wisp picks it up next time you log in, or click Refresh in Wisp's bubble.",
+                "Bory picks it up next time you log in, or click Refresh in Bory's bubble.",
             );
         }
     }
@@ -115,7 +115,7 @@ pub fn current(input: &MoodInput) -> Mood {
         return mood(
             "ready",
             "Connected! You're all set",
-            "Start World of Warcraft and click Wisp to pick a plan.",
+            "Start World of Warcraft and click Bory to pick a plan.",
         );
     }
     if input.request_pending {
@@ -167,7 +167,7 @@ mod tests {
         input.addon_updated_at = Some(950);
         assert_eq!(
             current(&input).headline,
-            "Wisp was updated, press Load in game"
+            "Bory was updated, press Load in game"
         );
         input.addon_updated_at = None;
         input.now = 900 + READY_SECONDS;

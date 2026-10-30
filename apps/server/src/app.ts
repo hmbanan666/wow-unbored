@@ -166,6 +166,8 @@ export function createApp(
         context: cleaned.context,
         lang: cleaned.lang,
         account: cleaned.account,
+        suggestionId: cleaned.suggestionId,
+        suggestion: cleaned.suggestion,
         nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
       });
       if (saved.created) {
@@ -203,6 +205,13 @@ export function createApp(
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
     return c.json({ characters: store.adviceForDevice(access.deviceId) });
+  });
+
+  // Ideas from the player's data for the choice Bubble (docs/adr/0040).
+  app.get("/v1/suggestions", (c) => {
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
+    return c.json(store.suggestionsForDevice(access.deviceId));
   });
 
   app.get("/v1/plan", (c) => {

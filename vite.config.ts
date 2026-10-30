@@ -18,6 +18,7 @@ export default defineConfig({
   },
   fmt: {
     ignorePatterns: [
+      "packages/contracts/catalog/catalog.json",
       "addon/**",
       "apps/companion/src-tauri/**",
       "docs/**",

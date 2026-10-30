@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { gzipSync } from "node:zlib";
 import { test } from "vite-plus/test";
 
-import { packIds, sectionHash, unpackIds } from "@unbored/contracts";
+import { packIds, sectionHash, unpackIds, unpackRows } from "@unbored/contracts";
 
 import { createApp } from "../src/app.ts";
 import { sqlitePath } from "../src/config.ts";
@@ -231,6 +231,32 @@ test("check_ids, the overview, the Data explorer and /owner/data read the stored
     const account = mountCheck.value.account as { have: number[]; missing: number[] };
     assert.deepEqual(account.have, [mounts[0]]);
     assert.deepEqual(account.missing, [999999]);
+
+    const species = unpackRows(fixture.sections.pets.body.species).map((row) => row.id);
+    const petCheck = await mcpCall(app, "check_ids", {
+      kind: "pet",
+      ids: [species[0], 999999],
+      account: "111111",
+    });
+    const pets = petCheck.value.account as { have: number[]; missing: number[] };
+    assert.deepEqual(pets.have, [species[0]], "pet ids are species ids");
+    assert.deepEqual(pets.missing, [999999]);
+
+    const withToys = withSection(
+      "toys",
+      { count: 2, ids: packIds([1001, 1002]) },
+      fixture.savedAt + 60,
+    );
+    withToys.sections.toys = { ...fixture.sections.pets, ...withToys.sections.toys };
+    await post(app, withToys);
+    const toyCheck = await mcpCall(app, "check_ids", {
+      kind: "toy",
+      ids: [1002, 999999],
+      account: "111111",
+    });
+    const toys = toyCheck.value.account as { have: number[]; missing: number[] };
+    assert.deepEqual(toys.have, [1002]);
+    assert.deepEqual(toys.missing, [999999]);
 
     const overview = await mcpCall(app, "get_account_overview", {});
     const accounts = overview.value.accounts as {

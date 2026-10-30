@@ -53,6 +53,10 @@ function ns.NormalizeTask(task)
     source = task.source,
     priority = tonumber(task.priority),
     complete = complete,
+    why = type(task.why) == "string" and task.why or nil,
+    rewards = type(task.rewards) == "table" and ns.DeepCopy(task.rewards, 0) or nil,
+    condition = type(task.condition) == "table" and ns.DeepCopy(task.condition) or nil,
+    holiday = type(task.holiday) == "string" and task.holiday or nil,
   }
 end
 

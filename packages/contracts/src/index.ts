@@ -12,6 +12,14 @@ export type Plan = {
   /** Minutes the player typed in the custom form; Plans are never cut to it (ADR 0037). */
   budget?: number;
   note?: string;
+  /** A short human name like a quest title, 3 to 40 characters, no tokens (ADR 0038). */
+  title?: string;
+  /** One sentence: what you do and why it is worth it; may carry tokens. */
+  goal?: string;
+  /** Facts and state ("you have 3,200 badges"); shown under Show more. */
+  details?: string;
+  /** Up to 6 single link tokens, such as "{mount:183}". */
+  rewards?: string[];
   generatedAt: number;
   tasks: Task[];
   /** Npc names and places for `{npc:ID}` tokens (markup.md). */
@@ -33,8 +41,22 @@ export type Task = {
   x?: number;
   y?: number;
   note?: string;
+  /** One short reason, at most 120 bytes; may carry tokens. */
+  why?: string;
+  /** Up to 3 single link tokens. */
+  rewards?: string[];
+  condition?: TaskCondition;
   waypoints?: Waypoint[];
   complete?: Record<string, unknown>;
+};
+
+export const CONDITION_KINDS = ["currency", "item", "level", "quest", "ach"] as const;
+export type ConditionKind = (typeof CONDITION_KINDS)[number];
+
+/** "If you have 5,000 {currency:1166}": the text is shown, the check is run live in the game (D95). */
+export type TaskCondition = {
+  text: string;
+  check?: { kind: ConditionKind; id: number; atLeast?: number };
 };
 
 export type RequestType = "plan" | "item" | "question";
@@ -64,6 +86,21 @@ export type RequestBody = {
   account?: string;
   item?: RequestItem;
   context?: PlayerContext;
+  /** Set with topic "suggestion": the picked Suggestion's id and a copy of it (ground truth for ids). */
+  suggestionId?: string;
+  suggestion?: RequestSuggestion;
+};
+
+/** The Suggestion a player picked, as copied into the Request. */
+export type RequestSuggestion = {
+  id: string;
+  kind: string;
+  title: string;
+  goal: string;
+  why?: string;
+  rewards: string[];
+  mapID?: number;
+  expiresAt?: number;
 };
 
 /** The cleaned Request the Server stores. */
@@ -82,6 +119,8 @@ export type PlanRequestInput = {
   context: PlayerContext | null;
   lang: string | null;
   account: string | null;
+  suggestionId: string | null;
+  suggestion: RequestSuggestion | null;
 };
 
 export type PlayerContext = {
@@ -152,6 +191,20 @@ export const requestBodySchema = z
     account: z.string().optional(),
     item: requestItemSchema.optional(),
     context: z.object({}).passthrough().optional(),
+    suggestionId: z.string().min(1).optional(),
+    suggestion: z
+      .object({
+        id: z.string().min(1),
+        kind: z.string(),
+        title: z.string(),
+        goal: z.string(),
+        why: z.string().optional(),
+        rewards: z.array(z.string()).max(3),
+        mapID: z.number().int().optional(),
+        expiresAt: z.number().int().optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough()
   .superRefine((body, ctx) => {
@@ -173,8 +226,35 @@ export const planSchema = z
     mode: z.string(),
     budget: z.number().int().optional(),
     note: z.string().optional(),
+    title: z.string().optional(),
+    goal: z.string().optional(),
+    details: z.string().optional(),
+    rewards: z.array(z.string()).max(6).optional(),
     generatedAt: z.number().optional(),
-    tasks: z.array(z.object({ id: z.string(), title: z.string() }).passthrough()).min(1),
+    tasks: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            title: z.string(),
+            why: z.string().optional(),
+            rewards: z.array(z.string()).max(3).optional(),
+            condition: z
+              .object({
+                text: z.string(),
+                check: z
+                  .object({
+                    kind: z.enum(["currency", "item", "level", "quest", "ach"]),
+                    id: z.number().int(),
+                    atLeast: z.number().int().optional(),
+                  })
+                  .optional(),
+              })
+              .optional(),
+          })
+          .passthrough(),
+      )
+      .min(1),
   })
   .passthrough();
 
@@ -318,6 +398,82 @@ export const snapshotBodySchema = z
     savedAt: z.number().int().nullable().optional(),
     sections: z.record(z.string(), sectionSchema),
     dropped: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+  })
+  .passthrough();
+
+export const SUGGESTION_KINDS = ["event", "achievement", "rare", "collection"] as const;
+export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
+
+/** Why an idea fits, as data, so the addon can say it in the player's language. */
+export type SuggestionReason =
+  | { kind: "ends"; at: number }
+  | { kind: "alts"; count: number }
+  | { kind: "near"; mapID: number };
+
+/** One idea for the choice Bubble (D106). */
+export type Suggestion = {
+  id: string;
+  kind: SuggestionKind;
+  /** At most 40 characters, human. */
+  title: string;
+  /** When set, the addon shows the game's own name of this token as the title. */
+  titleToken?: string;
+  /** At most 140 bytes, may carry tokens. */
+  goal: string;
+  /** At most 100 bytes, English; the addon prefers `reason`. */
+  why?: string;
+  reason?: SuggestionReason;
+  /** Up to 3 single link tokens. */
+  rewards: string[];
+  mapID?: number;
+  expiresAt?: number;
+  request: { topic: "suggestion"; suggestionId: string; wish: string };
+};
+
+/** `GET /v1/suggestions` and `UnboredSuggestions`: keyed by "Realm-Name". */
+export type SuggestionsBody = {
+  v: 1;
+  computedAt: number;
+  characters: Record<string, Suggestion[]>;
+};
+
+const suggestionSchema = z
+  .object({
+    id: z.string().min(1).max(120),
+    kind: z.enum(SUGGESTION_KINDS),
+    title: z.string().min(1).max(40),
+    titleToken: z.string().optional(),
+    goal: z
+      .string()
+      .min(1)
+      .refine((goal) => new TextEncoder().encode(goal).length <= 140, "goal is over 140 bytes"),
+    why: z
+      .string()
+      .refine((why) => new TextEncoder().encode(why).length <= 100, "why is over 100 bytes")
+      .optional(),
+    reason: z
+      .discriminatedUnion("kind", [
+        z.object({ kind: z.literal("ends"), at: z.number().int() }),
+        z.object({ kind: z.literal("alts"), count: z.number().int().min(2) }),
+        z.object({ kind: z.literal("near"), mapID: z.number().int().positive() }),
+      ])
+      .optional(),
+    rewards: z.array(z.string()).max(3),
+    mapID: z.number().int().positive().optional(),
+    expiresAt: z.number().int().optional(),
+    request: z.object({
+      topic: z.literal("suggestion"),
+      suggestionId: z.string().min(1),
+      wish: z.string().min(1),
+    }),
+  })
+  .passthrough();
+
+export const suggestionsBodySchema = z
+  .object({
+    v: z.literal(1),
+    computedAt: z.number().int(),
+    characters: z.record(z.string(), z.array(suggestionSchema).max(6)),
   })
   .passthrough();
 

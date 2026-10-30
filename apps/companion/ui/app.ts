@@ -1,5 +1,9 @@
 // @ts-nocheck — the window was plain script; the import below is the shared contract.
 import type { Plan, PlayerProfile, RequestBody } from "@unbored/contracts";
+import boryHappy from "./img/bory-happy.png";
+import boryIdle from "./img/bory-idle.png";
+import boryThinking from "./img/bory-thinking.png";
+import boryWaiting from "./img/bory-waiting.png";
 
 // The window does not build Requests. These names are the same contract the Server stores.
 export type { Plan, PlayerProfile, RequestBody };
@@ -26,21 +30,23 @@ const autostart = $("autostart");
 const progress = $("progress");
 const steps = $("steps");
 
+// Imported so Vite fingerprints and ships them; a runtime "img/..." path is not in dist/.
+// Only Bory's layer changes; the ring (index.html) stays put.
 const PICTURES = {
-  idle: "idle",
-  setup: "idle",
-  error: "idle",
-  ready: "happy",
-  thinking: "thinking",
-  busy: "thinking",
-  pairing: "thinking",
+  idle: boryIdle,
+  setup: boryIdle,
+  error: boryIdle,
+  ready: boryHappy,
+  thinking: boryThinking,
+  busy: boryThinking,
+  pairing: boryWaiting,
 };
 
 function paint(state) {
   const phase = state.phase || "idle";
   document.body.dataset.phase = phase;
-  mascot.src = `img/wisp-${PICTURES[phase] || "idle"}.png`;
-  mascot.alt = state.mascot || "Wisp";
+  mascot.src = PICTURES[phase] || boryIdle;
+  mascot.alt = state.mascot || "Bory";
   headline.textContent = state.headline || "";
   hint.textContent = phase === "setup" && state.status ? state.status : state.hint || "";
   steps.innerHTML = "";

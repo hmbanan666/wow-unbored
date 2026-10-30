@@ -213,6 +213,69 @@ end
 
 ns.MAX_WAYPOINTS = 10
 
+-- The card fields (docs/adr/0038). All optional; a 0.7 plan has none of them.
+ns.PLAN_LIMITS = {
+  title = 120,
+  goal = 160,
+  details = 600,
+  rewards = 6,
+  why = 120,
+  stepRewards = 3,
+  condition = 160,
+}
+local CHECK_KINDS = { currency = true, item = true, level = true, quest = true, ach = true }
+local REWARD = "^{%l+:[^{}]+}$"
+
+local function cleanText(value, maxBytes)
+  value = plain(value)
+  if type(value) ~= "string" then
+    return nil
+  end
+  value = ns.Trim(value)
+  if value == "" then
+    return nil
+  end
+  return ns.Utf8Truncate(value, maxBytes)
+end
+
+-- Up to max reward tokens, each one whole token like "{mount:219}".
+function ns.CleanRewards(raw, max)
+  raw = plain(raw)
+  if type(raw) ~= "table" then
+    return nil
+  end
+  local out, seen = {}, {}
+  for i = 1, #raw do
+    local token = cleanText(raw[i], ns.Markup.MAX_LABEL_BYTES + 24)
+    if token and token:match(REWARD) and not seen[token] and #out < max then
+      seen[token] = true
+      out[#out + 1] = token
+    end
+  end
+  return #out > 0 and out or nil
+end
+
+-- { text, check = { kind, id, atLeast } }, checked live by ns.ConditionState.
+function ns.CleanCondition(raw)
+  raw = plain(raw)
+  if type(raw) ~= "table" then
+    return nil
+  end
+  local line = cleanText(raw.text, ns.PLAN_LIMITS.condition)
+  local check = plain(raw.check)
+  local clean
+  if type(check) == "table" and CHECK_KINDS[plain(check.kind)] then
+    local id = whole(check.id, 1, 2147483647)
+    if id then
+      clean = { kind = plain(check.kind), id = id, atLeast = whole(check.atLeast, 1, 2147483647) }
+    end
+  end
+  if not line and not clean then
+    return nil
+  end
+  return { text = line, check = clean }
+end
+
 -- Returns nil, nil when the task has no route.
 function ns.CleanWaypoints(raw, index)
   raw = plain(raw)
@@ -292,6 +355,12 @@ function ns.ValidatePlan(raw, loose)
     note = note:sub(1, 400)
   end
 
+  local title = cleanText(raw.title, ns.PLAN_LIMITS.title)
+  title = title and ns.Trim(ns.Markup.Plain(title) or "") or nil
+  local goal = cleanText(raw.goal, ns.PLAN_LIMITS.goal)
+  local details = cleanText(raw.details, ns.PLAN_LIMITS.details)
+  local rewards = ns.CleanRewards(raw.rewards, ns.PLAN_LIMITS.rewards)
+
   local npcs = ns.Markup.CleanEntities(plain(raw.entities))
   local cleanTasks = {}
   for i = 1, #tasks do
@@ -303,8 +372,8 @@ function ns.ValidatePlan(raw, loose)
     if type(id) ~= "string" or #id < 1 or #id > 80 or not id:match("^[%w%-%._:]+$") then
       return nil, ns.T("ERR_ID", i)
     end
-    local title = plain(task.title)
-    if type(title) ~= "string" or ns.Trim(title) == "" or #title > 240 then
+    local stepTitle = plain(task.title)
+    if type(stepTitle) ~= "string" or ns.Trim(stepTitle) == "" or #stepTitle > 240 then
       return nil, ns.T("ERR_TITLE", i)
     end
     local est = plain(task.estMinutes)
@@ -351,18 +420,24 @@ function ns.ValidatePlan(raw, loose)
     if not complete then
       return nil, err
     end
+    local why = cleanText(task.why, ns.PLAN_LIMITS.why)
+    local condition = ns.CleanCondition(task.condition)
     cleanTasks[#cleanTasks + 1] = {
       id = id,
-      title = ns.Trim(title),
+      title = ns.Trim(stepTitle),
       mapID = mapID,
       x = x,
       y = y,
       estMinutes = est,
       note = taskNote,
       waypoints = waypoints,
-      npcs = ns.Markup.NpcsFor(npcs or ns.Markup.CleanEntities({ npc = plain(task.npcs) }), title, taskNote),
+      npcs = ns.Markup.NpcsFor(npcs or ns.Markup.CleanEntities({ npc = plain(task.npcs) }), stepTitle, taskNote, why,
+        condition and condition.text),
       source = "import",
       complete = complete,
+      why = why,
+      rewards = ns.CleanRewards(task.rewards, ns.PLAN_LIMITS.stepRewards),
+      condition = condition,
     }
   end
 
@@ -372,6 +447,11 @@ function ns.ValidatePlan(raw, loose)
     mode = mode,
     budget = budget,
     note = note,
+    title = title ~= "" and title or nil,
+    goal = goal,
+    details = details,
+    rewards = rewards,
+    npcs = npcs and ns.Markup.NpcsFor(npcs, goal, details) or nil,
     tasks = cleanTasks,
     generatedAt = whole(raw.generatedAt, 0, 4000000000),
   }
@@ -394,6 +474,9 @@ function ns.EncodePlan(plan)
     clean = plan
   end
   local npc, tasks = {}, {}
+  for id, entry in pairs(clean.npcs or {}) do
+    npc[id] = entry
+  end
   for i = 1, #(clean.tasks or {}) do
     local task = ns.DeepCopy(clean.tasks[i]) or {}
     for id, entry in pairs(task.npcs or {}) do
@@ -408,6 +491,10 @@ function ns.EncodePlan(plan)
     mode = clean.mode or "custom",
     budget = clean.budget,
     note = clean.note,
+    title = clean.title,
+    goal = clean.goal,
+    details = clean.details,
+    rewards = clean.rewards,
     tasks = tasks,
     entities = next(npc) and { npc = npc } or nil,
   }

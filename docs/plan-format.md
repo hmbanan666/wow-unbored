@@ -18,7 +18,7 @@ UNB1P:<base64>
 
 Version is the JSON field `v`, currently `1`. Unknown versions are rejected. There is no `loadstring`. A bad string shows an error in the import window and does not touch the current list.
 
-Limits: 40 tasks, titles up to 240 bytes, notes up to 400 bytes, the whole paste under 20,000 characters.
+Limits: 40 tasks, step titles up to 240 bytes, notes up to 400 bytes, the whole paste under 20,000 characters. The card fields have their own limits, below.
 
 ## Plan
 
@@ -56,7 +56,22 @@ Limits: 40 tasks, titles up to 240 bytes, notes up to 400 bytes, the whole paste
 
 `id` may contain letters, numbers, `:`, `.`, `_`, and `-`.
 
-`title`, `note` and the plan `note` may carry entity tokens such as `{item:6948}` or `{npc:12345}`, which Wisp shows as native game links. An optional `entities` object names the npcs: `"entities": { "npc": { "12345": { "name": "Fixer Kev", "mapID": 2339, "x": 52.1, "y": 47.3 } } }`. Token and entity coordinates are map percent 0–100, unlike task `x`/`y`. The full rules are in [`packages/contracts/markup.md`](../packages/contracts/markup.md).
+Step `title`, `note`, `why` and condition `text`, the plan `note`, `goal`, `details` and `rewards` may carry entity tokens such as `{item:6948}` or `{npc:12345}`, which Bory shows as native game links. An optional `entities` object names the npcs: `"entities": { "npc": { "12345": { "name": "Fixer Kev", "mapID": 2339, "x": 52.1, "y": 47.3 } } }`. Token and entity coordinates are map percent 0–100, unlike task `x`/`y`. The full rules are in [`packages/contracts/markup.md`](../packages/contracts/markup.md).
+
+### The card fields
+
+All optional and added in 0.8; a plan without them works as before ([ADR 0038](adr/0038-one-plan-card.md)). [`packages/contracts/fixtures/plan-card.json`](../packages/contracts/fixtures/plan-card.json) is a full example.
+
+| Field | Where | Rule |
+| --- | --- | --- |
+| `title` | plan | 3 to 40 characters, a human name like a quest title, no tokens. Without it Bory shows the preset name, or "Your plan". |
+| `goal` | plan | one sentence, at most 160 bytes, may carry tokens |
+| `details` | plan | facts and state, at most 600 bytes, may carry tokens |
+| `rewards` | plan, task | up to 6 (plan) or 3 (task) strings, each one token of kind `mount`, `ach`, `item`, `toy`, `currency` or `pet` |
+| `why` | task | one short reason, at most 120 bytes, may carry tokens |
+| `condition` | task | `{ "text": "If you have 5,000 {currency:1166}", "check": { "kind": "currency", "id": 1166, "atLeast": 5000 } }`; `kind` is `currency`, `item`, `level` (id is the level), `quest` or `ach`. The game checks it live: met shows Ready, unmet shows the count and Skip moves past it without counting it as skipped. |
+
+The card is calm by default: closed it shows the title, the step with its `why`, the first reward, and Done and Skip. Show more opens the progress pips, `goal`, `details` (with the step `note`), the full step list, every reward and the footer.
 
 ### Waypoint routes
 
@@ -134,9 +149,9 @@ Pasting a progress string into Import is an error. It does not replace the list.
 
 ## Companion file
 
-The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). When the UI loads (login, a character switch, or a Refresh the player clicks), a plan whose `requestId` matches this character's pending request is taken: it starts at once, or, over a running Quick plan, Wisp offers it first. A plan without a `requestId` starts once per character, and only when no request is pending. `/unbored companion` applies the file again. See `companion/README.md`.
+The desktop app writes `Interface/AddOns/Unbored_Plan/Plan.lua` (global `UnboredExternalPlan`). When the UI loads (login, a character switch, or a Refresh the player clicks), a plan whose `requestId` matches this character's pending request is taken: it starts at once, or, over a running Quick plan, Bory offers it first. A plan without a `requestId` starts once per character, and only when no request is pending. `/unbored companion` applies the file again. See `companion/README.md`.
 
-Alongside `requestId`, `requestStatus` (`pending`, `fulfilled`, `failed`), and `requestReason`, the file carries `requestType` (`plan`, `question`, `item`), `eta` for a pending request (seconds a plan usually takes, 60 to 900; Wisp offers one Refresh after it), and, for an answered request, `answer`:
+Alongside `requestId`, `requestStatus` (`pending`, `fulfilled`, `failed`), and `requestReason`, the file carries `requestType` (`plan`, `question`, `item`), `eta` for a pending request (seconds a plan usually takes, 60 to 900; Bory offers one Refresh after it), and, for an answered request, `answer`:
 
 ```lua
 UnboredExternalPlan = {

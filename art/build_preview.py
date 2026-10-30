@@ -1,5 +1,6 @@
-"""Draws docs/img/wisp-preview.png for the README: Wisp's bubble and a
-tooltip line, from the addon's own portrait, icons, sizes and strings.
+"""Draws docs/img/bory-preview.png for the README: Bory's plan card and a
+tooltip line, from the addon's own portrait layers, icons, sizes, palette
+and strings.
 
     pip install pillow
     python3 art/build_preview.py
@@ -14,17 +15,20 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 K = 2
-TEAL = (94, 227, 212)
-GOLD = (255, 209, 0)
+# ns.PALETTE in addon/Core/Namespace.lua (BRAND.md).
+ACCENT = (232, 176, 74)
+GOLD = (245, 210, 122)
+CREAM = (234, 219, 192)
+MUTED = (184, 163, 133)
+BG = (30, 20, 16, 240)
+RAISED = (42, 28, 21, 235)
+EPIC = (163, 53, 238)
 WHITE = (255, 255, 255)
-MUTED = (158, 178, 178)
-SUB = (191, 209, 209)
-BG = (8, 20, 23, 235)
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 SIZE = 52
-BUBBLE = 260
+BUBBLE = 300
 PAD = 10
 ACTION = 24
 
@@ -58,23 +62,24 @@ def wrap(draw, text, fnt, width):
     return lines
 
 
-def panel(draw, box, alpha=235):
+def panel(draw, box, alpha=240):
     x0, y0, x1, y1 = box
-    draw.rounded_rectangle((x0, y0, x1, y1), radius=6 * K, fill=BG[:3] + (alpha,), outline=TEAL + (230,), width=K)
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=6 * K, fill=BG[:3] + (alpha,), outline=ACCENT + (230,), width=K)
 
 
 def background(width, height):
+    """A dusky, warm-ish game scene stand-in."""
     image = Image.new("RGB", (width, height))
     px = image.load()
     for y in range(height):
         for x in range(width):
             t = y / height
             u = x / width
-            px[x, y] = (int(18 + 30 * u), int(40 + 40 * t), int(52 + 30 * (1 - t)))
+            px[x, y] = (int(40 + 40 * u), int(46 + 24 * t), int(58 + 20 * (1 - t)))
     glow = Image.new("L", (width, height), 0)
     ImageDraw.Draw(glow).ellipse((width * 0.55, -height * 0.4, width * 1.3, height * 0.7), fill=90)
     glow = glow.filter(ImageFilter.GaussianBlur(80))
-    image.paste((140, 200, 190), (0, 0), glow)
+    image.paste((210, 170, 120), (0, 0), glow)
     return image.convert("RGBA")
 
 
@@ -85,71 +90,60 @@ def text_block(draw, x, y, text, fnt, color, width):
     return y
 
 
+def portrait(size):
+    out = Image.new("RGBA", (size * K, size * K), (0, 0, 0, 0))
+    for layer in ("BoryBack128", "BoryIdle128", "BoryFrame128"):
+        out.alpha_composite(media(layer, size))
+    return out
+
+
 def main():
-    width, height = 1240, 610
+    width, height = 1240, 560
     image = background(width, height)
     layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
 
     px, py = 40, 110
-    portrait = media("WispIdle128", SIZE)
-    layer.alpha_composite(portrait, (px, py))
+    layer.alpha_composite(portrait(SIZE), (px, py))
 
     bx = px + (SIZE + 8) * K
     by = py
     inner = BUBBLE - PAD * 2
     small, normal = font(10), font(12)
-    header, message = font(12, True), font(13)
+    title, message = font(12, True), font(13)
 
-    # Measure first, then draw the bubble behind the text.
+    # The closed card (docs/adr/0038): title, the step, one why, the main reward, Show more.
     y = by + (PAD - 2) * K
     rows = [
-        ("1/5 · ~45 min", small, MUTED, inner - 48),
-        ("Your full plan comes after a refresh. The quick one is ready now.", header, GOLD, inner),
-        ("Fly to the Onyxia's Lair door in Dustwallow Marsh", message, WHITE, inner),
-        ("Onyxian Drake drops from Onyxia. Solo is easy at max level.", small, SUB, inner),
-        ("Point 1/2: Wyrmbog · 240 yd", small, GOLD, inner),
+        ("Bory", small, ACCENT, inner - 48, 8),
+        ("Ashes in one evening", title, GOLD, inner, 8),
+        ("Fall from a great height", message, CREAM, inner, 6),
+        ("It is a quick Going Down? on the way", small, MUTED, inner, 10),
+        ("[Ashes of Al'ar]", small, EPIC, inner, 10),
+        ("Show more", small, ACCENT, inner, 6),
     ]
     heights = []
-    for text, fnt, _, w in rows:
-        heights.append(len(wrap(draw, text, fnt, w)) * int(fnt.size * 1.3) + 5 * K)
+    for text, fnt, _, w, gap in rows:
+        heights.append(len(wrap(draw, text, fnt, w)) * int(fnt.size * 1.3) + gap * K)
     bar_y = y + sum(heights) + 4 * K
     bottom = bar_y + ACTION * K + PAD * K
     panel(draw, (bx, by, bx + BUBBLE * K, bottom))
 
-    echo_text = "Done: Check the mailbox in Stormwind"
-    echo_w = int(draw.textlength(echo_text, font=small)) + PAD * 2 * K
-    echo = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    panel(ImageDraw.Draw(echo), (bx, by - 30 * K, bx + echo_w, by - 6 * K))
-    ImageDraw.Draw(echo).text((bx + PAD * K, by - 25 * K), echo_text, font=small, fill=WHITE)
-    echo.putalpha(echo.getchannel("A").point(lambda a: int(a * 0.7)))
-    layer.alpha_composite(echo)
-
-    for (text, fnt, color, w), h in zip(rows, heights):
+    for (text, fnt, color, w, _), h in zip(rows, heights):
         text_block(draw, bx + PAD * K, y, text, fnt, color, w)
         y += h
 
     for i, name in enumerate(("IconChevron", "IconMenu")):
-        layer.alpha_composite(tinted(name, 16, TEAL), (bx + (BUBBLE - 24 - i * 22) * K, by + 4 * K))
+        layer.alpha_composite(tinted(name, 16, ACCENT), (bx + (BUBBLE - 24 - i * 22) * K, by + 4 * K))
 
     x = bx + PAD * K
-    for icon, label in (("IconDone", None), ("IconSkip", None), ("IconList", None),
-                        ("IconRefresh", "Refresh"), (None, "Later")):
-        w = ACTION
-        if label:
-            w = int(draw.textlength(label, font=small) / K) + (5 + 16 + 3 + 8 if icon else 18)
-        draw.rounded_rectangle((x, bar_y, x + w * K, bar_y + ACTION * K), radius=4 * K,
-                               fill=(13, 41, 43, 235), outline=TEAL + (140,), width=K)
-        if icon and not label:
-            layer.alpha_composite(tinted(icon, 16, TEAL), (x + 4 * K, bar_y + 4 * K))
-        elif icon:
-            layer.alpha_composite(tinted(icon, 16, TEAL), (x + 5 * K, bar_y + 4 * K))
-            draw.text((x + 24 * K, bar_y + 5 * K), label, font=small, fill=WHITE)
-        else:
-            draw.text((x + 9 * K, bar_y + 5 * K), label, font=small, fill=WHITE)
-        x += (w + 6) * K
+    for icon in ("IconDone", "IconSkip"):
+        draw.rounded_rectangle((x, bar_y, x + ACTION * K, bar_y + ACTION * K), radius=4 * K,
+                               fill=RAISED, outline=ACCENT + (140,), width=K)
+        layer.alpha_composite(tinted(icon, 16, ACCENT), (x + 4 * K, bar_y + 4 * K))
+        x += (ACTION + 6) * K
 
-    tx, ty = 760, 110
+    tx, ty = 800, 110
     tip = [
         ("Peacebloom", font(12, True), WHITE),
         ("Crafting Reagent", small, (102, 187, 255)),
@@ -164,14 +158,14 @@ def main():
     for text, fnt, color in tip:
         draw.text((tx + 8 * K, ty2), text, font=fnt, fill=color)
         ty2 += int(fnt.size * 1.35)
-    draw.text((tx + 8 * K, ty2 + 2 * K), "Wisp:", font=small, fill=TEAL)
-    off = draw.textlength("Wisp: ", font=small)
+    draw.text((tx + 8 * K, ty2 + 2 * K), "Bory:", font=small, fill=ACCENT)
+    off = draw.textlength("Bory: ", font=small)
     draw.text((tx + 8 * K + off, ty2 + 2 * K), "Send to Mira (Alchemy): mail it", font=small, fill=WHITE)
 
     image.alpha_composite(layer)
-    note = "Preview drawn from Wisp's own art and layout, not an in-game capture."
-    ImageDraw.Draw(image).text((40, height - 40), note, font=font(9), fill=(200, 220, 220))
-    out = ROOT / "docs" / "img" / "wisp-preview.png"
+    note = "Preview drawn from Bory's own art and layout, not an in-game capture."
+    ImageDraw.Draw(image).text((40, height - 40), note, font=font(9), fill=CREAM)
+    out = ROOT / "docs" / "img" / "bory-preview.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     image.convert("RGB").save(out, optimize=True)
     print(out)

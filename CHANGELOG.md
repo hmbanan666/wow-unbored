@@ -2,6 +2,15 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## 0.8.0
+
+- Meet Bory, a calm ginger cat in a thin gold ring, who takes over from Wisp. He looks idle, thinking, sleepy on a long wait, or happy, and the addon and the Companion share a warm gold and burgundy look.
+- One plan card instead of the steps window: a short title, the step to do now, why it matters, and the main reward. Show more opens the whole plan in place, and Bory remembers whether you like it open.
+- Ideas first: Bory opens with up to four ideas from your own characters (a holiday that ends soon, a mount none of your characters has, a rare near where you play), then Surprise me, Something else, and More ideas for the usual choices. Picking one never asks for time.
+- Plans can say "if you have 5,000 badges, buy the mount" and check it live, and mounts, toys, pets, zones and dungeons in a step are game links too.
+- The Companion window shows Bory in every phase again.
+- Bory writes less to your addon files: the old 0.6 profile is gone, and the game data snapshot carries the same facts.
+
 ## 0.7.0
 
 - Plans cover the whole goal, with no time limit to pick. Want a proper plan? Answer one short question, send it, and Wisp shows she is working on it until it is ready, with one Refresh when it is.

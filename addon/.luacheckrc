@@ -38,10 +38,14 @@ globals = {
   "BINDING_NAME_UNBORED_SKIP",
   "BINDING_NAME_UNBORED_WAYPOINT",
   "BINDING_NAME_UNBORED_LOAD",
-  "UnboredTracker",
+  "UnboredSuggestions",
 }
 
 read_globals = {
+  "BreakUpLargeNumbers",
+  "EJ_GetInstanceInfo",
+  "EncounterJournal_OpenJournal",
+  "LoadAddOn",
   "C_Spell",
   "EventRegistry",
   "GetAchievementLink",
