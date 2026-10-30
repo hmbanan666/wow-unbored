@@ -208,7 +208,7 @@ local function ideaChip(parent, onClick)
     if not idea then
       return ""
     end
-    local lines = { idea.title, ns.Markup.Plain(idea.goal) }
+    local lines = { ns.Suggestions.Title(idea), ns.Markup.Plain(idea.goal) }
     for i = 1, #idea.rewards do
       lines[#lines + 1] = "- " .. (ns.Markup.Plain(idea.rewards[i]) or "")
     end
@@ -906,7 +906,7 @@ function ns.Mascot.RequestSummary(req)
   local idea = req.topic == "suggestion" and type(req.suggestion) == "table" and req.suggestion or nil
   local text
   if idea and type(idea.title) == "string" and idea.title ~= "" then
-    text = idea.title
+    text = ns.Suggestions.Title(idea)
     if type(req.extra) == "string" and req.extra ~= "" then
       text = text .. "\n\"" .. req.extra .. "\""
     end
@@ -2011,7 +2011,7 @@ function ns.Mascot:Layout(view, right)
   end
   local function layoutIdea(button, idea)
     button.idea = idea
-    button.label:SetText(idea.title)
+    button.label:SetText(ns.Suggestions.Title(idea))
     local line = ns.Suggestions.Line(idea)
     button.sub:SetText(line or "")
     local icon = idea.rewards[1] and ns.Markup.RewardIcon(idea.rewards[1])

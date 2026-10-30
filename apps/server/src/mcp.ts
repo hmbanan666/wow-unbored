@@ -496,7 +496,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Get Bory's ideas",
       description:
-        "The Suggestions the Server made for a Character from its own Game data and the addon's catalog (no guessing): current events with rewards still missing, achievements near where the player plays, rares not looted yet, and mounts nobody on the Account owns. Each has id, kind (event, achievement, rare, collection), title, goal, rewards (link tokens), why, and the request it sends when picked. Expired ones are left out. Pass account for every Character of that Account, or character (and realm) for one; without arguments you get the most recently seen Character. computedAt is when they were made (after each upload, 30 s after the last one).",
+        "The Suggestions the Server made for a Character from its own Game data and the addon's catalog (no guessing): current events with rewards still missing, achievements near where the player plays, rares not looted yet, and mounts nobody on the Account owns. Each has id, kind (event, achievement, rare, collection), title, goal, rewards (link tokens), why, and the request it sends when picked. Expired ones are left out. Pass account for every Character of that Account, or character (and realm) for one; without arguments you get the most recently seen Character. computedAt is when they were made (after each upload, 30 s after the last one). They are written in the Character's language (en or ru: its char Section, else its last Request).",
       inputSchema: whoSchema,
     },
     async (who) => {

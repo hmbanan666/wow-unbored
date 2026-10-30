@@ -695,7 +695,7 @@ function ns.Session:BeginSuggestion(idea)
       return
     end
     if self.state and self:Current() then
-      self.state.title, self.state.goal = idea.title, idea.goal
+      self.state.title, self.state.goal = ns.Suggestions.Title(idea), idea.goal
       self.state.rewards = #idea.rewards > 0 and ns.DeepCopy(idea.rewards, 1) or self.state.rewards
       self:Save()
     end

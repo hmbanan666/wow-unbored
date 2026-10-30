@@ -67,6 +67,8 @@ function S.Clean(raw)
     id = id,
     kind = raw.kind,
     title = title,
+    titleToken = type(raw.titleToken) == "string" and #raw.titleToken <= 60
+      and raw.titleToken:match(TOKEN) and raw.titleToken or nil,
     goal = goal,
     why = text(raw.why, 100),
     rewards = rewards(raw.rewards),
@@ -255,8 +257,17 @@ function S.Line(idea, now)
   elseif r and r.kind == "now" then
     return ns.T("IDEA_NOW")
   end
-  -- TODO: the Server's own why is English only; a Russian line needs a reason kind for it.
   return idea.why
+end
+
+-- The title in the player's language: the game's own name for an achievement or
+-- a dungeon when it has one, else the title the idea came with.
+function S.Title(idea)
+  local named = idea.titleToken and ns.Markup.Plain(idea.titleToken)
+  if type(named) == "string" and named ~= "" then
+    return named
+  end
+  return idea.title
 end
 
 -- What travels with the Request (D109): the ids the Planner may trust.
@@ -265,6 +276,7 @@ function S.Copy(idea)
     id = idea.id,
     kind = idea.kind,
     title = idea.title,
+    titleToken = idea.titleToken,
     goal = idea.goal,
     why = idea.why,
     rewards = ns.DeepCopy(idea.rewards, 1),

@@ -11,7 +11,10 @@
           "kind": "ends",
           "at": 1793530800
         },
-        "rewards": ["{mount:219}", "{ach:291}"],
+        "rewards": [
+          "{mount:219}",
+          "{ach:291}"
+        ],
         "expiresAt": 1793530800,
         "id": "event:324:1792317600",
         "kind": "event",
@@ -41,8 +44,11 @@
       },
       {
         "title": "Tempest Keep",
-        "goal": "Run Tempest Keep for {mount:183}.",
-        "rewards": ["{mount:183}"],
+        "titleToken": "{instance:550}",
+        "goal": "Run {instance:550|Tempest Keep} for {mount:183}.",
+        "rewards": [
+          "{mount:183}"
+        ],
         "mapID": 109,
         "id": "mount:183",
         "kind": "collection",
@@ -59,8 +65,11 @@
       },
       {
         "title": "Battle of Dazar'alor",
-        "goal": "Run Battle of Dazar'alor for {mount:1217}.",
-        "rewards": ["{mount:1217}"],
+        "titleToken": "{instance:2070}",
+        "goal": "Run {instance:2070|Battle of Dazar'alor} for {mount:1217}.",
+        "rewards": [
+          "{mount:1217}"
+        ],
         "id": "mount:1217",
         "kind": "collection",
         "request": {

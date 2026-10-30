@@ -746,6 +746,19 @@ check(ns.Suggestions.Clean({ id = "x", kind = "rare", title = "", goal = "G" }) 
 local cleaned = ns.Suggestions.Clean({ id = "x", kind = "rare", title = "T", goal = "G",
   rewards = { "{mount:1}", "mount:2", "{ach:3}", "{item:4}", "{toy:5}" } })
 check(#cleaned.rewards == 3 and cleaned.rewards[2] == "{ach:3}", "only tokens, at most three rewards")
+check(ns.Suggestions.Clean({ id = "x", kind = "rare", title = "T", goal = "G", titleToken = "ach 964" }).titleToken
+  == nil, "a broken title token is dropped")
+local named = ns.Suggestions.Clean({ id = "ach:964", kind = "achievement", title = "Going Down? (en)", goal = "G",
+  titleToken = "{ach:964}" })
+local savedLink = GetAchievementLink
+GetAchievementLink = function(id)
+  return id == 964 and "|cffffff00|Hachievement:964:0|h[Going Down?]|h|r" or nil
+end
+check(ns.Suggestions.Title(named) == "Going Down?", "the title is the game's own name for the achievement")
+check(ns.Suggestions.Copy(named).titleToken == "{ach:964}", "the Request copy keeps the title token")
+named.titleToken = "{ach:999999}"
+check(ns.Suggestions.Title(named) == "Going Down? (en)", "an unknown id keeps the title it came with")
+GetAchievementLink = savedLink
 local localIdeas = {
   { id = "event:local:hallow's end", kind = "event", title = "Hallow's End", goal = "g", rewards = {}, quick = true },
   { id = "rare:other", kind = "rare", title = "Other", goal = "g", rewards = { "{mount:183}" }, quick = true },

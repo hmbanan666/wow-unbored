@@ -45,7 +45,7 @@ UnboredSuggestions = {
         ["why"] = "None of your 2 characters has it yet",
       },
       {
-        ["goal"] = "Run Tempest Keep for {mount:183}.",
+        ["goal"] = "Run {instance:550|Tempest Keep} for {mount:183}.",
         ["id"] = "mount:183",
         ["kind"] = "collection",
         ["mapID"] = 109,
@@ -62,10 +62,11 @@ UnboredSuggestions = {
           "{mount:183}",
         },
         ["title"] = "Tempest Keep",
+        ["titleToken"] = "{instance:550}",
         ["why"] = "None of your 2 characters has it yet",
       },
       {
-        ["goal"] = "Run Battle of Dazar'alor for {mount:1217}.",
+        ["goal"] = "Run {instance:2070|Battle of Dazar'alor} for {mount:1217}.",
         ["id"] = "mount:1217",
         ["kind"] = "collection",
         ["reason"] = {
@@ -81,6 +82,7 @@ UnboredSuggestions = {
           "{mount:1217}",
         },
         ["title"] = "Battle of Dazar'alor",
+        ["titleToken"] = "{instance:2070}",
         ["why"] = "None of your 2 characters has it yet",
       },
     },

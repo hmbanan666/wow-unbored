@@ -38,6 +38,8 @@ S.Register({
     body.raceFile = str(raceFile, 40)
     body.raceID = num(raceID)
     body.faction = str(call(UnitFactionGroup, "player"), 20)
+    -- The language Bory speaks here, so the Server writes ideas in it.
+    body.lang = ns.LANG
     body.level = num(call(UnitLevel, "player"))
     body.xp = num(call(UnitXP, "player"))
     body.xpMax = num(call(UnitXPMax, "player"))

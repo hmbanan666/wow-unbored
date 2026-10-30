@@ -366,6 +366,7 @@ end
 check(body("char") and body("char").level == 80 and body("char").classFile == "MAGE", "char reads class and level")
 check(body("char").money == 183420000 and body("char").inGuild == true, "char reads money and guild flag only")
 check(body("char").ilvl == 652.4, "char rounds item level")
+check(body("char").lang == ns.LANG, "char says the language Bory speaks, for the Server's ideas")
 check(body("gear") and body("gear").slots[1].item:find("^item:212065:") ~= nil, "gear keeps the item string")
 check(body("bags") and body("bags").count == 30, "bags count every item")
 check(ns.Pack.DecodeValues(body("bags").items)[200001][1] == 2, "bag counts are packed per item")

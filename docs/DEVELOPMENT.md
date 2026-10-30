@@ -91,7 +91,7 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 
 | Section | Scope | API | When | Worst case |
 | --- | --- | --- | --- | --- |
-| `char` | char | UnitClass, UnitRace, UnitLevel, UnitXP, GetSpecializationInfo, GetAverageItemLevel, GetMoney, GetBindLocation | login, events | 0.5 KB |
+| `char` | char | UnitClass, UnitRace, UnitLevel, UnitXP, GetSpecializationInfo, GetAverageItemLevel, GetMoney, GetBindLocation, and `lang` (the addon's language, for the Server's ideas) | login, events | 0.5 KB |
 | `gear` | char | GetInventoryItemLink 1-19, C_Item.GetDetailedItemLevelInfo | login, PLAYER_EQUIPMENT_CHANGED | 0.3 KB |
 | `talents` | char | C_ClassTalents, C_Traits.GenerateImportString | TRAIT_CONFIG_* events | |
 | `played` | char | RequestTimePlayed, TIME_PLAYED_MSG (our chat line is hidden) | once per login | |
