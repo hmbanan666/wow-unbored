@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,7 @@ import {
   requestBodySchema,
   sectionHash,
   snapshotBodySchema,
+  suggestionsBodySchema,
   unpackIds,
   unpackRows,
 } from "./index.ts";
@@ -31,6 +33,14 @@ test("request fixtures match the shared schema", () => {
   for (const item of doc.cases) {
     const parsed = requestBodySchema.safeParse(item.body);
     expect(parsed.success, item.name).toBe(true);
+  }
+});
+
+test("the suggestions fixture matches the shared schema", () => {
+  const parsed = suggestionsBodySchema.safeParse(read("suggestions.json"));
+  expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  for (const list of Object.values(parsed.data!.characters)) {
+    for (const item of list) expect(item.request.suggestionId).toBe(item.id);
   }
 });
 
@@ -114,4 +124,13 @@ test("entities keep only well-formed npc entries", () => {
   });
   expect(issues).toHaveLength(3);
   expect(cleanEntities("nope").issues).toHaveLength(1);
+});
+
+test("the catalog is what scripts/export-catalog.lua makes from addon/Data", () => {
+  const repo = path.join(root, "..", "..", "..");
+  const made = execFileSync("lua5.1", [path.join(repo, "scripts", "export-catalog.lua")], {
+    encoding: "utf8",
+  });
+  const file = readFileSync(path.join(root, "..", "catalog", "catalog.json"), "utf8");
+  expect(file, "run lua5.1 scripts/export-catalog.lua --write").toBe(made);
 });

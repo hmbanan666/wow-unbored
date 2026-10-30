@@ -9,6 +9,7 @@ import {
   type MarkupCheck,
   type Plan,
   type RequestItem,
+  type RequestSuggestion,
   type RequestType,
   type PlayerContext,
   type ProgressBody,
@@ -24,6 +25,7 @@ import {
   type SnapshotResult,
 } from "./data.ts";
 import type { ProfileUpload } from "./profile.ts";
+import { SuggestionStore } from "./suggestions.ts";
 
 export { mergeProfile };
 
@@ -76,6 +78,7 @@ type ProgressRow = {
 export class Store {
   private db: DatabaseSync;
   readonly data: DataStore;
+  readonly suggestions: SuggestionStore;
   readonly gameIds: IdCache;
 
   constructor(dataDir: string) {
@@ -182,8 +185,11 @@ export class Store {
       ["lang", "TEXT"],
       ["account", "TEXT"],
       ["reason_code", "TEXT"],
+      ["suggestion_id", "TEXT"],
+      ["suggestion_json", "TEXT"],
     ]);
     this.data = new DataStore(this.db);
+    this.suggestions = new SuggestionStore(this.db, this.data);
     this.gameIds = new IdCache(this.db);
   }
 
@@ -197,6 +203,7 @@ export class Store {
   }
 
   close(): void {
+    this.suggestions.close();
     this.db.close();
   }
 
@@ -395,6 +402,8 @@ export class Store {
     context?: PlayerContext | null;
     lang?: string | null;
     account?: string | null;
+    suggestionId?: string | null;
+    suggestion?: RequestSuggestion | null;
     nowSeconds: number;
   }): { created: boolean; request: PlanRequest } {
     const existing = this.requestById(input.id);
@@ -406,8 +415,8 @@ export class Store {
       .prepare(
         `INSERT INTO requests
            (id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at,
-            context_json, type, question, topic, item_json, lang, account)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            context_json, type, question, topic, item_json, lang, account, suggestion_id, suggestion_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.id,
@@ -426,6 +435,8 @@ export class Store {
         input.item ? JSON.stringify(input.item) : null,
         input.lang ?? null,
         account,
+        input.suggestionId ?? null,
+        input.suggestion ? JSON.stringify(input.suggestion) : null,
       );
     const request = this.requestById(input.id);
     if (!request) throw new Error("Could not store the request.");
@@ -438,6 +449,7 @@ export class Store {
       item: request.item,
       lang: request.lang,
       context: request.context,
+      ...(request.suggestionId ? { suggestionId: request.suggestionId } : {}),
     });
     return { created: true, request };
   }
@@ -506,7 +518,8 @@ export class Store {
     const rows = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account, reason_code
+                type, question, topic, item_json, answer_json, lang, account, reason_code,
+                suggestion_id, suggestion_json
          FROM requests WHERE status = ? ORDER BY created_at DESC, id ASC LIMIT ?`,
       )
       .all(status, limit) as RequestRow[];
@@ -517,7 +530,8 @@ export class Store {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account, reason_code
+                type, question, topic, item_json, answer_json, lang, account, reason_code,
+                suggestion_id, suggestion_json
          FROM requests WHERE id = ?`,
       )
       .get(id) as RequestRow | undefined;
@@ -532,7 +546,8 @@ export class Store {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account, reason_code
+                type, question, topic, item_json, answer_json, lang, account, reason_code,
+                suggestion_id, suggestion_json
          FROM requests WHERE device_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
       .get(deviceId) as RequestRow | undefined;
@@ -665,6 +680,7 @@ export class Store {
   ): SnapshotResult {
     const result = this.data.ingestSnapshot(snapshot, deviceId, nowSeconds);
     if (result.stored.length > 0) {
+      this.suggestions.schedule(result.account);
       const view = this.exactProfile(snapshot.character, snapshot.realm);
       this.addHistory({
         at: nowSeconds,
@@ -913,6 +929,14 @@ export class Store {
    * Advice for every character this device uploaded data for, with the Account
    * digest (its Alts) so routing works for Alts seen on other PCs (D76).
    */
+  /** Suggestions for this device's characters (docs/adr/0040). */
+  suggestionsForDevice(deviceId: string) {
+    const rows = this.data
+      .characters()
+      .filter((row) => deviceId === "legacy" || row.deviceId === deviceId);
+    return this.suggestions.body(rows);
+  }
+
   adviceForDevice(deviceId: string): DeviceAdvice[] {
     const rows = this.db
       .prepare(
@@ -1137,6 +1161,9 @@ export type PlanRequest = {
   account: string;
   /** Why it failed (docs/adr/0013): `timeout` when no Plan came in 60 min (D69). */
   reasonCode: string | null;
+  /** With topic "suggestion": the picked Suggestion; its tokens are ground truth for ids (D109). */
+  suggestionId: string | null;
+  suggestion: RequestSuggestion | null;
 };
 
 type RequestRow = {
@@ -1161,6 +1188,8 @@ type RequestRow = {
   lang: string | null;
   account: string | null;
   reason_code: string | null;
+  suggestion_id: string | null;
+  suggestion_json: string | null;
 };
 
 function parseJson<T>(text: string | null): T | null {
@@ -1197,6 +1226,8 @@ function requestFromRow(row: RequestRow): PlanRequest {
     lang: row.lang,
     account: row.account ?? "",
     reasonCode: row.reason_code,
+    suggestionId: row.suggestion_id ?? null,
+    suggestion: parseJson<RequestSuggestion>(row.suggestion_json),
   };
 }
 
@@ -1223,6 +1254,8 @@ export function publicRequest(request: PlanRequest) {
     answer: request.answer,
     lang: request.lang,
     account: request.account || null,
+    suggestionId: request.suggestionId,
+    suggestion: request.suggestion,
   };
 }
 

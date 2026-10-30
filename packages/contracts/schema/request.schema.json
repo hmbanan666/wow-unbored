@@ -35,7 +35,27 @@
         "count": { "type": "integer" }
       }
     },
-    "context": { "type": "object" }
+    "context": { "type": "object" },
+    "suggestionId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "With topic \"suggestion\": the picked Suggestion (D109)."
+    },
+    "suggestion": {
+      "type": "object",
+      "description": "A copy of the picked Suggestion; its tokens are ground truth for ids.",
+      "required": ["id", "kind", "title", "goal", "rewards"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string" },
+        "title": { "type": "string" },
+        "goal": { "type": "string" },
+        "why": { "type": "string" },
+        "rewards": { "type": "array", "items": { "type": "string" }, "maxItems": 3 },
+        "mapID": { "type": "integer" },
+        "expiresAt": { "type": "integer" }
+      }
+    }
   },
   "allOf": [
     {

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unbored.kosarev.space/schema/suggestions.json",
+  "title": "Suggestions",
+  "description": "GET /v1/suggestions, and UnboredSuggestions in Unbored_Plan/Suggestions.lua (D106). Made by the Server from the player's own data and the catalog only.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["v", "computedAt", "characters"],
+  "properties": {
+    "v": { "const": 1 },
+    "computedAt": { "type": "integer" },
+    "characters": {
+      "type": "object",
+      "description": "Keyed by \"Realm-Name\".",
+      "additionalProperties": {
+        "type": "array",
+        "maxItems": 6,
+        "items": { "$ref": "#/$defs/suggestion" }
+      }
+    }
+  },
+  "$defs": {
+    "suggestion": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "kind", "title", "goal", "rewards", "request"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "kind": { "enum": ["event", "achievement", "rare", "collection"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "titleToken": {
+          "type": "string",
+          "description": "The addon shows the game's own name of this token as the title."
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1,
+          "description": "At most 140 bytes; tokens allowed."
+        },
+        "why": {
+          "type": "string",
+          "description": "At most 100 bytes, English; the addon prefers reason."
+        },
+        "reason": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["ends", "alts", "near"] },
+            "at": { "type": "integer" },
+            "count": { "type": "integer", "minimum": 2 },
+            "mapID": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "rewards": { "type": "array", "items": { "type": "string" }, "maxItems": 3 },
+        "mapID": { "type": "integer", "minimum": 1 },
+        "expiresAt": { "type": "integer" },
+        "request": {
+          "type": "object",
+          "required": ["topic", "suggestionId", "wish"],
+          "properties": {
+            "topic": { "const": "suggestion" },
+            "suggestionId": { "type": "string", "minLength": 1 },
+            "wish": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}

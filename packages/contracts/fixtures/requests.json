@@ -94,6 +94,31 @@
           "level": 80
         }
       }
+    },
+    {
+      "name": "plan from a picked suggestion",
+      "savedVariables": "suggestion.lua",
+      "body": {
+        "id": "req-idea-1",
+        "createdAt": 1793361600,
+        "character": "Mira",
+        "realm": "Silvermoon",
+        "type": "plan",
+        "mode": "farm",
+        "wish": "Tempest Keep: Run Tempest Keep for a mount.",
+        "topic": "suggestion",
+        "lang": "en",
+        "suggestionId": "mount:183",
+        "suggestion": {
+          "id": "mount:183",
+          "kind": "collection",
+          "title": "Tempest Keep",
+          "goal": "Run Tempest Keep for {mount:183}.",
+          "why": "None of your 2 characters has it yet",
+          "rewards": ["{mount:183}"],
+          "mapID": 109
+        }
+      }
     }
   ]
 }

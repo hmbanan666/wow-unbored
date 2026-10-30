@@ -350,7 +350,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     "list_requests",
     {
       title: "List in-game plan requests",
-      description: `List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, wish, and budget only when the player typed minutes into the custom form; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic "nearby" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position. ${PLAN_SCOPE}`,
+      description: `List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, wish, and budget only when the player typed minutes into the custom form; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic "nearby" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). topic "suggestion" means the player picked one of Wisp's ideas (get_suggestions): suggestionId names it and suggestion is a copy of it (title, goal, rewards, mapID); its tokens are ground truth for ids, so build the plan around them and do not swap in other ids. lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position. ${PLAN_SCOPE}`,
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -488,6 +488,28 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
           characters: data.characters(row!.id).map((char) => data.overview(char)),
         })),
       });
+    },
+  );
+
+  server.registerTool(
+    "get_suggestions",
+    {
+      title: "Get Wisp's ideas",
+      description:
+        "The Suggestions the Server made for a Character from its own Game data and the addon's catalog (no guessing): current events with rewards still missing, achievements near where the player plays, rares not looted yet, and mounts nobody on the Account owns. Each has id, kind (event, achievement, rare, collection), title, goal, rewards (link tokens), why, and the request it sends when picked. Expired ones are left out. Pass account for every Character of that Account, or character (and realm) for one; without arguments you get the most recently seen Character. computedAt is when they were made (after each upload, 30 s after the last one).",
+      inputSchema: whoSchema,
+    },
+    async (who) => {
+      const rows = pickCharacters(who);
+      if (rows.length === 0) return failure(new Error("No game data for that Character yet."));
+      const characters = rows
+        .map((row) => store.suggestions.forCharacter(row))
+        .filter((entry) => entry !== undefined);
+      if (characters.length === 0)
+        return failure(
+          new Error("No ideas yet: they are made after the next upload from the Companion."),
+        );
+      return text({ characters });
     },
   );
 

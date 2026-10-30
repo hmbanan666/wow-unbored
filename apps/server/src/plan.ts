@@ -13,12 +13,22 @@ import type {
   PlanRequestInput,
   PlayerContext,
   RequestItem,
+  RequestSuggestion,
   RequestType,
   Task,
   Waypoint,
 } from "@unbored/contracts";
 
-export type { Plan, PlanRequestInput, PlayerContext, RequestItem, RequestType, Task, Waypoint };
+export type {
+  Plan,
+  PlanRequestInput,
+  PlayerContext,
+  RequestItem,
+  RequestSuggestion,
+  RequestType,
+  Task,
+  Waypoint,
+};
 
 const MODES = new Set(["roam", "quests", "events", "fun", "farm", "custom"]);
 const REQUEST_MODES = new Set(["roam", "quests", "events", "fun", "farm"]);
@@ -813,6 +823,34 @@ export function cleanContext(raw: unknown): PlayerContext | null {
   return context ?? null;
 }
 
+const SUGGESTION_MAX_BYTES = 2_000;
+const TOKEN_RE = /^\{[a-z]+:\d+(?:\|[^{}]*)?\}$/;
+
+/** The Suggestion copied into a Request (D109). Advisory: a malformed copy is dropped, not refused. */
+export function cleanSuggestion(raw: unknown): RequestSuggestion | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  if (byteLength(JSON.stringify(raw)) > SUGGESTION_MAX_BYTES) return null;
+  const body = raw as Record<string, unknown>;
+  const id = shortText(body.id, 120);
+  const kind = shortText(body.kind, 20);
+  const title = shortText(body.title, 160);
+  const goal = shortText(body.goal, 400);
+  if (!id || !kind || !title || !goal) return null;
+  const rewards = Array.isArray(body.rewards)
+    ? body.rewards.filter(
+        (token): token is string => typeof token === "string" && TOKEN_RE.test(token),
+      )
+    : [];
+  const out: RequestSuggestion = { id, kind, title, goal, rewards: rewards.slice(0, 3) };
+  const why = shortText(body.why, 200);
+  if (why) out.why = why;
+  const mapID = integer(body.mapID, 1, 10_000_000);
+  if (mapID !== undefined) out.mapID = mapID;
+  const expiresAt = integer(body.expiresAt, 0, 4_000_000_000);
+  if (expiresAt !== undefined) out.expiresAt = expiresAt;
+  return out;
+}
+
 export function cleanPlanRequest(raw: unknown): PlanRequestInput {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new PlanError("The request must be a JSON object.");
@@ -871,6 +909,8 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
   if (lang && !/^[a-z]{2}$/.test(lang))
     throw new PlanError("lang must be a two-letter language code.");
   const account = optionalText(body.account, "account", 80);
+  const suggestionId = optionalText(body.suggestionId, "suggestionId", 120);
+  const suggestion = cleanSuggestion(body.suggestion);
   return {
     id,
     type,
@@ -886,6 +926,8 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
     context,
     lang,
     account,
+    suggestionId: suggestionId ?? suggestion?.id ?? null,
+    suggestion,
   };
 }
 
