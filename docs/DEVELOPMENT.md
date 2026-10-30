@@ -77,6 +77,45 @@ git tag v0.7.0 && git push origin v0.7.0
 
 Release notes are one Install / Download section (the setup.exe, then the zip for a manual install, with `latest.json`, `.sig`, and `release.json` marked as auto-update only) and then git-cliff for every scope since the previous `vX.Y.Z` tag.
 
+## Game data
+
+`Core/Data/` collects every own-player source the addon can read ([ADRs 0027 to 0031](adr/README.md), D47-D63 in [decisions-v0.7.md](decisions-v0.7.md)). Each Section lives in `UnboredCharDB.data.sections` (scope `char`) or `UnboredDB.data.sections` (scope `account`) as `{ v, at, src, body }`, under `schema = 2`. Logout only stamps `savedAt`; the Companion hashes each Section and uploads the changed ones to `POST /v1/snapshot`. Big id sets are packed ([packed ids](contract/README.md#packed-id-sets)).
+
+Reads happen at three moments, never in combat, and every value where `issecretvalue(v)` is true is dropped: the **login pass** (10 s after entering the world, staged over frames), **event deltas** (settled for 2 s), and **window reads** (only while the bank or profession window is open). Nothing about other players is read: no chat, mail senders, subjects or bodies, rosters or names.
+
+Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua`): the Character file is 306 KB with 3.2k literals, the Account file 50 KB with 0.5k literals. Targets are 400 KB and 300 KB, the hard cap 1 MB and fewer than 30k literals per file. Over the cap, the lowest-priority Sections are dropped first and listed in `data.dropped`. Sections with no size were not in the worst-case fixture and are well under 2 KB.
+
+| Section | Scope | API | When | Worst case |
+| --- | --- | --- | --- | --- |
+| `char` | char | UnitClass, UnitRace, UnitLevel, UnitXP, GetSpecializationInfo, GetAverageItemLevel, GetMoney, GetBindLocation | login, events | 0.5 KB |
+| `gear` | char | GetInventoryItemLink 1-19, C_Item.GetDetailedItemLevelInfo | login, PLAYER_EQUIPMENT_CHANGED | 0.3 KB |
+| `talents` | char | C_ClassTalents, C_Traits.GenerateImportString | TRAIT_CONFIG_* events | |
+| `played` | char | RequestTimePlayed, TIME_PLAYED_MSG (our chat line is hidden) | once per login | |
+| `bags` | char | C_Container | login, BAG_UPDATE_DELAYED | 8.6 KB |
+| `bank`, `reagentBank` | char | C_Container on the bank bags | while the bank is open | 20 KB |
+| `warband` | account | C_Container on the warband bank tabs | while the bank is open | 17 KB |
+| `currencies` | char | C_CurrencyInfo list (headers expanded, then restored) | login, CURRENCY_DISPLAY_UPDATE | 37 KB |
+| `professions` | char | GetProfessions, GetProfessionInfo | login, SKILL_LINES_CHANGED | |
+| `recipes` | char | C_TradeSkillUI.GetAllRecipeIDs, GetRecipeInfo (packed) | while a profession window is open | 5 KB |
+| `questsDone` | char | C_QuestLog.GetAllCompletedQuestIDs (packed) | login, QUEST_TURNED_IN | 52 KB |
+| `questLog` | char | C_QuestLog, GetQuestObjectives | QUEST_LOG_UPDATE and quest events | 16 KB |
+| `reputation` | char | C_Reputation, C_MajorFactions, C_GossipInfo.GetFriendshipReputation | login, UPDATE_FACTION | 52 KB |
+| `achievements` | account | GetCategoryList, GetAchievementInfo (packed) | staged scan once a day, ACHIEVEMENT_EARNED | 12 KB |
+| `achievementsMine` | char | ACHIEVEMENT_EARNED | events | 6 KB |
+| `mounts` | account | C_MountJournal (packed) | login, NEW_MOUNT_ADDED | 3 KB |
+| `pets` | account | C_PetJournal | login (staged), NEW_PET_ADDED | 12 KB |
+| `toys` | account | C_ToyBox, PlayerHasToy (packed) | login (staged), NEW_TOY_ADDED | 3.7 KB |
+| `transmog` | account | C_TransmogCollection category counts | login | |
+| `lockouts` | char | GetSavedInstanceInfo, GetSavedWorldBossInfo | UPDATE_INSTANCE_INFO, BOSS_KILL | |
+| `mplus` | char | C_PlayerInfo.GetPlayerMythicPlusRatingSummary, C_MythicPlus keystone | login, CHALLENGE_MODE_COMPLETED | |
+| `vault` | char | C_WeeklyRewards.GetActivities | login, WEEKLY_REWARDS_UPDATE | |
+| `calendar` | account | C_Calendar, today to +14 days | 15 s after entering the world, once per login | |
+| `sessions` | char | zones with mapID and minutes, deaths, level ups (last 20) | events | 24 KB |
+| `addons` | account | C_AddOns.IsAddOnLoaded for TomTom, Auctionator, TSM, Bagnon | login | |
+| `unresolvedIds` | char | Plan ids the game could not resolve | when a link fails | |
+
+"Share game data to make Wisp smarter" (`UnboredDB.shareData`, on by default) off keeps only `char`, `gear`, `questLog` and `sessions`, the Sections a Plan Request needs. The owner sees what arrived with the MCP tools `data_catalog` and `get_game_data`.
+
 ## Tooltip Advice
 
 `Core/Advice.lua` adds at most one "Wisp: ..." line to an item tooltip, and only when it is about this player ([ADR 0035](adr/0035-personal-only-advice.md)). The rules, first match wins: needed for the active Plan (names the Step), starts a quest this character has not completed, new for the Account's collection (a mount, toy, pet or look no character has), Personal advice from the Server (`UnboredAdvice` in `Unbored_Plan/Advice.lua`) or a planner answer about the item, and a reagent for a profession an Alt has and this character lacks, with the route (mail or warband bank, [ADR 0021](adr/0021-account-and-alt-routing.md)). No line is the default. It never says delete, never says sell for epic or bind-on-equip items, and never routes a soulbound item to an Alt. The menu toggle "Wisp lines in tooltips" (on by default, `UnboredDB.tooltipLines`) turns them all off.
