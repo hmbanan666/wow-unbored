@@ -547,7 +547,8 @@ local names = {}
 for i = 1, #(settings and settings.children or {}) do
   names[i] = settings.children[i].text
 end
-check(table.concat(names, "|") == "Wisp size|Bubble size|Lock position|Share game data to make Wisp smarter|Wisp lines in tooltips|Hide|Keybinds|More",
+check(table.concat(names, "|") == "Wisp size|Bubble size|Lock position|Share game data to make Wisp smarter"
+  .. "|Wisp lines in tooltips|Hide|Keybinds|More",
   "Settings: " .. table.concat(names, "|"))
 local wispSize = entry(settings.children, "Wisp size")
 local bubbleSize = entry(settings.children, "Bubble size")
