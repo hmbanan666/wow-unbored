@@ -12,7 +12,12 @@
     "realm": { "type": "string" },
     "type": { "enum": ["plan", "item", "question"] },
     "mode": { "type": "string" },
-    "budget": { "type": "integer" },
+    "budget": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 240,
+      "description": "Only when the player typed minutes in the custom form (ADR 0037)."
+    },
     "wish": { "type": "string" },
     "question": { "type": "string" },
     "topic": { "type": "string" },
@@ -38,7 +43,7 @@
         "properties": { "type": { "const": "plan" } },
         "required": ["type"]
       },
-      "then": { "required": ["mode", "budget"] }
+      "then": { "required": ["mode"] }
     },
     {
       "if": {

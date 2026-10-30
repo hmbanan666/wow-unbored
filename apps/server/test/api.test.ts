@@ -130,6 +130,36 @@ test("put plan, companion get, addon decodes UNB1", async () => {
   }
 });
 
+test("a plan with no budget is stored, encoded, and decoded without one", async () => {
+  const { app, close } = build();
+  try {
+    const { budget: _budget, ...whole } = sample;
+    const put = await app.request("/v1/plan", {
+      method: "PUT",
+      headers: { authorization: `Bearer ${planner}`, "content-type": "application/json" },
+      body: JSON.stringify(whole),
+    });
+    assert.equal(put.status, 200);
+    const unb1 = String((await json(put)).plan);
+    const payload = JSON.parse(Buffer.from(unb1.slice(5), "base64").toString("utf8"));
+    assert.equal("budget" in payload, false);
+    const root = path.resolve(import.meta.dirname, "../../../addon");
+    const decoded = execFileSync(
+      "lua5.1",
+      [path.join(import.meta.dirname, "decode.lua"), unb1, root],
+      { encoding: "utf8" },
+    )
+      .trim()
+      .split("\n");
+    assert.equal(decoded[4], "nil");
+    const sessions = await mcpCall(app, "list_sessions", {});
+    const rows = sessions.value.sessions as { budget: unknown }[];
+    assert.equal(rows[0]?.budget, null);
+  } finally {
+    close();
+  }
+});
+
 test("progress roundtrip and history", async () => {
   const { app, close } = build();
   try {
@@ -256,6 +286,12 @@ test("mcp lists the planner tools", async () => {
     const put = tools.find((tool) => tool.name === "put_plan");
     assert.ok(put?.description.includes("0 to 1"));
     assert.ok(put?.description.includes("achievementID"));
+    const requests = tools.find((tool) => tool.name === "list_requests");
+    for (const tool of [put, requests]) {
+      assert.ok(tool?.description.includes("Plan the whole goal"), tool?.name);
+      assert.ok(tool?.description.includes("never cut to fit a time"), tool?.name);
+      assert.ok(!tool?.description.includes("3 to 7 steps;"), tool?.name);
+    }
 
     const called = await app.request("/mcp", {
       method: "POST",

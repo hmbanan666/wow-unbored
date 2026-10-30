@@ -27,7 +27,6 @@ Limits: 40 tasks, titles up to 240 bytes, notes up to 400 bytes, the whole paste
   "v": 1,
   "kind": "plan",
   "mode": "custom",
-  "budget": 60,
   "note": "evening session",
   "tasks": [
     {
@@ -51,7 +50,7 @@ Limits: 40 tasks, titles up to 240 bytes, notes up to 400 bytes, the whole paste
 }
 ```
 
-`mode` is `roam`, `quests`, `events`, `fun`, `farm`, or `custom`. `budget` is a whole number of minutes from 5 to 240. The three buttons in the window are 30, 60, and 120; an imported plan may use another value.
+`mode` is `roam`, `quests`, `events`, `fun`, `farm`, or `custom`. `budget` is optional: a whole number of minutes from 5 to 240, set only when the player typed minutes into the custom "Something else..." form. A Plan covers the whole goal (every criterion of an achievement, for example) in ordered tasks, up to 40, and is never cut to a time; `estMinutes` is a rough guess the player sees as information only ([ADR 0037](adr/0037-no-time-budget.md)).
 
 `x` and `y` are fractions of the map from 0 to 1, the same space as `C_Map.GetPlayerMapPosition`. They are not 0–100 wowhead coordinates. Divide those by 100.
 
@@ -114,7 +113,6 @@ Account-wide achievement completion counts as done (`GetAchievementInfo`'s `comp
   "v": 1,
   "kind": "progress",
   "mode": "custom",
-  "budget": 60,
   "exportedAt": 1761720000,
   "currentId": "mentor:ashes",
   "done": [{ "id": "mentor:fall", "at": 1761719000 }],
@@ -161,7 +159,6 @@ UnboredCompanionPlan = {
   kind = "plan",
   generatedAt = 1761720000,
   mode = "custom",
-  budget = 60,
   tasks = { },
 }
 ```

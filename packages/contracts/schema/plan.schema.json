@@ -9,7 +9,10 @@
     "v": { "const": 1 },
     "kind": { "const": "plan" },
     "mode": { "type": "string" },
-    "budget": { "type": "integer" },
+    "budget": {
+      "type": "integer",
+      "description": "Optional. Information only; a Plan covers the whole goal (ADR 0037)."
+    },
     "note": { "type": "string" },
     "generatedAt": { "type": "integer" },
     "tasks": {

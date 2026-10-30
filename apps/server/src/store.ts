@@ -382,7 +382,7 @@ export class Store {
     character: string;
     realm: string;
     mode: string;
-    budget: number;
+    budget: number | null;
     wish: string | null;
     type?: RequestType;
     question?: string | null;
@@ -411,7 +411,7 @@ export class Store {
         input.character,
         input.realm,
         input.mode,
-        input.budget,
+        input.budget ?? 0,
         input.wish,
         input.nowSeconds,
         input.nowSeconds,
@@ -1074,7 +1074,8 @@ export type PlanRequest = {
   character: string;
   realm: string;
   mode: string;
-  budget: number;
+  /** Only set when the player typed minutes in the custom form (ADR 0037). */
+  budget: number | null;
   wish: string | null;
   status: RequestStatus;
   reason: string | null;
@@ -1132,7 +1133,7 @@ function requestFromRow(row: RequestRow): PlanRequest {
     character: row.character_name,
     realm: row.realm,
     mode: row.mode,
-    budget: row.budget,
+    budget: row.budget > 0 ? row.budget : null,
     wish: row.wish,
     status,
     reason: row.reason,
@@ -1191,7 +1192,7 @@ export function sessionSummary(stored: StoredPlan) {
     id: stored.id,
     createdAt: stored.createdAt,
     mode: stored.plan.mode,
-    budget: stored.plan.budget,
+    budget: stored.plan.budget ?? null,
     note: stored.plan.note ?? null,
     taskCount: stored.plan.tasks.length,
     unb1: stored.unb1,

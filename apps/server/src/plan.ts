@@ -176,9 +176,12 @@ export function cleanPlan(raw: unknown, nowSeconds: number): Plan {
   if (typeof mode !== "string" || !MODES.has(mode)) {
     throw new PlanError("Mode must be roam, quests, events, fun, farm, or custom.");
   }
-  const budget = body.budget === undefined ? 60 : integer(body.budget, 5, 240);
-  if (budget === undefined) {
-    throw new PlanError("Budget must be a whole number of minutes from 5 to 240.");
+  let budget: number | undefined;
+  if (body.budget !== undefined && body.budget !== null) {
+    budget = integer(body.budget, 5, 240);
+    if (budget === undefined) {
+      throw new PlanError("Budget must be a whole number of minutes from 5 to 240.");
+    }
   }
   let note: string | undefined;
   if (body.note !== undefined && body.note !== null) {
@@ -202,7 +205,9 @@ export function cleanPlan(raw: unknown, nowSeconds: number): Plan {
   if (generatedAt === undefined) {
     throw new PlanError("generatedAt must be a unix timestamp.");
   }
-  return { v: 1, kind: "plan", mode, budget, note, generatedAt, tasks };
+  const plan: Plan = { v: 1, kind: "plan", mode, note, generatedAt, tasks };
+  if (budget !== undefined) plan.budget = budget;
+  return plan;
 }
 
 function cleanTask(raw: unknown, index: number): Task {
@@ -299,10 +304,10 @@ export function encodeUnb1(plan: Plan): string {
     v: plan.v,
     kind: plan.kind,
     mode: plan.mode,
-    budget: plan.budget,
     generatedAt: plan.generatedAt,
     tasks: plan.tasks,
   };
+  if (plan.budget !== undefined) payload.budget = plan.budget;
   if (plan.note !== undefined) payload.note = plan.note;
   const text = `UNB1:${Buffer.from(JSON.stringify(payload), "utf8").toString("base64")}`;
   if (text.length > 20_000) {
@@ -536,7 +541,7 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
     throw new PlanError("type must be plan, item, or question.");
   }
   let mode = "";
-  let budget = 0;
+  let budget: number | null = null;
   // Item and question Requests carry no mode; older Companions sent "" and 60.
   const hasMode =
     type === "plan" || (body.mode !== undefined && body.mode !== null && body.mode !== "");
@@ -546,7 +551,8 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
     }
     mode = body.mode;
   }
-  if (type === "plan" || (body.budget !== undefined && body.budget !== null)) {
+  // Plans carry budget only when the player typed it in the custom form (ADR 0037).
+  if (body.budget !== undefined && body.budget !== null) {
     const minutes = integer(body.budget, 5, 240);
     if (minutes === undefined) {
       throw new PlanError("budget must be a whole number of minutes from 5 to 240.");

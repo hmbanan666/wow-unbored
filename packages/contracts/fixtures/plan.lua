@@ -7,7 +7,6 @@ UnboredCharDB = {
 		["character"] = "Mira",
 		["realm"] = "Silvermoon",
 		["mode"] = "farm",
-		["budget"] = 60,
 		["topic"] = "mount",
 		["wish"] = "a mount I can get today",
 		["lang"] = "en",

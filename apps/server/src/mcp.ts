@@ -7,19 +7,21 @@ import { resolveCriteria } from "./criteria.ts";
 import { ANSWER_MAX_BYTES, cleanAnswer, PlanError } from "./plan.ts";
 import { HISTORY_KINDS, publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
 
+const PLAN_SCOPE = `Plan the whole goal. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
+
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
 Required shape:
 - v: 1
 - kind: "plan"
 - mode: roam, quests, events, fun, farm, or custom (default custom)
-- budget: whole minutes from 5 to 240 (default 60). The in-game buttons are 30, 60, and 120; other values are allowed.
+- budget: optional, whole minutes from 5 to 240. Leave it out unless the request carried one.
 - tasks: 1 to 40 objects
 
 Each task:
 - id: 1-80 characters, letters, digits, colon, dot, underscore, hyphen (example mentor:ashes)
 - title: non-empty, at most 240 bytes
-- estMinutes: 1 to 240 (default 15)
+- estMinutes: 1 to 240 (default 15), a rough guess the player sees as information only
 - mapID: optional ui map id
 - x and y: optional, both required together, fractions of the map from 0 to 1. Wowhead 0-100 coordinates must be divided by 100.
 - note: optional, at most 400 bytes. Shown in full in the in-game tracker; say where to go and what to do.
@@ -42,7 +44,9 @@ complete.kind:
 
 Routing: a request from list_requests carries context (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). Start the first task near context.mapID / x / y, order the rest as one sensible route, and only send the player to another continent when the wish asks for it or nothing nearby fits. context.hearth is where their hearthstone goes.
 
-The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Wisp's Refresh offer. Plans are 3 to 7 steps; the game shows one at a time.`;
+The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Wisp's Refresh offer. The game shows one step at a time and the full list on click.
+
+${PLAN_SCOPE}`;
 
 const ADVICE_ACTIONS = [
   "keep",
@@ -117,7 +121,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     "put_plan",
     {
       title: "Put a session plan",
-      description: `Store the latest session plan for the player. The companion will pick it up on its next poll. Write 3 to 7 steps, each one thing the player can just do; the game shows one at a time. A plan for a preset request replaces the quick plan the game built itself only if the player agrees, and steps they already finished there (same task id) are dropped, so reuse the game's ids (quest:<questID> and the like) when you mean the same thing.\n\n${SCHEMA}`,
+      description: `Store the latest session plan for the player. The companion will pick it up on its next poll. Each step is one thing the player can just do; the game shows one at a time. Cover the whole goal in order, all of it, not a time-sized slice. A plan for a preset request replaces the quick plan the game built itself only if the player agrees, and steps they already finished there (same task id) are dropped, so reuse the game's ids (quest:<questID> and the like) when you mean the same thing.\n\n${SCHEMA}`,
       inputSchema: {
         requestId: z
           .string()
@@ -266,8 +270,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     "list_requests",
     {
       title: "List in-game plan requests",
-      description:
-        "List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, budget, wish; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic \"nearby\" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position.",
+      description: `List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, wish, and budget only when the player typed minutes into the custom form; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic "nearby" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position. ${PLAN_SCOPE}`,
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])

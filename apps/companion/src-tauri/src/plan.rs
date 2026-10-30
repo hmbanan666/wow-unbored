@@ -27,8 +27,8 @@ pub struct Plan {
     pub kind: String,
     #[serde(default = "default_mode")]
     pub mode: String,
-    #[serde(default = "default_budget")]
-    pub budget: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<u32>,
     #[serde(default)]
     pub note: Option<String>,
     #[serde(default)]
@@ -44,10 +44,6 @@ pub struct Plan {
 
 fn default_mode() -> String {
     "custom".to_string()
-}
-
-fn default_budget() -> u32 {
-    60
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -131,7 +127,10 @@ pub fn plan_from_value(value: Value) -> Result<Plan, PlanError> {
     if plan.tasks.len() > 40 {
         return Err(PlanError("Too many tasks (max 40).".into()));
     }
-    if !(5..=240).contains(&plan.budget) {
+    if plan
+        .budget
+        .is_some_and(|minutes| !(5..=240).contains(&minutes))
+    {
         return Err(PlanError(
             "Budget must be a whole number of minutes from 5 to 240.".into(),
         ));
@@ -583,7 +582,9 @@ fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
     push_pair(&mut out, 1, "v", &Value::from(plan.v));
     push_pair(&mut out, 1, "kind", &Value::String(plan.kind.clone()));
     push_pair(&mut out, 1, "mode", &Value::String(plan.mode.clone()));
-    push_pair(&mut out, 1, "budget", &Value::from(plan.budget));
+    if let Some(minutes) = plan.budget {
+        push_pair(&mut out, 1, "budget", &Value::from(minutes));
+    }
     if let Some(at) = plan.generated_at {
         push_pair(&mut out, 1, "generatedAt", &Value::from(at));
     }
@@ -750,6 +751,29 @@ mod tests {
             "tasks": [{ "id": "a", "title": "A", "estMinutes": 5, "x": 50, "y": 10 }]
         }));
         assert!(bad.unwrap_err().0.contains("0 to 1"));
+    }
+
+    #[test]
+    fn a_plan_without_a_budget_keeps_none() {
+        let plan = plan_from_value(serde_json::json!({
+            "v": 1,
+            "kind": "plan",
+            "tasks": [{ "id": "a", "title": "A", "estMinutes": 5 }]
+        }))
+        .unwrap();
+        assert_eq!(plan.budget, None);
+        assert!(!render_plan_lua(&plan).contains("budget"));
+        let typed = plan_from_value(serde_json::json!({
+            "v": 1, "kind": "plan", "budget": 45,
+            "tasks": [{ "id": "a", "title": "A" }]
+        }))
+        .unwrap();
+        assert!(render_plan_lua(&typed).contains("[\"budget\"] = 45"));
+        let bad = plan_from_value(serde_json::json!({
+            "v": 1, "kind": "plan", "budget": 300,
+            "tasks": [{ "id": "a", "title": "A" }]
+        }));
+        assert!(bad.is_err());
     }
 
     #[test]

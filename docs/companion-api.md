@@ -52,7 +52,6 @@ Content-Type: application/json
     "v": 1,
     "kind": "progress",
     "mode": "custom",
-    "budget": 60,
     "source": "import",
     "currentId": "mentor:ashes",
     "done": [{ "id": "mentor:fall", "at": 1761719000 }],
@@ -107,7 +106,6 @@ The game sends three kinds of request, all through SavedVariables and the compan
   "character": "Hero",
   "realm": "Area 52",
   "mode": "farm",
-  "budget": 60,
   "wish": "mount, stay in this zone",
   "context": {
     "mapID": 2248,
@@ -133,7 +131,7 @@ The game sends three kinds of request, all through SavedVariables and the compan
 }
 ```
 
-`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) and `budget` (5–240 minutes) are required; the other types leave them out. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`.
+`type` is `plan` (the default when it is missing), `question`, or `item`. For `plan`, `mode` (`roam`, `quests`, `events`, `fun`, or `farm`) is required, and `budget` (5–240 minutes) is sent only when the player typed minutes into the custom form ([ADR 0037](adr/0037-no-time-budget.md)); the other types leave both out. A stored Request without one reads back `budget: null`. `wish` is free text up to 600 bytes. A plan from a preset chip also carries `topic`, the preset id (`nearby`, `mount`, `collect`, `grind`, `gold`, `surprise`, from `Data/Presets.lua`), and the preset's wish in plain words; a plan typed in Something else... has no `topic`.
 
 A question carries `question` (required, up to 600 bytes) and may carry `topic`, lowercase letters, `_`, or `-` (the game sends `nearby`):
 
@@ -162,7 +160,7 @@ Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`,
 
 `message` is plain text up to 1,000 bytes, shown in the bubble as written. `waypoints` is optional (the same route points as in a plan, up to 10); the game turns them into one step in front of the current plan. An answer may also come with a plan, which then starts as usual. The companion writes the answer into `UnboredExternalPlan.answer`, with `requestType`; see [plan-format.md](plan-format.md#companion-file).
 
-If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context }` to that URL (`context` is `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
+If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context }` to that URL (`budget` and `context` are `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
 
 ## GET /v1/advice
 

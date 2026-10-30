@@ -7,7 +7,8 @@ export type Plan = {
   v: 1;
   kind: "plan";
   mode: string;
-  budget: number;
+  /** Minutes the player typed in the custom form; Plans are never cut to it (ADR 0037). */
+  budget?: number;
   note?: string;
   generatedAt: number;
   tasks: Task[];
@@ -43,7 +44,7 @@ export type RequestItem = {
   count?: number;
 };
 
-/** What the Companion posts for one Request. Item and question bodies omit mode and budget. */
+/** What the Companion posts for one Request. Item and question bodies omit mode and budget; plan bodies carry budget only when the player set it (ADR 0037). */
 export type RequestBody = {
   id: string;
   createdAt?: number;
@@ -68,7 +69,7 @@ export type PlanRequestInput = {
   character: string;
   realm: string;
   mode: string;
-  budget: number;
+  budget: number | null;
   wish: string | null;
   question: string | null;
   topic: string | null;
@@ -153,9 +154,6 @@ export const requestBodySchema = z
     if (body.type === "plan") {
       if (!body.mode)
         ctx.addIssue({ code: "custom", message: "plan Requests need mode", path: ["mode"] });
-      if (body.budget === undefined) {
-        ctx.addIssue({ code: "custom", message: "plan Requests need budget", path: ["budget"] });
-      }
     } else if (body.mode !== undefined || body.budget !== undefined) {
       ctx.addIssue({
         code: "custom",
@@ -169,7 +167,7 @@ export const planSchema = z
     v: z.literal(1),
     kind: z.literal("plan"),
     mode: z.string(),
-    budget: z.number().int(),
+    budget: z.number().int().optional(),
     note: z.string().optional(),
     generatedAt: z.number().optional(),
     tasks: z.array(z.object({ id: z.string(), title: z.string() }).passthrough()).min(1),

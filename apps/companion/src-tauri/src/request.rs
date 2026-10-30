@@ -29,7 +29,8 @@ fn text(value: &Option<String>) -> Option<Value> {
         .map(|text| Value::String(text.clone()))
 }
 
-/// Mode and budget go only with plan Requests.
+/// Mode goes only with plan Requests, and budget only when the player typed
+/// minutes for one (docs/adr/0037).
 pub fn request_body(request: &SavedRequest, account: Option<&str>) -> Value {
     let mut out = Map::new();
     out.insert("id".into(), Value::String(request.id.clone()));
@@ -39,7 +40,7 @@ pub fn request_body(request: &SavedRequest, account: Option<&str>) -> Value {
     out.insert("type".into(), Value::String(request.kind.clone()));
     if request.kind == "plan" {
         put(&mut out, "mode", text(&request.mode));
-        out.insert("budget".into(), Value::from(request.budget.unwrap_or(60)));
+        put(&mut out, "budget", request.budget.map(Value::from));
     }
     put(&mut out, "wish", text(&request.wish));
     put(&mut out, "question", text(&request.question));
@@ -76,6 +77,7 @@ mod tests {
     fn saved(name: &str) -> &'static str {
         match name {
             "plan.lua" => include_str!("../../../../packages/contracts/fixtures/plan.lua"),
+            "custom.lua" => include_str!("../../../../packages/contracts/fixtures/custom.lua"),
             "item.lua" => include_str!("../../../../packages/contracts/fixtures/item.lua"),
             "question.lua" => include_str!("../../../../packages/contracts/fixtures/question.lua"),
             other => panic!("unknown fixture {other}"),
