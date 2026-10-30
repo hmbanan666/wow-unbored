@@ -425,6 +425,9 @@ function S.Logout()
   end
   S.ApplySharing()
   S.Enforce()
+  local now = ns.Now()
+  root("char").savedAt = now
+  root("account").savedAt = now
 end
 
 -- Sharing off: everything but the essential Sections goes.

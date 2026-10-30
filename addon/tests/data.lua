@@ -521,6 +521,8 @@ check(#body("unresolvedIds").list == 1, "unresolved ids are noted once")
 -- Logout stamps sessions without reading the game.
 S.OnEvent("PLAYER_LOGOUT")
 check(body("sessions") ~= nil, "logout keeps sessions")
+check(UnboredCharDB.data.savedAt == ns.Now() and UnboredDB.data.savedAt == ns.Now(),
+  "logout stamps when the files were saved, for the Companion upload")
 
 -- Opt-out: only what a Plan Request needs.
 UnboredDB.shareData = false
