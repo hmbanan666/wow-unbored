@@ -275,9 +275,22 @@ pub const MAX_ADVICE_ITEMS: usize = 500;
 const ADVICE_FIELDS: [(&str, usize); 4] =
     [("action", 20), ("line", 120), ("lineRu", 240), ("to", 80)];
 
+/// Alts from the Account digest (D76), per character.
+pub const MAX_DIGEST_ALTS: usize = 50;
+const MAX_ALT_PROFESSIONS: usize = 6;
+
+/// D76: everything the Companion writes into Unbored_Plan stays within this.
+pub const HELPER_MAX_BYTES: usize = 200 * 1024;
+pub const HELPER_MAX_LITERALS: usize = 20_000;
+
 /// Advice.lua from GET /v1/advice: UnboredAdvice.characters["Realm-Name"].items[itemID]
-/// (docs/adr/0019). Only known string fields are kept; the addon checks them again.
+/// (docs/adr/0019) and .alts, the Account digest (D76). Only known fields are
+/// kept; the addon checks them again.
 pub fn render_advice_lua(characters: &Value) -> String {
+    render_advice_capped(characters, MAX_ADVICE_ITEMS, MAX_DIGEST_ALTS)
+}
+
+fn render_advice_capped(characters: &Value, max_items: usize, max_alts: usize) -> String {
     let mut out = String::from(
         "-- Written by Unbored Companion. Personal advice, read at login or Refresh.\n",
     );
@@ -308,7 +321,7 @@ pub fn render_advice_lua(characters: &Value) -> String {
             .as_array()
             .map(|list| list.as_slice())
             .unwrap_or_default();
-        for item in items.iter().take(MAX_ADVICE_ITEMS) {
+        for item in items.iter().take(max_items) {
             let Some(id) = item["itemID"].as_u64().filter(|id| *id > 0) else {
                 continue;
             };
@@ -321,18 +334,139 @@ pub fn render_advice_lua(characters: &Value) -> String {
             out.push_str(&format!("        [{id}] = {{"));
             for (field, limit) in ADVICE_FIELDS {
                 if let Some(text) = item[field].as_str() {
-                    let text: String = text.chars().take(limit).collect();
-                    out.push_str(&format!(" [\"{field}\"] = \""));
-                    push_lua_string_body(&mut out, &text);
-                    out.push_str("\",");
+                    push_lua_field(&mut out, field, text, limit);
                 }
             }
             out.push_str(" },\n");
         }
-        out.push_str("      },\n    },\n");
+        out.push_str("      },\n");
+        push_alts(&mut out, &row["alts"], max_alts);
+        out.push_str("    },\n");
     }
     out.push_str("  },\n}\n");
     out
+}
+
+fn push_lua_field(out: &mut String, field: &str, text: &str, limit: usize) {
+    let text: String = text.chars().take(limit).collect();
+    out.push_str(&format!(" [\"{field}\"] = \""));
+    push_lua_string_body(out, &text);
+    out.push_str("\",");
+}
+
+fn push_alts(out: &mut String, alts: &Value, max_alts: usize) {
+    let alts = alts
+        .as_array()
+        .map(|list| list.as_slice())
+        .unwrap_or_default();
+    if alts.is_empty() || max_alts == 0 {
+        return;
+    }
+    out.push_str("      [\"alts\"] = {\n");
+    for alt in alts.iter().take(max_alts) {
+        let (Some(name), Some(realm)) = (alt["name"].as_str(), alt["realm"].as_str()) else {
+            continue;
+        };
+        out.push_str("        {");
+        push_lua_field(out, "name", name, 60);
+        push_lua_field(out, "realm", realm, 60);
+        if let Some(faction) = alt["faction"].as_str() {
+            push_lua_field(out, "faction", faction, 20);
+        }
+        if let Some(at) = alt["seenAt"].as_u64() {
+            out.push_str(&format!(" [\"seenAt\"] = {at},"));
+        }
+        out.push_str(" [\"professions\"] = {");
+        let professions = alt["professions"]
+            .as_array()
+            .map(|list| list.as_slice())
+            .unwrap_or_default();
+        for profession in professions.iter().take(MAX_ALT_PROFESSIONS) {
+            let Some(line) = profession["skillLine"].as_u64() else {
+                continue;
+            };
+            out.push_str(&format!(" {{ [\"skillLine\"] = {line},"));
+            if let Some(name) = profession["name"].as_str() {
+                push_lua_field(out, "name", name, 60);
+            }
+            if let Some(skill) = profession["skill"].as_u64() {
+                out.push_str(&format!(" [\"skill\"] = {skill},"));
+            }
+            out.push_str(" },");
+        }
+        out.push_str(" }, },\n");
+    }
+    out.push_str("      },\n");
+}
+
+/// Constants in a file we wrote: string and number literals. The game's Lua
+/// loader has a per-chunk constant limit, which is what D76 guards.
+pub fn count_lua_literals(text: &str) -> usize {
+    let bytes = text.as_bytes();
+    let mut count = 0;
+    let mut i = 0;
+    let mut prev_word = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'-' && bytes.get(i + 1) == Some(&b'-') {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            prev_word = false;
+            continue;
+        }
+        if b == b'"' {
+            count += 1;
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' {
+                    i += 1;
+                }
+                i += 1;
+            }
+            i += 1;
+            prev_word = false;
+            continue;
+        }
+        if b.is_ascii_digit() && !prev_word {
+            count += 1;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.') {
+                i += 1;
+            }
+            continue;
+        }
+        prev_word = b.is_ascii_alphanumeric() || b == b'_';
+        i += 1;
+    }
+    count
+}
+
+/// Advice.lua within what Plan.lua leaves of the D76 budget: fewer items per
+/// character first, then fewer Alts.
+pub fn render_advice_within(characters: &Value, used_bytes: usize, used_literals: usize) -> String {
+    let bytes = HELPER_MAX_BYTES.saturating_sub(used_bytes);
+    let literals = HELPER_MAX_LITERALS.saturating_sub(used_literals);
+    let fits = |text: &String| text.len() <= bytes && count_lua_literals(text) < literals;
+    let mut items = MAX_ADVICE_ITEMS;
+    loop {
+        let text = render_advice_capped(characters, items, MAX_DIGEST_ALTS);
+        if fits(&text) || items == 0 {
+            if fits(&text) {
+                return text;
+            }
+            break;
+        }
+        items = items.saturating_sub(50);
+    }
+    let mut alts = MAX_DIGEST_ALTS;
+    while alts > 0 {
+        alts /= 2;
+        let text = render_advice_capped(characters, 0, alts);
+        if fits(&text) {
+            return text;
+        }
+    }
+    EMPTY_ADVICE_LUA.to_string()
 }
 
 /// Writes Advice.lua only when it changed. Returns true when it did.
@@ -341,7 +475,8 @@ pub fn install_advice(retail: &Path, characters: &Value) -> Result<bool, PlanErr
     fs::create_dir_all(&dir)
         .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
     write_helper_toc(&dir)?;
-    let body = render_advice_lua(characters);
+    let plan = fs::read_to_string(dir.join("Plan.lua")).unwrap_or_default();
+    let body = render_advice_within(characters, plan.len(), count_lua_literals(&plan));
     let path = dir.join("Advice.lua");
     if fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
         return Ok(false);
@@ -877,6 +1012,69 @@ mod tests {
             Some("Send to \"Mira\" (Alchemy): mail")
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn writes_the_account_digest_of_alts() {
+        let advice = serde_json::json!([{
+            "character": "Hero",
+            "realm": "Area 52",
+            "items": [],
+            "alts": [{
+                "name": "Mira", "realm": "Area 52", "faction": "Horde", "seenAt": 5u64,
+                "professions": [{ "skillLine": 171, "name": "Alchemy", "skill": 75 }, { "name": "no id" }]
+            }, { "realm": "no name" }]
+        }]);
+        let text = render_advice_lua(&advice);
+        let values = parse_saved_variables(&text).unwrap();
+        let chars = crate::savedvars::table_get(values.get("UnboredAdvice").unwrap(), "characters")
+            .unwrap();
+        let mine = crate::savedvars::table_get(chars, "Area 52-Hero").unwrap();
+        let alts =
+            crate::savedvars::array_items(crate::savedvars::table_get(mine, "alts").unwrap());
+        assert_eq!(alts.len(), 1);
+        assert_eq!(
+            crate::savedvars::table_get(alts[0], "faction").and_then(|v| v.as_str()),
+            Some("Horde")
+        );
+        let professions = crate::savedvars::array_items(
+            crate::savedvars::table_get(alts[0], "professions").unwrap(),
+        );
+        assert_eq!(professions.len(), 1);
+        assert!(!text.contains("no id") && !text.contains("no name"));
+    }
+
+    #[test]
+    fn keeps_advice_and_the_plan_within_the_helper_budget() {
+        let items: Vec<Value> = (1..=500u64)
+            .map(|id| {
+                serde_json::json!({
+                    "itemID": id, "action": "send",
+                    "line": "x".repeat(120), "lineRu": "я".repeat(120), "to": "Mira"
+                })
+            })
+            .collect();
+        let characters: Vec<Value> = (0..12)
+            .map(|n| serde_json::json!({ "character": format!("Hero{n}"), "realm": "Area 52", "items": items }))
+            .collect();
+        let advice = Value::Array(characters);
+        let full = render_advice_lua(&advice);
+        assert!(full.len() > HELPER_MAX_BYTES);
+        let plan_bytes = 40 * 1024;
+        let plan_literals = 2_000;
+        let text = render_advice_within(&advice, plan_bytes, plan_literals);
+        assert!(text.len() + plan_bytes <= HELPER_MAX_BYTES);
+        assert!(count_lua_literals(&text) + plan_literals < HELPER_MAX_LITERALS);
+        assert!(text.contains("[\"Area 52-Hero11\"]"));
+        assert!(parse_saved_variables(&text).is_ok());
+    }
+
+    #[test]
+    fn counts_string_and_number_literals() {
+        assert_eq!(
+            count_lua_literals("-- 12 \"x\"\nT = { [\"a\"] = 12, b2 = \"q\\\"z\" }\n"),
+            3
+        );
     }
 
     fn small_plan(id: &str) -> Plan {

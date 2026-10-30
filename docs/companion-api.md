@@ -186,7 +186,7 @@ Personal advice for the characters whose profiles this device uploaded (docs/adr
 
 `alts` is the Account digest (D76): the other Characters on the same Account (at most 50), with faction and up to 6 professions, so the game can route items to Alts this PC has never seen. Every character this device uploaded is listed, even with no items.
 
-The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character, plus the `alts`:
+The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character, plus the `alts`. Advice.lua and Plan.lua together stay within 200 KB and 20,000 literals (D76): when they would not, the Companion keeps fewer items per character, then fewer Alts:
 
 ```lua
 UnboredAdvice = {
