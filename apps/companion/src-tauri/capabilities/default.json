@@ -22,6 +22,7 @@
     "allow-set-autostart",
     "allow-write-plan-text",
     "allow-fetch-plan",
-    "allow-rescan-progress"
+    "allow-rescan-progress",
+    "allow-open-privacy"
   ]
 }
