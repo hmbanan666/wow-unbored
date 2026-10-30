@@ -21,6 +21,12 @@ export { mergeProfile };
 
 const PLAYER = "self";
 
+export const REQUEST_TIMEOUT_SECONDS = 60 * 60;
+export const ETA_DEFAULT_SECONDS = 180;
+export const ETA_MIN_SECONDS = 60;
+export const ETA_MAX_SECONDS = 900;
+const ETA_MIN_SAMPLES = 3;
+
 export type StoredProfile = {
   character: string;
   realm: string;
@@ -166,6 +172,7 @@ export class Store {
       ["answer_json", "TEXT"],
       ["lang", "TEXT"],
       ["account", "TEXT"],
+      ["reason_code", "TEXT"],
     ]);
     this.data = new DataStore(this.db);
   }
@@ -485,7 +492,7 @@ export class Store {
     const rows = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account
+                type, question, topic, item_json, answer_json, lang, account, reason_code
          FROM requests WHERE status = ? ORDER BY created_at DESC, id ASC LIMIT ?`,
       )
       .all(status, limit) as RequestRow[];
@@ -496,7 +503,7 @@ export class Store {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account
+                type, question, topic, item_json, answer_json, lang, account, reason_code
          FROM requests WHERE id = ?`,
       )
       .get(id) as RequestRow | undefined;
@@ -511,7 +518,7 @@ export class Store {
     const row = this.db
       .prepare(
         `SELECT id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
-                type, question, topic, item_json, answer_json, lang, account
+                type, question, topic, item_json, answer_json, lang, account, reason_code
          FROM requests WHERE device_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
       .get(deviceId) as RequestRow | undefined;
@@ -526,7 +533,7 @@ export class Store {
     if (!this.requestById(id)) return undefined;
     this.db
       .prepare(
-        `UPDATE requests SET status = 'fulfilled', plan_id = ?, reason = NULL, updated_at = ? WHERE id = ?`,
+        `UPDATE requests SET status = 'fulfilled', plan_id = ?, reason = NULL, reason_code = NULL, updated_at = ? WHERE id = ?`,
       )
       .run(planId, nowSeconds, id);
     const request = this.requestById(id);
@@ -545,7 +552,7 @@ export class Store {
     this.db
       .prepare(
         `UPDATE requests SET status = 'fulfilled', answer_json = ?, plan_id = COALESCE(?, plan_id), reason = NULL,
-           updated_at = ? WHERE id = ?`,
+           reason_code = NULL, updated_at = ? WHERE id = ?`,
       )
       .run(JSON.stringify(answer), planId, nowSeconds, id);
     const request = this.requestById(id);
@@ -566,14 +573,49 @@ export class Store {
     id: string,
     reason: string,
     nowSeconds = Math.floor(Date.now() / 1000),
+    reasonCode: string | null = null,
   ): PlanRequest | undefined {
     if (!this.requestById(id)) return undefined;
     this.db
-      .prepare(`UPDATE requests SET status = 'failed', reason = ?, updated_at = ? WHERE id = ?`)
-      .run(reason, nowSeconds, id);
+      .prepare(
+        `UPDATE requests SET status = 'failed', reason = ?, reason_code = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(reason, reasonCode, nowSeconds, id);
     const request = this.requestById(id);
     if (request) this.historyFor(request, "failed", { reason }, nowSeconds);
     return request;
+  }
+
+  /**
+   * Requests still pending after an hour fail with Reason code `timeout`
+   * (D69). Only their status changes, so the game still gets the answer to
+   * the Request it waits for (D82).
+   */
+  expireRequests(nowSeconds = Math.floor(Date.now() / 1000)): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM requests WHERE status = 'pending' AND created_at <= ? ORDER BY created_at`,
+      )
+      .all(nowSeconds - REQUEST_TIMEOUT_SECONDS) as { id: string }[];
+    for (const row of rows) {
+      this.failRequest(row.id, "No plan came back within an hour.", nowSeconds, "timeout");
+    }
+    return rows.map((row) => row.id);
+  }
+
+  /** How long recent Plan Requests took (p50), for the game's ETA (D68). */
+  planEta(): number {
+    const rows = this.db
+      .prepare(
+        `SELECT updated_at - created_at AS took FROM requests
+         WHERE status = 'fulfilled' AND type = 'plan' AND updated_at >= created_at
+         ORDER BY updated_at DESC LIMIT 50`,
+      )
+      .all() as { took: number }[];
+    if (rows.length < ETA_MIN_SAMPLES) return ETA_DEFAULT_SECONDS;
+    const sorted = rows.map((row) => row.took).sort((a, b) => a - b);
+    const middle = sorted[Math.floor(sorted.length / 2)]!;
+    return Math.min(ETA_MAX_SECONDS, Math.max(ETA_MIN_SECONDS, Math.round(middle)));
   }
 
   /**
@@ -1055,6 +1097,8 @@ export type PlanRequest = {
   answer: Answer | null;
   lang: string | null;
   account: string;
+  /** Why it failed (docs/adr/0013): `timeout` when no Plan came in 60 min (D69). */
+  reasonCode: string | null;
 };
 
 type RequestRow = {
@@ -1078,6 +1122,7 @@ type RequestRow = {
   answer_json: string | null;
   lang: string | null;
   account: string | null;
+  reason_code: string | null;
 };
 
 function parseJson<T>(text: string | null): T | null {
@@ -1113,6 +1158,7 @@ function requestFromRow(row: RequestRow): PlanRequest {
     answer: parseJson<Answer>(row.answer_json),
     lang: row.lang,
     account: row.account ?? "",
+    reasonCode: row.reason_code,
   };
 }
 
@@ -1127,7 +1173,7 @@ export function publicRequest(request: PlanRequest) {
     wish: request.wish,
     status: request.status,
     reason: request.reason,
-    reasonCode: request.status === "failed" ? "planner_failed" : null,
+    reasonCode: request.status === "failed" ? (request.reasonCode ?? "planner_failed") : null,
     planId: request.planId,
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,

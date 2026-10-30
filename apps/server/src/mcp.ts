@@ -281,6 +281,7 @@ export function createMcpServer(store: Store, dataDir: string): McpServer {
     },
     async ({ status }) =>
       text({
+        expired: store.expireRequests(),
         requests: store.listRequests(status ?? "pending").map((request) => {
           const delivery = store.webhookDelivery(request.id);
           return {

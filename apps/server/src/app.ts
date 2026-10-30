@@ -71,7 +71,7 @@ export function createApp(
 
   const requestWithPlan = (request: PlanRequest) => {
     const plan = request.planId ? store.planById(request.planId) : undefined;
-    return { ...publicRequest(request), plan: plan?.unb1 ?? null };
+    return { ...publicRequest(request), plan: plan?.unb1 ?? null, eta: store.planEta() };
   };
 
   app.use(
@@ -167,6 +167,7 @@ export function createApp(
   app.get("/v1/requests/latest", (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
+    store.expireRequests();
     const request = store.latestRequestForDevice(access.deviceId);
     if (!request) return c.json({ error: "No request yet." }, 404);
     return c.json(requestWithPlan(request));
@@ -176,6 +177,7 @@ export function createApp(
   app.get("/v1/requests/:id", (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
+    store.expireRequests();
     const request = store.requestById(c.req.param("id"));
     if (!request || request.deviceId !== access.deviceId)
       return c.json({ error: "No such request." }, 404);

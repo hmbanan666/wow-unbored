@@ -730,6 +730,7 @@ test("failing an old request never hides the answer to the newer one (D82)", asy
         nowSeconds,
       });
     ask("req-old", 1000);
+    ask("req-stale", 1500);
     ask("req-new", 2000);
     const plan = store.putPlan({ ...sample, requestId: "req-new" }, 2100);
     store.fulfillRequest("req-new", plan.id, 2100);
@@ -749,9 +750,17 @@ test("failing an old request never hides the answer to the newer one (D82)", asy
     assert.equal(waited.body.status, "fulfilled");
     assert.equal(waited.body.plan, latest.body.plan);
 
+    assert.equal(waited.body.eta, 180, "too few answers yet: the default ETA");
+
     const old = await get("/v1/requests/req-old");
     assert.equal(old.body.status, "failed");
+    assert.equal(old.body.reasonCode, "planner_failed");
     assert.equal(old.body.plan, null);
+
+    const stale = await get("/v1/requests/req-stale");
+    assert.equal(stale.body.status, "failed", "pending over an hour times out");
+    assert.equal(stale.body.reasonCode, "timeout");
+    assert.equal((await get("/v1/requests/latest")).body.id, "req-new", "and still hides nothing");
 
     assert.equal((await get("/v1/requests/req-new", "d82-other-device-secret")).status, 404);
     assert.equal((await get("/v1/requests/req-missing")).status, 404);
@@ -1247,6 +1256,37 @@ test("the companion uploads a player profile the planner reads over MCP", async 
     };
     assert.equal(heroProfile.savedAt, 1000);
     assert.equal(heroProfile.profile.bags[0].itemID, 6948);
+  } finally {
+    close();
+  }
+});
+
+test("the ETA is the p50 of recent plan answers, clamped", () => {
+  const { store, close } = build();
+  try {
+    const answer = (id: string, took: number) => {
+      store.addRequest({
+        id,
+        deviceId: "legacy",
+        character: "Hero",
+        realm: "Area 52",
+        mode: "fun",
+        budget: null,
+        wish: null,
+        nowSeconds: 10_000,
+      });
+      const plan = store.putPlan({ ...sample, requestId: id }, 10_000 + took);
+      store.fulfillRequest(id, plan.id, 10_000 + took);
+    };
+    answer("eta-1", 100);
+    answer("eta-2", 300);
+    assert.equal(store.planEta(), 180, "two answers are not enough");
+    answer("eta-3", 400);
+    assert.equal(store.planEta(), 300);
+    answer("eta-4", 5000);
+    answer("eta-5", 5000);
+    answer("eta-6", 5000);
+    assert.equal(store.planEta(), 900, "clamped to 15 minutes");
   } finally {
     close();
   }
