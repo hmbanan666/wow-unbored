@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Prints one release body (docs/adr/0022, docs/adr/0026): the Install /
 # Download section, then what changed since the previous vX.Y.Z tag.
-# Usage: release-notes.sh <tag>
+# Usage: release-notes.sh <tag> [version]
+# The dry run passes HEAD and the version it would release (D117).
 set -euo pipefail
 
 tag="$1"
-version="${tag#v}"
+version="${2:-${tag#v}}"
 root="$(git rev-parse --show-toplevel)"
 
 sed "s/{{VERSION}}/${version}/g" "${root}/.github/release/install.md"

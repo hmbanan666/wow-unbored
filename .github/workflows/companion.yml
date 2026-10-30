@@ -10,6 +10,7 @@ on:
       - "package.json"
       - ".github/workflows/companion.yml"
       - "scripts/check-companion-dist.sh"
+      - ".github/scripts/collect-bundle.sh"
       - "docs/companion-api.md"
       - "docs/contract/**"
   workflow_dispatch:
@@ -59,6 +60,10 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm exec tauri build ${{ steps.sign.outputs.args }}
-      - name: Check the window ships every Wisp picture
+      - name: Check the window ships every Bory picture
         shell: bash
         run: scripts/check-companion-dist.sh apps/companion/dist
+      # After the build, so dist/ exists for the bin's generate_context (D118).
+      - name: Clippy on every target and feature
+        shell: bash
+        run: cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
