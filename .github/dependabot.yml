@@ -4,6 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
     groups:
       npm-minor-and-patch:
         patterns:
@@ -16,6 +19,9 @@ updates:
     directory: "/apps/companion/src-tauri"
     schedule:
       interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
     groups:
       cargo-minor-and-patch:
         patterns:
@@ -28,6 +34,9 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
     groups:
       actions-minor-and-patch:
         patterns:
@@ -40,6 +49,12 @@ updates:
     directory: "/apps/server"
     schedule:
       interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      - dependency-name: "node"
+        versions: ["25.x", "27.x", "29.x"]
     groups:
       docker-minor-and-patch:
         patterns:
