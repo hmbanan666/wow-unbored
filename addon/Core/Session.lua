@@ -653,7 +653,7 @@ function ns.Session:FlowState()
   return state
 end
 
--- Waiting locks Wisp to the waiting Bubble; the Steps stay usable (D67).
+-- Waiting locks Bory to the waiting Bubble; the Steps stay usable (D67).
 function ns.Session:Locked()
   return LOCKED[self:FlowState()] == true
 end
@@ -908,7 +908,7 @@ end
 
 -- The one Refresh offer (D68): when the ETA has passed for a Request the
 -- Companion file names as being prepared. Without that id in the file a
--- Refresh would find nothing, so Wisp never guesses then (D82).
+-- Refresh would find nothing, so Bory never guesses then (D82).
 function ns.Session:RefreshOffer()
   local req = self:PendingRequest()
   if not req or self:FlowState() ~= "waiting" or self.CompanionProblem() then

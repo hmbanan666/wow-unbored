@@ -541,7 +541,7 @@ check(ns.Session:FlowState() == "quick" or ns.Session:FlowState() == "survey", "
 check(ns.Session:PendingRequest() == nil and reloads == 0, "nothing is sent by a preset")
 ns.Session:BeginSurvey({ wish = "mount, stay in this zone" })
 check(ns.Session:FlowState() == "survey" and ns.Session.Flow().custom, "Something else opens the Survey")
-check(not ns.Session:Locked(), "the Survey does not lock Wisp")
+check(not ns.Session:Locked(), "the Survey does not lock Bory")
 ns.Session:SurveyDone("mount, stay in this zone", 45)
 check(ns.Session:FlowState() == "confirm" and ns.Session.Flow().budget == 45, "typed minutes go with a custom wish")
 ns.Session:FlowBack()
@@ -549,11 +549,11 @@ check(ns.Session:FlowState() == "survey", "Back from Confirm is the Survey")
 ns.Session:SurveyDone("mount, stay in this zone", nil)
 check(ns.Session:Send() ~= nil and reloads == 1, "Send now writes the Request and reloads in the click")
 local req = UnboredCharDB.request
-check(req.state == "sent" and ns.Session:Locked(), "sent locks Wisp")
+check(req.state == "sent" and ns.Session:Locked(), "sent locks Bory")
 -- A 0.7 SavedVariables file may still hold a Request queued for logout (D85).
 req.state, req.sentAt = "queued", nil
 reloads = 0
-check(ns.Session:Locked(), "a queued Request from 0.7 still locks Wisp")
+check(ns.Session:Locked(), "a queued Request from 0.7 still locks Bory")
 check(req and req.type == "plan" and req.mode == "farm" and req.budget == nil, "a plan Request with no time budget")
 check(req and req.wish == "mount, stay in this zone" and req.character == "player", "the Request keeps the wish")
 check(req and type(req.context) == "table" and req.context.mapID == 84, "the Request keeps the player context")

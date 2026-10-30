@@ -1,4 +1,4 @@
--- Small building blocks for Wisp's bubble and the list view. Everything the
+-- Small building blocks for Bory's bubble and the list view. Everything the
 -- player sees lives in the bubble (UI/Mascot.lua); there is no main window.
 
 local _, ns = ...

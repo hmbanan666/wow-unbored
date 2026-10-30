@@ -13,7 +13,7 @@ import { HISTORY_KINDS, publicDevice, publicRequest, sessionSummary, type Store 
 
 const PLAN_SCOPE = `Plan the whole goal. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
 
-const MARKUP = `Links (step title, note, why, condition text, plan goal, details and rewards, the plan note, answer messages): every game object you name is a token when you have its id from a tool; otherwise plain text. Wisp shows a token as a native link with the game's own name and tooltip. Kinds, each with an optional |label:
+const MARKUP = `Links (step title, note, why, condition text, plan goal, details and rewards, the plan note, answer messages): every game object you name is a token when you have its id from a tool; otherwise plain text. Bory shows a token as a native link with the game's own name and tooltip. Kinds, each with an optional |label:
 - {item:ID} an item, e.g. {item:6948|Hearthstone}
 - {quest:ID} a quest, e.g. {quest:78713|The Weight}
 - {ach:ID} an achievement, e.g. {ach:964|Going Down?}
@@ -43,7 +43,7 @@ The card (all optional, but a plan without a title gets a warning):
 - goal: one sentence, at most 160 bytes: what the player does and why it is worth it. May carry tokens.
 - details: at most 600 bytes of facts and state (currency counts, what Alts already did). May carry tokens.
 - rewards: up to 6 strings, each exactly one token of kind mount, ach, item, toy, currency or pet, e.g. ["{mount:183}", "{ach:964}"].
-Wisp shows a calm card: closed it is only the title, the step, its why and the first reward; everything else opens on "Show more". So keep every text short: a step title is one line of what to do, why is one short reason, and long text belongs in note or details. No walls of text.
+Bory shows a calm card: closed it is only the title, the step, its why and the first reward; everything else opens on "Show more". So keep every text short: a step title is one line of what to do, why is one short reason, and long text belongs in note or details. No walls of text.
 
 Each task:
 - id: 1-80 characters, letters, digits, colon, dot, underscore, hyphen (example mentor:ashes)
@@ -76,7 +76,7 @@ complete.kind:
 
 Routing: a request from list_requests carries context (mapID, zone, subzone, x, y, level, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). Start the first task near context.mapID / x / y, order the rest as one sensible route, and only send the player to another continent when the wish asks for it or nothing nearby fits. context.hearth is where their hearthstone goes.
 
-The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Wisp's Refresh offer. The game shows one step at a time; the full list opens in the same card.
+The server stores the plan and returns a UNB1: string. The game never reloads per message: the companion writes the plan into the game's data file and the player sees it at their next login or when they accept Bory's Refresh offer. The game shows one step at a time; the full list opens in the same card.
 
 ${PLAN_SCOPE}`;
 
@@ -350,7 +350,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     "list_requests",
     {
       title: "List in-game plan requests",
-      description: `List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, wish, and budget only when the player typed minutes into the custom form; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic "nearby" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). topic "suggestion" means the player picked one of Wisp's ideas (get_suggestions): suggestionId names it and suggestion is a copy of it (title, goal, rewards, mapID); its tokens are ground truth for ids, so build the plan around them and do not swap in other ids. lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position. ${PLAN_SCOPE}`,
+      description: `List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, wish, and budget only when the player typed minutes into the custom form; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic "nearby" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). topic "suggestion" means the player picked one of Bory's ideas (get_suggestions): suggestionId names it and suggestion is a copy of it (title, goal, rewards, mapID); its tokens are ground truth for ids, so build the plan around them and do not swap in other ids. lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position. ${PLAN_SCOPE}`,
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -494,7 +494,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
   server.registerTool(
     "get_suggestions",
     {
-      title: "Get Wisp's ideas",
+      title: "Get Bory's ideas",
       description:
         "The Suggestions the Server made for a Character from its own Game data and the addon's catalog (no guessing): current events with rewards still missing, achievements near where the player plays, rares not looted yet, and mounts nobody on the Account owns. Each has id, kind (event, achievement, rare, collection), title, goal, rewards (link tokens), why, and the request it sends when picked. Expired ones are left out. Pass account for every Character of that Account, or character (and realm) for one; without arguments you get the most recently seen Character. computedAt is when they were made (after each upload, 30 s after the last one).",
       inputSchema: whoSchema,
@@ -651,7 +651,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Put personal item advice",
       description:
-        'Store Personal advice for one character\'s items. The companion downloads it into the game, where it shows from the next natural load as the item tooltip line "Wisp: <line>". Live game rules (quest items, uncollected mounts, toys, pets and looks, upgrades) still win; your advice replaces the generic keep, sell, junk, and reagent lines. Write line as a short action, at most 60 characters, in English, and lineRu in Russian: "Bank it: Alchemy reagent, skill 75", "Sell on the AH", "Send to Mira (Alchemy): mail". Base it on get_player_profile with the account, so items can go to the Alt who uses them: the warband bank for warbound items, mail otherwise. Never advise sending soulbound items, never say delete, and never say vendor for epic or bind-on-equip items. action is one of keep, sell, use, bank, send, disenchant, equip, open, turn_in, info; to names the Alt for send. replace drops this character\'s older advice first.',
+        'Store Personal advice for one character\'s items. The companion downloads it into the game, where it shows from the next natural load as the item tooltip line "Bory: <line>". Live game rules (quest items, uncollected mounts, toys, pets and looks, upgrades) still win; your advice replaces the generic keep, sell, junk, and reagent lines. Write line as a short action, at most 60 characters, in English, and lineRu in Russian: "Bank it: Alchemy reagent, skill 75", "Sell on the AH", "Send to Mira (Alchemy): mail". Base it on get_player_profile with the account, so items can go to the Alt who uses them: the warband bank for warbound items, mail otherwise. Never advise sending soulbound items, never say delete, and never say vendor for epic or bind-on-equip items. action is one of keep, sell, use, bank, send, disenchant, equip, open, turn_in, info; to names the Alt for send. replace drops this character\'s older advice first.',
       inputSchema: {
         character: z.string().max(80),
         realm: z.string().max(80),
@@ -688,7 +688,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     "answer_request",
     {
       title: "Answer an in-game request",
-      description: `Reply to an item or question request (or add a message to a plan request). The player already got a quick local answer; yours arrives at their next login or when they accept Wisp's Refresh offer, so make it worth the wait. Write in the request's lang, like a friendly spoken chat reply: short sentences, no markdown and no web links, at most ${ANSWER_MAX_BYTES} bytes. A blank line splits the reply into up to 3 chat bubbles. The message may carry the same link tokens as a plan, with entities for npcs. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for for this character and its Alts, and what to do with it (keep, bank, sell, send to an Alt).`,
+      description: `Reply to an item or question request (or add a message to a plan request). The player already got a quick local answer; yours arrives at their next login or when they accept Bory's Refresh offer, so make it worth the wait. Write in the request's lang, like a friendly spoken chat reply: short sentences, no markdown and no web links, at most ${ANSWER_MAX_BYTES} bytes. A blank line splits the reply into up to 3 chat bubbles. The message may carry the same link tokens as a plan, with entities for npcs. waypoints puts a route on the map. plan, when given, is stored like put_plan and starts in game together with the message. For an item, say what it is for for this character and its Alts, and what to do with it (keep, bank, sell, send to an Alt).`,
       inputSchema: {
         requestId: z.string().describe("Request id from list_requests"),
         message: z.string().describe(`The reply, at most ${ANSWER_MAX_BYTES} bytes`),

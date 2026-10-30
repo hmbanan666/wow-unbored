@@ -1,5 +1,5 @@
 -- Item help (docs/adr/0015, 0035): the Advice line in item tooltips and the
--- item a player hands to Wisp (dropped on it, or picked up in pick mode).
+-- item a player hands to Bory (dropped on it, or picked up in pick mode).
 -- Everything here only reads game state. Bag buttons are never touched.
 
 local _, ns = ...
@@ -113,7 +113,7 @@ function ns.Items.PlanTask(itemID, mountID)
   return nil
 end
 
--- What Wisp says about an item in the bubble: the Advice first, then what
+-- What Bory says about an item in the bubble: the Advice first, then what
 -- else is known (a planner answer, a note, the plan, collections).
 function ns.Items.Facts(itemID, link, where)
   itemID = num(itemID)
@@ -179,7 +179,7 @@ local function tooltipSlot(data)
   return ns.Call(location.GetBagAndSlot, location)
 end
 
--- At most one teal line, and only when Wisp has something personal to say.
+-- At most one accent line, and only when Bory has something personal to say.
 function ns.Items.OnTooltip(tooltip, data)
   if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then
     return

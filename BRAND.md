@@ -1,6 +1,6 @@
 # Brand
 
-How Unbored names and shows itself. Bory and this palette shipped in 0.8; some code names inside still say `wisp` (for example the `MENU_WISP_SIZE` locale key), which players never see.
+How Unbored names and shows itself. Bory and this palette shipped in 0.8.
 
 ## Names
 
@@ -19,7 +19,7 @@ How Unbored names and shows itself. Bory and this palette shipped in 0.8; some c
 
 **Bory** is a ginger cat. The name is said like the Russian "Бори" (BOR-ee). He lives in the addon, the Companion, and later the site.
 
-Bory replaced Wisp in 0.8. Wisp's art is gone; "Wisp" stays only in old records (ADRs, decision logs, past release notes).
+Bory replaced Wisp in 0.8. Wisp's art is gone, and after 0.8.0 the code, the planner's tool descriptions and the docs say Bory too: the locale key `MENU_WISP_SIZE` became `MENU_BORY_SIZE` (the size setting was always stored as `mascot.scale`, so no setting moved). "Wisp" stays only in history: the ADRs, the decision logs (`docs/decisions-v0.*.md`), `CHANGELOG.md` and past release notes. Do not rewrite them. "Sky Wisp" in tests is a game mount, not the mascot.
 
 ## Slogan
 

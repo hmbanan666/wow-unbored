@@ -178,7 +178,7 @@ local en = {
   CONTINUE = "Continue",
   SOMETHING_NEW = "Something new",
   PLAN_NAME_DEFAULT = "Your plan",
-  MENU_WISP_SIZE = "Bory size",
+  MENU_BORY_SIZE = "Bory size",
   MENU_BUBBLE_SIZE = "Bubble size",
   -- v0.6: background refresh (docs/adr/0012)
   TIP_REFRESH = "Reloads your UI once to pick it up.",
@@ -431,7 +431,7 @@ local ru = {
   CONTINUE = "Продолжить",
   SOMETHING_NEW = "Что-то новое",
   PLAN_NAME_DEFAULT = "Твой план",
-  MENU_WISP_SIZE = "Размер Бори",
+  MENU_BORY_SIZE = "Размер Бори",
   MENU_BUBBLE_SIZE = "Размер облачка",
   TIP_REFRESH = "Один раз перезагрузит интерфейс, чтобы забрать новое.",
   MENU_REFRESH = "Обновить сейчас",

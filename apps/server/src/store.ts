@@ -1325,7 +1325,7 @@ export type ItemAdvice = {
   itemID: number;
   /** keep, sell, use, bank, send, disenchant, equip, open, turn_in, or info. */
   action: string;
-  /** The tooltip line after "Wisp: ", in English. */
+  /** The tooltip line after "Bory: ", in English. */
   line: string;
   /** The same line in Russian. */
   lineRu?: string;

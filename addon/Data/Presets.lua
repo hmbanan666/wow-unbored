@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- The chips Wisp offers when there is no plan. One click sends a plan
+-- The chips Bory offers when there is no plan. One click sends a plan
 -- request: mode for the in-game builder and the server, topic so the
 -- planner knows which chip it was, wish in plain words for the planner.
 -- label is a locale key. Edit, reorder, or add rows here; nothing else
