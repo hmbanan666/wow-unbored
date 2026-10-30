@@ -440,15 +440,63 @@ function ns.Profile.NoteAlt()
   ns.DB.alts[key] = entry
 end
 
--- Other characters of this account, newest first.
+-- An Alt from the Account digest in Advice.lua (D76), checked like any file.
+local function digestAlt(raw)
+  if type(raw) ~= "table" then
+    return nil
+  end
+  local name = ns.SafeString(raw.name, 80)
+  local realm = ns.SafeString(raw.realm, 80)
+  if not name or not realm then
+    return nil
+  end
+  local professions = {}
+  local list = type(raw.professions) == "table" and raw.professions or {}
+  for i = 1, math.min(#list, 6) do
+    local row = list[i]
+    local skillLine = type(row) == "table" and ns.AsNumber(row.skillLine) or nil
+    if skillLine then
+      professions[#professions + 1] = {
+        skillLine = skillLine,
+        name = ns.SafeString(row.name, 60),
+        skill = ns.AsNumber(row.skill) or 0,
+      }
+    end
+  end
+  return {
+    name = name,
+    realm = realm,
+    faction = ns.SafeString(raw.faction, 20),
+    seenAt = ns.AsNumber(raw.seenAt) or 0,
+    professions = professions,
+    fromDigest = true,
+  }
+end
+
+-- Other characters of this account, newest first: the ones seen on this PC,
+-- then the Account digest for Alts only seen on other PCs.
 function ns.Profile.Alts()
   local out = {}
   local name = ns.SafeString(ns.Call(UnitName, "player"), 80)
   local me = ns.Profile.AltKey(name, ns.SafeString(ns.Call(GetRealmName), 80) or "")
   local alts = ns.DB and type(ns.DB.alts) == "table" and ns.DB.alts or {}
+  local seen = { [me] = true }
   for key, entry in pairs(alts) do
     if key ~= me and type(entry) == "table" and type(entry.name) == "string" then
       out[#out + 1] = entry
+      seen[key] = true
+    end
+  end
+  local data = type(UnboredAdvice) == "table" and UnboredAdvice or nil
+  local chars = data and type(data.characters) == "table" and data.characters or nil
+  local mine = chars and chars[me]
+  local digest = type(mine) == "table" and type(mine.alts) == "table" and mine.alts or {}
+  for i = 1, math.min(#digest, 50) do
+    local alt = digestAlt(digest[i])
+    local key = alt and ns.Profile.AltKey(alt.name, alt.realm)
+    if alt and not seen[key] then
+      out[#out + 1] = alt
+      seen[key] = true
     end
   end
   table.sort(out, function(a, b)

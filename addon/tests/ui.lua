@@ -910,6 +910,24 @@ UnboredAdvice = {
 check(tip(902):find("the Planner says", 1, true), "Personal advice from the Server")
 check(tip(903) == "", "never sell an epic, even if told")
 check(tip(900) == "", "an unsafe line is dropped")
+local localAlts = UnboredDB.alts
+UnboredDB.alts = {}
+check(tip(901) == "", "no Alt on this PC, no digest: no line")
+UnboredAdvice.characters["Area 52-Hero"].alts = {
+  { name = "Brew", realm = "Area 52", faction = "Alliance", seenAt = 9,
+    professions = { { skillLine = 171, name = "Alchemy", skill = 75 }, { name = "no id" } } },
+  { realm = "no name" },
+  "junk",
+}
+check(tip(901):find("Send to Brew (Alchemy 75): mail it", 1, true),
+  "an Alt only seen on another PC still gets the reagent: " .. tip(901))
+UnboredDB.alts = {
+  ["Area 52-Brew"] = { name = "Brew", realm = "Stormrage", seenAt = 1,
+    professions = { { skillLine = 171, name = "Alchemy", skill = 75 } } },
+}
+check(tip(901):find("warband bank", 1, true), "what this PC saw wins over the digest: " .. tip(901))
+check(#ns.Profile.Alts() == 1, "the digest never adds an Alt twice")
+UnboredDB.alts = localAlts
 UnboredAdvice = nil
 local toyStep = { id = "toy", title = "Get {item:1234|the toy}", complete = { kind = "toy", itemID = 1234 } }
 ns.Session:ApplyPlan({ tasks = { toyStep } }, "import", false)
