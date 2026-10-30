@@ -17,7 +17,7 @@ A one-click Plan starter chip in the Bubble, such as "Get a mount" or "Surprise 
 _Avoid_: wizard, mode card, option, filter.
 
 **Plan**
-What to do next: usually 3 to 7 Steps, but a Plan for one goal covers all of it in order, however many Steps that takes, never cut to a time (ADR 0037). Wisp shows one Step at a time; the full list opens on click.
+What to do next: usually 3 to 7 Steps, but a Plan for one goal covers all of it in order, however many Steps that takes, never cut to a time (ADR 0037). Wisp shows it as one card: the current Step, a short Next preview, and the full list inline on click (ADR 0038).
 _Avoid_: route (a Waypoint list inside a Step), session, quest list, tracker.
 
 **Step**
@@ -140,8 +140,32 @@ _Avoid_: compressed list, bitmap, hash.
 The owner's view of what was collected: MCP `data_catalog` (and `GET /owner/data`), listing every Account, Character and Section with freshness, size and counts.
 _Avoid_: dashboard, admin panel, analytics.
 
+**Plan title**
+The short human name of a Plan, like a quest title: 3 to 40 characters, no ids, no counts ("Badges for a Timereaver"). Facts go in the Plan details, never in the title.
+_Avoid_: name, header, label, summary.
+
+**Goal**
+One sentence on a Plan card: what you will do and why it is worth it. May carry Entity tokens.
+_Avoid_: objective, description, mission.
+
+**Rewards**
+What the player gets from a Plan or Step, shown quest style under "You will get:" as native links (up to 6 per Plan, 3 per Step).
+_Avoid_: loot, drops, prizes.
+
+**Condition**
+An optional "If ..." on a Step that the addon checks live from the game (a currency, item, level, quest or achievement); met shows "Ready", unmet shows the progress and marks the Step "not yet".
+_Avoid_: requirement, prerequisite, gate, rule.
+
+**Suggestion**
+A ready idea for this Character, computed by the Server from the Game data snapshot and the Catalog (or by the addon from what it sees live), shown as a chip in the choice Bubble. Picking one sends a Request.
+_Avoid_: recommendation, quest, offer (that word is the Refresh offer), AI idea.
+
+**Catalog**
+The vetted ids from the Knowledge base (`addon/Data/*.lua`), exported to `packages/contracts/catalog/catalog.json` for the Server. Every row has a primary source URL.
+_Avoid_: database, game DB, wiki dump.
+
 **Knowledge base**
 The small tables bundled with the addon (`Data/*.lua`) that let Wisp answer locally.
 _Avoid_: database, wiki, cache.
 
-**Avoid in anything user-facing**: tracker, wizard, token, URL, server address, API key, registration, login, delete (Advice never says it).
+**Avoid in anything user-facing**: tracker, All steps (window), wizard, token, URL, server address, API key, registration, login, delete (Advice never says it).
