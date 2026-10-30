@@ -373,7 +373,7 @@ local function renderToken(token, npcs, onChange)
   if link then
     M.asked[key] = nil
     if collected then
-      return link .. " |cff9fb3b3" .. ns.T("LINK_COLLECTED") .. "|r"
+      return link .. " " .. ns.Hex(ns.PALETTE.muted) .. ns.T("LINK_COLLECTED") .. "|r"
     end
     return link
   end

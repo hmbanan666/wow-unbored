@@ -6,7 +6,7 @@ local _, ns = ...
 
 ns.Items = {}
 
-local TEAL = "|cff5fe3d4"
+local ACCENT = ns.Hex(ns.PALETTE.gold)
 local BAGS = 5
 
 local function num(value)
@@ -205,7 +205,7 @@ function ns.Items.OnTooltip(tooltip, data)
   if not advice or not advice.line then
     return
   end
-  tooltip:AddLine(TEAL .. ns.MASCOT_NAME .. ":|r " .. advice.line, 1, 1, 1, true)
+  tooltip:AddLine(ACCENT .. ns.MASCOT_NAME .. ":|r " .. advice.line, 1, 1, 1, true)
 end
 
 function ns.Items.FromLink(link)

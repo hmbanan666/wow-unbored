@@ -73,7 +73,7 @@ function ns.ImportUI()
       return
     end
     ns.Session:ApplyPlan(plan, "import", true)
-    status:SetTextColor(0.55, 0.9, 0.55)
+    status:SetTextColor(ns.PALETTE.ok[1], ns.PALETTE.ok[2], ns.PALETTE.ok[3])
     status:SetText(ns.T("IMPORT_OK", #plan.tasks))
   end)
 
@@ -87,7 +87,7 @@ function ns.ImportUI()
     edit:SetText(text or "")
     edit:SetFocus()
     edit:HighlightText()
-    status:SetTextColor(0.8, 0.8, 0.8)
+    status:SetTextColor(ns.PALETTE.muted[1], ns.PALETTE.muted[2], ns.PALETTE.muted[3])
     status:SetText(ns.T("EXPORT_READY"))
   end)
 
@@ -134,6 +134,6 @@ function ns.ShowExport()
   frame.edit:SetText(text or "")
   frame.edit:SetFocus()
   frame.edit:HighlightText()
-  frame.status:SetTextColor(0.8, 0.8, 0.8)
+  frame.status:SetTextColor(ns.PALETTE.muted[1], ns.PALETTE.muted[2], ns.PALETTE.muted[3])
   frame.status:SetText(ns.T("EXPORT_READY"))
 end

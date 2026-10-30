@@ -100,8 +100,10 @@ local methods = {
   CreateFontString = function(self)
     return newWidget("FontString", nil, self)
   end,
-  CreateTexture = function(self)
-    return newWidget("Texture", nil, self)
+  CreateTexture = function(self, _, layer)
+    local texture = newWidget("Texture", nil, self)
+    texture.layer = layer
+    return texture
   end,
   GetFontString = function(self)
     if not self.fontString then
@@ -467,9 +469,16 @@ check(textOf(mascot.chips[1].label) == "Stay here, do stuff nearby", "the first 
 check(mascot.otherChip:IsShown() and textOf(mascot.otherChip.label) == "Something else...", "Something else is there")
 check(mascot.timeChips == nil and not mascot.minutesBox:IsShown(), "presets ask no time (docs/adr/0037)")
 check(not mascot.buttons.done:IsShown(), "no step buttons in the greeting")
-check(mascot.art.texture:find("WispIdle", 1, true) ~= nil, "idle portrait")
+check(mascot.art.texture:find("BoryIdle128", 1, true) ~= nil, "idle portrait")
+check(mascot.back.layer == "BACKGROUND" and mascot.back.texture:find("BoryBack128", 1, true) ~= nil,
+  "a disc behind Bory")
+check(mascot.art.layer == "ARTWORK" and mascot.ring.layer == "OVERLAY"
+  and mascot.ring.texture:find("BoryFrame128", 1, true) ~= nil, "the gold ring sits on top of the art")
+check(mascot.art.parent == mascot.holder and mascot.ring.parent == mascot.holder
+  and mascot.float.parent == mascot.holder,
+  "the bob moves art and ring together, so the ring never slides")
 check(mascot.bubble.height > (#mascot.chips + 1) * 26, "the bubble fits all chips: " .. mascot.bubble.height)
-check(textOf(mascot.meta) == "Wisp", "the top row says who is talking")
+check(textOf(mascot.meta) == "Bory", "the top row says who is talking")
 check(mascot.collapse:IsShown() ~= false and mascot.menuButton ~= nil, "collapse and menu icons on the top row")
 local ids = {}
 for _, preset in ipairs(ns.Data.Presets) do
@@ -541,7 +550,7 @@ MenuUtil = {
   end,
 }
 mascot.frame:Click("RightButton")
-check(made[1] and made[1].title == "Wisp", "the game menu has the mascot as title")
+check(made[1] and made[1].title == "Bory", "the game menu has the mascot as title")
 local function entry(list, text)
   for i = 1, #list do
     if list[i].text == text then
@@ -556,14 +565,14 @@ local names = {}
 for i = 1, #(settings and settings.children or {}) do
   names[i] = settings.children[i].text
 end
-check(table.concat(names, "|") == "Wisp size|Bubble size|Lock position|Share game data to make Wisp smarter"
-  .. "|Wisp lines in tooltips|Hide|Keybinds|More",
+check(table.concat(names, "|") == "Bory size|Bubble size|Lock position|Share game data to make Bory smarter"
+  .. "|Bory lines in tooltips|Hide|Keybinds|More",
   "Settings: " .. table.concat(names, "|"))
-local wispSize = entry(settings.children, "Wisp size")
+local wispSize = entry(settings.children, "Bory size")
 local bubbleSize = entry(settings.children, "Bubble size")
-check(#wispSize.children == 4 and wispSize.children[2].isSelected(), "Wisp size: 100% by default")
+check(#wispSize.children == 4 and wispSize.children[2].isSelected(), "Bory size: 100% by default")
 entry(wispSize.children, "125%").setSelected()
-check(mascot.frame.scale == 1.25 and UnboredDB.mascot.scale == 125, "Wisp size scales the portrait")
+check(mascot.frame.scale == 1.25 and UnboredDB.mascot.scale == 125, "Bory size scales the portrait")
 check(mascot.bubble.scale == 1, "and not the bubble")
 entry(bubbleSize.children, "150%").setSelected()
 check(mascot.bubble.scale == 1.5 and mascot.frame.scale == 1.25, "Bubble size scales the bubble alone")
@@ -928,7 +937,7 @@ local function tip(id, owner)
   tooltipCalls[0](owner or GameTooltip, { id = id })
   return tooltipLines[1] or "", tooltipLines[2]
 end
-check(tip(1234) == "|cff5fe3d4Wisp:|r New for your collection", "a toy nobody on the Account has: " .. tip(1234))
+check(tip(1234) == "|cffe8b04aBory:|r New for your collection", "a toy nobody on the Account has: " .. tip(1234))
 check(tip(555):find("New for your collection", 1, true), "a new mount: " .. tip(555))
 check(tip(900) == "", "junk: no line")
 check(tip(901) == "", "a reagent no Alt uses: no line")
@@ -988,7 +997,7 @@ UnboredDB.alts = localAlts
 UnboredAdvice = nil
 local toyStep = { id = "toy", title = "Get {item:1234|the toy}", complete = { kind = "toy", itemID = 1234 } }
 ns.Session:ApplyPlan({ tasks = { toyStep } }, "import", false)
-check(tip(1234) == "|cff5fe3d4Wisp:|r Needed for your plan: Get Silly toy",
+check(tip(1234) == "|cffe8b04aBory:|r Needed for your plan: Get Silly toy",
   "needed for the plan names the Step: " .. tip(1234))
 UnboredDB.tooltipLines = false
 check(tip(1234) == "", "the menu toggle turns every line off")
@@ -1053,19 +1062,24 @@ clock = clock - 50 * 60
 ns.Session:RefreshUI()
 check(bubbleText():find("I'm on it.", 1, true), "all fine: on it, keep playing")
 check(not mascot.buttons.refresh:IsShown(), "no Refresh while the Companion file does not name it")
-check(mascot.float.playing and mascot.glow.playing, "and Wisp visibly thinks")
+check(mascot.float.playing and mascot.glow.playing, "and Bory visibly thinks")
+check(mascot.art.texture:find("BoryThinking128", 1, true) ~= nil, "with his thinking face")
+local ringTexture = mascot.ring.texture
 check(mascot.thinkingDots:IsShown(), "with three dots by the name")
 UnboredCharDB.request.sentAt = ns.Session.loadedAt - 11 * 60
 ns.Session:RefreshUI()
 check(bubbleText():find("taking long", 1, true), "a slow request is said")
 check(mascot.buttons.retry:IsShown(), "with Try again")
+check(mascot.mood == "waiting" and mascot.art.texture:find("BoryWaiting128", 1, true) ~= nil,
+  "a long wait makes Bory yawn: " .. tostring(mascot.art.texture))
+check(mascot.ring.texture == ringTexture, "a mood never touches the ring")
 ns.Session:CancelRequest()
 ns.Session:RefreshUI()
 check(UnboredCharDB.request == nil, "Cancel drops it")
-check(not mascot.float.playing and not mascot.glow.playing, "and Wisp stops thinking")
+check(not mascot.float.playing and not mascot.glow.playing, "and Bory stops thinking")
 check(mascot.float.finished and mascot.glow.finished and not mascot.float.stopped and not mascot.glow.stopped,
   "the loop runs out, never cut mid-move (D88)")
-check(not mascot.finishing and mascot.art.texture:find("WispThinking", 1, true) == nil, "the new picture once it ends")
+check(not mascot.finishing and mascot.art.texture:find("BoryThinking", 1, true) == nil, "the new picture once it ends")
 check(not mascot.thinkingDots:IsShown(), "and the dots go")
 waitFor({ v = 1, pairing = "approved", online = true, seenAt = clock }, clock - 61 * 60)
 check(mascot.view.kind == "expired" and shownButtons() == "retry,ok", "after an hour: lost, Try again or Got it")

@@ -1,6 +1,6 @@
 ## Interface: 120105, 120100
 ## Title: Unbored
-## Notes: Wisp, a calm companion that tells you what to do next and answers questions.
+## Notes: Bory, a calm ginger cat who tells you what to do next and answers questions.
 ## Author: Unbored contributors
 ## Version: 0.7.0
 ## SavedVariables: UnboredDB

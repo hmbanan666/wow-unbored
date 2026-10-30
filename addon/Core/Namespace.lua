@@ -3,8 +3,31 @@ local addonName, ns = ...
 ns.addon = addonName or "Unbored"
 -- Must match ## Version in Unbored.toc (tests/run.lua checks it).
 ns.VERSION = "0.7.0"
-ns.MASCOT_NAME = "Wisp"
+ns.MASCOT_NAME = "Bory"
 ns.MEDIA = "Interface\\AddOns\\Unbored\\Media\\"
+
+-- Bory's palette (BRAND.md): every colour the UI draws comes from here.
+ns.PALETTE = {
+  gold = { 0.910, 0.690, 0.290 }, -- #E8B04A, the accent: borders, glyphs, pips
+  highlight = { 0.961, 0.824, 0.478 }, -- #F5D27A, titles and the selected chip
+  burgundy = { 0.478, 0.133, 0.188 }, -- #7A2230, Bory's scarf: done and selected fills
+  bg = { 0.118, 0.078, 0.063 }, -- #1E1410, bubbles and pills
+  raised = { 0.165, 0.110, 0.082 }, -- #2A1C15, buttons and chips
+  cream = { 0.918, 0.859, 0.753 }, -- #EADBC0, body text
+  muted = { 0.722, 0.639, 0.522 }, -- #B8A385, secondary text
+  faint = { 0.502, 0.431, 0.361 }, -- #806E5C, done and skipped rows
+  ok = { 0.604, 0.784, 0.392 }, -- #9AC864, Ready
+}
+
+-- "|cffRRGGBB" for a palette colour, for text that carries its own colour.
+function ns.Hex(color)
+  return string.format(
+    "|cff%02x%02x%02x",
+    math.floor(color[1] * 255 + 0.5),
+    math.floor(color[2] * 255 + 0.5),
+    math.floor(color[3] * 255 + 0.5)
+  )
+end
 -- A plan is 3-7 steps (docs/adr/0005); the in-game builder never makes more.
 ns.MAX_STEPS = 7
 ns.Data = {}
@@ -72,7 +95,7 @@ function ns.ModeLabel(mode)
 end
 
 function ns.Print(msg)
-  local line = "|cff8fd18fUnbored|r  " .. tostring(msg)
+  local line = ns.Hex(ns.PALETTE.gold) .. "Unbored|r  " .. tostring(msg)
   if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
     DEFAULT_CHAT_FRAME:AddMessage(line)
   else
@@ -98,7 +121,7 @@ function ns.ReportError(err)
   end
   if not ns.errorShown then
     ns.errorShown = true
-    ns.Print(ns.T and ns.T("OOPS") or "Wisp tripped over something.")
+    ns.Print(ns.T and ns.T("OOPS") or "Bory tripped over something.")
   end
 end
 

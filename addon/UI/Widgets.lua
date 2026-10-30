@@ -6,7 +6,8 @@ local _, ns = ...
 ns.UI = ns.UI or {}
 
 local INNER = 308
-local GOLD = { 1, 0.82, 0 }
+local GOLD = ns.PALETTE.highlight
+local P = ns.PALETTE
 
 function ns.UI.ApplyBackdrop(frame, bg, border)
   if not frame.SetBackdrop then
@@ -23,8 +24,8 @@ function ns.UI.ApplyBackdrop(frame, bg, border)
   if not ok then
     return false
   end
-  bg = bg or { 0.04, 0.04, 0.05, 0.94 }
-  border = border or { 0.6, 0.5, 0.25, 1 }
+  bg = bg or { P.bg[1], P.bg[2], P.bg[3], 0.94 }
+  border = border or { P.gold[1], P.gold[2], P.gold[3], 0.9 }
   frame:SetBackdropColor(bg[1], bg[2], bg[3], bg[4])
   frame:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
   return true
@@ -64,7 +65,7 @@ function ns.UI.MakeLink(parent, text)
     self:SetSize(math.ceil(width) + 8, 18)
   end
   button:SetScript("OnEnter", function(self)
-    self.label:SetTextColor(1, 1, 1)
+    self.label:SetTextColor(P.cream[1], P.cream[2], P.cream[3])
   end)
   button:SetScript("OnLeave", function(self)
     self.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
@@ -203,7 +204,7 @@ function ns.UI.MakeTextBox(parent, hint, maxLetters, onChange, width, height)
     box = CreateFrame("Frame", nil, parent)
   end
   box:SetSize(width, height or 92)
-  ns.UI.ApplyBackdrop(box, { 0, 0, 0, 0.55 }, { 0.4, 0.4, 0.4, 1 })
+  ns.UI.ApplyBackdrop(box, { P.raised[1], P.raised[2], P.raised[3], 0.9 }, { P.muted[1], P.muted[2], P.muted[3], 0.8 })
   local edit = CreateFrame("EditBox", nil, box)
   edit:SetMultiLine(true)
   edit:SetAutoFocus(false)
@@ -249,7 +250,7 @@ function ns.UI.MakeNumberBox(parent, hint, maxLetters, width)
     box = CreateFrame("Frame", nil, parent)
   end
   box:SetSize(width, 24)
-  ns.UI.ApplyBackdrop(box, { 0, 0, 0, 0.55 }, { 0.4, 0.4, 0.4, 1 })
+  ns.UI.ApplyBackdrop(box, { P.raised[1], P.raised[2], P.raised[3], 0.9 }, { P.muted[1], P.muted[2], P.muted[3], 0.8 })
   local edit = CreateFrame("EditBox", nil, box)
   edit:SetAutoFocus(false)
   edit:SetNumeric(true)

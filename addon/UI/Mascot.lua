@@ -20,8 +20,12 @@ local CARD_INNER = CARD_WIDTH - PAD * 2
 local ACTION = 24
 local GLYPH = 16
 local TOP_ICON = 16
-local TEAL = { 0.37, 0.89, 0.83 }
-local MUTED = { 0.62, 0.7, 0.7 }
+local P = ns.PALETTE
+local ACCENT = P.gold
+local RAISED = { P.raised[1], P.raised[2], P.raised[3], 0.92 }
+local EDGE = { P.gold[1], P.gold[2], P.gold[3], 0.55 }
+local MUTED = P.muted
+local CREAM = P.cream
 local COMBAT_ALPHA = 0.5
 local CHIP_HEIGHT = 26
 local SCALES = { 80, 100, 125, 150 }
@@ -30,7 +34,7 @@ local ECHO_SECONDS = 90
 local ECHO_BYTES = 90
 local ECHO_ALPHA = { 0.85, 0.55 }
 local LEAD_SECONDS = 8
-local GOLD = { 1, 0.82, 0 }
+local GOLD = P.highlight
 local PIPS = 12
 local PIP = 7
 local LIST_MAX_HEIGHT = 260
@@ -38,11 +42,16 @@ local LIST_ROW_GAP = 4
 -- The drop hint stops once the player has handed Wisp this many items.
 local DROP_TEACH = 3
 
+-- The portrait is layers (BRAND.md): a disc, Bory, and the gold ring on top.
+-- A mood swaps only Bory's layer.
 local PORTRAITS = {
-  idle = "WispIdle128",
-  thinking = "WispIdle128",
-  happy = "WispHappy128",
+  idle = "BoryIdle128",
+  thinking = "BoryThinking128",
+  waiting = "BoryWaiting128",
+  happy = "BoryHappy128",
 }
+local PORTRAIT_BACK = "BoryBack128"
+local PORTRAIT_RING = "BoryFrame128"
 
 -- Every action looks the same: one frame, a glyph from Media/Icon*, and a
 -- label when a glyph alone would not be clear.
@@ -117,13 +126,13 @@ local function glyph(parent, name, size)
   local texture = parent:CreateTexture(nil, "ARTWORK")
   texture:SetSize(size, size)
   texture:SetTexture(ns.MEDIA .. name)
-  texture:SetVertexColor(TEAL[1], TEAL[2], TEAL[3])
+  texture:SetVertexColor(ACCENT[1], ACCENT[2], ACCENT[3])
   return texture
 end
 
 local function actionButton(parent, spec, onClick)
   local button = framed(parent)
-  ns.UI.ApplyBackdrop(button, { 0.05, 0.16, 0.17, 0.92 }, { TEAL[1], TEAL[2], TEAL[3], 0.55 })
+  ns.UI.ApplyBackdrop(button, RAISED, EDGE)
   button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
   local width = ACTION
   if spec.icon then
@@ -186,11 +195,12 @@ end
 
 local function styleChip(button, selected)
   if selected then
-    ns.UI.ApplyBackdrop(button, { 0.3, 0.22, 0.04, 0.6 }, { 1, 0.82, 0, 1 })
-    button.label:SetTextColor(1, 0.82, 0)
+    local fill = { P.burgundy[1], P.burgundy[2], P.burgundy[3], 0.85 }
+    ns.UI.ApplyBackdrop(button, fill, { GOLD[1], GOLD[2], GOLD[3], 1 })
+    button.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
   else
-    ns.UI.ApplyBackdrop(button, { 0.05, 0.16, 0.17, 0.9 }, { TEAL[1], TEAL[2], TEAL[3], 0.55 })
-    button.label:SetTextColor(1, 1, 1)
+    ns.UI.ApplyBackdrop(button, RAISED, EDGE)
+    button.label:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
   end
 end
 
@@ -277,7 +287,7 @@ local function dots(parent)
   for i = 1, 3 do
     local dot = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     dot:SetText(".")
-    dot:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+    dot:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
     dot:SetPoint("LEFT", (i - 1) * 5, 0)
     dot:SetAlpha(DOT_ALPHA)
     frame.dots[i] = dot
@@ -398,11 +408,22 @@ function ns.Mascot:CreatePortrait()
   frame:SetScale(self.Scale() / 100)
   self:Place()
 
-  self.art = frame:CreateTexture(nil, "ARTWORK")
-  self.art:SetSize(SIZE, SIZE)
-  self.art:SetPoint("CENTER")
+  -- One holder for all three layers: the bob moves them together, so the
+  -- ring never slides against the art. The glow dims Bory alone.
+  local holder = CreateFrame("Frame", nil, frame)
+  holder:SetSize(SIZE, SIZE)
+  holder:SetPoint("CENTER")
+  self.holder = holder
+  self.back = holder:CreateTexture(nil, "BACKGROUND")
+  self.back:SetAllPoints(holder)
+  self.back:SetTexture(ns.MEDIA .. PORTRAIT_BACK)
+  self.art = holder:CreateTexture(nil, "ARTWORK")
+  self.art:SetAllPoints(holder)
   self.art:SetTexture(ns.MEDIA .. PORTRAITS.idle)
-  self.float = float(self.art)
+  self.ring = holder:CreateTexture(nil, "OVERLAY")
+  self.ring:SetAllPoints(holder)
+  self.ring:SetTexture(ns.MEDIA .. PORTRAIT_RING)
+  self.float = float(holder)
   self.glow = glow(self.art)
   if self.float then
     self.float:SetScript("OnFinished", function()
@@ -413,12 +434,12 @@ function ns.Mascot:CreatePortrait()
   -- Collapsed: a small "..." pill beside the portrait. A click brings the bubble back.
   local pill = framed(frame)
   pill:SetSize(34, 18)
-  ns.UI.ApplyBackdrop(pill, { 0.03, 0.08, 0.09, 0.92 }, { TEAL[1], TEAL[2], TEAL[3], 0.9 })
+  ns.UI.ApplyBackdrop(pill, { P.bg[1], P.bg[2], P.bg[3], 0.94 }, { ACCENT[1], ACCENT[2], ACCENT[3], 0.9 })
   pill:RegisterForClicks("AnyUp")
   pill.text = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   pill.text:SetPoint("CENTER", 0, 1)
   pill.text:SetText("...")
-  pill.text:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+  pill.text:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
   pill:SetScript("OnClick", function(button, mouseButton)
     if mouseButton == "RightButton" then
       self:OpenMenu(button)
@@ -432,7 +453,7 @@ function ns.Mascot:CreatePortrait()
 
   self.dropHint = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   self.dropHint:SetPoint("TOP", frame, "BOTTOM", 0, -2)
-  self.dropHint:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+  self.dropHint:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
   self.dropHint:SetText(ns.T("DROP_HINT"))
   self.dropHint:Hide()
 
@@ -480,7 +501,7 @@ local function textToggle(parent, onClick)
   button:SetHeight(16)
   button.label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   button.label:SetPoint("LEFT", 0, 0)
-  button.label:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+  button.label:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
   button.chevron = glyph(button, "IconChevron", 10)
   button.chevron:SetPoint("LEFT", button.label, "RIGHT", 3, 0)
   button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
@@ -516,7 +537,7 @@ local function pipRow(parent)
     local hole = frame:CreateTexture(nil, "OVERLAY")
     hole:SetSize(PIP - 4, PIP - 4)
     hole:SetPoint("CENTER", pip, "CENTER")
-    hole:SetColorTexture(0.03, 0.08, 0.09, 1)
+    hole:SetColorTexture(P.bg[1], P.bg[2], P.bg[3], 1)
     pip.hole = hole
     frame.pips[i] = pip
   end
@@ -548,7 +569,7 @@ local function drawPips(frame, done, total)
     else
       pip:Show()
       if i <= done then
-        pip:SetColorTexture(TEAL[1], TEAL[2], TEAL[3], 1)
+        pip:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 1)
         pip.hole:Hide()
       elseif i == done + 1 then
         pip:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
@@ -596,7 +617,7 @@ function ns.Mascot:CreateBubble()
   bubble:SetScript("OnHyperlinkClick", function(_, link, text, button)
     ns.Markup.OnClick(link, text, button)
   end)
-  ns.UI.ApplyBackdrop(bubble, { 0.03, 0.08, 0.09, 0.92 }, { TEAL[1], TEAL[2], TEAL[3], 0.9 })
+  ns.UI.ApplyBackdrop(bubble, { P.bg[1], P.bg[2], P.bg[3], 0.94 }, { ACCENT[1], ACCENT[2], ACCENT[3], 0.9 })
   bubble:Hide()
   self.bubble = bubble
   self.fade = fadeIn(bubble, 0.2, 0.25)
@@ -605,9 +626,11 @@ function ns.Mascot:CreateBubble()
   self.thinkingDots = dots(bubble)
   self.tick = fadeIn(self.meta, 0.1, 0.4)
   self.header = font(bubble, "GameFontNormal")
+  self.header:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
   self.message = font(bubble, "GameFontHighlight")
+  self.message:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
   self.sub = font(bubble, "GameFontHighlightSmall")
-  self.sub:SetTextColor(0.75, 0.82, 0.82)
+  self.sub:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
   self.where = font(bubble, "GameFontHighlightSmall")
   self.where:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
 
@@ -616,7 +639,7 @@ function ns.Mascot:CreateBubble()
   self.title:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
   self.pipRow = pipRow(bubble)
   self.goal = font(bubble, "GameFontHighlightSmall")
-  self.goal:SetTextColor(0.92, 0.92, 0.88)
+  self.goal:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
   self.condition = font(bubble, "GameFontHighlightSmall")
   self.condition:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
   self.why = font(bubble, "GameFontHighlightSmall")
@@ -626,7 +649,7 @@ function ns.Mascot:CreateBubble()
     self:ToggleCard()
   end)
   self.details = font(bubble, "GameFontHighlightSmall")
-  self.details:SetTextColor(0.85, 0.88, 0.88)
+  self.details:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
   local okList, list = pcall(CreateFrame, "ScrollFrame", nil, bubble)
   if not okList or not list then
     list = CreateFrame("Frame", nil, bubble)
@@ -728,7 +751,7 @@ function ns.Mascot:CreateBubble()
     if not okEcho or not echo then
       echo = CreateFrame("Frame", nil, bubble)
     end
-    ns.UI.ApplyBackdrop(echo, { 0.03, 0.08, 0.09, 0.85 }, { TEAL[1], TEAL[2], TEAL[3], 0.5 })
+    ns.UI.ApplyBackdrop(echo, { P.bg[1], P.bg[2], P.bg[3], 0.85 }, { ACCENT[1], ACCENT[2], ACCENT[3], 0.5 })
     echo.text = font(echo, "GameFontHighlightSmall")
     echo.text:SetPoint("TOPLEFT", PAD, -6)
     echo:Hide()
@@ -777,6 +800,8 @@ function ns.Mascot:SetMood(mood)
   if thinking then
     self.finishing = false
     self.pendingArt = nil
+    -- The loops start at rest, so the swap here never shows a jump.
+    self.art:SetTexture(ns.MEDIA .. PORTRAITS.thinking)
     for i = 1, 3 do
       if groups[i] then
         groups[i]:Play()
@@ -935,7 +960,7 @@ local function conditionLine(task, check)
   if not check then
     return text
   end
-  local tag = check.met and ("|cff33dd55" .. ns.T("READY") .. "|r") or ("|cffd9a040" .. ns.T("NOT_YET") .. "|r")
+  local tag = check.met and (ns.Hex(P.ok) .. ns.T("READY") .. "|r") or (ns.Hex(ACCENT) .. ns.T("NOT_YET") .. "|r")
   return text and (text .. "  " .. tag) or tag
 end
 
@@ -1199,7 +1224,14 @@ local function waitingView(mascot, session, task, state)
   elseif slow then
     extra[1] = "retry"
   end
-  local mood = (offer or state == "queued") and "happy" or (line and "idle" or "thinking")
+  local mood = "thinking"
+  if offer or state == "queued" then
+    mood = "happy"
+  elseif slow then
+    mood = "waiting"
+  elseif line then
+    mood = "idle"
+  end
   if task then
     local view = stepView(mascot, session, task)
     view.header = leadText(mascot) or (offer and message) or line or message
@@ -1650,9 +1682,9 @@ function ns.Mascot:ListRow(index)
 end
 
 local ROW_COLORS = {
-  done = { 0.45, 0.5, 0.5 },
-  skipped = { 0.45, 0.5, 0.5 },
-  current = { 1, 1, 1 },
+  done = P.faint,
+  skipped = P.faint,
+  current = CREAM,
   ahead = MUTED,
 }
 
@@ -1666,8 +1698,8 @@ function ns.Mascot:LayoutList(rows, width)
   for i = 1, #rows do
     local entry = rows[i]
     local row = self:ListRow(i)
-    local mark = (entry.state == "done" and "|cff33dd55+|r ") or (entry.state == "skipped" and "- ")
-      or (entry.state == "current" and "|cffffd100>|r ") or ""
+    local mark = (entry.state == "done" and ns.Hex(P.ok) .. "+|r ") or (entry.state == "skipped" and "- ")
+      or (entry.state == "current" and ns.Hex(GOLD) .. ">|r ") or ""
     row.taskId = entry.state == "ahead" and entry.id or nil
     row.text:SetText(mark .. (entry.title or ""))
     local color = ROW_COLORS[entry.state] or MUTED
@@ -1844,7 +1876,7 @@ function ns.Mascot:Layout(view, right)
   if view.meta then
     self.meta:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
   else
-    self.meta:SetTextColor(TEAL[1], TEAL[2], TEAL[3])
+    self.meta:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
   end
   ns.Markup.UseNpcs(view.npcs)
   local topWidth = inner - (TOP_ICON + 4) * 2 - 4
