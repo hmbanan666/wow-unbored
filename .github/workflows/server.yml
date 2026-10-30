@@ -10,6 +10,7 @@ on:
       - "pnpm-workspace.yaml"
       - "package.json"
       - ".github/workflows/server.yml"
+      - "scripts/server-smoke.sh"
       - "docs/companion-api.md"
       - "docs/contract/**"
       - "docs/plan-format.md"
@@ -24,6 +25,7 @@ on:
       - "pnpm-workspace.yaml"
       - "package.json"
       - ".github/workflows/server.yml"
+      - "scripts/server-smoke.sh"
       - "docs/companion-api.md"
       - "docs/contract/**"
       - "docs/plan-format.md"
@@ -42,5 +44,21 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Install, check, and test
         run: pnpm install --frozen-lockfile && pnpm exec vp check && pnpm exec vp test
+      - name: Start like the Dockerfile and answer /health
+        run: scripts/server-smoke.sh
       - name: Docker image
         run: docker build -f apps/server/Dockerfile -t unbored-server .
+      - name: Docker image answers /health
+        run: |
+          docker run -d --name unbored-smoke -p 3998:3000 \
+            -e UNBORED_COMPANION_TOKEN=smoke-companion -e UNBORED_PLANNER_TOKEN=smoke-planner \
+            unbored-server
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3998/health; then
+              docker rm -f unbored-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs unbored-smoke
+          exit 1
