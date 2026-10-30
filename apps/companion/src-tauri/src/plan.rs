@@ -39,6 +39,15 @@ pub struct Plan {
     pub request_status: Option<String>,
     #[serde(default)]
     pub request_reason: Option<String>,
+    /// The card fields (ADR 0038); all optional, a 0.7 plan has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rewards: Option<Vec<String>>,
     pub tasks: Vec<Task>,
     /// Npc names and places for `{npc:ID}` tokens (packages/contracts/markup.md).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -68,6 +77,13 @@ pub struct Task {
     pub complete: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waypoints: Option<Vec<Waypoint>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rewards: Option<Vec<String>>,
+    /// `{ text, check = { kind, id, atLeast } }`, checked live by the addon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -737,6 +753,18 @@ fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
     if let Some(note) = &plan.note {
         push_pair(&mut out, 1, "note", &Value::String(note.clone()));
     }
+    for (key, text) in [
+        ("title", &plan.title),
+        ("goal", &plan.goal),
+        ("details", &plan.details),
+    ] {
+        if let Some(text) = text {
+            push_pair(&mut out, 1, key, &Value::String(text.clone()));
+        }
+    }
+    if let Some(rewards) = &plan.rewards {
+        push_pair(&mut out, 1, "rewards", &Value::from(rewards.clone()));
+    }
     if let Some(request_id) = &plan.request_id {
         push_pair(&mut out, 1, "requestId", &Value::String(request_id.clone()));
     }
@@ -779,6 +807,15 @@ fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
         }
         if let Some(note) = &task.note {
             push_pair(&mut out, 3, "note", &Value::String(note.clone()));
+        }
+        if let Some(why) = &task.why {
+            push_pair(&mut out, 3, "why", &Value::String(why.clone()));
+        }
+        if let Some(rewards) = &task.rewards {
+            push_pair(&mut out, 3, "rewards", &Value::from(rewards.clone()));
+        }
+        if let Some(condition) = task.condition.as_ref().filter(|value| value.is_object()) {
+            push_pair(&mut out, 3, "condition", condition);
         }
         if let Some(complete) = &task.complete {
             out.push_str("      [\"complete\"] = ");
@@ -1075,6 +1112,46 @@ mod tests {
             count_lua_literals("-- 12 \"x\"\nT = { [\"a\"] = 12, b2 = \"q\\\"z\" }\n"),
             3
         );
+    }
+
+    #[test]
+    fn writes_the_card_fields_the_addon_reads() {
+        const CARD: &str = include_str!("../../../../packages/contracts/fixtures/plan-card.json");
+        const CARD_LUA: &str =
+            include_str!("../../../../packages/contracts/fixtures/plan-card.lua");
+        let plan = plan_from_value(serde_json::from_str(CARD).unwrap()).unwrap();
+        let lua = render_plan_lua(&plan);
+        if std::env::var_os("UNBORED_WRITE_FIXTURES").is_some() {
+            fs::write(
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../packages/contracts/fixtures/plan-card.lua"
+                ),
+                &lua,
+            )
+            .unwrap();
+            return;
+        }
+        assert_eq!(lua, CARD_LUA, "plan-card.lua is what the Companion writes");
+        let values = parse_saved_variables(&lua).unwrap();
+        let root = values.get("UnboredExternalPlan").unwrap();
+        let get = crate::savedvars::table_get;
+        assert_eq!(
+            get(root, "title").and_then(|v| v.as_str()),
+            Some("Ashes in one evening")
+        );
+        assert_eq!(
+            crate::savedvars::array_items(get(root, "rewards").unwrap()).len(),
+            2
+        );
+        let tasks = crate::savedvars::array_items(get(root, "tasks").unwrap());
+        assert!(get(tasks[0], "why").is_some() && get(tasks[0], "rewards").is_some());
+        let check = get(get(tasks[1], "condition").unwrap(), "check").unwrap();
+        assert_eq!(get(check, "kind").and_then(|v| v.as_str()), Some("level"));
+
+        const OLD: &str = include_str!("../../../../packages/contracts/fixtures/plan.json");
+        let old = render_plan_lua(&plan_from_value(serde_json::from_str(OLD).unwrap()).unwrap());
+        assert!(!old.contains("\n  [\"title\"]") && !old.contains("[\"rewards\"]"));
     }
 
     fn small_plan(id: &str) -> Plan {
