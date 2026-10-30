@@ -845,6 +845,7 @@ local function waitingView(mascot, session, task, state)
   elseif slow then
     extra[1] = "retry"
   end
+  local mood = (offer or state == "queued") and "happy" or (line and "idle" or "thinking")
   if task then
     local view = stepView(mascot, session, task)
     view.header = leadText(mascot) or (offer and message) or line or message
@@ -852,12 +853,13 @@ local function waitingView(mascot, session, task, state)
       view.buttons[#view.buttons + 1] = extra[i]
     end
     view.slow = slow
+    view.mood = mood
     return view
   end
   return {
     kind = "waiting",
     key = (req and req.id or "") .. ":" .. state .. ":" .. (offer and "eta" or ""),
-    mood = (offer or state == "queued") and "happy" or (line and "idle" or "thinking"),
+    mood = mood,
     header = req and flowSummary(req) or nil,
     message = message,
     sub = not offer and line or nil,

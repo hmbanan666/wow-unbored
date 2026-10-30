@@ -27,6 +27,9 @@ local function initDB()
   if UnboredDB.tomtomArrow == nil then
     UnboredDB.tomtomArrow = true
   end
+  if UnboredDB.tooltipLines == nil then
+    UnboredDB.tooltipLines = true
+  end
   if UnboredDB.chatNotes == nil then
     UnboredDB.chatNotes = false
   end

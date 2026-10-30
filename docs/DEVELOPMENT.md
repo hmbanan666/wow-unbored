@@ -35,7 +35,7 @@ Inside `addon/`:
 Unbored.toc
 Bindings.xml
 Core/         session, Requests, Advice, Intents, profile, codec, locale
-Data/         contributor tables (Presets, Items, AdviceTable, ...)
+Data/         contributor tables (Presets, Items, Rares, ...)
 Providers/    one file per mode
 UI/           Wisp (Mascot.lua), the list view, item help, minimap button
 Media/        portraits and Icon*.tga (built by art/*.py)
@@ -79,13 +79,7 @@ Release notes are one Install / Download section (the setup.exe, then the zip fo
 
 ## Tooltip Advice
 
-`Core/Advice.lua` gives every item one "Wisp: <action>" line from the first rule that matches ([ADR 0019](adr/0019-tooltip-advice.md)): needed for the Plan, starts a quest, quest item, new mount / toy / pet, already known, new look, armour upgrade, Personal advice from the Companion (`UnboredAdvice` in `Unbored_Plan/Advice.lua`) or a planner answer, the bundled table, junk, gear to disenchant or sell, reagents (own profession, an Alt's profession via the account-wide Alt registry, or sell), consumables, things to open, no value. It never says delete, never says sell for epic or bind-on-equip items, and never routes a soulbound item to an Alt. An item no rule knows is logged to the profile (`unmatchedItems`) and, with the Companion, the tooltip says "Drop on Wisp to ask".
-
-The bundled table is `Data/AdviceTable.lua`, one row per item id:
-
-```lua
-[12345] = { action = "keep", en = "Keep: crafting knowledge", ru = "Оставь: знания для ремесла" },
-```
+`Core/Advice.lua` adds at most one "Wisp: ..." line to an item tooltip, and only when it is about this player ([ADR 0035](adr/0035-personal-only-advice.md)). The rules, first match wins: needed for the active Plan (names the Step), starts a quest this character has not completed, new for the Account's collection (a mount, toy, pet or look no character has), Personal advice from the Server (`UnboredAdvice` in `Unbored_Plan/Advice.lua`) or a planner answer about the item, and a reagent for a profession an Alt has and this character lacks, with the route (mail or warband bank, [ADR 0021](adr/0021-account-and-alt-routing.md)). No line is the default. It never says delete, never says sell for epic or bind-on-equip items, and never routes a soulbound item to an Alt. The menu toggle "Wisp lines in tooltips" (on by default, `UnboredDB.tooltipLines`) turns them all off.
 
 ## Slash commands and keybinds
 

@@ -859,7 +859,7 @@ mascot:ShowItem({ itemID = 4242, link = "|Hitem:4242|h[Odd Thing]|h" })
 check(UnboredCharDB.request == nil and textOf(mascot.message) == "I don't know this one yet.", "unknown item")
 mascot.buttons.back:Click()
 
--- Tooltip Advice (docs/adr/0019): one teal line, first match wins.
+-- Tooltip Advice (docs/adr/0035): a line only when it is about this player.
 ITEMS[1234] = { name = "Silly toy", quality = 1 }
 ITEMS[555] = { name = "Sky Wisp Reins", quality = 3, classID = 15, subclassID = 5 }
 ITEMS[900] = { name = "Broken Fang", quality = 0, sellPrice = 50 }
@@ -871,10 +871,10 @@ local function tip(id, owner)
   tooltipCalls[0](owner or GameTooltip, { id = id })
   return tooltipLines[1] or "", tooltipLines[2]
 end
-check(tip(1234):find("Wisp:", 1, true) and tip(1234):find("new toy", 1, true), "a toy: " .. tip(1234))
-check(tip(555):find("learn Sky Wisp", 1, true), "a mount: " .. tip(555))
-check(tip(900):find("Junk: sell it", 1, true), "junk: " .. tip(900))
-check(tip(901):find("Not for your professions", 1, true), "a reagent nobody uses: " .. tip(901))
+check(tip(1234) == "|cff5fe3d4Wisp:|r New for your collection", "a toy nobody on the Account has: " .. tip(1234))
+check(tip(555):find("New for your collection", 1, true), "a new mount: " .. tip(555))
+check(tip(900) == "", "junk: no line")
+check(tip(901) == "", "a reagent no Alt uses: no line")
 UnboredDB.alts = {
   ["Area 52-Alty"] = {
     name = "Alty",
@@ -884,16 +884,16 @@ UnboredDB.alts = {
     professions = { { skillLine = 171, name = "Alchemy", skill = 50 } },
   },
 }
-check(tip(901):find("Send to Alty (Alchemy): mail it", 1, true), "a reagent for an Alt: " .. tip(901))
+check(tip(901):find("Send to Alty (Alchemy 50): mail it", 1, true), "a reagent for an Alt: " .. tip(901))
 UnboredDB.alts["Area 52-Alty"].realm = "Stormrage"
 check(tip(901):find("warband bank", 1, true), "another realm: the warband bank")
-check(tip(902):find("Drop on Wisp to ask", 1, true), "unknown, with the Companion: drop to ask")
+check(tip(902) == "", "an item Wisp has nothing personal about: no line, no drop hint")
 local profile = UnboredCharDB.profile
 local logged = false
 for _, id in ipairs(profile and profile.unmatchedItems or {}) do
   logged = logged or (type(id) == "table" and id.itemID or id) == 902
 end
-check(logged, "an unmatched item is logged to grow the rules")
+check(logged, "an unmatched item is logged for the Planner")
 check(tip(42) == "", "nothing until the game has the item")
 check(tip(1234, mascot.frame) == "", "other tooltips are left alone")
 UnboredAdvice = {
@@ -907,10 +907,17 @@ UnboredAdvice = {
     },
   },
 }
-check(tip(902):find("the Planner says", 1, true), "Personal advice from the Companion")
-check(not tip(903):find("vendor", 1, true), "never sell an epic, even if told")
-check(tip(900):find("Junk: sell it", 1, true), "an unsafe line is dropped")
+check(tip(902):find("the Planner says", 1, true), "Personal advice from the Server")
+check(tip(903) == "", "never sell an epic, even if told")
+check(tip(900) == "", "an unsafe line is dropped")
 UnboredAdvice = nil
+local toyStep = { id = "toy", title = "Get {item:1234|the toy}", complete = { kind = "toy", itemID = 1234 } }
+ns.Session:ApplyPlan({ tasks = { toyStep } }, "import", false)
+check(tip(1234) == "|cff5fe3d4Wisp:|r Needed for your plan: Get Silly toy",
+  "needed for the plan names the Step: " .. tip(1234))
+UnboredDB.tooltipLines = false
+check(tip(1234) == "", "the menu toggle turns every line off")
+UnboredDB.tooltipLines = true
 
 -- A failed Request: Wisp's words for each Reason code, never raw text.
 local function waitingRequest(id, sentAt)
