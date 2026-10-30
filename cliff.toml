@@ -3,7 +3,10 @@
 # release script; "addon" and "companion" remain for a local preview.
 # Squash merges keep each commit as one "* type(scope): ..." line in the
 # body, so split_commits turns every line into its own entry. The
-# "chore(release)" title line is dropped in the template. Players see
+# "chore(release)" title line, and a title that starts with a version
+# ("feat: v0.8.0 ..."), are dropped in the template, not by a skip parser:
+# git-cliff parses the whole commit before it splits it, so skipping the
+# title would drop every line of the squash. Players see
 # Features, Fixes and Performance only (D114); a line already shown, in any
 # group, is not shown again (D115).
 
@@ -19,6 +22,7 @@ body = """
 {% if only == "companion" and commit.scope != "companion" %}{% continue %}{% endif -%}
 {% if only == "addon" and commit.scope in ["companion", "server"] %}{% continue %}{% endif -%}
 {% set line = commit.message | split(pat="\n") | first | trim | lower | trim_end_matches(pat=".") | trim -%}
+{% if line is matching("^v?[0-9]+\\.[0-9]+") %}{% continue %}{% endif -%}
 {% if line in seen %}{% continue %}{% endif -%}
 {% set_global seen = seen | concat(with=line) -%}
 {% set_global shown = shown | concat(with=commit) -%}

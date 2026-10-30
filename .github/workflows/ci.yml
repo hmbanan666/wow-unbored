@@ -68,3 +68,4 @@ jobs:
         run: |
           pipx install git-cliff==2.14.2
           bash scripts/test-release-notes.sh v0.7.0
+          bash scripts/test-release-notes.sh v0.8.0

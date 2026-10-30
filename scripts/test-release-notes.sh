@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Renders the release notes for a past release and checks they are for
-# players (D116): no bullet twice, no dependency bumps, no formatting
+# players (D116): no bullet twice, no release title, no dependency bumps, no formatting
 # commits, and the Install section on top. Needs the tags (fetch-depth 0)
 # and git-cliff 2.14.2.
 # Usage: scripts/test-release-notes.sh [tag]   (default v0.7.0)
@@ -25,6 +25,10 @@ if [ -n "$duplicates" ]; then
 fi
 if printf '%s\n' "$notes" | grep -qi '^- bump'; then
   echo "a dependency bump is in the notes"
+  fail=1
+fi
+if printf '%s\n' "$notes" | grep -qiE '^- v?[0-9]+\.[0-9]+'; then
+  echo "a release title is in the notes"
   fail=1
 fi
 if printf '%s\n' "$notes" | grep -qi '^- format'; then
