@@ -533,20 +533,31 @@ ns.UI.HasCompanion = function()
   return true
 end
 
--- The Request flow (docs/adr/0033): quick -> survey -> confirm -> sent -> waiting.
+-- D124: a 0.8 "Something else" draft is dropped at login, quietly; a queued one still goes once.
+local keptFlow = UnboredCharDB.request
+UnboredCharDB.request = { state = "survey", custom = true, wish = "old wish" }
+UnboredCharDB.lastWish = "old wish"
+check(ns.Session.DropCustomDraft() == true and UnboredCharDB.request == nil and UnboredCharDB.lastWish == nil,
+  "an unsent custom draft is dropped")
+UnboredCharDB.request = { id = "req-c", type = "plan", custom = true, wish = "old", state = "queued", createdAt = 1 }
+check(ns.Session.DropCustomDraft() == false and UnboredCharDB.request.id == "req-c"
+  and ns.Session:FlowState() == "queued", "a queued 0.8 custom Request is kept and still sends")
+UnboredCharDB.request = { state = "survey", topic = "mount", mode = "farm" }
+check(ns.Session:FlowState() == "confirm", "a 0.8 draft left in the Survey is a Confirm now")
+UnboredCharDB.request = keptFlow
+
+-- The Request flow (docs/adr/0033, 0046): quick -> confirm -> sent -> waiting. Nothing is typed.
 local mountPreset = ns.Data.Presets[2]
 local stateBefore = ns.Session.state
 ns.Session:BeginQuick(mountPreset)
-check(ns.Session:FlowState() == "quick" or ns.Session:FlowState() == "survey", "a preset starts the flow")
+check(ns.Session:FlowState() == "quick" or ns.Session:FlowState() == "confirm", "a preset starts the flow")
 check(ns.Session:PendingRequest() == nil and reloads == 0, "nothing is sent by a preset")
-ns.Session:BeginSurvey({ wish = "mount, stay in this zone" })
-check(ns.Session:FlowState() == "survey" and ns.Session.Flow().custom, "Something else opens the Survey")
-check(not ns.Session:Locked(), "the Survey does not lock Bory")
-ns.Session:SurveyDone("mount, stay in this zone", 45)
-check(ns.Session:FlowState() == "confirm" and ns.Session.Flow().budget == 45, "typed minutes go with a custom wish")
-ns.Session:FlowBack()
-check(ns.Session:FlowState() == "survey", "Back from Confirm is the Survey")
-ns.Session:SurveyDone("mount, stay in this zone", nil)
+check(ns.Session.BeginSurvey == nil and ns.Session.SurveyDone == nil and ns.Session.AskQuestion == nil,
+  "no Survey with free text and no Ask (D122)")
+UnboredCharDB.request.state = "quick"
+ns.Session:ToConfirm()
+check(ns.Session:FlowState() == "confirm" and not ns.Session:Locked(), "Want a proper plan? is Confirm at once")
+UnboredCharDB.request.wish = "mount, stay in this zone"
 check(ns.Session:Send() ~= nil and reloads == 1, "Send now writes the Request and reloads in the click")
 local req = UnboredCharDB.request
 check(req.state == "sent" and ns.Session:Locked(), "sent locks Bory")
@@ -554,7 +565,8 @@ check(req.state == "sent" and ns.Session:Locked(), "sent locks Bory")
 req.state, req.sentAt = "queued", nil
 reloads = 0
 check(ns.Session:Locked(), "a queued Request from 0.7 still locks Bory")
-check(req and req.type == "plan" and req.mode == "farm" and req.budget == nil, "a plan Request with no time budget")
+check(req and req.type == "plan" and req.mode == "farm" and req.budget == nil and req.custom == nil,
+  "a plan Request with no time budget")
 check(req and req.wish == "mount, stay in this zone" and req.character == "player", "the Request keeps the wish")
 check(req and type(req.context) == "table" and req.context.mapID == 84, "the Request keeps the player context")
 check(req and near(req.context.x, 0.2) and req.context.zone == "Stormwind City", "context has position and zone")
@@ -693,7 +705,7 @@ for i = 1, 11 do
 end
 check(ns.DecodeImport(waypointPlan(many)) == nil, "more than ten route points is rejected")
 
-local asked = ns.Session:Ask({ type = "question", question = "Where is the bank?", topic = "Bad Topic" })
+local asked = ns.Session:BuildRequest({ type = "question", question = "Where is the bank?", topic = "Bad Topic" })
 check(asked.type == "plan" and asked.topic == nil, "the addon only makes plan Requests; a bad topic is dropped")
 -- A 0.6 question Request still in SavedVariables is answered as before.
 UnboredCharDB.request =
@@ -794,7 +806,7 @@ local flow = ns.Session.Flow()
 check(ns.Session:FlowState() == "confirm" and flow.topic == "suggestion" and flow.mode == "farm",
   "a Server idea goes straight to Confirm with its mode")
 check(flow.budget == nil and flow.suggestionId == "mount:183", "with its id and no time")
-local sent = ns.Session:Ask(flow)
+local sent = ns.Session:BuildRequest(flow)
 check(sent.topic == "suggestion" and sent.suggestionId == "mount:183" and sent.suggestion.title == "Tempest Keep",
   "the Request carries the idea")
 check(sent.suggestion.rewards[1] == "{mount:183}" and sent.suggestion.request == nil and sent.budget == nil,

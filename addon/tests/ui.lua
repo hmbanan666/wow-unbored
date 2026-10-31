@@ -472,8 +472,13 @@ for i, button in ipairs(mascot.chips) do
   check(button:GetWidth() == INNER and button:GetHeight() >= 26, "preset chip " .. i .. " spans the bubble")
 end
 check(textOf(mascot.chips[1].label) == "Stay here, do stuff nearby", "the first chip is Stay here")
-check(mascot.otherChip:IsShown() and textOf(mascot.otherChip.label) == "Something else...", "Something else is there")
-check(mascot.timeChips == nil and not mascot.minutesBox:IsShown(), "presets ask no time (docs/adr/0037)")
+check(mascot.otherChip == nil and mascot.wishBox == nil and mascot.minutesBox == nil and mascot.wishEdit == nil,
+  "no Something else, no wish box, no minutes box: nothing to type (D122)")
+check(ns.Mascot.ShowAsk == nil and ns.Mascot.ShowWish == nil and ns.Mascot.SendAsk == nil, "no Ask view (D122)")
+for _, key in ipairs({ "MENU_ASK", "ASK_TITLE", "ASK_HINT", "PRESET_OTHER", "WISH_TITLE", "WISH_HINT",
+  "WISH_MINUTES_HINT", "SURVEY_TITLE", "SURVEY_HINT", "NEARBY_TITLE", "MAKE_PLAN" }) do
+  check(ns.Locales.en[key] == nil and ns.Locales.ru[key] == nil, "no " .. key .. " string left")
+end
 check(not mascot.buttons.done:IsShown(), "no step buttons in the greeting")
 check(mascot.art.texture:find("BoryIdle128", 1, true) ~= nil, "idle portrait")
 check(mascot.back.layer == "BACKGROUND" and mascot.back.texture:find("BoryBack128", 1, true) ~= nil,
@@ -527,7 +532,7 @@ local function menuLabels()
 end
 mascot.frame:Click("RightButton")
 check(ui.menu and ui.menu:IsShown(), "right click opens the menu")
-check(menuLabels() == "New plan|What is this item?|Ask something|Settings", "no-plan menu: " .. menuLabels())
+check(menuLabels() == "New plan|What is this item?|Settings", "no-plan menu, no Ask: " .. menuLabels())
 ui.menu:Hide()
 mascot.menuButton:Click()
 check(ui.menu:IsShown(), "the menu icon in the bubble opens it too")
@@ -629,21 +634,14 @@ clock = clock + 10
 ns.Events.Pulse()
 check(textOf(mascot.header) ~= "Nice!", "the lead line goes away by itself")
 
--- Want a proper plan? -> the Survey: one optional line, no time (D81).
+-- Want a proper plan? -> Confirm at once: nothing to type, no time (D122, D125).
 mascot.buttons.proper:Click()
-check(mascot.view.kind == "survey" and mascot.wishBox:IsShown(), "the Survey has one box")
-check(textOf(mascot.message) == "Anything to add? You can skip it.", "and says it is optional")
-check(not mascot.minutesBox:IsShown(), "a preset asks no minutes")
+check(mascot.view.kind == "confirm" and textOf(mascot.message) == "Shall I send this to the planner?", "Confirm")
 check(textOf(mascot.header) == "Get a mount", "it says what the plan is for: " .. textOf(mascot.header))
-check(shownButtons() == "next,back", "Next or Back: " .. shownButtons())
+check(shownButtons() == "sendnow,back", "one primary action: Send now (D85): " .. shownButtons())
 mascot.buttons.back:Click()
 check(ns.Session:FlowState() == "quick" and mascot.view.kind == "step", "Back returns to the Quick plan")
 mascot.buttons.proper:Click()
-mascot.wishEdit:SetText("no dungeons")
-mascot.buttons.next:Click()
-check(mascot.view.kind == "confirm" and textOf(mascot.message) == "Shall I send this to the planner?", "Confirm")
-check(textOf(mascot.header):find("no dungeons", 1, true) ~= nil, "with the summary line")
-check(shownButtons() == "sendnow,back", "one primary action: Send now (D85): " .. shownButtons())
 rowFits("confirm")
 check(reloads == 0, "still nothing reloaded")
 mascot.buttons.sendnow:Click()
@@ -651,7 +649,7 @@ local req = UnboredCharDB.request
 check(reloads == 1, "Send now reloads in the click")
 check(req and req.type == "plan" and req.mode == "farm" and req.topic == "mount" and req.state == "sent",
   "the preset is sent with its mode")
-check(req.budget == nil and req.wish:find("no dungeons", 1, true), "with the extra line and no time budget")
+check(req.budget == nil and req.custom == nil, "with no time budget and nothing typed")
 
 -- After the reload: waiting, locked, the Quick plan still doable (D67).
 ns.Session:MarkLoaded()
@@ -808,7 +806,7 @@ check(mascot.view.kind == "step", "Continue shows the step")
 
 -- With a plan the menu is about the step first.
 mascot.frame:Click("RightButton")
-check(menuLabels() == "What next?|Skip this step|Show route on map|New plan|What is this item?|Ask something|Settings",
+check(menuLabels() == "What next?|Skip this step|Show route on map|New plan|What is this item?|Settings",
   "plan menu order: " .. menuLabels())
 ui.menu:Hide()
 
@@ -825,28 +823,6 @@ ns.Events.Pulse()
 check(#mascot.echoes == 0, "older messages go away by themselves")
 check(mascot.view.kind == "choice" and textOf(mascot.message) == "All done, nice work! What next?", "it celebrates")
 
--- Something else...: the Survey with free text; minutes only if typed (docs/adr/0037).
-mascot.otherChip:Click()
-check(mascot.view.kind == "survey" and mascot.wishBox:IsShown(), "Something else opens the wish box")
-check(mascot.minutesBox:IsShown() and textOf(mascot.minutesEdit) == "", "with an empty, optional minutes box")
-check(textOf(mascot.minutesBox.placeholder) == "Minutes, only if you have a limit", "that says it is optional")
-mascot.wishEdit:SetText("")
-mascot.buttons.next:Click()
-check(textOf(mascot.sub) == "Type a few words first.", "an empty wish is not sent")
-mascot.wishEdit:SetText("all of Hallowfall's exploration")
-mascot.minutesEdit:SetText("300")
-mascot.buttons.next:Click()
-check(textOf(mascot.sub) == "Minutes: a whole number from 5 to 240, or leave it empty.", "bad minutes are not sent")
-mascot.minutesEdit:SetText("45")
-mascot.buttons.next:Click()
-check(mascot.view.kind == "confirm" and textOf(mascot.header):find("45 min", 1, true), "Confirm shows the minutes")
-check(mascot.buttons.sendlater == nil, "no Send at logout any more (D85)")
-mascot.buttons.sendnow:Click()
-req = UnboredCharDB.request
-check(reloads == 3 and req.state == "sent", "Send now sends and reloads in the click")
-check(req.budget == 45 and req.wish == "all of Hallowfall's exploration", "typed minutes go with the wish")
-check(UnboredCharDB.lastWish == "all of Hallowfall's exploration", "the wish is remembered")
-ns.Session:CancelRequest()
 -- A Request a 0.7 client queued for logout: Bory offers Send now.
 UnboredCharDB.request = { id = "req-old", type = "plan", mode = "custom", wish = "old", state = "queued",
   createdAt = clock }
@@ -855,41 +831,6 @@ check(shownButtons() == "sendnow" and textOf(mascot.message) == "Shall I send th
   "a 0.7 queued Request: Send now: " .. shownButtons())
 ns.Session:CancelRequest()
 check(not ns.Session:Locked(), "Cancel unlocks")
-
--- Ask: the local answer at once; what Bory can't answer may become a plan (D64).
-mascot.frame:Click("RightButton")
-menuRow("Ask something"):Click()
-check(mascot.view.kind == "ask" and mascot.wishBox:IsShown(), "Ask is one box in the bubble")
-check(textOf(mascot.wishBox.placeholder) == "e.g. where can I get a flying mount?", "with its own hint")
-mascot.buttons.send:Click()
-check(textOf(mascot.sub) == "Type your question first.", "an empty question is not sent")
-mascot.wishEdit:SetText("What can I do nearby?")
-mascot.buttons.send:Click()
-check(reloads == 3 and UnboredCharDB.request == nil, "a question sends nothing to the planner")
-local answer = UnboredCharDB.answer
-check(answer and answer.isLocal and answer.intent == "here", "a local answer at once")
-check(mascot.view.kind == "answer" and textOf(mascot.header):find("nearby", 1, true), "the bubble shows it")
-rowFits("a local answer")
-check(mascot.buttons.ok:IsShown() and not mascot.buttons.refresh:IsShown(), "no Refresh for a local answer")
-mascot.buttons.ok:Click()
-check(mascot.view.kind ~= "answer", "Got it closes the answer")
-
--- A question Bory cannot answer here: offer a plan through the Survey.
-mascot:ShowAsk("ask", "Why is the sky blue?")
-mascot.buttons.send:Click()
-check(textOf(mascot.message) == "I can't answer that one here. Want a plan from it?", "unknown: a plan instead")
-check(shownButtons() == "makeplan,ok", "Make a plan or Got it: " .. shownButtons())
-mascot.buttons.makeplan:Click()
-check(mascot.view.kind == "survey" and textOf(mascot.wishEdit) == "Why is the sky blue?", "the question is the wish")
-mascot.buttons.back:Click()
-check(ns.Session:FlowState() == "idle", "Back drops it")
-
--- A Russian question gets Russian lines.
-mascot:ShowAsk("ask", "Что делать рядом?")
-mascot.buttons.send:Click()
-check(UnboredCharDB.answer.lang == "ru" and UnboredCharDB.answer.intent == "here", "the Russian question is understood")
-check(textOf(mascot.message):find("[\208\209]") ~= nil, "the answer is in Russian: " .. textOf(mascot.message))
-mascot.buttons.ok:Click()
 
 -- A 0.6 question Request still on disk: its Answer is shown in up to three bubbles.
 UnboredCharDB.request = { id = "req-q", type = "question", question = "Where?", createdAt = clock, onDisk = true }
@@ -1057,7 +998,7 @@ fail("planner_failed", "Nothing nearby.")
 check(mascot.view.kind == "failed" and textOf(mascot.sub) == "Nothing nearby.", "the Planner's own reason is shown")
 check(shownButtons() == "retry,ok", "with Try again and Got it")
 fail("rejected", "HTTP 400 bad body")
-check(textOf(mascot.sub):find("another way", 1, true) and not bubbleText():find("HTTP", 1, true),
+check(textOf(mascot.sub):find("another idea", 1, true) and not bubbleText():find("HTTP", 1, true),
   "rejected: no raw error")
 fail("not_approved", "403")
 check(textOf(mascot.sub):find("one-time OK", 1, true), "not approved: pairing")
@@ -1133,7 +1074,7 @@ mascot.pill:Click("LeftButton")
 mascot.updateLater = nil
 ns.Session:RefreshUI()
 mascot.buttons.load:Click()
-check(reloads == 4 and UnboredCharDB.updateTried == "9.9.9", "Load reloads and remembers the try")
+check(reloads == 3 and UnboredCharDB.updateTried == "9.9.9", "Load reloads and remembers the try")
 ns.Session:RefreshUI()
 check(textOf(mascot.message):find("restart the game", 1, true), "still old after Load: restart once")
 mascot.buttons.ok:Click()
@@ -1165,20 +1106,14 @@ UnboredCompanionStatus = nil
 mascot:ShowChoice()
 mascot.chips[1]:Click()
 check(UnboredCharDB.request == nil and mascot.view.kind ~= "waiting", "no Companion: a preset makes no Request")
-mascot:ShowAsk("ask", "Why is the sky blue?")
-mascot.buttons.send:Click()
-check(UnboredCharDB.request == nil and bubbleText():find("Unbored Companion", 1, true),
-  "no Companion: Bory says the planner needs it")
-check(not mascot.buttons.refresh:IsShown() and not mascot.buttons.makeplan:IsShown(),
-  "and offers no Refresh and no plan from it")
-mascot.buttons.ok:Click()
+check(not mascot.buttons.proper:IsShown(), "no Companion: no proper-plan button")
 check(tip(902) == "", "no Companion: no drop-to-ask line")
 ns.UI:OpenItem({ itemID = 6948, link = HEARTH })
 check(mascot.view.kind == "item", "no Companion: the item still opens")
 mascot.buttons.back:Click()
 C_AddOns.IsAddOnLoaded = loaded
 
--- Ideas first (D108): up to four chips, Surprise me and Something else, More ideas.
+-- Ideas first (D139): up to four chips, then Surprise me and More ideas on one row.
 local savedHas = ns.UI.HasCompanion
 ns.UI.HasCompanion = function() return true end
 UnboredCharDB.request = nil
@@ -1199,13 +1134,12 @@ check(textOf(mascot.ideaChips[1].sub) == "None of your 2 characters has it yet",
 check(mascot.ideaChips[1].icon:IsShown() and not mascot.ideaChips[2].icon:IsShown(),
   "one reward picture on the right, none without a reward")
 check(not mascot.ideaChips[3]:IsShown(), "only as many chips as ideas")
-local surpriseAt, otherAt = mascot.surpriseChip.points[1], mascot.otherChip.points[1]
-check(mascot.surpriseChip:IsShown() and mascot.otherChip:IsShown() and surpriseAt[5] == otherAt[5]
-  and surpriseAt[4] < otherAt[4], "Surprise me and Something else sit side by side")
-check(textOf(mascot.surpriseChip.label) == "Surprise me" and textOf(mascot.otherChip.label) == "Something else...",
+local surpriseAt, moreAt = mascot.surpriseChip.points[1], mascot.moreIdeas.points[1]
+check(mascot.surpriseChip:IsShown() and mascot.moreIdeas:IsShown() and surpriseAt[5] == moreAt[5]
+  and surpriseAt[4] < moreAt[4], "Surprise me and More ideas sit side by side")
+check(textOf(mascot.surpriseChip.label) == "Surprise me" and textOf(mascot.moreIdeas.label) == "More ideas",
   "with their labels")
-check(not mascot.chips[1]:IsShown() and mascot.moreIdeas:IsShown() and textOf(mascot.moreIdeas.label) == "More ideas",
-  "the presets wait behind More ideas")
+check(not mascot.chips[1]:IsShown(), "the presets wait behind More ideas")
 mascot.moreIdeas:Click()
 local presetsShown = 0
 for i = 1, #mascot.chips do
@@ -1213,7 +1147,6 @@ for i = 1, #mascot.chips do
 end
 check(presetsShown == 5 and not mascot.chips[6]:IsShown(), "More ideas shows the other five presets")
 check(textOf(mascot.moreIdeas.label) == "Show less", "and folds back")
-check(not mascot.minutesBox:IsShown(), "ideas never ask for time (D110)")
 mascot.ideaChips[1]:Click()
 check(mascot.view.kind == "confirm" and textOf(mascot.header) == "Tempest Keep", "an idea goes straight to Confirm")
 check(textOf(mascot.sub):find("You will get:", 1, true) ~= nil, "Confirm shows its rewards")
@@ -1477,7 +1410,7 @@ check(mascot.frame:IsShown(), "the minimap button brings it back")
 SlashCmdList.UNBORED("")
 check(mascot.view.kind == "choice" and mascot.bubble:IsShown(), "/unbored offers the presets")
 SlashCmdList.UNBORED("ask where to fish?")
-check(mascot.view.kind == "ask" and textOf(mascot.wishEdit) == "where to fish?", "/unbored ask still asks")
+check(mascot.view.kind == "choice", "/unbored ask opens the ideas: nothing is typed any more")
 Unbored_Toggle()
 check(mascot.view.kind == "choice", "the toggle key offers the presets")
 
@@ -1494,7 +1427,7 @@ check(UnboredCharDB.profile == nil, "no 0.6 profile is saved")
 check(type(UnboredCharDB.data) == "table" and type(UnboredCharDB.data.sections) == "table",
   "the snapshot is saved with the game")
 
-check(reloads == 4, "only the Send now, Refresh and Load clicks ever reloaded: " .. reloads)
+check(reloads == 3, "only the Send now, Refresh and Load clicks ever reloaded: " .. reloads)
 ns.Now = realNow
 
 if fails > 0 then

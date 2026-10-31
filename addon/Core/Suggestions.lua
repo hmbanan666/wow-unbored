@@ -9,8 +9,12 @@ local _, ns = ...
 ns.Suggestions = {}
 
 local S = ns.Suggestions
+-- Four chips first, up to six more under More ideas (D139); the Server sends
+-- up to ten per Character and the addon adds up to three of its own (D140).
 S.MAX = 4
-S.LOCAL_MAX = 2
+S.MORE = 6
+S.SERVER_MAX = 10
+S.LOCAL_MAX = 3
 S.LOCAL_SECONDS = 30
 S.KINDS = { event = true, achievement = true, rare = true, collection = true }
 -- What kind of plan an idea asks for, with no time (D110).
@@ -98,7 +102,7 @@ function S.Read(now)
   if not list then
     return out
   end
-  for i = 1, math.min(#list, 6) do
+  for i = 1, math.min(#list, S.SERVER_MAX) do
     local idea = S.Clean(list[i])
     if idea and not (idea.expiresAt and idea.expiresAt <= now) then
       idea.quick = nil
@@ -234,7 +238,7 @@ end
 
 function S.List(now)
   now = now or ns.Now()
-  return S.Merge(S.Read(now), S.Local(now), S.MAX)
+  return S.Merge(S.Read(now), S.Local(now), S.MAX + S.MORE)
 end
 
 -- The muted line under an idea's title, in the player's language.

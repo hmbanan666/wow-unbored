@@ -1,7 +1,7 @@
 -- The whole in-game UI (docs/adr/0004, 0016): a small round portrait and a
 -- bubble beside it, with at most two older messages fading above it. The
--- bubble shows one thing: the presets, the wish or question box, an item, an
--- Answer, the Refresh offer, or the current step. Text always shows in full:
+-- bubble shows one thing: the ideas and presets, an item, an Answer, the
+-- Refresh offer, or the current step. Nothing is ever typed (docs/adr/0046). Text always shows in full:
 -- each string is measured after its width is set and the bubble grows.
 -- The portrait and the bubble have their own size settings; the bubble is
 -- parented to UIParent and only anchored to the portrait.
@@ -63,11 +63,9 @@ local PORTRAIT_RING = "BoryFrame128"
 local ACTIONS = {
   done = { icon = "IconDone", tip = "TIP_DONE" },
   skip = { icon = "IconSkip", tip = "TIP_SKIP" },
-  send = { icon = "IconSend", tip = "SEND" },
   back = { icon = "IconBack", tip = "BACK" },
   ok = { icon = "IconDone", tip = "GOT_IT" },
   cancel = { icon = "IconClose", tip = "CANCEL_REQUEST" },
-  plan = { icon = "IconPlan", label = "INTENT_PLAN" },
   refresh = { icon = "IconRefresh", label = "REFRESH", tip = "TIP_REFRESH" },
   load = { icon = "IconRefresh", label = "LOAD", tip = "TIP_REFRESH" },
   retry = { label = "TRY_AGAIN" },
@@ -76,9 +74,7 @@ local ACTIONS = {
   continue = { label = "CONTINUE" },
   new = { label = "SOMETHING_NEW" },
   proper = { icon = "IconPlan", label = "WANT_PROPER", tip = "TIP_WANT_PROPER" },
-  next = { icon = "IconSend", label = "NEXT" },
   sendnow = { icon = "IconSend", label = "SEND_NOW", tip = "TIP_SEND_NOW" },
-  makeplan = { icon = "IconPlan", label = "MAKE_PLAN" },
 }
 
 local function db()
@@ -714,11 +710,9 @@ function ns.Mascot:CreateBubble()
   local handlers = {
     done = function() ns.Session:Done() end,
     skip = function() ns.Session:Skip() end,
-    send = function() self:SendAsk() end,
     back = function() self:Back() end,
     ok = function() self:OnOk() end,
     cancel = function() ns.Session:CancelRequest() end,
-    plan = function() ns.Session:AnswerPlan() end,
     -- ReloadUI straight from the click: it needs the hardware event.
     refresh = function()
       if ns.Session:RefreshOffer() then
@@ -736,21 +730,16 @@ function ns.Mascot:CreateBubble()
       ns.Session.welcomeBack = false
       self:ShowChoice()
     end,
-    proper = function()
-      ns.Session:ToSurvey()
-      self:FocusWish()
-    end,
-    next = function() self:SurveyNext() end,
+    proper = function() ns.Session:ToConfirm() end,
     -- Send now reloads in this click: it needs the hardware event (D66).
     sendnow = function() ns.Session:Send() end,
-    makeplan = function() self:PlanFromAnswer() end,
   }
   self.buttons = {}
   for name, spec in pairs(ACTIONS) do
     self.buttons[name] = actionButton(bubble, spec, handlers[name])
   end
 
-  -- The choice: one chip per preset, then "Something else...".
+  -- The presets: shown when there are no ideas, else under More ideas.
   self.chips = {}
   for i = 1, #ns.Data.Presets do
     local preset = ns.Data.Presets[i]
@@ -760,14 +749,10 @@ function ns.Mascot:CreateBubble()
     button.preset = preset
     self.chips[i] = button
   end
-  self.otherChip = chip(bubble, "GameFontNormal", function()
-    self:ShowWish()
-  end)
-
-  -- Ideas first (D108): up to four, then Surprise me and Something else side
-  -- by side, and "More ideas" for the other presets.
+  -- Ideas first (D139): up to four, then Surprise me and More ideas side by
+  -- side. More ideas shows the next ideas and the presets.
   self.ideaChips = {}
-  for i = 1, ns.Suggestions.MAX do
+  for i = 1, ns.Suggestions.MAX + ns.Suggestions.MORE do
     self.ideaChips[i] = ideaChip(bubble, function(button)
       self:ChooseSuggestion(button.idea)
     end)
@@ -775,18 +760,10 @@ function ns.Mascot:CreateBubble()
   self.surpriseChip = chip(bubble, "GameFontNormal", function()
     self:Choose(self.Preset("surprise"))
   end)
-  self.moreIdeas = textToggle(bubble, function()
+  self.moreIdeas = chip(bubble, "GameFontNormal", function()
     self.showPresets = not self.showPresets
     self:Refresh()
   end)
-
-  self.wishBox, self.wishEdit = ns.UI.MakeTextBox(bubble, ns.T("WISH_HINT"), 300, function()
-    self.wishError = nil
-  end, INNER, 64)
-  self.wishBox:Hide()
-  -- Only the fully custom wish may carry minutes, and only when typed (docs/adr/0037).
-  self.minutesBox, self.minutesEdit = ns.UI.MakeNumberBox(bubble, ns.T("WISH_MINUTES_HINT"), 3, INNER)
-  self.minutesBox:Hide()
 
   self.echoFrames = {}
   for i = 1, ECHOES do
@@ -899,9 +876,6 @@ function ns.Mascot.RequestSummary(req)
     return item.link or item.name
   end
   if req.type == "question" then
-    if req.topic == "nearby" then
-      return ns.T("MENU_NEARBY")
-    end
     return req.question and ("\"" .. req.question .. "\"") or nil
   end
   local preset = ns.Mascot.Preset(req.topic)
@@ -910,21 +884,12 @@ function ns.Mascot.RequestSummary(req)
   local text
   if idea and type(idea.title) == "string" and idea.title ~= "" then
     text = ns.Suggestions.Title(idea)
-    if type(req.extra) == "string" and req.extra ~= "" then
-      text = text .. "\n\"" .. req.extra .. "\""
-    end
   elseif preset then
     text = ns.T(preset.label)
-    if type(req.extra) == "string" and req.extra ~= "" then
-      text = text .. "\n\"" .. req.extra .. "\""
-    end
   elseif wish then
     text = "\"" .. wish .. "\""
   else
     text = ns.ModeLabel(req.mode or ns.Session.ChosenMode())
-  end
-  if not preset and tonumber(req.budget) then
-    text = text .. "  ·  " .. ns.T("MINUTES", tonumber(req.budget))
   end
   return text
 end
@@ -1173,24 +1138,7 @@ local function itemView(mascot)
   }
 end
 
-local function askView(mascot)
-  local mode = mascot.asking
-  if mode == "item" then
-    return itemView(mascot)
-  end
-  local nearby = mode == "nearby"
-  return {
-    kind = mode,
-    mood = "idle",
-    message = nearby and ns.T("NEARBY_TITLE") or ns.T("ASK_TITLE"),
-    sub = mascot.wishError,
-    wish = true,
-    hint = nearby and ns.T("NEARBY_HINT") or ns.T("ASK_HINT"),
-    buttons = { "send", "back" },
-  }
-end
-
-local function answerView(session, answer)
+local function answerView(answer)
   local messages = type(answer.messages) == "table" and #answer.messages > 0 and answer.messages
     or ns.Intents.Split(answer.message)
   local before = {}
@@ -1201,14 +1149,7 @@ local function answerView(session, answer)
   if not header and type(answer.question) == "string" and answer.question ~= "" then
     header = "\"" .. answer.question .. "\""
   end
-  local buttons = {}
-  if type(answer.tasks) == "table" and #answer.tasks > 0 then
-    buttons[#buttons + 1] = "plan"
-  end
-  if answer.planWish and not session:Locked() then
-    buttons[#buttons + 1] = "makeplan"
-  end
-  buttons[#buttons + 1] = "ok"
+  local buttons = { "ok" }
   return {
     kind = "answer",
     key = (answer.isLocal and "local:" or "") .. tostring(answer.requestId or answer.at),
@@ -1221,24 +1162,9 @@ local function answerView(session, answer)
   }
 end
 
--- The Survey and Confirm (D65): what the player is about to ask for.
+-- Confirm (D65): what the player is about to ask for.
 local function flowSummary(req)
   return ns.Mascot.RequestSummary(req)
-end
-
-local function surveyView(mascot, req)
-  return {
-    kind = "survey",
-    key = req.topic or "custom",
-    mood = "idle",
-    header = req.topic and flowSummary(req) or nil,
-    message = req.quickEmpty and ns.T("SURVEY_EMPTY") or (req.custom and ns.T("WISH_TITLE") or ns.T("SURVEY_TITLE")),
-    sub = mascot.wishError,
-    wish = true,
-    minutes = req.custom == true,
-    hint = req.custom and ns.T("WISH_HINT") or ns.T("SURVEY_HINT"),
-    buttons = { "next", "back" },
-  }
 end
 
 -- An idea shows its goal and rewards above the question (D109).
@@ -1264,7 +1190,7 @@ local function confirmView(req)
     key = (req.topic or "custom") .. ":" .. tostring(req.suggestionId or ""),
     mood = "idle",
     header = flowSummary(req),
-    message = ns.T("CONFIRM_TITLE"),
+    message = req.quickEmpty and ns.T("CONFIRM_EMPTY") or ns.T("CONFIRM_TITLE"),
     sub = ideaLines(req),
     buttons = { "sendnow", "back" },
   }
@@ -1329,11 +1255,8 @@ function ns.Mascot.View()
   local answer = session.UnreadAnswer()
   local state = session:FlowState()
   local req = session.Flow()
-  if mascot.asking then
-    return askView(mascot)
-  end
-  if state == "survey" then
-    return surveyView(mascot, req)
+  if mascot.asking == "item" then
+    return itemView(mascot)
   end
   if state == "confirm" then
     return confirmView(req)
@@ -1357,7 +1280,7 @@ function ns.Mascot.View()
     return { kind = "expired", mood = "idle", message = ns.T("EXPIRED"), buttons = { "retry", "ok" } }
   end
   if answer then
-    return answerView(session, answer)
+    return answerView(answer)
   end
   if session.welcomeBack and task and not session:Locked() then
     return {
@@ -1435,7 +1358,6 @@ end
 
 function ns.Mascot:Reset()
   self.forceChoice = false
-  self.wishError = nil
   self.asking = nil
   self.item = nil
   self.itemFacts = nil
@@ -1457,27 +1379,6 @@ function ns.Mascot:ShowChoice()
   self.forceChoice = true
   self.showPresets = false
   self:Reveal()
-end
-
--- A question ("ask"), what to do nearby ("nearby"), or an item ("item").
-function ns.Mascot:ShowAsk(mode, text)
-  if ns.Session:Locked() then
-    self:Busy()
-    return
-  end
-  if mode == "item" then
-    self:StartPick()
-    return
-  end
-  self:Reset()
-  self.asking = mode == "nearby" and "nearby" or "ask"
-  if self.wishEdit then
-    self.wishEdit:SetText(text or "")
-  end
-  self:Reveal()
-  if self.wishEdit and self.view and self.view.wish then
-    self.wishEdit:SetFocus()
-  end
 end
 
 -- What is this item?: the next item picked up is read and put back.
@@ -1536,68 +1437,11 @@ function ns.Mascot:ShowItem(item)
   self:Reveal()
 end
 
-function ns.Mascot:SendAsk()
-  local nearby = self.asking == "nearby"
-  local text = ns.Trim(self.wishEdit and self.wishEdit:GetText() or "")
-  if text == "" and not nearby then
-    self.wishError = ns.T("ASK_EMPTY")
-    self:Refresh()
-    return
-  end
-  self:Reset()
-  if self.wishEdit.ClearFocus then
-    self.wishEdit:ClearFocus()
-  end
-  self.wishEdit:SetText("")
-  ns.Session:AskQuestion(text ~= "" and text or ns.T("NEARBY_QUESTION"), nearby and "nearby" or nil)
-  self:Reveal()
-end
-
--- "Something else...": the Survey with free text.
-function ns.Mascot:ShowWish()
-  if ns.Session:Locked() then
-    self:Busy()
-    return
-  end
-  self:Reset()
-  local last = type(UnboredCharDB) == "table" and UnboredCharDB.lastWish
-  ns.Session:BeginSurvey({ wish = type(last) == "string" and last or nil })
-  self:FocusWish()
-end
-
--- The Survey box starts with what the flow has, and gets the focus.
-function ns.Mascot:FocusWish()
-  local req = ns.Session.Flow()
-  if self.wishEdit then
-    self.wishEdit:SetText(req and req.custom and type(req.wish) == "string" and req.wish or "")
-  end
-  if self.minutesEdit then
-    self.minutesEdit:SetText("")
-  end
-  self:Reveal()
-  if self.wishEdit and self.view and self.view.wish then
-    self.wishEdit:SetFocus()
-  end
-end
-
--- "Make a plan" under an Answer Bory could not give here.
-function ns.Mascot:PlanFromAnswer()
-  local answer = ns.Session.UnreadAnswer()
-  local wish = answer and answer.planWish
-  if answer then
-    answer.seen = true
-  end
-  self:Reset()
-  ns.Session:BeginSurvey({ wish = wish })
-  self:FocusWish()
-end
-
 function ns.Mascot:Back()
   local state = ns.Session:FlowState()
   if self.asking then
     self:Reset()
-  elseif state == "survey" or state == "confirm" then
-    self.wishError = nil
+  elseif state == "confirm" then
     ns.Session:FlowBack()
   else
     self.forceChoice = false
@@ -1630,9 +1474,6 @@ function ns.Mascot:Choose(preset)
   end
   self:Reset()
   ns.Session:BeginQuick(preset)
-  if ns.Session:FlowState() == "survey" then
-    self:FocusWish()
-  end
 end
 
 -- An idea chip: its Quick plan or straight to Confirm (D109).
@@ -1646,40 +1487,6 @@ function ns.Mascot:ChooseSuggestion(idea)
   end
   self:Reset()
   ns.Session:BeginSuggestion(idea)
-  if ns.Session:FlowState() == "survey" then
-    self:FocusWish()
-  end
-end
-
--- Survey -> Confirm. A custom wish needs words; minutes are optional (docs/adr/0037).
-function ns.Mascot:SurveyNext()
-  local req = ns.Session.Flow()
-  if not req then
-    return
-  end
-  local text = ns.Trim(self.wishEdit and self.wishEdit:GetText() or "")
-  if req.custom and text == "" then
-    self.wishError = ns.T("WISH_EMPTY")
-    self:Refresh()
-    return
-  end
-  local budget = nil
-  local minutes = req.custom and ns.Trim(self.minutesEdit and self.minutesEdit:GetText() or "") or ""
-  if minutes ~= "" then
-    budget = tonumber(minutes)
-    if not budget or budget < 5 or budget > 240 or budget ~= math.floor(budget) then
-      self.wishError = ns.T("WISH_MINUTES_BAD")
-      self:Refresh()
-      return
-    end
-  end
-  self.wishError = nil
-  if self.wishEdit.ClearFocus then
-    self.wishEdit:ClearFocus()
-  end
-  self.wishEdit:SetText("")
-  self.minutesEdit:SetText("")
-  ns.Session:SurveyDone(text, budget)
 end
 
 function ns.Mascot.ShowRoute()
@@ -1829,15 +1636,12 @@ local function clearBubble(mascot)
   for i = 1, #mascot.chips do
     mascot.chips[i]:Hide()
   end
-  mascot.otherChip:Hide()
   for i = 1, #mascot.ideaChips do
     mascot.ideaChips[i]:Hide()
     mascot.ideaChips[i].idea = nil
   end
   mascot.surpriseChip:Hide()
   mascot.moreIdeas:Hide()
-  mascot.wishBox:Hide()
-  mascot.minutesBox:Hide()
 end
 
 -- Every text and region Layout may place (D165). All of them are hidden and
@@ -1894,7 +1698,7 @@ function ns.Mascot:Refresh()
     end
   end
   if changed and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice" or view.kind == "offer"
-    or view.kind == "update" or view.kind == "welcome" or view.kind == "survey" or view.kind == "confirm"
+    or view.kind == "update" or view.kind == "welcome" or view.kind == "confirm"
     or view.kind == "expired" or ns.Session:RefreshOffer() ~= nil) then
     saved.collapsed = false
   end
@@ -2065,15 +1869,20 @@ function ns.Mascot:Layout(view, right)
     place(rightChip, PAD + half + 4, height)
     y = y - height - 4
   end
+  -- D139: up to four ideas, then [Surprise me] [More ideas] on one row; More
+  -- ideas opens the next ideas and the presets. No ideas: the presets.
   if view.choice and #(view.ideas or {}) > 0 then
     y = y - 2
-    for i = 1, math.min(#view.ideas, #self.ideaChips) do
+    local first = math.min(#view.ideas, ns.Suggestions.MAX)
+    for i = 1, first do
       layoutIdea(self.ideaChips[i], view.ideas[i])
     end
-    layoutPair(self.surpriseChip, ns.T("PRESET_SURPRISE"), self.otherChip, ns.T("PRESET_OTHER"))
-    self.moreIdeas:SetOpen(self.showPresets and ns.T("LESS") or ns.T("MORE_IDEAS"), self.showPresets)
-    y = y - place(self.moreIdeas, PAD, 16) - 4
+    layoutPair(self.surpriseChip, ns.T("PRESET_SURPRISE"), self.moreIdeas,
+      self.showPresets and ns.T("LESS") or ns.T("MORE_IDEAS"))
     if self.showPresets then
+      for i = first + 1, math.min(#view.ideas, #self.ideaChips) do
+        layoutIdea(self.ideaChips[i], view.ideas[i])
+      end
       for i = 1, #self.chips do
         if self.chips[i].preset.id ~= "surprise" then
           layoutChip(self.chips[i], ns.T(self.chips[i].preset.label), false)
@@ -2084,15 +1893,6 @@ function ns.Mascot:Layout(view, right)
     y = y - 2
     for i = 1, #self.chips do
       layoutChip(self.chips[i], ns.T(self.chips[i].preset.label), false)
-    end
-    layoutChip(self.otherChip, ns.T("PRESET_OTHER"), false)
-  elseif view.wish then
-    self.wishBox.placeholder:SetText(view.hint or ns.T("WISH_HINT"))
-    y = y - place(self.wishBox, PAD, ns.AsNumber(self.wishBox:GetHeight()) or 64) - 6
-    self.wishBox.UpdatePlaceholder()
-    if view.minutes then
-      y = y - place(self.minutesBox, PAD, 24) - 6
-      self.minutesBox.UpdatePlaceholder()
     end
   end
 
@@ -2387,7 +2187,6 @@ function ns.Mascot:MenuTree()
     items[#items + 1] = { text = ns.T("MENU_UNDO_PLAN"), func = function() ns.Session:UndoReplace() end }
   end
   items[#items + 1] = { text = ns.T("MENU_ITEM"), func = function() self:StartPick() end }
-  items[#items + 1] = { text = ns.T("MENU_ASK"), func = function() self:ShowAsk("ask") end }
   if ns.Session:PendingRequest() then
     items[#items + 1] = { text = ns.T("MENU_REFRESH"), func = function() ns.Session.RefreshNow() end }
   end

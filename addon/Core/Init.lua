@@ -124,8 +124,11 @@ local function slash(message)
     ns.Mascot:Reveal()
   elseif command == "hide" then
     ns.Mascot:Hide()
-  elseif command == "ask" or command == "nearby" or command == "item" then
-    ns.Mascot:ShowAsk(command, rest ~= "" and rest or nil)
+  elseif command == "item" then
+    ns.Mascot:StartPick()
+  elseif command == "ask" or command == "nearby" then
+    -- Ask is gone (docs/adr/0046): the old commands open the ideas.
+    ns.Mascot:ShowChoice()
   elseif command == "errors" then
     local list = type(ns.DB.errors) == "table" and ns.DB.errors or {}
     if #list == 0 then
@@ -148,7 +151,7 @@ local function slash(message)
     ns.ShowExport()
   elseif command == "roam" or command == "quests" or command == "events" or command == "fun" or command == "farm" then
     ns.Session:SetMode(command)
-    ns.Mascot:ShowWish()
+    ns.Mascot:ShowChoice()
   elseif command == "tomtom" then
     ns.DB.tomtomArrow = not ns.DB.tomtomArrow
     ns.Print(ns.DB.tomtomArrow and ns.T("TOMTOM_ON") or ns.T("TOMTOM_OFF"))
