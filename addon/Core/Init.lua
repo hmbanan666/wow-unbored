@@ -63,6 +63,27 @@ local function askForWorldData()
   end
 end
 
+ns.CALENDAR_ASK_DELAY = 5
+
+-- A call during loading never returns (D127), so the calendar is asked
+-- again once the world is up, and later if that moment was a fight.
+-- TODO(verify-in-game): CALENDAR_UPDATE_EVENT_LIST fires after this call.
+function ns.AskCalendarLater(tries)
+  tries = tries or 3
+  if not C_Timer or not C_Timer.After or not C_Calendar or not C_Calendar.OpenCalendar then
+    return
+  end
+  C_Timer.After(ns.CALENDAR_ASK_DELAY, function()
+    if ns.IsCombat() then
+      if tries > 1 then
+        ns.AskCalendarLater(tries - 1)
+      end
+      return
+    end
+    pcall(C_Calendar.OpenCalendar)
+  end)
+end
+
 function ns.OnAddonLoaded()
   initDB()
   ns.Markup.Hook()
@@ -101,6 +122,10 @@ function ns.OnEnteringWorld(initialLogin)
     pcall(ns.RegisterCompartment)
   end
   askForWorldData()
+  if not ns.calendarAsked then
+    ns.calendarAsked = true
+    ns.AskCalendarLater()
+  end
   if ns.Snapshot then
     pcall(ns.Snapshot.OnEnteringWorld)
   end

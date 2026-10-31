@@ -30,6 +30,7 @@ local files = {
   "Core/Data/Inventory.lua",
   "Core/Data/Professions.lua",
   "Core/Data/Quests.lua",
+  "Core/Data/QuestLines.lua",
   "Core/Data/Reputation.lua",
   "Core/Data/Collections.lua",
   "Core/Data/Progress.lua",
@@ -797,6 +798,149 @@ check(#ns.Suggestions.Merge(ideas, live, 4) == 4, "and the Server's Huolon is no
 ns.Data.Rares = savedRares
 C_Map.GetBestMapForUnit = savedMapFor
 ns.Suggestions.cache = nil
+
+-- Events as ideas (D128-D131): only what is still open for this player.
+local savedCalendar, savedDate = C_Calendar, C_DateAndTime
+local savedAch, savedMount, savedQuestDone = ns.AchievementState, ns.MountState, ns.QuestDone
+local calendarDays = {}
+C_DateAndTime = {
+  GetCurrentCalendarTime = function()
+    return { year = 2026, month = 10, monthDay = 28, weekday = 4, hour = 12, minute = 0 }
+  end,
+}
+C_Calendar = {
+  GetMonthInfo = function()
+    return { year = 2026, month = 10, numDays = 31 }
+  end,
+  GetNumDayEvents = function(_, day)
+    return calendarDays[day] and 1 or 0
+  end,
+  GetDayEvent = function(_, day)
+    return calendarDays[day]
+  end,
+}
+local ownedMounts, earned = {}, {}
+ns.AchievementState = function(id)
+  return { id = id, name = "Ach " .. id, done = earned[id] == true }
+end
+ns.MountState = function(id)
+  return { name = "Mount " .. id, collected = ownedMounts[id] == true }
+end
+local function eventIdeaOf(list)
+  for i = 1, #list do
+    if list[i].kind == "event" then
+      return list[i]
+    end
+  end
+  return nil
+end
+calendarDays = {
+  [28] = { calendarType = "HOLIDAY", eventID = 559, title = "Timewalking Dungeon Event",
+    startTime = { year = 2026, month = 10, monthDay = 28, weekday = 4, hour = 9, minute = 0 },
+    endTime = { year = 2026, month = 11, monthDay = 4, weekday = 4, hour = 8, minute = 0 } },
+}
+local tw = eventIdeaOf(ns.Suggestions.Local())
+check(tw and tw.title == "Timewalking Dungeon Event" and tw.reason.kind == "now",
+  "a Timewalking week on now is an idea, named by the calendar")
+check(tw and tw.rewards[1] == "{mount:778}" and #tw.steps == 2, "with the mounts you do not have as its steps")
+check(tw and tw.expiresAt ~= nil and tw.expiresAt > ns.Now(), "and it runs out when the week ends")
+ownedMounts[778], ownedMounts[781] = true, true
+ns.Suggestions.Invalidate()
+check(eventIdeaOf(ns.Suggestions.Local()) == nil, "an event with nothing left for you is no idea")
+ownedMounts = {}
+calendarDays = {
+  [30] = { calendarType = "HOLIDAY", eventID = 42, title = "Brewfest",
+    startTime = { year = 2026, month = 10, monthDay = 30, weekday = 6, hour = 10, minute = 0 },
+    endTime = { year = 2026, month = 11, monthDay = 13, weekday = 6, hour = 10, minute = 0 } },
+}
+ns.Suggestions.Invalidate()
+local brew = eventIdeaOf(ns.Suggestions.Local())
+check(brew and brew.reason.kind == "starts" and ns.Suggestions.Line(brew) == "Starts in 2 days",
+  "an event that starts in two days says so")
+check(brew and brew.steps[1].why == "Starts Friday", "and its plan says the day it starts")
+check(#ns.Providers.events.Build({}) == 0, "the Events preset only takes what is on today")
+earned[1185] = true
+ns.Suggestions.Invalidate()
+brew = eventIdeaOf(ns.Suggestions.Local())
+local sawDiet = false
+for i = 1, #(brew and brew.steps or {}) do
+  sawDiet = sawDiet or brew.steps[i].id == "event:brew-diet"
+end
+check(brew and not sawDiet, "an achievement already earned is not a step")
+local keepState2, keepRequest2 = ns.Session.state, UnboredCharDB.request
+UnboredCharDB.request = nil
+ns.Session:BeginSuggestion(brew)
+check(ns.Session.state and ns.Session.state.topic == "suggestion" and ns.Session:Current().why == "Starts Friday",
+  "picking it gives the plan for when it starts")
+check(ns.Suggestions.StillOpen({ id = "x", kind = "collection", rewards = { "{mount:202}" } }),
+  "an idea for a mount you lack stays")
+ownedMounts[202] = true
+check(not ns.Suggestions.StillOpen({ id = "x", kind = "collection", rewards = { "{mount:202}" } }),
+  "and goes the moment you learn it")
+check(not ns.Suggestions.StillOpen({ id = "x", kind = "event", rewards = {}, expiresAt = ns.Now() - 1 }),
+  "an event idea goes when the event ends")
+calendarDays = {}
+
+-- Chains of quests in the log (D135, D136).
+local savedQuestLine, savedLog = C_QuestLine, C_QuestLog
+local doneQuests = { [1] = true, [2] = true }
+ns.QuestDone = function(id)
+  return doneQuests[id] == true
+end
+C_QuestLine = {
+  GetQuestLineInfo = function(questID)
+    if questID == 3 then
+      return { questLineID = 100, questLineName = "The Long Road Home to the Far Away Valley of Stars",
+        x = 0.5, y = 0.25, isImportant = true }
+    end
+    return nil
+  end,
+  GetQuestLineQuests = function(id)
+    return id == 100 and { 1, 2, 3, 4 } or {}
+  end,
+  IsComplete = function()
+    return false
+  end,
+}
+C_QuestLog = setmetatable({
+  GetNumQuestLogEntries = function()
+    return 1
+  end,
+  GetInfo = function()
+    return { questID = 3, title = "Third" }
+  end,
+  GetLogIndexForQuestID = function(id)
+    return id == 3 and 1 or nil
+  end,
+  GetTitleForQuestID = function(id)
+    return id == 4 and "Home at Last" or nil
+  end,
+}, { __index = savedLog })
+ns.Suggestions.Invalidate()
+local chainIdea
+for _, idea in ipairs(ns.Suggestions.Local()) do
+  chainIdea = idea.kind == "chain" and idea or chainIdea
+end
+check(chainIdea and chainIdea.goal == "Continue: 2 of 4 done" and chainIdea.chain.nextQuestID == 3,
+  "a chain in the log is an idea with its progress")
+check(chainIdea and #chainIdea.title <= 40 and chainIdea.title == "The Long Road Home to the Far Away",
+  "its name is cut at a word")
+UnboredCharDB.request = nil
+ns.Session:BeginSuggestion(chainIdea)
+local first = ns.Session:Current()
+check(first and first.id == "quest:3" and first.title == "{quest:3} (in your log)" and first.complete.questID == 3,
+  "picking it gives the chain at once: the next quest first")
+check(ns.Session.state.tasks[2].title == "Home at Last" and #ns.Session.state.tasks == 2,
+  "then the rest by title")
+doneQuests[3] = true
+ns.Session:CheckCurrent()
+check(ns.Session:Current() and ns.Session:Current().id == "quest:4", "turning the quest in moves the plan on")
+check(not ns.Suggestions.StillOpen(chainIdea), "and the chain idea with the old next quest goes")
+C_QuestLine, C_QuestLog = savedQuestLine, savedLog
+ns.Session.state, UnboredCharDB.request = keepState2, keepRequest2
+C_Calendar, C_DateAndTime = savedCalendar, savedDate
+ns.AchievementState, ns.MountState, ns.QuestDone = savedAch, savedMount, savedQuestDone
+ns.Suggestions.Invalidate()
 
 -- Picking a Server idea: straight to Confirm, then a Request with its copy and no time.
 local keepRequest, keepState = UnboredCharDB.request, ns.Session.state

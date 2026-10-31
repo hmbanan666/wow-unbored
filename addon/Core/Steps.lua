@@ -69,6 +69,7 @@ local function count(value)
   return (out:gsub("^,", ""))
 end
 Steps.Count = count
+Steps.Count = count
 
 local CHECKS = {
   currency = function(id)

@@ -1094,6 +1094,23 @@ check(tip(1234) == "", "no tooltip lines in combat")
 fighting = false
 driver.scripts.OnEvent(driver, "PLAYER_REGEN_ENABLED")
 check(mascot.bubble:IsShown() and mascot.frame.alpha == 1, "after combat the bubble is back")
+
+-- D127: the calendar is asked again 5 s after loading, never during a fight.
+local timers, opened = {}, 0
+local savedAfter, savedCalendarApi = C_Timer.After, C_Calendar
+C_Timer.After = function(delay, fn)
+  timers[#timers + 1] = { delay = delay, fn = fn }
+end
+C_Calendar = { OpenCalendar = function() opened = opened + 1 end }
+ns.AskCalendarLater()
+check(#timers == 1 and timers[1].delay == 5 and opened == 0, "the calendar is asked 5 s later, not now")
+fighting = true
+table.remove(timers, 1).fn()
+check(opened == 0 and #timers == 1, "in combat it waits another 5 s")
+fighting = false
+table.remove(timers, 1).fn()
+check(opened == 1, "and asks once the fight is over")
+C_Timer.After, C_Calendar = savedAfter, savedCalendarApi
 InCombatLockdown = nil
 
 -- No Companion: local answers only, never a wait.

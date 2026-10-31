@@ -74,7 +74,23 @@ function ns.Events.Register(frame)
   end
 end
 
+-- Something an idea may hang on changed (D141): ideas are built again, and the
+-- choice Bubble redraws when it is up.
+local IDEAS_CHANGE = {
+  ACHIEVEMENT_EARNED = true,
+  NEW_MOUNT_ADDED = true,
+  NEW_TOY_ADDED = true,
+  QUEST_TURNED_IN = true,
+  CALENDAR_UPDATE_EVENT_LIST = true,
+}
+
 function ns.Events.OnEvent(event, ...)
+  if IDEAS_CHANGE[event] and ns.Suggestions then
+    ns.Suggestions.Invalidate()
+    if ns.Mascot and ns.Mascot.view and ns.Mascot.view.kind == "choice" and not ns.IsCombat() then
+      pcall(ns.Mascot.Refresh, ns.Mascot)
+    end
+  end
   if event == "CURSOR_CHANGED" then
     if ns.Mascot and ns.Mascot.OnCursorChanged then
       pcall(ns.Mascot.OnCursorChanged, ns.Mascot)

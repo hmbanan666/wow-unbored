@@ -691,11 +691,46 @@ end
 
 -- An idea (D109): a live local one starts its Quick plan as a preset does;
 -- a Server one goes straight to Confirm. Never a time field (D110).
+-- A live idea that already is a plan (an event's open tasks, a chain's
+-- quests): its steps at once, no reload (D130, D136).
+function ns.Session:IdeaPlan(idea, steps)
+  if type(UnboredCharDB) == "table" then
+    UnboredCharDB.offer = nil
+  end
+  local mode = ns.Suggestions.MODE[idea.kind] or "roam"
+  self:ApplyPlan({ mode = mode, tasks = steps }, "provider", false)
+  if not self.state then
+    return
+  end
+  self.state.quick = true
+  self.state.topic = "suggestion"
+  self:Save()
+  self:Started()
+end
+
+local function ideaSteps(idea)
+  if type(idea.steps) == "table" and #idea.steps > 0 then
+    return idea.steps
+  end
+  if idea.chain then
+    return ns.Suggestions.ChainSteps(idea)
+  end
+  return nil
+end
+
 function ns.Session:BeginSuggestion(idea)
   local mode = ns.Suggestions.MODE[idea.kind] or "roam"
   local companion = ns.UI and ns.UI.HasCompanion()
   if idea.quick or not companion then
-    self:QuickPlan({ id = "suggestion", mode = mode })
+    local steps = ideaSteps(idea)
+    if ns.IsCombat() then
+      self:QuickPlan({ id = "suggestion", mode = mode })
+      return
+    elseif steps and #steps > 0 then
+      self:IdeaPlan(idea, steps)
+    else
+      self:QuickPlan({ id = "suggestion", mode = mode })
+    end
     if self.rebuildQueued then
       return
     end

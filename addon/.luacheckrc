@@ -84,6 +84,8 @@ read_globals = {
   "C_MountJournal",
   "C_PetJournal",
   "C_QuestLog",
+  "C_QuestLine",
+  "C_CampaignInfo",
   "C_SuperTrack",
   "C_TaskQuest",
   "C_Timer",
