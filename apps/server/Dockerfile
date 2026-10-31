@@ -1,7 +1,7 @@
 FROM node:26-bookworm-slim
 
 # Node 26 does not ship corepack. Install it, then pin pnpm.
-RUN npm install -g corepack@0.36.0 && corepack enable && corepack prepare pnpm@10.33.4 --activate
+RUN npm install -g corepack@0.36.0 && corepack enable && corepack prepare pnpm@12.16.1 --activate
 
 WORKDIR /src
 
