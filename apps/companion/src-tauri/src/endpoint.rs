@@ -5,6 +5,7 @@ pub const DEFAULT_PLANNER_URL: &str = "https://unbored.kosarev.space";
 
 use serde_json::{json, Value};
 
+use crate::i18n::code;
 use crate::savedvars::SessionProgress;
 use crate::wow::CharacterFile;
 
@@ -20,7 +21,7 @@ pub fn validate_endpoint(url: &str) -> Result<(), String> {
     if lower.starts_with("http://127.0.0.1") || lower.starts_with("http://localhost") {
         return Ok(());
     }
-    Err("The planner URL must be https, or http://localhost for a local test.".into())
+    Err(code("ERR_PLANNER_URL", &[]))
 }
 
 pub fn join_url(base: &str, path: &str) -> String {

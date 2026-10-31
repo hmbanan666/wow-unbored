@@ -15,6 +15,8 @@ use std::collections::BTreeSet;
 
 use sha2::{Digest, Sha256};
 
+use crate::i18n::code;
+
 /// The part of a WTF account folder shared by every license (`12345678#1` → `12345678`).
 pub fn account_key(folder: &str) -> String {
     folder
@@ -38,7 +40,7 @@ pub fn hash_account(salt_hex: &str, folder: &str) -> Result<String, String> {
     let salt = decode_salt(salt_hex)?;
     let key = account_key(folder);
     if key.is_empty() {
-        return Err("This character has no account folder.".into());
+        return Err(code("ERR_NO_ACCOUNT_FOLDER", &[]));
     }
     let mut hasher = Sha256::new();
     hasher.update(salt);
@@ -54,12 +56,12 @@ pub fn hash_account(salt_hex: &str, folder: &str) -> Result<String, String> {
 fn decode_salt(salt_hex: &str) -> Result<[u8; 32], String> {
     let bytes = salt_hex.trim().as_bytes();
     if bytes.len() != 64 || !bytes.iter().all(u8::is_ascii_hexdigit) {
-        return Err("The account salt on this PC is unreadable.".into());
+        return Err(code("ERR_ACCOUNT_SALT", &[]));
     }
     let mut out = [0u8; 32];
     for (i, chunk) in bytes.chunks(2).enumerate() {
-        let text = std::str::from_utf8(chunk).map_err(|_| "bad salt".to_string())?;
-        out[i] = u8::from_str_radix(text, 16).map_err(|_| "bad salt".to_string())?;
+        let text = std::str::from_utf8(chunk).map_err(|_| code("ERR_ACCOUNT_SALT", &[]))?;
+        out[i] = u8::from_str_radix(text, 16).map_err(|_| code("ERR_ACCOUNT_SALT", &[]))?;
     }
     Ok(out)
 }

@@ -47,7 +47,7 @@ function say(key: string, ...args: (string | number)[]): string {
 const call = (command: string, args?: Record<string, unknown>): Promise<unknown> => {
   const tauri = window.__TAURI__;
   if (!tauri || !tauri.core) {
-    return Promise.reject(new Error("Open this window from the Unbored Companion app."));
+    return Promise.reject(new Error(say("UI_OUTSIDE_APP")));
   }
   return tauri.core.invoke(command, args);
 };
