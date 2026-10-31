@@ -1,5 +1,7 @@
 # Screenshots
 
-Drop in-game shots here after the first playtest (`bubble.png`, `tooltip.png`), then use one in the README instead of `docs/img/bory-preview.png` (drawn by `art/build_preview.py`).
+In-game shots for the README and store pages.
 
-The addon has not been run inside the 12.1.5 client yet, so this folder is empty on purpose.
+- `plan-card.jpg`: Bory's plan card in Tanaan Jungle, a cage hunt for three missing mounts (12.x client, 2560x1440). The friend online line in chat is blurred.
+
+Blur other players' names and chat before adding a shot.
