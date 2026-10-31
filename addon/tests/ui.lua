@@ -1486,6 +1486,66 @@ check(mascot.view.kind == "choice", "/unbored ask opens the ideas: nothing is ty
 Unbored_Toggle()
 check(mascot.view.kind == "choice", "the toggle key offers the presets")
 
+-- Moods (D149): one table, every view kind in it, only the four pictures.
+local MOODS = mascot.MOOD_FOR_VIEW
+local pictures = { idle = true, thinking = true, waiting = true, happy = true }
+for _, kind in ipairs({ "choice", "lively", "finished", "item", "answer", "confirm", "queued", "sent", "slow",
+  "problem", "ready", "step", "stepDone", "welcome", "offer", "update", "restart", "failed", "expired", "bored" }) do
+  check(pictures[MOODS[kind]], "a mood for " .. kind)
+end
+check(MOODS.confirm == "idle" and MOODS.sent == "thinking" and MOODS.slow == "waiting" and MOODS.ready == "happy"
+  and MOODS.failed == "waiting" and MOODS.expired == "waiting" and MOODS.problem == "waiting"
+  and MOODS.stepDone == "happy" and MOODS.finished == "happy", "the moods D149 asks for")
+local moodTimers = {}
+local savedTimer = C_Timer.After
+C_Timer.After = function(delay, fn)
+  moodTimers[#moodTimers + 1] = { delay = delay, fn = fn }
+end
+mascot.stepHappy = nil
+check(mascot:MoodFor({ kind = "step", mood = "idle" }) == "idle", "a Step: idle")
+mascot:StepDone()
+check(mascot:MoodFor({ kind = "step", mood = "idle" }) == "happy" and moodTimers[#moodTimers].delay == 4,
+  "a Step done: happy for four seconds")
+check(mascot:MoodFor({ kind = "step", mood = "thinking" }) == "thinking", "never over a wait")
+moodTimers[#moodTimers].fn()
+check(mascot:MoodFor({ kind = "step", mood = "idle" }) == "idle", "then back")
+local choiceIdle = { kind = "choice", mood = "idle" }
+mascot.boredUsed, mascot.touchedAt = nil, nil
+mascot:ArmBored(600)
+check(moodTimers[#moodTimers].delay == 600, "ten minutes after login")
+local savedCurrent = ns.Session.Current
+ns.Session.Current = function() return nil end
+moodTimers[#moodTimers].fn()
+check(mascot:MoodFor(choiceIdle) == "waiting", "no plan for ten minutes: Bory yawns")
+check(mascot:MoodFor({ kind = "choice", mood = "happy" }) == "happy", "not over a happy view")
+mascot:Touch()
+check(mascot:MoodFor(choiceIdle) == "idle", "any click ends it")
+local armed = #moodTimers
+mascot:ArmBored(600)
+check(#moodTimers == armed, "once per session")
+mascot.boredUsed, mascot.touchedAt = nil, ns.Now()
+mascot:ArmBored(600)
+moodTimers[#moodTimers].fn()
+check(not mascot.bored and moodTimers[#moodTimers].delay > 0 and #moodTimers == armed + 2,
+  "a recent click waits longer")
+mascot.boredUsed = true
+ns.Session.Current = savedCurrent
+C_Timer.After = savedTimer
+UnboredSuggestions = { v = 1, computedAt = clock, characters = { ["Area 52-Hero"] = {
+  { id = "event:brewfest:1", kind = "event", title = "Brewfest", goal = "Go.", rewards = {},
+    reason = { kind = "ends", at = clock + 3600 } },
+} } }
+ns.Suggestions.cache = nil
+ns.Session.state = ns.Session.state or {}
+mascot:ShowChoice()
+check(mascot.view.kind == "choice" and mascot.view.mood == "happy", "an event on now: happy ideas")
+UnboredSuggestions.characters["Area 52-Hero"][1].reason = { kind = "starts", at = clock + 86400, count = 1 }
+ns.Suggestions.cache = nil
+mascot:ShowChoice()
+check(mascot.view.mood == "idle", "one that has not started: idle")
+UnboredSuggestions = nil
+ns.Suggestions.cache = nil
+
 -- A caught error: one friendly line, the details kept.
 local lines = #printed
 ns.ReportError("Interface/AddOns/Unbored/UI/Mascot.lua:1: boom")

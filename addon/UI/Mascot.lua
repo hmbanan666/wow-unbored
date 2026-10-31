@@ -55,6 +55,33 @@ local PORTRAITS = {
   waiting = "BoryWaiting128",
   happy = "BoryHappy128",
 }
+-- D149: every view gets exactly one mood from here; a new mood (with its
+-- art) is one more line. No animation: only Bory's picture changes.
+local MOOD_FOR_VIEW = {
+  choice = "idle", -- hello and ideas
+  lively = "happy", -- ideas with an event on now or a chain 1-2 quests from done
+  finished = "happy", -- the plan is done
+  item = "idle",
+  answer = "happy",
+  confirm = "idle",
+  queued = "idle",
+  sent = "thinking", -- sent, still under the ETA
+  slow = "waiting", -- past the ETA
+  problem = "waiting", -- the Companion is not running or cannot reach the planner
+  ready = "happy", -- the plan is ready: Refresh
+  step = "idle",
+  stepDone = "happy", -- for STEP_DONE_HAPPY seconds after a Step is done
+  welcome = "idle",
+  offer = "happy",
+  update = "happy",
+  restart = "idle",
+  failed = "waiting",
+  expired = "waiting",
+  bored = "waiting", -- no plan for BORED_AFTER seconds after login, until a click
+}
+ns.Mascot.MOOD_FOR_VIEW = MOOD_FOR_VIEW
+local STEP_DONE_HAPPY = 4
+local BORED_AFTER = 10 * 60
 local PORTRAIT_BACK = "BoryBack128"
 local PORTRAIT_RING = "BoryFrame128"
 
@@ -115,6 +142,16 @@ local function tooltip(owner, text)
   end)
 end
 
+-- Every click on Bory: the click sound, and the bored picture ends.
+local function clicked()
+  if ns.ClickSound then
+    ns.ClickSound()
+  end
+  if ns.Mascot.Touch then
+    ns.Mascot:Touch()
+  end
+end
+
 local function framed(parent)
   local ok, frame = pcall(CreateFrame, "Button", nil, parent, "BackdropTemplate")
   if not ok or not frame then
@@ -156,9 +193,7 @@ local function actionButton(parent, spec, onClick)
   end
   button:SetSize(math.max(ACTION, width), ACTION)
   button:SetScript("OnClick", function(self, mouseButton)
-    if ns.ClickSound then
-      ns.ClickSound()
-    end
+    clicked()
     onClick(self, mouseButton)
   end)
   tooltip(button, ns.T(spec.tip or spec.label))
@@ -173,7 +208,10 @@ local function iconButton(parent, name, tip, onClick)
   button.icon:SetPoint("CENTER")
   button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
   button:RegisterForClicks("AnyUp")
-  button:SetScript("OnClick", onClick)
+  button:SetScript("OnClick", function(...)
+    ns.Mascot:Touch()
+    onClick(...)
+  end)
   tooltip(button, tip)
   return button
 end
@@ -185,9 +223,7 @@ local function chip(parent, template, onClick)
   button.label = font(button, template)
   button.label:SetPoint("LEFT", 10, 0)
   button:SetScript("OnClick", function()
-    if ns.ClickSound then
-      ns.ClickSound()
-    end
+    clicked()
     onClick(button)
   end)
   button:Hide()
@@ -399,6 +435,7 @@ local function onAvatarClick(self, button, mouseButton)
   if ns.IsCombat() then
     return
   end
+  self:Touch()
   if takeCursorItem() then
     return
   end
@@ -530,9 +567,7 @@ local function textToggle(parent, onClick)
   button.chevron:SetPoint("LEFT", button.label, "RIGHT", 3, 0)
   button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
   button:SetScript("OnClick", function()
-    if ns.ClickSound then
-      ns.ClickSound()
-    end
+    clicked()
     onClick()
   end)
   button.SetOpen = function(self, text, open)
@@ -785,6 +820,65 @@ function ns.Mascot:Create()
   end
   self:CreatePortrait()
   self:CreateBubble()
+  self:ArmBored(BORED_AFTER)
+end
+
+-- Any click on Bory ends the bored picture (D149).
+function ns.Mascot:Touch()
+  self.touchedAt = ns.Now()
+  if self.bored then
+    self.bored = nil
+    self:Refresh()
+  end
+end
+
+-- No plan for ten minutes after login and no click meanwhile: Bory yawns,
+-- once per session.
+function ns.Mascot:ArmBored(delay)
+  if self.boredUsed or not C_Timer or not C_Timer.After then
+    return
+  end
+  C_Timer.After(delay, function()
+    if self.boredUsed then
+      return
+    end
+    local since = ns.Now() - (self.touchedAt or 0)
+    if self.touchedAt and since < BORED_AFTER then
+      self:ArmBored(BORED_AFTER - since)
+      return
+    end
+    if ns.Session:Current() then
+      return
+    end
+    self.boredUsed, self.bored = true, true
+    self:Refresh()
+  end)
+end
+
+-- A Step was done: happy for a moment, then back (D149, a picture swap only).
+function ns.Mascot:StepDone()
+  self.happyToken = (self.happyToken or 0) + 1
+  local token = self.happyToken
+  self.stepHappy = true
+  if C_Timer and C_Timer.After then
+    C_Timer.After(STEP_DONE_HAPPY, function()
+      if self.happyToken == token then
+        self.stepHappy = nil
+        self:Refresh()
+      end
+    end)
+  end
+end
+
+-- The view's mood, with the two timed swaps on top.
+function ns.Mascot:MoodFor(view)
+  if view.kind == "step" and view.mood == MOOD_FOR_VIEW.step and self.stepHappy then
+    return MOOD_FOR_VIEW.stepDone
+  end
+  if self.bored and view.mood == MOOD_FOR_VIEW.choice and view.kind == "choice" then
+    return MOOD_FOR_VIEW.bored
+  end
+  return view.mood
 end
 
 -- The bubble opens toward the middle of the screen, so it is never cut off.
@@ -1042,7 +1136,7 @@ local function stepView(mascot, session, task)
   return {
     kind = "step",
     key = task.id,
-    mood = "idle",
+    mood = MOOD_FOR_VIEW.step,
     card = true,
     title = session:PlanName(),
     header = leadText(mascot),
@@ -1099,13 +1193,28 @@ local function waitLine(session)
   return nil, false
 end
 
+-- An event on now, or a chain one or two quests from done (D149).
+local function lively(ideas)
+  for i = 1, #ideas do
+    local idea = ideas[i]
+    local reason = type(idea.reason) == "table" and idea.reason.kind or nil
+    local chain = type(idea.chain) == "table" and idea.chain or nil
+    local left = chain and (ns.AsNumber(chain.total) or 0) - (ns.AsNumber(chain.done) or 0)
+    if (idea.kind == "event" and reason ~= "starts") or (left and left >= 1 and left <= 2) then
+      return true
+    end
+  end
+  return false
+end
+
 local function choiceView(session, task, answer)
   local progress = session:Progress()
   local finished = progress ~= nil and progress.steps > 0 and progress.remaining == 0
   local empty = progress ~= nil and progress.steps == 0 and session.state.quick
-  local message, mood = ns.T("CHOICE_HELLO"), "idle"
+  local ideas = ns.Suggestions.List()
+  local message, mood = ns.T("CHOICE_HELLO"), lively(ideas) and MOOD_FOR_VIEW.lively or MOOD_FOR_VIEW.choice
   if finished then
-    message, mood = ns.T("CHOICE_AGAIN"), "happy"
+    message, mood = ns.T("CHOICE_AGAIN"), MOOD_FOR_VIEW.finished
   elseif empty then
     message = ns.T("QUICK_EMPTY")
   elseif task or answer then
@@ -1117,7 +1226,7 @@ local function choiceView(session, task, answer)
     mood = mood,
     message = message,
     choice = true,
-    ideas = ns.Suggestions.List(),
+    ideas = ideas,
     buttons = (task or answer) and { "back" } or {},
   }
 end
@@ -1125,13 +1234,13 @@ end
 local function itemView(mascot)
   local item = mascot.item
   if not item then
-    return { kind = "item", mood = "idle", message = ns.T("ITEM_TITLE"), buttons = { "back" } }
+    return { kind = "item", mood = MOOD_FOR_VIEW.item, message = ns.T("ITEM_TITLE"), buttons = { "back" } }
   end
   local facts = mascot.itemFacts or {}
   return {
     kind = "item",
     key = item.itemID,
-    mood = "idle",
+    mood = MOOD_FOR_VIEW.item,
     header = item.link or item.name or ns.T("ITEM_UNKNOWN"),
     message = #facts > 0 and table.concat(facts, "\n\n") or ns.T("ITEM_NOTHING_LOCAL"),
     buttons = { "back" },
@@ -1153,7 +1262,7 @@ local function answerView(answer)
   return {
     kind = "answer",
     key = (answer.isLocal and "local:" or "") .. tostring(answer.requestId or answer.at),
-    mood = "happy",
+    mood = MOOD_FOR_VIEW.answer,
     header = header,
     message = ns.Markup.Render(messages[#messages], answer.npcs, relink),
     before = before,
@@ -1188,7 +1297,7 @@ local function confirmView(req)
   return {
     kind = "confirm",
     key = (req.topic or "custom") .. ":" .. tostring(req.suggestionId or ""),
-    mood = "idle",
+    mood = MOOD_FOR_VIEW.confirm,
     header = flowSummary(req),
     message = req.quickEmpty and ns.T("CONFIRM_EMPTY") or ns.T("CONFIRM_TITLE"),
     sub = ideaLines(req),
@@ -1218,13 +1327,15 @@ local function waitingView(mascot, session, task, state)
   elseif slow then
     extra[1] = "retry"
   end
-  local mood = "thinking"
-  if offer or state == "queued" then
-    mood = "happy"
+  local mood = MOOD_FOR_VIEW.sent
+  if offer then
+    mood = MOOD_FOR_VIEW.ready
+  elseif state == "queued" then
+    mood = MOOD_FOR_VIEW.queued
+  elseif session.CompanionProblem() then
+    mood = MOOD_FOR_VIEW.problem
   elseif slow then
-    mood = "waiting"
-  elseif line then
-    mood = "idle"
+    mood = MOOD_FOR_VIEW.slow
   end
   if task then
     local view = stepView(mascot, session, task)
@@ -1270,14 +1381,14 @@ function ns.Mascot.View()
     local planner = code == "planner_failed" and type(reason) == "string" and reason ~= ""
     return {
       kind = "failed",
-      mood = "idle",
+      mood = MOOD_FOR_VIEW.failed,
       message = ns.T("SORRY"),
       sub = planner and reason or ns.T(REASONS[code] or "REQUEST_FAILED_GENERIC"),
       buttons = { "retry", "ok" },
     }
   end
   if state == "expired" then
-    return { kind = "expired", mood = "idle", message = ns.T("EXPIRED"), buttons = { "retry", "ok" } }
+    return { kind = "expired", mood = MOOD_FOR_VIEW.expired, message = ns.T("EXPIRED"), buttons = { "retry", "ok" } }
   end
   if answer then
     return answerView(answer)
@@ -1285,7 +1396,7 @@ function ns.Mascot.View()
   if session.welcomeBack and task and not session:Locked() then
     return {
       kind = "welcome",
-      mood = "happy",
+      mood = MOOD_FOR_VIEW.welcome,
       message = ns.T("CONTINUE_PLAN", session:PlanName()),
       buttons = { "continue", "new" },
     }
@@ -1296,7 +1407,7 @@ function ns.Mascot.View()
     return {
       kind = "offer",
       key = offer.requestId or offer.key,
-      mood = "happy",
+      mood = MOOD_FOR_VIEW.offer,
       message = ns.T("BETTER_READY"),
       sub = first and ns.T("BETTER_FIRST", #offer.plan.tasks, ns.Markup.Plain(first.title or "", first.npcs)) or nil,
       buttons = { "use", "keep" },
@@ -1305,12 +1416,13 @@ function ns.Mascot.View()
   local update = session.UpdateWaiting()
   if update and not mascot.updateLater then
     if type(UnboredCharDB) == "table" and UnboredCharDB.updateTried == update then
-      return { kind = "update", key = "restart", mood = "idle", message = ns.T("UPDATE_RESTART"), buttons = { "ok" } }
+      return { kind = "update", key = "restart", mood = MOOD_FOR_VIEW.restart, message = ns.T("UPDATE_RESTART"),
+        buttons = { "ok" } }
     end
     return {
       kind = "update",
       key = update,
-      mood = "happy",
+      mood = MOOD_FOR_VIEW.update,
       message = ns.T("UPDATE_READY"),
       buttons = { "load" },
     }
@@ -1709,7 +1821,7 @@ function ns.Mascot:Refresh()
   self.offerKind = due and due.kind or nil
   self.leadShown = leadText(self) ~= nil
   self.flowShown = ns.Session:FlowState()
-  self:SetMood(view.mood)
+  self:SetMood(self:MoodFor(view))
   clearBubble(self)
   self:ExpireEchoes(true)
   for i = 1, #self.echoFrames do

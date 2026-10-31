@@ -102,6 +102,9 @@ function ns.Session:Finish(bucket)
     local title = ns.Markup.Plain(task.title or "", task.npcs)
     ns.Mascot:Echo(ns.T(bucket == "skipped" and "ECHO_SKIPPED" or "ECHO_DONE", title))
     ns.Mascot:Lead(bucket == "skipped" and "OK_NEXT" or "NICE")
+    if bucket ~= "skipped" and ns.Mascot.StepDone then
+      ns.Mascot:StepDone()
+    end
   end
   -- The title is kept so the inline list can show what was finished.
   list[#list + 1] = { id = task.id, at = ns.Now(), title = ns.SafeString(ns.Markup.Plain(task.title, task.npcs), 120) }
