@@ -2,6 +2,19 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## 0.9.0
+
+- Only choices now: Bory no longer has an Ask box, a "Something else" chip or a wish field. Pick an idea, Surprise me, or More ideas.
+- Holidays and Timewalking from your own calendar become ideas, with what you still lack (an achievement, a mount, a toy), even a few days before they start ("Starts Friday").
+- Unfinished quest chains become ideas: "Continue: 3 of 8 done", with a map pin. Picking one gives a quick plan at once, and it moves on by itself as you turn in quests. Bory says when another of your characters already finished it, or when you stopped one a while ago.
+- Up to four ideas, then Surprise me and More ideas side by side. An idea goes away as soon as you finish it, not at the next log in.
+- Item tooltips can add where else the item is: "Also: Grubbyman 40, Warband bank 200", never this character's own bags. Reagent tips name the alt who already has a stack ("Send to Grubbyman (has 40)").
+- Bory's face follows what is going on: happy when a Step is done, an event is on or a plan is ready, thinking while the planner works, a yawn after a long wait or a problem.
+- Rare names in ideas come in your game language.
+- The Companion speaks Russian when Bory does (or when Windows is in Russian), and the installer opens in Russian too.
+- Fixed: a closed plan card no longer leaves its time line floating on the screen, and the Show more arrow points down when there is more below.
+- If your Companion is older than 0.9, update it to 0.9 before 0.9.1 comes out, or install it again by hand afterwards.
+
 ## 0.8.0
 
 - Meet Bory, a calm ginger cat in a thin gold ring, who takes over from Wisp. He looks idle, thinking, sleepy on a long wait, or happy, and the addon and the Companion share a warm gold and burgundy look.
