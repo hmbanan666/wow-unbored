@@ -29,7 +29,20 @@ type UiState = {
   version?: string;
   progress?: ProgressRow[];
   canReconnect?: boolean;
+  /** Bory's picture: idle, thinking, waiting or happy (D149). */
+  picture?: string;
+  /** en or ru, and the window's words in it (docs/adr/0049). */
+  lang?: string;
+  text?: Record<string, string>;
 };
+
+// The window's words come with every state; the English in index.html is
+// only what shows before the first one arrives.
+let words: Record<string, string> = {};
+function say(key: string, ...args: (string | number)[]): string {
+  const text = words[key] ?? key;
+  return args.reduce<string>((out, arg, i) => out.split(`{${i}}`).join(String(arg)), text);
+}
 
 const call = (command: string, args?: Record<string, unknown>): Promise<unknown> => {
   const tauri = window.__TAURI__;
@@ -41,7 +54,7 @@ const call = (command: string, args?: Record<string, unknown>): Promise<unknown>
 
 function asState(value: unknown): UiState {
   if (typeof value === "object" && value !== null && "settings" in value) return value as UiState;
-  throw new Error("The Companion returned nothing to show.");
+  throw new Error(say("UI_NOTHING"));
 }
 
 const invoke = (command: string, args?: Record<string, unknown>) =>
@@ -69,20 +82,29 @@ const steps = el("steps");
 
 // Imported so Vite fingerprints and ships them; a runtime "img/..." path is not in dist/.
 // Only Bory's layer changes; the ring (index.html) stays put.
+// The picture for each mood comes from mood.rs (MOOD_FOR_PHASE).
 const PICTURES: Record<string, string> = {
   idle: boryIdle,
-  setup: boryIdle,
-  error: boryIdle,
-  ready: boryHappy,
   thinking: boryThinking,
-  busy: boryThinking,
-  pairing: boryWaiting,
+  waiting: boryWaiting,
+  happy: boryHappy,
 };
 
+function translate(state: UiState) {
+  if (!state.text) return;
+  words = state.text;
+  document.documentElement.lang = state.lang || "en";
+  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((node) => {
+    const key = node.dataset.i18n;
+    if (key && words[key]) node.textContent = words[key];
+  });
+}
+
 function paint(state: UiState) {
+  translate(state);
   const phase = state.phase || "idle";
   document.body.dataset.phase = phase;
-  mascot.src = PICTURES[phase] || boryIdle;
+  mascot.src = PICTURES[state.picture || "idle"] || boryIdle;
   mascot.alt = state.mascot || "Bory";
   headline.textContent = state.headline || "";
   hint.textContent = phase === "setup" && state.status ? state.status : state.hint || "";
@@ -102,15 +124,20 @@ function paint(state: UiState) {
   poll.value = String(state.settings.pollMinutes ?? 5);
   autostart.checked = !!state.autostart;
   status.textContent = state.status || "";
-  el("addon").textContent =
-    `Addon ${state.addonVersion || "not installed"}, this PC is ${state.pairing || "connecting"}`;
-  el("version").textContent = `Companion ${state.version || ""}`;
+  const pairing = state.pairing ? say(`UI_PAIRING_${state.pairing}`) : say("UI_PAIRING_NONE");
+  el("addon").textContent = say(
+    "UI_ADDON_LINE",
+    state.addonVersion || say("UI_ADDON_NONE"),
+    pairing.startsWith("UI_") ? state.pairing || "" : pairing,
+  );
+  el("version").textContent = say("UI_VERSION", state.version || "");
 
   progress.innerHTML = "";
   (state.progress || []).forEach((row) => {
     const item = document.createElement("li");
-    const current = row.currentId ? ` now ${row.currentId}` : "";
-    item.textContent = `${row.character} - ${row.realm}: ${row.done} done, ${row.skipped} skipped${current}`;
+    const current = row.currentId ? say("UI_PROGRESS_NOW", row.currentId) : "";
+    item.textContent =
+      say("UI_PROGRESS_ROW", row.character, row.realm, row.done, row.skipped) + current;
     progress.appendChild(item);
   });
 }
@@ -131,7 +158,7 @@ async function run(action: () => Promise<UiState>) {
 
 async function pickFolder() {
   const tauri = window.__TAURI__ || {};
-  const options = { directory: true, title: "Choose your World of Warcraft folder" };
+  const options = { directory: true, title: say("UI_PICK_TITLE") };
   const picked = tauri.dialog
     ? await tauri.dialog.open(options)
     : await call("plugin:dialog|open", { options });
@@ -159,15 +186,13 @@ el("privacy").addEventListener("click", (event) => {
   event.preventDefault();
   call("open_privacy").catch(showError);
 });
-const FORGET = {
-  title: "Forget my data?",
-  message:
-    "Bory will forget your characters, game data, plans and answers on the planner, and this PC stops sending. This can't be undone.",
-  ok: "Forget it all",
-  cancel: "Keep it",
-};
-
 async function confirmForget() {
+  const FORGET = {
+    title: say("UI_FORGET_TITLE"),
+    message: say("UI_FORGET_MESSAGE"),
+    ok: say("UI_FORGET_OK"),
+    cancel: say("UI_FORGET_CANCEL"),
+  };
   const tauri = window.__TAURI__ || {};
   if (tauri.dialog) {
     return tauri.dialog.ask(FORGET.message, {

@@ -12,33 +12,43 @@
         <img id="mascot" src="img/bory-idle.png" alt="" draggable="false" />
         <img class="frame" src="img/bory-frame.png" alt="" draggable="false" />
       </div>
-      <h1 id="headline">Hello!</h1>
+      <h1 id="headline" data-i18n="UI_HELLO">Hello!</h1>
       <p id="hint"></p>
       <div id="reconnect" class="actions" hidden>
-        <button id="connect-again" class="big" type="button">Connect again</button>
+        <button id="connect-again" class="big" type="button" data-i18n="UI_CONNECT_AGAIN">
+          Connect again
+        </button>
       </div>
       <ul id="steps" class="steps"></ul>
 
       <div id="setup" class="actions" hidden>
-        <button id="pick" class="big" type="button">Choose folder</button>
-        <button id="detect" type="button">Look again</button>
+        <button id="pick" class="big" type="button" data-i18n="UI_CHOOSE_FOLDER">
+          Choose folder
+        </button>
+        <button id="detect" type="button" data-i18n="UI_LOOK_AGAIN">Look again</button>
       </div>
 
-      <label class="check"><input id="autostart" type="checkbox" /> Start with Windows</label>
+      <label class="check"
+        ><input id="autostart" type="checkbox" />
+        <span data-i18n="UI_AUTOSTART">Start with Windows</span></label
+      >
       <p class="privacy">
-        Bory only learns about your own characters.
-        <a id="privacy" href="https://github.com/hmbanan666/wow-unbored#what-bory-knows-about-you"
+        <span data-i18n="UI_PRIVACY">Bory only learns about your own characters.</span>
+        <a
+          id="privacy"
+          href="https://github.com/hmbanan666/wow-unbored#what-bory-knows-about-you"
+          data-i18n="UI_PRIVACY_LINK"
           >What he knows</a
         >
       </p>
     </main>
 
     <details>
-      <summary>Advanced</summary>
+      <summary data-i18n="UI_ADVANCED">Advanced</summary>
       <p id="status"></p>
       <p id="addon"></p>
       <label
-        >Retail folder
+        ><span data-i18n="UI_RETAIL_FOLDER">Retail folder</span>
         <input
           id="wow"
           type="text"
@@ -46,28 +56,29 @@
           placeholder="C:\Program Files (x86)\World of Warcraft\_retail_"
         />
       </label>
-      <button id="use-path" type="button">Use this folder</button>
+      <button id="use-path" type="button" data-i18n="UI_USE_FOLDER">Use this folder</button>
       <label
-        >Planner URL
+        ><span data-i18n="UI_PLANNER_URL">Planner URL</span>
         <input id="url" type="url" spellcheck="false" placeholder="https://unbored.kosarev.space" />
       </label>
       <label
-        >Poll every <input id="poll" type="number" min="0" max="240" value="5" /> minutes (0 = the
-        automatic check only)
+        ><span data-i18n="UI_POLL_BEFORE">Poll every</span>
+        <input id="poll" type="number" min="0" max="240" value="5" />
+        <span data-i18n="UI_POLL_AFTER">minutes (0 = the automatic check only)</span>
       </label>
-      <button id="save-endpoint" type="button">Save</button>
+      <button id="save-endpoint" type="button" data-i18n="UI_SAVE">Save</button>
       <label
-        >Plan string
+        ><span data-i18n="UI_PLAN_STRING">Plan string</span>
         <textarea id="plan" rows="3" spellcheck="false" placeholder="UNB1:..."></textarea>
       </label>
-      <button id="write" type="button">Write plan</button>
-      <button id="fetch" type="button">Fetch plan</button>
-      <button id="rescan" type="button">Read progress</button>
+      <button id="write" type="button" data-i18n="UI_WRITE_PLAN">Write plan</button>
+      <button id="fetch" type="button" data-i18n="UI_FETCH_PLAN">Fetch plan</button>
+      <button id="rescan" type="button" data-i18n="UI_READ_PROGRESS">Read progress</button>
       <ul id="progress"></ul>
-      <p class="forget">
+      <p class="forget" data-i18n="UI_FORGET_TEXT">
         Erase everything the planner keeps about your characters and stop sending from this PC.
       </p>
-      <button id="forget" type="button">Forget my data</button>
+      <button id="forget" type="button" data-i18n="UI_FORGET">Forget my data</button>
       <p id="version"></p>
     </details>
     <script type="module" src="./app.ts"></script>

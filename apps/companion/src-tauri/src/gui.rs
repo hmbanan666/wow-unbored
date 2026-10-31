@@ -18,6 +18,7 @@ use crate::account::{self, AccountSeal};
 use crate::addon::{install_addon_zip, installed_version, select_addon_zip, should_update};
 use crate::device::{self, registration_json, DeviceCredential};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
+use crate::i18n::{self, tr, trf};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::plan::{
     clear_helper, decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file,
@@ -117,6 +118,7 @@ impl Model {
             machine: self.machine.clone(),
             forgotten: self.settings.forgotten_at.is_some(),
             now: now_secs(),
+            lang: i18n::current(),
         })
     }
 }
@@ -253,10 +255,9 @@ fn post_progress(
             .send()
             .map_err(|err| err.to_string())?;
         if !response.status().is_success() {
-            return Err(format!(
-                "Planner returned {} for {}.",
-                response.status(),
-                file.character
+            return Err(trf(
+                "PLANNER_RETURNED_FOR",
+                &[response.status().as_str(), &file.character],
             ));
         }
         posted.insert(key, fingerprint);
@@ -299,27 +300,22 @@ fn run_scan(
 fn scan_status(posting: bool, progress_len: usize, result: Result<usize, String>) -> String {
     match result {
         Err(err) => err,
-        Ok(sent) if sent > 0 => format!("Progress sent for {sent} character file(s)."),
-        Ok(_) if progress_len == 0 => {
-            "Nothing from the game yet. Log in once and pick a plan with Bory.".into()
-        }
-        Ok(_) if posting => "Progress is already on the planner.".into(),
-        Ok(_) => "Progress read from SavedVariables.".into(),
+        Ok(sent) if sent > 0 => trf("PROGRESS_SENT", &[&sent.to_string()]),
+        Ok(_) if progress_len == 0 => tr("NOTHING_YET"),
+        Ok(_) if posting => tr("PROGRESS_ON_PLANNER"),
+        Ok(_) => tr("PROGRESS_READ"),
     }
 }
 
 fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
     let Some(retail) = retail_path(settings) else {
-        return Err("Pick the Retail folder first.".into());
+        return Err(tr("PICK_RETAIL_FIRST"));
     };
     if plan.generated_at.is_none() {
         plan.generated_at = Some(now_secs());
     }
     let written = install_plan(&retail, plan).map_err(|err| err.0)?;
-    Ok(format!(
-        "Wrote {}. Bory picks it up next time you log in, or click Refresh in Bory's bubble.",
-        written.path.display()
-    ))
+    Ok(trf("WROTE_PLAN", &[&written.path.display().to_string()]))
 }
 
 #[derive(Serialize)]
@@ -336,9 +332,14 @@ struct UiState {
     pairing: String,
     planner_url: String,
     phase: String,
+    /// Bory's picture: idle, thinking, waiting or happy (D149).
+    picture: String,
     headline: String,
     hint: String,
     steps: Vec<SetupStep>,
+    /// en or ru, for `<html lang>`, and the window's words in it (docs/adr/0049).
+    lang: String,
+    text: serde_json::Map<String, serde_json::Value>,
     mascot: String,
     version: String,
     can_reconnect: bool,
@@ -357,21 +358,21 @@ fn setup_steps(model: &Model) -> Vec<SetupStep> {
     let addon = retail_path(&model.settings).and_then(|retail| installed_version(&retail));
     vec![
         SetupStep {
-            label: "World of Warcraft found".into(),
+            label: tr("STEP_WOW"),
             done: !model.needs_wow_path,
         },
         SetupStep {
             label: match &addon {
-                Some(version) => format!("Bory is in the game (addon {version})"),
-                None => "Putting Bory into the game".into(),
+                Some(version) => trf("STEP_ADDON", &[version]),
+                None => tr("STEP_ADDON_NONE"),
             },
             done: addon.is_some(),
         },
         SetupStep {
             label: match model.pairing.as_str() {
-                "approved" => "This PC is approved".into(),
-                "revoked" => "This PC was disconnected".into(),
-                _ => "Waiting for a one-time OK for this PC".into(),
+                "approved" => tr("STEP_APPROVED"),
+                "revoked" => tr("STEP_REVOKED"),
+                _ => tr("STEP_PAIRING"),
             },
             done: model.approved,
         },
@@ -393,9 +394,12 @@ fn snapshot(app: &AppHandle, model: &Model) -> UiState {
         pairing: model.pairing.clone(),
         planner_url: effective_url(&model.settings),
         phase: mood.phase.to_string(),
+        picture: mood.picture.to_string(),
         headline: mood.headline,
         hint: mood.hint,
         steps: setup_steps(model),
+        lang: i18n::current().code().to_string(),
+        text: i18n::ui_text(i18n::current()),
         mascot: MASCOT_NAME.to_string(),
         version: app.package_info().version.to_string(),
         can_reconnect: model.settings.forgotten_at.is_some() && !model.approved,
@@ -450,11 +454,11 @@ fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<
     model.progress = scan_progress(&model.settings);
     model.needs_wow_path = model.settings.wow_path.is_empty();
     model.status = if !model.needs_wow_path {
-        "Found it. Setting up the addon...".into()
+        tr("FOUND_IT")
     } else if chosen.is_empty() {
-        "Pick your World of Warcraft folder.".into()
+        tr("PICK_FOLDER")
     } else {
-        "I can't find World of Warcraft in that folder. Pick the one that has Wow.exe in it.".into()
+        tr("NOT_WOW_FOLDER")
     };
     let path = model.settings.wow_path.clone();
     let _ = save_settings(&app, &model.settings);
@@ -473,13 +477,11 @@ fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Resul
     Ok(snapshot(&app, &model))
 }
 
-const PRIVACY_URL: &str = "https://github.com/hmbanan666/wow-unbored#what-bory-knows-about-you";
-
-/// D61: the first-run line links to the README privacy section. The URL is fixed
-/// here, never taken from the window.
+/// D61: the first-run line links to the README privacy section, in the
+/// Companion's language. The URL is fixed here, never taken from the window.
 #[tauri::command]
 fn open_privacy() -> Result<(), String> {
-    open_in_browser(PRIVACY_URL)
+    open_in_browser(i18n::privacy_url(i18n::current()))
 }
 
 #[cfg(windows)]
@@ -488,12 +490,12 @@ fn open_in_browser(url: &str) -> Result<(), String> {
         .arg(url)
         .spawn()
         .map(|_| ())
-        .map_err(|_| format!("Could not open the browser. The page is {url}"))
+        .map_err(|_| trf("BROWSER_FAILED", &[url]))
 }
 
 #[cfg(not(windows))]
 fn open_in_browser(url: &str) -> Result<(), String> {
-    Err(format!("Open {url} in your browser."))
+    Err(trf("OPEN_IN_BROWSER", &[url]))
 }
 
 #[tauri::command]
@@ -509,7 +511,7 @@ fn set_endpoint(
     model.settings.endpoint_url = url;
     model.settings.poll_minutes = poll_minutes.min(240);
     model.posted.clear();
-    model.status = "Planner address saved.".into();
+    model.status = tr("ENDPOINT_SAVED");
     let _ = save_settings(&app, &model.settings);
     Ok(snapshot(&app, &model))
 }
@@ -554,7 +556,7 @@ fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, String>
     let message = sync_plans(&app, &settings, &device.secret, &mut notified, &mut seal)?;
     remember_migrations(&app, &settings, &seal);
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.status = message.unwrap_or_else(|| "No plan on the planner yet.".into());
+    model.status = message.unwrap_or_else(|| tr("NO_PLAN_YET"));
     Ok(snapshot(&app, &model))
 }
 
@@ -567,16 +569,11 @@ fn forget_on_planner(url: &str, secret: &str) -> Result<bool, String> {
         .bearer_auth(secret)
         .json(&serde_json::json!({ "confirm": true }))
         .send()
-        .map_err(|_| {
-            "I can't reach the planner, so nothing was erased yet. Try again in a minute."
-                .to_string()
-        })?;
+        .map_err(|_| tr("FORGET_OFFLINE"))?;
     match response.status().as_u16() {
         200..=299 => Ok(true),
         401 => Ok(false),
-        code => Err(format!(
-            "The planner could not erase it just now ({code}). Nothing changed; try again in a minute."
-        )),
+        code => Err(trf("FORGET_FAILED", &[&code.to_string()])),
     }
 }
 
@@ -611,11 +608,10 @@ fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Str
     model.settings.forgotten_at = Some(now_secs());
     let _ = save_settings(&app, &model.settings);
     model.status = if erased {
-        "The planner erased your game data, plans and answers, and stopped taking data from this PC."
+        tr("FORGET_DONE")
     } else {
-        "The planner had nothing from this PC. I cleared the plans and ideas on this PC too."
-    }
-    .into();
+        tr("FORGET_NOTHING")
+    };
     Ok(snapshot(&app, &model))
 }
 
@@ -632,18 +628,16 @@ fn reconnect_on_planner(
         .bearer_auth(old_secret)
         .json(&registration_json(device, &machine_name()))
         .send()
-        .map_err(|_| {
-            "I can't reach the planner right now. Nothing changed; try Connect again in a minute."
-                .to_string()
-        })?;
+        .map_err(|_| tr("RECONNECT_OFFLINE"))?;
     let status_code = response.status();
     let body: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
     if !status_code.is_success() {
         let why = body
             .get("error")
             .and_then(|value| value.as_str())
-            .unwrap_or("I couldn't connect again just now. Try in a minute.");
-        return Err(why.to_string());
+            .map(str::to_string)
+            .unwrap_or_else(|| tr("RECONNECT_FAILED"));
+        return Err(why);
     }
     Ok(body
         .get("status")
@@ -658,7 +652,7 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Stri
         let model = state.inner.lock().map_err(|err| err.to_string())?;
         let device = state.device.lock().map_err(|err| err.to_string())?;
         if model.settings.forgotten_at.is_none() {
-            return Err("Connect again is here after Forget my data.".into());
+            return Err(tr("RECONNECT_ONLY_AFTER"));
         }
         (model.settings.clone(), device.clone())
     };
@@ -681,15 +675,12 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Stri
     }
     let _ = save_settings(&app, &model.settings);
     model.status = if model.approved {
-        "You're connected again.".into()
+        tr("RECONNECTED")
     } else {
         pairing_message(&status, model.needs_wow_path)
     };
     if model.approved {
-        notify(
-            &app,
-            "You're connected! Start World of Warcraft and click Bory to pick a plan.",
-        );
+        notify(&app, &tr("CONNECTED_TOAST"));
     }
     Ok(snapshot(&app, &model))
 }
@@ -776,7 +767,7 @@ fn note_saved_variables(app: &AppHandle) {
     match &result {
         Err(err) => model.status = err.clone(),
         Ok(sent) if *sent > 0 => {
-            model.status = format!("Progress sent for {sent} character file(s).");
+            model.status = trf("PROGRESS_SENT", &[&sent.to_string()]);
         }
         Ok(_) => {}
     }
@@ -892,7 +883,7 @@ fn get_json(
         return Ok(None);
     }
     if !response.status().is_success() {
-        return Err(format!("Planner returned {}.", response.status()));
+        return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
     }
     response.json().map(Some).map_err(|err| err.to_string())
 }
@@ -1008,7 +999,7 @@ fn post_requests(
             continue;
         }
         if !code.is_success() {
-            return Err(format!("Planner returned {code}."));
+            return Err(trf("PLANNER_RETURNED", &[&code.to_string()]));
         }
         seal.note_migrated(legacy.as_deref());
     }
@@ -1079,7 +1070,7 @@ fn post_snapshots(
         account::attach_legacy(&mut body, legacy.as_deref());
         let bytes = gzip(body.to_string().as_bytes())?;
         if bytes.len() > MAX_COMPRESSED_BYTES {
-            return Err("The game data is too big to send.".into());
+            return Err(tr("GAME_DATA_TOO_BIG"));
         }
         let response = client
             .post(join_url(&url, "v1/snapshot"))
@@ -1094,10 +1085,7 @@ fn post_snapshots(
             return Ok(());
         }
         if !response.status().is_success() {
-            return Err(format!(
-                "Planner returned {} for the game data.",
-                response.status()
-            ));
+            return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
         }
         sent.lock().map_err(|err| err.to_string())?.extend(remember);
         seal.note_migrated(legacy.as_deref());
@@ -1150,10 +1138,7 @@ fn post_profiles(
             .send()
             .map_err(|err| err.to_string())?;
         if !response.status().is_success() {
-            return Err(format!(
-                "Planner returned {} for the profile.",
-                response.status()
-            ));
+            return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
         }
         posted
             .lock()
@@ -1194,7 +1179,7 @@ fn sync_plans(
     seal: &mut AccountSeal,
 ) -> Result<Option<String>, String> {
     let Some(retail) = retail_path(settings) else {
-        return Ok(Some("Approved. Choose the Retail folder.".into()));
+        return Ok(Some(tr("APPROVED_CHOOSE_RETAIL")));
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
     let Posted { rejected, waiting } = post_requests(settings, &retail, secret, seal)?;
@@ -1211,9 +1196,7 @@ fn sync_plans(
             ready_kind: None,
         };
         let written = install_plan_file(&retail, &file).map_err(|err| err.0)?;
-        return Ok(written
-            .changed
-            .then(|| format!("The planner refused a request: {why}")));
+        return Ok(written.changed.then(|| trf("PLANNER_REFUSED", &[why])));
     }
     let state = planner_state(settings, secret, waiting.as_deref())?;
     let pending = state
@@ -1230,12 +1213,12 @@ fn sync_plans(
     if let Some(id) = &file.ready_request {
         if notified.insert(id.clone()) && written.changed {
             let kind = file.ready_kind.clone().unwrap_or_else(|| "plan".into());
-            let text = mood::ready_text(&kind);
+            let text = mood::ready_text(i18n::current(), &kind);
             if let Ok(mut model) = app.state::<AppState>().inner.lock() {
                 model.ready = Some((kind, now_secs()));
             }
-            notify(app, text);
-            return Ok(Some(text.into()));
+            notify(app, &text);
+            return Ok(Some(text));
         }
     }
     if !written.changed {
@@ -1243,12 +1226,10 @@ fn sync_plans(
     }
     Ok(Some(match &state.request {
         Some(request) if file.ready_request.is_none() && request.status == "pending" => {
-            "Request sent. The planner is working on it.".into()
+            tr("REQUEST_SENT")
         }
-        Some(request) if request.status == "failed" => {
-            "The planner could not answer that one.".into()
-        }
-        _ => "New plan ready. Bory picks it up next time you log in.".into(),
+        Some(request) if request.status == "failed" => tr("PLANNER_FAILED"),
+        _ => tr("NEW_PLAN"),
     }))
 }
 
@@ -1264,7 +1245,7 @@ fn register_device(url: &str, device: &DeviceCredential) -> Result<String, Strin
         .send()
         .map_err(|err| err.to_string())?;
     if !response.status().is_success() {
-        return Err(format!("Planner returned {}.", response.status()));
+        return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
     }
     let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
     Ok(body
@@ -1282,7 +1263,7 @@ fn device_status(url: &str, secret: &str) -> Result<String, String> {
         .send()
         .map_err(|err| err.to_string())?;
     if !response.status().is_success() {
-        return Err(format!("Planner returned {}.", response.status()));
+        return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
     }
     let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
     Ok(body
@@ -1294,14 +1275,14 @@ fn device_status(url: &str, secret: &str) -> Result<String, String> {
 
 fn pairing_message(status: &str, needs_path: bool) -> String {
     let base = match status {
-        "approved" => "Approved.",
-        "revoked" => "This device was revoked.",
-        _ => "Waiting for approval",
+        "approved" => tr("PAIRING_APPROVED"),
+        "revoked" => tr("PAIRING_REVOKED"),
+        _ => tr("PAIRING_WAITING"),
     };
     if needs_path {
-        format!("{base} Choose the Retail folder.")
+        format!("{base} {}", tr("CHOOSE_RETAIL_SUFFIX"))
     } else {
-        base.to_string()
+        base
     }
 }
 
@@ -1347,11 +1328,11 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
         .send()
         .map_err(|err| err.to_string())?;
     if !response.status().is_success() {
-        return Err(format!("GitHub returned {}.", response.status()));
+        return Err(trf("GITHUB_RETURNED", &[response.status().as_str()]));
     }
     let body = response.text().map_err(|err| err.to_string())?;
     let Some(release) = select_addon_zip(&body)? else {
-        return Ok("No addon release found.".into());
+        return Ok(tr("NO_ADDON_RELEASE"));
     };
     let installed = installed_version(retail).or_else(|| {
         fs::read_to_string(version_file)
@@ -1367,16 +1348,16 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
         if let Ok(mut model) = app.state::<AppState>().inner.lock() {
             model.addon_version = release.version.clone();
         }
-        return Ok(format!("Addon {} is installed.", release.version));
+        return Ok(trf("ADDON_INSTALLED", &[&release.version]));
     }
     let toc_existed = toc.is_file();
     set_busy(
         app,
-        Some(if toc_existed {
-            "Updating Bory in the game..."
+        Some(&tr(if toc_existed {
+            "BUSY_UPDATING_ADDON"
         } else {
-            "Putting Bory into the game..."
-        }),
+            "BUSY_INSTALLING_ADDON"
+        })),
     );
     let installed = client
         .get(&release.url)
@@ -1398,18 +1379,12 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
             if let Ok(mut model) = app.state::<AppState>().inner.lock() {
                 model.addon_updated_at = Some(now_secs());
             }
-            notify(
-                app,
-                "I updated Bory. Click Load in Bory's bubble once to finish.",
-            );
+            notify(app, &tr("ADDON_UPDATED_TOAST"));
         } else {
-            notify(
-                app,
-                "Bory is in the game now. Restart World of Warcraft once to meet him.",
-            );
+            notify(app, &tr("ADDON_NEW_TOAST"));
         }
     }
-    Ok(format!("Installed addon {}.", release.version))
+    Ok(trf("INSTALLED_ADDON", &[&release.version]))
 }
 
 fn notify(app: &AppHandle, body: &str) {
@@ -1457,6 +1432,7 @@ fn sync_once(
         .clone();
     let device = state.device.lock().map_err(|err| err.to_string())?.clone();
     let retail = retail_path(&settings);
+    follow_lang(app, &settings);
     // The helper and the addon come from disk and GitHub, so they are set up
     // even while the planner is down or this PC is not approved yet.
     if let Some(retail) = &retail {
@@ -1477,7 +1453,7 @@ fn sync_once(
                     // Try again in about 5 minutes; GitHub limits unauthenticated calls.
                     *addon_checked =
                         Some(now.checked_sub(Duration::from_secs(25 * 60)).unwrap_or(now));
-                    publish_status(app, &format!("Addon check: {err}"));
+                    publish_status(app, &trf("ADDON_CHECK", &[&err]));
                 }
             }
         }
@@ -1536,10 +1512,7 @@ fn sync_planner(
         }
     }
     if just_approved {
-        notify(
-            app,
-            "You're connected! Start World of Warcraft and click Bory to pick a plan.",
-        );
+        notify(app, &tr("CONNECTED_TOAST"));
     }
     if pairing_changed || status != "approved" {
         publish_status(app, &pairing_message(&status, needs_path));
@@ -1601,7 +1574,7 @@ async fn update_once(app: &AppHandle) -> Result<(), String> {
     let Some(update) = updater.check().await.map_err(|err| err.to_string())? else {
         return Ok(());
     };
-    set_busy(app, Some("Updating myself..."));
+    set_busy(app, Some(&tr("BUSY_SELF_UPDATE")));
     let bytes = update.download(|_, _| {}, || {}).await.map_err(|err| {
         set_busy(app, None);
         err.to_string()
@@ -1622,6 +1595,29 @@ fn enable_autostart_once(app: &AppHandle, settings: &mut Settings) {
         settings.autostart_set = true;
         let _ = save_settings(app, settings);
     }
+}
+
+/// The game's language, else the Windows one, else English (docs/adr/0049).
+fn detect_lang(settings: &Settings) -> i18n::Lang {
+    let addon = retail_path(settings).and_then(|retail| i18n::addon_lang(&retail));
+    i18n::pick(addon.as_deref(), sys_locale::get_locale().as_deref())
+}
+
+fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let open = MenuItem::with_id(app, "open", tr("TRAY_OPEN"), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", tr("TRAY_QUIT"), true, None::<&str>)?;
+    Menu::with_items(app, &[&open, &quit])
+}
+
+/// A new language from the game: the tray menu follows, the window on its next paint.
+fn follow_lang(app: &AppHandle, settings: &Settings) {
+    if !i18n::set(detect_lang(settings)) {
+        return;
+    }
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id("unbored"), tray_menu(app)) {
+        let _ = tray.set_menu(Some(menu));
+    }
+    refresh_view(app);
 }
 
 fn show_main(app: &AppHandle) {
@@ -1657,6 +1653,7 @@ pub fn run() {
             let accounts = list_accounts(&PathBuf::from(&settings.wow_path));
             let progress = scan_progress(&settings);
             let wow_path = settings.wow_path.clone();
+            let settings_for_lang = settings.clone();
             let needs_wow_path = settings.wow_path.trim().is_empty();
             let device = device::load_or_create(
                 &settings_path(app.handle())?.with_file_name("device.json"),
@@ -1692,9 +1689,8 @@ pub fn run() {
                 .spawn(move || sync_loop(handle))
                 .map_err(|err| err.to_string())?;
 
-            let open = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &quit])?;
+            i18n::set(detect_lang(&settings_for_lang));
+            let menu = tray_menu(app.handle())?;
             let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
             TrayIconBuilder::with_id("unbored")
                 .icon(icon)
