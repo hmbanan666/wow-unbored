@@ -317,7 +317,7 @@ function ns.ValidatePlan(raw, loose)
   end
   local kind = plain(raw.kind)
   if kind == "progress" then
-    return nil, ns.T("ERR_KIND_PROGRESS")
+    return nil, ns.T("ERR_KIND")
   end
   if kind ~= nil and kind ~= "plan" then
     return nil, ns.T("ERR_KIND")
@@ -463,7 +463,7 @@ function ns.DecodeImport(text)
     return nil, ns.CodecError(err)
   end
   if prefix == "UNB1P" or plain(value.kind) == "progress" then
-    return nil, ns.T("ERR_KIND_PROGRESS")
+    return nil, ns.T("ERR_KIND")
   end
   return ns.ValidatePlan(value, false)
 end

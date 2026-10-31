@@ -1485,6 +1485,15 @@ SlashCmdList.UNBORED("ask where to fish?")
 check(mascot.view.kind == "choice", "/unbored ask opens the ideas: nothing is typed any more")
 Unbored_Toggle()
 check(mascot.view.kind == "choice", "the toggle key offers the presets")
+-- The paste window is gone (D214): import and export only print the help.
+for _, command in ipairs({ "import UNB1:abc", "export" }) do
+  local before = #printed
+  SlashCmdList.UNBORED(command)
+  check(#printed == before + 1 and printed[#printed]:find(ns.T("SLASH_HELP"), 1, true) ~= nil
+    and not printed[#printed]:find("import", 1, true), "/unbored " .. command .. " only prints the help")
+end
+check(ns.ShowImport == nil and ns.ShowExport == nil and ns.L.IMPORT_TITLE == nil and ns.L.ERR_KIND_PROGRESS == nil,
+  "the import window, its strings and the progress-paste error are gone")
 
 -- Moods (D149): one table, every view kind in it, only the four pictures.
 local MOODS = mascot.MOOD_FOR_VIEW

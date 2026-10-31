@@ -63,7 +63,6 @@ local files = {
   "UI/Widgets.lua",
   "UI/Mascot.lua",
   "UI/Items.lua",
-  "UI/Import.lua",
   "UI/Minimap.lua",
   "Core/Init.lua",
 }
