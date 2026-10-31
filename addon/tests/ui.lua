@@ -1171,7 +1171,22 @@ check(shownButtons() == "sendnow,back", "with Send now and Back")
 check(UnboredCharDB.request.topic == "suggestion" and UnboredCharDB.request.suggestionId == "mount:183",
   "the flow remembers the idea")
 ns.Session:CancelRequest()
+local many = {}
+for i = 1, 6 do
+  many[i] = { id = "rare:" .. i, kind = "rare", title = "Rare " .. i, goal = "Hunt it.", rewards = {},
+    reason = { kind = "near" } }
+end
+UnboredSuggestions.characters["Area 52-Hero"] = many
+ns.Suggestions.cache = { at = clock, list = {} }
+mascot.showPresets = false
+mascot:ShowChoice()
+check(mascot.ideaChips[4]:IsShown() and not mascot.ideaChips[5]:IsShown(), "four ideas at first")
+mascot.moreIdeas:Click()
+check(mascot.ideaChips[5]:IsShown() and mascot.ideaChips[6]:IsShown()
+  and textOf(mascot.ideaChips[6].label) == "Rare 6", "More ideas shows the next ideas")
+mascot.moreIdeas:Click()
 UnboredSuggestions = nil
+ns.Suggestions.cache = nil
 mascot:ShowChoice()
 check(mascot.chips[6]:IsShown() and not mascot.surpriseChip:IsShown() and not mascot.moreIdeas:IsShown(),
   "no ideas: the six presets as before")
