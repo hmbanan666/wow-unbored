@@ -261,9 +261,29 @@ C_Reputation = {
   CollapseFactionHeader = function() factionsOpen = false end,
 }
 C_MajorFactions = {
-  GetMajorFactionIDs = function() return { 2590 } end,
-  GetMajorFactionData = function() return { renownLevel = 12 } end,
+  GetMajorFactionIDs = function() return { 2590, 2594 } end,
+  GetMajorFactionData = function(id)
+    if id == 2594 then
+      return { renownLevel = 25, renownReputationEarned = 0, renownLevelThreshold = 2500 }
+    end
+    return { renownLevel = 12, renownReputationEarned = 2000, renownLevelThreshold = 2500 }
+  end,
+  HasMaximumRenown = function(id) return id == 2594 end,
+  GetRenownRewardsForLevel = function(id, level)
+    if id ~= 2590 or level ~= 13 then
+      return {}
+    end
+    return {
+      { renownRewardID = 1, mountID = 2192, itemID = 223571, name = "Shale Ramolith", isCollected = false },
+      { renownRewardID = 2, titleMaskID = 573, name = string.rep("Long title ", 10) },
+      { renownRewardID = 3, transmogSetID = 4123 },
+      { renownRewardID = 4, spellID = 99, isCollected = true },
+      { renownRewardID = 5, itemID = 5 },
+    }
+  end,
 }
+C_Reputation.IsFactionParagon = function(id) return id == 2594 end
+C_Reputation.GetFactionParagonInfo = function() return 32500, 10000, 85000, true end
 
 C_MountJournal = {
   GetMountIDs = function() return { 6, 7, 11 } end,
@@ -299,6 +319,8 @@ function GetAchievementInfo(category, index)
   return id, "A", 10, true, 1, 1, 24, "", 0, 0, "", false, index == 1
 end
 function GetTotalAchievementPoints() return 12450 end
+function GetAchievementNumCriteria() return 0 end
+function GetAchievementCriteriaInfo() return nil end
 
 function GetNumSavedInstances() return 1 end
 function GetSavedInstanceInfo()
@@ -430,6 +452,22 @@ check(body("reputation") and #body("reputation").factions == 2, "collapsed facti
 check(factionsOpen == false, "faction headers are collapsed again")
 check(body("reputation").factions[1].accountWide == true, "account-wide reputation is flagged")
 check(body("reputation").renown[1].level == 12, "renown levels")
+local renownNext = body("reputation").renown[1].next or {}
+check(#renownNext == 4 and renownNext[1].mountID == 2192 and renownNext[1].itemID == 223571
+  and renownNext[1].name == "Shale Ramolith", "renown keeps up to four next-level rewards with their ids")
+check(renownNext[2].titleMaskID == 573 and #renownNext[2].name <= 60, "a reward name is capped at 60 bytes")
+check(renownNext[4].collected == true and renownNext[1].collected == nil, "collected rewards are flagged")
+check(body("reputation").renown[2].max == true and body("reputation").renown[2].next == nil,
+  "max renown has no next rewards")
+check(S.Get("reputation").v == 2, "reputation is v2")
+local paragonRow
+for _, faction in ipairs(body("reputation").factions) do
+  if faction.factionID == 2594 then
+    paragonRow = faction.paragon
+  end
+end
+check(paragonRow and paragonRow.value == 2500 and paragonRow.threshold == 10000 and paragonRow.questID == 85000
+  and paragonRow.pending == true, "paragon keeps this cycle's progress, the quest and a waiting reward")
 check(body("achievements") and body("achievements").count == 4, "achievements done")
 check(body("achievementsMine") and body("achievementsMine").count == 2, "achievements earned by this character")
 check(body("mounts") and body("mounts").count == 2 and body("mounts").total == 3, "mounts collected")
@@ -700,6 +738,250 @@ end
 check(not queuedAchievements, "the login pass skips a fresh achievement scan")
 S.Drain()
 
+-- Reputation v2 without the 12.x APIs: renown and paragon fields are left out.
+do
+  local saved = {
+    max = C_MajorFactions.HasMaximumRenown,
+    rewards = C_MajorFactions.GetRenownRewardsForLevel,
+    isParagon = C_Reputation.IsFactionParagon,
+  }
+  C_MajorFactions.HasMaximumRenown = nil
+  C_MajorFactions.GetRenownRewardsForLevel = nil
+  C_Reputation.IsFactionParagon = nil
+  check(S.Read("reputation", "event") == true, "reputation reads without the new APIs")
+  local rep = body("reputation")
+  local anyParagon = false
+  for _, faction in ipairs(rep.factions) do
+    anyParagon = anyParagon or faction.paragon ~= nil
+  end
+  check(rep.renown[1].next == nil and rep.renown[2].max == nil and not anyParagon,
+    "missing APIs leave next, max and paragon out")
+  C_MajorFactions.HasMaximumRenown = saved.max
+  C_MajorFactions.GetRenownRewardsForLevel = saved.rewards
+  C_Reputation.IsFactionParagon = saved.isParagon
+end
+
+-- Achievement progress (D182) ----------------------------------------------
+do
+  local savedInfo, savedCount, savedCriteria = GetAchievementInfo, GetAchievementNumCriteria, GetAchievementCriteriaInfo
+  local savedCategories, savedPerCategory = GetCategoryList, GetCategoryNumAchievements
+  -- id -> criteria: a list of booleans, or { bar = have, need = n }.
+  local plan = {
+    [1] = { true, true, true, true, true, true, true, false, false, false }, -- 7/10
+    [2] = { bar = 450, need = 500 }, -- 0.9 progress bar
+    [3] = { true, false, false, false }, -- 1/4: under the floor
+    [4] = { guild = true, true, true, false },
+    [5] = { done = true, true, true },
+    [6] = { many = 61 },
+    [7] = { true, true, true, false, false, false, false, false, false, false, false, true }, -- 4/12
+    [8] = { true, false }, -- 1/2
+  }
+  local calls = 0
+  GetCategoryList = function() return { 1 } end
+  GetCategoryNumAchievements = function() return 8 end
+  GetAchievementInfo = function(_, index)
+    calls = calls + 1
+    local row = plan[index]
+    return index, "A", 10, row.done == true, 1, 1, 24, "", 0, 0, "", row.guild == true, false
+  end
+  GetAchievementNumCriteria = function(id)
+    calls = calls + 1
+    local row = plan[id]
+    if row.many then
+      return row.many
+    end
+    if row.bar then
+      return 1
+    end
+    return #row
+  end
+  GetAchievementCriteriaInfo = function(id, k)
+    calls = calls + 1
+    local row = plan[id]
+    if row.bar then
+      return "Bar", 0, false, row.bar, row.need, nil, 0, 0, "", 9000 + id
+    end
+    return "C" .. k, 0, row[k] == true, 0, 0, nil, 0, 0, "", id * 100 + k
+  end
+  S.queue = {}
+  S.BUDGET_MS = 0
+  S.Queue("achProgress", "daily")
+  local guard = 0
+  while S.Step() and guard < 500 do
+    guard = guard + 1
+    clock = clock + 10
+  end
+  S.BUDGET_MS = 4
+  local progress = body("achProgress")
+  local ids = {}
+  for i, row in ipairs(progress and progress.rows or {}) do
+    ids[i] = row.id
+  end
+  check(progress and table.concat(ids, ",") == "2,1,8", "achievement progress keeps >= half done, best first: "
+    .. table.concat(ids, ","))
+  check(progress.rows[1].d == 450 and progress.rows[1].t == 500 and progress.rows[1].open[1] == 9002,
+    "a progress-bar achievement counts its quantity")
+  check(progress.rows[2].d == 7 and progress.rows[2].t == 10 and #progress.rows[2].open == 3
+    and progress.rows[2].open[1] == 108, "criteria achievements list their open criteria")
+  check(S.defs.achProgress.scope == "char" and S.defs.achProgress.prio == 20 and S.defs.achProgress.every == 86400
+    and S.defs.achProgress.delay == 60, "achievement progress is per Character, daily, low priority, delayed")
+  check(type(progress.scannedAt) == "number", "achievement progress is stamped for the daily skip")
+  local perAchievement = 0
+  for id = 1, 8 do
+    perAchievement = perAchievement + (plan[id].many and 1 or 0)
+  end
+  check(perAchievement == 1 and calls < 60, "an achievement with more than 60 criteria is skipped unread")
+
+  -- 300 achievements at 0.9: only the best 200 stay.
+  GetCategoryNumAchievements = function() return 300 end
+  GetAchievementInfo = function(_, index)
+    return index, "A", 10, false, 1, 1, 24, "", 0, 0, "", false, false
+  end
+  GetAchievementNumCriteria = function() return 1 end
+  GetAchievementCriteriaInfo = function(id)
+    return "Bar", 0, false, 50 + id % 40, 100, nil, 0, 0, "", id
+  end
+  S.Read("achProgress", "daily")
+  check(#body("achProgress").rows == 200 and body("achProgress").rows[1].d == 89, "at most 200 rows, best first")
+
+  -- The call cap stops a pass on a huge Account.
+  local cap = S.ACH_MAX_CALLS
+  S.ACH_MAX_CALLS = 30
+  S.Read("achProgress", "daily")
+  check(body("achProgress").capped == true and #body("achProgress").rows <= 10,
+    "the pass stops at the call cap")
+  S.ACH_MAX_CALLS = cap
+
+  GetAchievementInfo, GetAchievementNumCriteria, GetAchievementCriteriaInfo = savedInfo, savedCount, savedCriteria
+  GetCategoryList, GetCategoryNumAchievements = savedCategories, savedPerCategory
+end
+
+-- Error reports (docs/adr/0051) -------------------------------------------
+do
+  local shownBefore = ns.errorShown
+  ns.errorShown = true
+  UnboredDB.errors = {}
+  UnboredDB.data.sections.errors = nil
+  local quoted = 'C:\\Games\\World of Warcraft\\_retail_\\Interface\\AddOns\\Unbored\\Core\\Session.lua:12:'
+    .. ' bad argument "Mira wrote this" to \'format\''
+  ns.ReportError(quoted, "event:QUEST_TURNED_IN",
+    "[string \"@Interface/AddOns/Unbored/Core/Session.lua\"]:12:"
+      .. " in function <Interface/AddOns/Unbored/Core/Session.lua:10>\n"
+      .. "[string \"@Interface/AddOns/OtherAddon/Main.lua\"]:4: in function 'OtherThing'\n"
+      .. "[C]: in function 'xpcall'\n"
+      .. "D:\\Games\\Interface\\AddOns\\Unbored\\Core\\Init.lua:259:"
+      .. " in function <Interface/AddOns/Unbored/Core/Init.lua:250>")
+  local row = UnboredDB.errors[1]
+  check(row and row.where == "event:QUEST_TURNED_IN" and row.count == 1 and row.version == ns.VERSION,
+    "an error report keeps where, count and version")
+  check(row.text:sub(1, 17) == "Interface/AddOns/" and not row.text:find("Games", 1, true),
+    "the path starts at Interface/AddOns/: " .. row.text)
+  check(not row.text:find("Mira", 1, true) and not row.text:find("format", 1, true) and row.text:find('"…"', 1, true),
+    "quoted strings are replaced")
+  check(not row.stack:find("OtherAddon", 1, true) and row.stack:find("[C]", 1, true)
+    and not row.stack:find("Games", 1, true) and select(2, row.stack:gsub("\n", "")) == 2,
+    "the stack keeps only our frames and C calls: " .. row.stack)
+  check(S.Body("errors") and #S.Body("errors").rows == 1 and S.Get("errors").v == 1,
+    "the errors Section is written with sharing on")
+  clock = clock + 1
+  local realClock = ns.Now
+  local later = realClock() + 100
+  ns.Now = function() return later end
+  ns.ReportError(quoted, "event:QUEST_TURNED_IN")
+  ns.Now = realClock
+  check(#UnboredDB.errors == 1 and UnboredDB.errors[1].count == 2 and UnboredDB.errors[1].lastAt == later,
+    "the same error again counts up instead of a new row")
+  ns.ReportError(string.rep("x", 900), "init")
+  check(#UnboredDB.errors[2].text == 300, "the text is capped at 300 bytes")
+  for i = 1, 12 do
+    ns.Now = function() return later + i end
+    ns.ReportError("boom " .. i, "ui:pulse")
+  end
+  ns.Now = realClock
+  local kept = {}
+  for _, r in ipairs(UnboredDB.errors) do
+    kept[r.text] = true
+  end
+  check(#UnboredDB.errors == 10 and kept["boom 12"] and not kept["boom 1"] and not kept["boom 2"],
+    "ten rows at most, the oldest lastAt goes")
+
+  -- The xpcall handler adds a stack.
+  UnboredDB.errors = {}
+  _G.debugstack = function()
+    return "Interface/AddOns/Unbored/Core/Events.lua:118: in function <Interface/AddOns/Unbored/Core/Events.lua:116>"
+  end
+  local ok = ns.Guard("ui:pulse", function()
+    error("ticker broke")
+  end)
+  check(ok == false and UnboredDB.errors[1] and UnboredDB.errors[1].stack
+    and UnboredDB.errors[1].stack:find("Events.lua:118", 1, true) ~= nil, "the xpcall handler adds a stack")
+  _G.debugstack = nil
+
+  -- Rows from before the game loaded the SavedVariables wait in memory.
+  local db = ns.DB
+  ns.DB = nil
+  ns.ReportError("early", "init")
+  check(#ns.pendingErrors == 1 and #UnboredDB.errors == 1, "an error before load waits in memory")
+  ns.DB = db
+  UnboredDB.errors[#UnboredDB.errors + 1] = { at = 1, version = "0.9.0", text = "old uncleaned row" }
+  ns.FlushErrors()
+  check(#ns.pendingErrors == 0 and #UnboredDB.errors == 2 and UnboredDB.errors[2].text == "early",
+    "PLAYER_LOGIN writes the early rows and drops 0.9 rows")
+  check(#S.Body("errors").rows == 2, "and the Section follows")
+
+  -- Sharing off: errors stay on this PC.
+  UnboredDB.shareData = false
+  S.ApplySharing()
+  ns.ReportError("private", "init")
+  check(S.Body("errors") == nil and #UnboredDB.errors == 3, "with sharing off errors stay local")
+  check(not S.ESSENTIAL.errors and S.defs.errors.prio == 10 and S.defs.errors.scope == "account",
+    "errors is an Account Section, not essential, dropped first")
+  UnboredDB.shareData = true
+  UnboredDB.errors = {}
+  UnboredDB.data.sections.errors = nil
+  ns.errorShown = shownBefore
+end
+
+-- Every Section survives a staged read where every S.Yield() yields (D170).
+-- A new Section without a mock here fails: add a mock for it above.
+do
+  local MOCKED = {
+    char = true, gear = true, talents = true, played = true, bags = true, bank = true, reagentBank = true,
+    warband = true, currencies = true, professions = true, recipes = true, questsDone = true, questLog = true,
+    questLines = true, reputation = true, achievements = true, achievementsMine = true, achProgress = true,
+    mounts = true, pets = true, toys = true, transmog = true, lockouts = true, mplus = true, vault = true,
+    calendar = true, sessions = true, addons = true, unresolvedIds = true,
+  }
+  local shownBefore = ns.errorShown
+  ns.errorShown = true
+  S.BUDGET_MS = 0
+  for _, name in ipairs(S.order) do
+    local def = S.defs[name]
+    if def.read then
+      check(MOCKED[name], "add a mock for the Section " .. name .. " in tests/data.lua")
+      UnboredDB.errors = {}
+      if def.window then
+        S.open[name] = true
+      end
+      S.queue = {}
+      S.Queue(name, "login")
+      local guard = 0
+      while S.Step() and guard < 2000 do
+        guard = guard + 1
+        clock = clock + 10
+      end
+      S.open[name] = nil
+      check(guard < 2000 and #S.queue == 0 and S.co == nil, "the staged read of " .. name .. " finishes")
+      check(S.Body(name) == nil or type(S.Body(name)) == "table",
+        "the staged read of " .. name .. " gives a body or nil")
+      check(#UnboredDB.errors == 0, "the staged read of " .. name .. " reports no error: "
+        .. tostring(UnboredDB.errors[1] and UnboredDB.errors[1].text))
+    end
+  end
+  S.BUDGET_MS = 4
+  ns.errorShown = shownBefore
+end
+
 -- Played: our request is silenced and the answer stored.
 local shown = 0
 function ChatFrame_DisplayTimePlayed() shown = shown + 1 end
@@ -874,6 +1156,17 @@ for i = 1, 35 do
       { text = "Collect 5 things", done = true, have = 5, need = 5 } } }
 end
 S.Write("questLog", { quests = quests }, "event")
+local progressRows = {}
+for i = 1, S.ACH_MAX_ROWS do
+  progressRows[i] = { id = 40000 + i * 7, d = 7, t = 10, open = { 100000 + i * 5, 100001 + i * 5, 100002 + i * 5 } }
+end
+S.Write("achProgress", { rows = progressRows, count = #progressRows, scannedAt = ns.Now() }, "daily")
+local errorRows = {}
+for i = 1, ns.ERRORS_MAX do
+  errorRows[i] = { at = ns.Now(), lastAt = ns.Now(), count = i, version = ns.VERSION, where = "section:bags",
+    text = string.rep("e", ns.ERROR_TEXT_MAX), stack = string.rep("s", ns.ERROR_STACK_MAX) }
+end
+S.Write("errors", { rows = errorRows }, "event")
 
 S.Enforce()
 local charBytes = fileSize("UnboredCharDB", UnboredCharDB)
