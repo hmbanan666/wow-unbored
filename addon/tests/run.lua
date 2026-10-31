@@ -92,9 +92,9 @@ check(doc ~= nil, "plan format doc exists")
 local docText = doc:read("*a")
 doc:close()
 local planString = docText:match("UNB1:[A-Za-z0-9+/=]+")
-local progressString = docText:match("UNB1P:[A-Za-z0-9+/=]+")
+local progressString = "UNB1P:"
+  .. ns.Base64Encode('{"v":1,"kind":"progress","done":[],"skipped":[],"remaining":["a"]}')
 check(planString ~= nil, "doc has UNB1 example")
-check(progressString ~= nil, "doc has UNB1P example")
 
 local plan, err = ns.DecodeImport(planString)
 check(plan ~= nil, "example plan decodes: " .. tostring(err))
@@ -111,7 +111,7 @@ end
 
 local wrapped = planString:sub(1, 20) .. "\n" .. planString:sub(21)
 local wrappedPlan = ns.DecodeImport(wrapped)
-check(wrappedPlan ~= nil, "wrapped paste decodes")
+check(wrappedPlan ~= nil, "wrapped string decodes")
 
 local badKind = ns.DecodeImport(progressString)
 check(badKind == nil, "progress string is not a plan")

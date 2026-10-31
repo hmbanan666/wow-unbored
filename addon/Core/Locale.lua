@@ -494,12 +494,12 @@ local ru = {
   CONTAINS_MANY_pet = "· может выпасть: 1 из %d питомцев",
   CONTAINS_MANY_item = "· может выпасть: 1 из %d предметов",
   CONTAINS_MANY_mixed = "· может выпасть: 1 из %d вещей",
-  CONTAINS_ONE_mount = "· может выпасть маунт, которого у вас нет",
-  CONTAINS_ONE_toy = "· может выпасть игрушка, которой у вас нет",
-  CONTAINS_ONE_pet = "· может выпасть питомец, которого у вас нет",
+  CONTAINS_ONE_mount = "· может выпасть маунт, которого у тебя нет",
+  CONTAINS_ONE_toy = "· может выпасть игрушка, которой у тебя нет",
+  CONTAINS_ONE_pet = "· может выпасть питомец, которого у тебя нет",
   CONTAINS_ONE_item = "· может выпасть предмет",
-  CONTAINS_ONE_mixed = "· может выпасть то, чего у вас нет",
-  CONTAINS_ALL = "· у вас уже есть всё",
+  CONTAINS_ONE_mixed = "· может выпасть то, чего у тебя нет",
+  CONTAINS_ALL = "· у тебя уже есть всё",
 }
 
 ns.Locales = { en = en, ru = ru }
