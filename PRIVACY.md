@@ -12,6 +12,7 @@ Only what the Companion on your PC sends, linked to your game account (the WoW a
 - **Your sessions and what you did in them** (player history), and the older 0.6 profiles if you used that version.
 - **Your Requests and Bory's answers:** what you asked for or asked about, and the plans and answers made for them.
 - **Personal advice and ideas** made for your characters.
+- **Addon error notes:** with sharing on, Bory also sends where the addon broke (file, line, addon version), never what you typed or who you are. With sharing off nothing is sent.
 - **This PC:** its name, when it was last seen, and whether it is approved. The PC's key is kept only as a hash.
 
 It never gets anything about other players, no passwords and no Battle.net sign-in. It is used only for Unbored. The game account is stored as a salted hash of the account folder name, not the folder name itself.
@@ -29,7 +30,8 @@ In the Companion window open **Advanced** and click **Forget my data**, then con
 - the characters, their game data and its older copies,
 - player history and 0.6 profiles,
 - Requests, and the plans and answers made for them,
-- personal advice and ideas.
+- personal advice and ideas,
+- addon error notes.
 
 Then it stops taking data from this PC. The Companion also clears the plans, advice and ideas it put into the game. This can't be undone. To use the planner again, click **Connect again** in the Companion window. This PC gets a new key, the same kind as a first install, and can send again. A disconnect made by the Unbored team is not undone by that button.
 
@@ -51,6 +53,7 @@ Questions: [open an issue](https://github.com/hmbanan666/wow-unbored/issues).
 - **Сессии и что ты в них делал** (история игрока), а также старые профили 0.6, если ты пользовался той версией.
 - **Твои запросы и ответы Бори:** о чём ты просил или спрашивал, и планы и ответы на них.
 - **Личные подсказки и идеи** для твоих персонажей.
+- **Заметки об ошибках аддона:** если делиться данными включено, Бори ещё отправляет, где сломался аддон (файл, строка, версия аддона), но никогда не то, что ты печатал, и не то, кто ты. Если выключено, ничего не отправляется.
 - **Этот ПК:** его имя, когда он был на связи и одобрен ли он. Ключ ПК хранится только в виде хеша.
 
 О других игроках сервер не получает ничего, паролей и входа в Battle.net тоже. Данные используются только для Unbored. Игровая учётная запись хранится как хеш с солью от имени папки, а не само имя.
@@ -68,7 +71,8 @@ Questions: [open an issue](https://github.com/hmbanan666/wow-unbored/issues).
 - персонажей, их игровые данные и старые копии,
 - историю игрока и профили 0.6,
 - запросы, планы и ответы на них,
-- личные подсказки и идеи.
+- личные подсказки и идеи,
+- заметки об ошибках аддона.
 
 После этого сервер перестаёт принимать данные с этого ПК. Companion также очищает планы, подсказки и идеи, которые он положил в игру. Отменить это нельзя. Чтобы снова пользоваться планировщиком, нажми **Connect again** в окне Companion. У этого ПК будет новый ключ, как при первой установке, и он снова сможет отправлять данные. Если команда Unbored сама отключила ПК, эта кнопка его не вернёт.
 

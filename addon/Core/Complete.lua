@@ -239,7 +239,8 @@ function ns.VignetteName(npcID)
   return nil
 end
 
-function ns.VignetteComplete(spec)
+-- offscreen: only what the game knows, not where the player stands.
+function ns.VignetteComplete(spec, offscreen)
   if spec.questID and ns.QuestDone(spec.questID) then
     return true
   end
@@ -265,14 +266,16 @@ function ns.VignetteComplete(spec)
       end
     end
   end
-  if found or not spec.mapID or not spec.x or not spec.y then
+  if found or offscreen or not spec.mapID or not spec.x or not spec.y then
     return false
   end
   -- It left the client list while we are standing on the pin.
   return ns.Near(spec.mapID, spec.x, spec.y, 80)
 end
 
-function ns.SpecComplete(spec)
+-- offscreen (a grouped step that is not shown, docs/adr/0056): zone and
+-- proximity never count, and a rare only by its quest or a dead vignette.
+function ns.SpecComplete(spec, offscreen)
   if type(spec) ~= "table" then
     return false
   end
@@ -283,7 +286,7 @@ function ns.SpecComplete(spec)
   if kind == "any" then
     local list = spec.any or {}
     for i = 1, #list do
-      if ns.SpecComplete(list[i]) then
+      if ns.SpecComplete(list[i], offscreen) then
         return true
       end
     end
@@ -311,6 +314,9 @@ function ns.SpecComplete(spec)
   if kind == "currency" then
     return ns.CurrencyAtLeast(spec.currencyID, spec.minQuantity)
   end
+  if offscreen and (kind == "zone" or kind == "proximity") then
+    return false
+  end
   if kind == "zone" then
     local mapID = ns.PlayerPosition()
     return mapID ~= nil and mapID == spec.mapID
@@ -319,7 +325,7 @@ function ns.SpecComplete(spec)
     return ns.Near(spec.mapID, spec.x, spec.y, spec.radiusYards or 40)
   end
   if kind == "vignette" then
-    return ns.VignetteComplete(spec)
+    return ns.VignetteComplete(spec, offscreen)
   end
   return false
 end

@@ -63,7 +63,6 @@ local files = {
   "UI/Widgets.lua",
   "UI/Mascot.lua",
   "UI/Items.lua",
-  "UI/Import.lua",
   "UI/Minimap.lua",
   "Core/Init.lua",
 }
@@ -93,9 +92,9 @@ check(doc ~= nil, "plan format doc exists")
 local docText = doc:read("*a")
 doc:close()
 local planString = docText:match("UNB1:[A-Za-z0-9+/=]+")
-local progressString = docText:match("UNB1P:[A-Za-z0-9+/=]+")
+local progressString = "UNB1P:"
+  .. ns.Base64Encode('{"v":1,"kind":"progress","done":[],"skipped":[],"remaining":["a"]}')
 check(planString ~= nil, "doc has UNB1 example")
-check(progressString ~= nil, "doc has UNB1P example")
 
 local plan, err = ns.DecodeImport(planString)
 check(plan ~= nil, "example plan decodes: " .. tostring(err))
@@ -112,7 +111,7 @@ end
 
 local wrapped = planString:sub(1, 20) .. "\n" .. planString:sub(21)
 local wrappedPlan = ns.DecodeImport(wrapped)
-check(wrappedPlan ~= nil, "wrapped paste decodes")
+check(wrappedPlan ~= nil, "wrapped string decodes")
 
 local badKind = ns.DecodeImport(progressString)
 check(badKind == nil, "progress string is not a plan")
@@ -1040,6 +1039,94 @@ end
 check(unmatched == 1, "an unmatched item is logged once, with the unresolved ids")
 GetProfessions, GetProfessionInfo, C_Container = savedProfessions, nil, savedContainer
 UnitName, GetRealmName = nil, nil
+
+-- Reward contents (docs/adr/0055) and Step groups (docs/adr/0056) -----------
+do
+  local raw = {
+    title = "Cage Hunt",
+    rewards = { "{item:128025}", "{mount:183}" },
+    contains = {
+      ["{item:128025}"] = { "{mount:611}", "{mount:612}", "{mount:613}", "{ach:5}", "{mount:611}" },
+      ["{item:999}"] = { "{mount:1}" },
+      ["{mount:183}"] = { "{mount:2}" },
+    },
+    generatedAt = 1761900000,
+    tasks = {
+      { id = "fly", title = "Fly to Tanaan" },
+      { id = "r1", title = "Rare 1", group = "rares", complete = { kind = "quest", questID = 9001 } },
+      { id = "r2", title = "Rare 2", group = "rares", complete = { kind = "proximity", mapID = 84, x = 0.2, y = 0.2 } },
+      { id = "r3", title = "Rare 3", group = "rares", complete = { kind = "quest", questID = 9003 } },
+      { id = "r4", title = "Rare 4", group = "rares" },
+      { id = "cage", title = "Open the cage", group = "solo" },
+      { id = "x1", title = "Split 1", group = "split" },
+      { id = "x2", title = "Split 2" },
+      { id = "x3", title = "Split 3", group = "split" },
+      { id = "bad", title = "Bad group", group = "Not OK!" },
+    },
+  }
+  local clean = ns.ValidatePlan(raw, true)
+  local tokens = clean.contains and clean.contains["{item:128025}"] or {}
+  check(#tokens == 3 and tokens[1] == "{mount:611}", "contains keeps mount, toy, pet and item values once")
+  check(clean.contains["{item:999}"] == nil and clean.contains["{mount:183}"] == nil,
+    "a container must be an item reward of the plan")
+  check(clean.tasks[2].group == "rares" and clean.tasks[5].group == "rares", "a run of grouped steps keeps its group")
+  check(clean.tasks[6].group == nil, "a single-step group is dropped")
+  check(clean.tasks[7].group == nil and clean.tasks[9].group == nil, "a split group is dropped")
+  check(clean.tasks[10].group == nil, "a bad group name is dropped")
+  local roundTrip = ns.DecodeImport(ns.EncodePlan(clean))
+  check(roundTrip and roundTrip.contains and #roundTrip.contains["{item:128025}"] == 3
+    and roundTrip.tasks[3].group == "rares",
+    "contains and group survive the UNB1 round trip")
+  local three = { rewards = { "{item:1}", "{item:2}", "{item:3}" }, tasks = { { id = "a", title = "A" } },
+    contains = { ["{item:1}"] = { "{toy:5}" }, ["{item:2}"] = { "{pet:6}" }, ["{item:3}"] = { "{item:7}" } } }
+  local containers = 0
+  for _ in pairs(ns.ValidatePlan(three, true).contains) do
+    containers = containers + 1
+  end
+  check(containers == 2, "at most two containers per plan")
+
+  local killedQuests = {}
+  local savedFlagged = C_QuestLog.IsQuestFlaggedCompleted
+  C_QuestLog.IsQuestFlaggedCompleted = function(id)
+    return killedQuests[id] == true
+  end
+  raw.tasks[1].complete = nil
+  ns.Session:ApplyPlan(ns.ValidatePlan(raw, true), "companion", false)
+  check(ns.Session:ProgressTable().generatedAt == 1761900000, "the progress names its plan by generatedAt")
+  check(ns.Session:GroupInfo() == nil, "a step outside a group shows no arrows")
+  ns.Session:Done()
+  local info = ns.Session:GroupInfo()
+  check(info and info.index == 1 and info.count == 4, "a group step shows 1 of 4")
+  ns.Session:Flip(1)
+  check(ns.Session:Current().id == "r2" and ns.Session:GroupInfo().index == 2,
+    "the right arrow shows the next step of the group")
+  ns.Session:Flip(-1)
+  ns.Session:Flip(-1)
+  check(ns.Session:Current().id == "r4" and ns.Session:GroupInfo().index == 4, "the left arrow wraps to the last one")
+  check(ns.Session.state.tasks[5].id == "cage" and #ns.Session.state.done == 1 and #ns.Session.state.skipped == 0,
+    "flipping turns only the group and counts nothing")
+
+  -- r2 is a proximity step and the player stands on its pin: it waits until shown.
+  ns.Session:CheckCurrent()
+  check(ns.Session:Current().id == "r4" and #ns.Session.state.done == 1, "proximity counts only for the shown step")
+
+  -- Rare 3 is killed while Rare 4 is shown.
+  killedQuests[9003] = true
+  ns.Session:OnEvent("QUEST_TURNED_IN", 9003)
+  check(ns.Session:Current().id == "r4" and ns.Session.state.done[2].id == "r3",
+    "a grouped step done off-screen is ticked and the card stays")
+  check(ns.Session:GroupInfo().count == 3, "the group counts the open steps left")
+
+  ns.Session:Skip()
+  check(ns.Session.state.skipped[1].id == "r4" and ns.Session:Current().group == "rares",
+    "Skip in a group drops the step at once")
+  info = ns.Session:GroupInfo()
+  check(info and info.count == 2, "two open steps left in the group")
+  ns.Session:Done()
+  check(ns.Session:Current().id ~= nil and ns.Session:GroupInfo() == nil, "a group of one shows no arrows")
+  C_QuestLog.IsQuestFlaggedCompleted = savedFlagged
+  ns.Session.state = nil
+end
 
 local tocFile = assert(io.open("Unbored.toc", "r"))
 local tocText = tocFile:read("*a")

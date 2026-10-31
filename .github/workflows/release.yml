@@ -144,9 +144,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      # Restores the cache the Companion workflow saves on main (D216).
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/companion/src-tauri -> target
+          shared-key: companion-windows
+          save-if: false
       - uses: pnpm/action-setup@v4
         with:
           version: 12.16.1
@@ -178,8 +181,6 @@ jobs:
       - name: Build installer
         working-directory: apps/companion
         shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm exec tauri build ${{ steps.sign.outputs.args }}
       - name: Check the window ships every Bory picture
         shell: bash
@@ -220,6 +221,12 @@ jobs:
           set -euo pipefail
           bash .github/scripts/collect-bundle.sh "$VERSION" "${GITHUB_REPOSITORY}" bundle | tee collect.log
           tail -n 1 collect.log >> "$GITHUB_OUTPUT"
+      - name: The installers are signed with the committed updater key (D218)
+        if: steps.collect.outputs.signed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          bash .github/scripts/verify-updater-sigs.sh bundle
       - name: Attach the installer and refresh the updater feed
         if: env.PUBLISH == 'true'
         env:

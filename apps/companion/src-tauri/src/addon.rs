@@ -8,6 +8,8 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::Value;
 use zip::ZipArchive;
 
+use crate::i18n::code;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddonRelease {
     pub tag: String,
@@ -103,7 +105,7 @@ pub fn should_update(installed: Option<&str>, remote: &str) -> bool {
 
 pub fn install_addon_zip(bytes: &[u8], retail: &Path) -> Result<(), String> {
     if bytes.len() > 20 * 1024 * 1024 {
-        return Err("The addon zip is larger than 20 MB.".into());
+        return Err(code("ERR_ADDON_DOWNLOAD", &[]));
     }
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|err| err.to_string())?;
     let mut names = Vec::new();
@@ -116,7 +118,7 @@ pub fn install_addon_zip(bytes: &[u8], retail: &Path) -> Result<(), String> {
         .iter()
         .find(|name| name.as_str() == "Unbored.toc" || name.ends_with("/Unbored.toc"))
         .cloned()
-        .ok_or_else(|| "The release zip has no Unbored.toc.".to_string())?;
+        .ok_or_else(|| code("ERR_ADDON_DOWNLOAD", &[]))?;
     let prefix = match toc.rfind('/') {
         Some(index) => toc[..=index].to_string(),
         None => String::new(),
@@ -167,8 +169,7 @@ fn unpack(archive: &mut ZipArchive<Cursor<&[u8]>>, prefix: &str, dir: &Path) -> 
             continue;
         }
         let relative = name.trim_start_matches(prefix);
-        let dest =
-            safe_join(dir, relative).ok_or_else(|| format!("Unsafe path in the zip: {name}"))?;
+        let dest = safe_join(dir, relative).ok_or_else(|| code("ERR_ADDON_DOWNLOAD", &[]))?;
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|err| err.to_string())?;
         }
@@ -178,7 +179,7 @@ fn unpack(archive: &mut ZipArchive<Cursor<&[u8]>>, prefix: &str, dir: &Path) -> 
         out.write_all(&buf).map_err(|err| err.to_string())?;
     }
     if !dir.join("Unbored.toc").is_file() {
-        return Err("The release zip has no Unbored.toc at the addon root.".into());
+        return Err(code("ERR_ADDON_DOWNLOAD", &[]));
     }
     Ok(())
 }

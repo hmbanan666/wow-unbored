@@ -120,6 +120,8 @@ pub struct SessionProgress {
     pub done: Vec<Stamp>,
     pub skipped: Vec<Stamp>,
     pub remaining: Vec<String>,
+    /// The plan's generatedAt (D190), so the Server can tell which plan this is.
+    pub generated_at: Option<u64>,
 }
 
 pub fn parse_saved_variables(text: &str) -> Result<BTreeMap<String, LuaValue>, String> {
@@ -300,6 +302,7 @@ pub fn session_progress(session: &LuaValue) -> SessionProgress {
         done: stamps(table_get(session, "done")),
         skipped: stamps(table_get(session, "skipped")),
         remaining,
+        generated_at: table_get(session, "generatedAt").and_then(LuaValue::as_u64),
     }
 }
 

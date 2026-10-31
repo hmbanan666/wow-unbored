@@ -1,6 +1,6 @@
 {
   "name": "unbored",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @unbored/server start",

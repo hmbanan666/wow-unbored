@@ -20,6 +20,8 @@ export type Plan = {
   details?: string;
   /** Up to 6 single link tokens, such as "{mount:183}". */
   rewards?: string[];
+  /** Reward contents (ADR 0055): a container reward token like "{item:ID}" to the 1-6 tokens it may hold. */
+  contains?: Record<string, string[]>;
   generatedAt: number;
   tasks: Task[];
   /** Npc names and places for `{npc:ID}` tokens (markup.md). */
@@ -48,6 +50,8 @@ export type Task = {
   condition?: TaskCondition;
   waypoints?: Waypoint[];
   complete?: Record<string, unknown>;
+  /** Step group (ADR 0056): consecutive steps with the same group are done in any order. */
+  group?: string;
 };
 
 export const CONDITION_KINDS = ["currency", "item", "level", "quest", "ach"] as const;
@@ -231,6 +235,7 @@ export const planSchema = z
     goal: z.string().optional(),
     details: z.string().optional(),
     rewards: z.array(z.string()).max(6).optional(),
+    contains: z.record(z.string(), z.array(z.string()).min(1).max(6)).optional(),
     generatedAt: z.number().optional(),
     tasks: z
       .array(
@@ -240,6 +245,10 @@ export const planSchema = z
             title: z.string(),
             why: z.string().optional(),
             rewards: z.array(z.string()).max(3).optional(),
+            group: z
+              .string()
+              .regex(/^[a-z0-9-]{1,24}$/)
+              .optional(),
             condition: z
               .object({
                 text: z.string(),

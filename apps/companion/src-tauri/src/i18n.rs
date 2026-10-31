@@ -123,6 +123,75 @@ pub fn trf(key: &str, args: &[&str]) -> String {
     trf_in(current(), key, args)
 }
 
+/// An error code for `Err(String)`: an `ERR_` key and its `{0}`, `{1}` args.
+/// `shown` turns it into words in the language of the moment.
+pub fn code(key: &str, args: &[&str]) -> String {
+    let mut out = key.to_string();
+    for arg in args {
+        out.push('|');
+        out.push_str(&arg.replace('|', "/"));
+    }
+    out
+}
+
+fn matches_template(template: &str, text: &str) -> bool {
+    let mut pieces = Vec::new();
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        match rest[start..].find('}') {
+            Some(end) if rest[start + 1..start + end].parse::<u8>().is_ok() => {
+                pieces.push(&rest[..start]);
+                rest = &rest[start + end + 1..];
+            }
+            _ => break,
+        }
+    }
+    if pieces.is_empty() {
+        return template == text;
+    }
+    pieces.push(rest);
+    let (first, last) = (pieces[0], pieces[pieces.len() - 1]);
+    if !text.starts_with(first) || !text[first.len()..].ends_with(last) {
+        return false;
+    }
+    let mut cursor = &text[first.len()..text.len() - last.len()];
+    for piece in &pieces[1..pieces.len() - 1] {
+        match cursor.find(piece) {
+            Some(at) => cursor = &cursor[at + piece.len()..],
+            None => return false,
+        }
+    }
+    true
+}
+
+/// What the window, the tray and toasts show for a status or an error: a
+/// code in the current language, our own words as they are, and anything
+/// else (an OS, network or parser message) as one plain line (D215).
+pub fn shown_in(lang: Lang, text: &str) -> String {
+    if text.starts_with("ERR_") {
+        let mut parts = text.split('|');
+        let key = parts.next().unwrap_or_default();
+        let args: Vec<&str> = parts.collect();
+        if EN.iter().any(|(name, _)| *name == key) {
+            return trf_in(lang, key, &args);
+        }
+        return tr_in(lang, "ERR_UNEXPECTED");
+    }
+    if text.is_empty()
+        || EN
+            .iter()
+            .chain(RU.iter())
+            .any(|(_, template)| matches_template(template, text))
+    {
+        return text.to_string();
+    }
+    tr_in(lang, "ERR_UNEXPECTED")
+}
+
+pub fn shown(text: &str) -> String {
+    shown_in(current(), text)
+}
+
 /// The window's own words, sent with every state so the page never holds text.
 pub fn ui_text(lang: Lang) -> serde_json::Map<String, serde_json::Value> {
     table(lang)
@@ -200,14 +269,24 @@ const EN: &[(&str, &str)] = &[
     ("PLANNER_RETURNED_FOR", "The planner answered with an error ({0}) for {1}."),
     ("GAME_DATA_TOO_BIG", "The game data is too big to send."),
     ("APPROVED_CHOOSE_RETAIL", "Approved. Choose the Retail folder."),
-    ("PLANNER_REFUSED", "The planner refused a request: {0}"),
+    ("PLANNER_REFUSED", "The planner could not take that request."),
     ("REQUEST_SENT", "Request sent. The planner is working on it."),
     ("PLANNER_FAILED", "The planner could not answer that one."),
     ("NEW_PLAN", "New plan ready. Bory picks it up next time you log in."),
     ("PAIRING_APPROVED", "Approved."),
     ("PAIRING_REVOKED", "This PC was disconnected."),
     ("PAIRING_WAITING", "Waiting for a one-time OK."),
-    ("CHOOSE_RETAIL_SUFFIX", "Choose the Retail folder."),
+    ("PAIRING_CHOOSE_RETAIL", "{0} Choose the Retail folder."),
+    // Error codes (i18n::code, shown through i18n::shown)
+    ("ERR_UNEXPECTED", "Something went wrong on this PC. I'll try again in a moment; restarting the Companion helps if it keeps happening."),
+    ("ERR_OFFLINE", "I can't reach the internet right now. I'll keep trying; quick plans in the game still work."),
+    ("ERR_PLANNER_ANSWER", "The planner sent an answer I couldn't read. I'll ask again in a moment."),
+    ("ERR_PLAN_STRING", "That plan string doesn't look right. Fetch the plan instead."),
+    ("ERR_GAME_FILES", "I couldn't write Bory's files into the game folder. Check that the folder isn't read-only; I'll try again."),
+    ("ERR_ADDON_DOWNLOAD", "The Bory download looked broken, so I kept the one you have. I'll try again later."),
+    ("ERR_NO_ACCOUNT_FOLDER", "One character has no account folder, so I skipped it."),
+    ("ERR_ACCOUNT_SALT", "A settings file on this PC is damaged. Restart the Companion; if it stays, reinstall it."),
+    ("ERR_PLANNER_URL", "The planner address must start with https://."),
     ("GITHUB_RETURNED", "GitHub answered with an error ({0})."),
     ("NO_ADDON_RELEASE", "No addon release found."),
     ("ADDON_INSTALLED", "Addon {0} is installed."),
@@ -256,6 +335,7 @@ const EN: &[(&str, &str)] = &[
     ("UI_PROGRESS_ROW", "{0} - {1}: {2} done, {3} skipped"),
     ("UI_PROGRESS_NOW", " now {0}"),
     ("UI_NOTHING", "The Companion returned nothing to show."),
+    ("UI_OUTSIDE_APP", "Open this window from the Unbored Companion app."),
 ];
 
 const RU: &[(&str, &str)] = &[
@@ -313,14 +393,23 @@ const RU: &[(&str, &str)] = &[
     ("PLANNER_RETURNED_FOR", "Планировщик ответил ошибкой ({0}) для {1}."),
     ("GAME_DATA_TOO_BIG", "Игровые данные слишком большие для отправки."),
     ("APPROVED_CHOOSE_RETAIL", "Одобрено. Выбери папку Retail."),
-    ("PLANNER_REFUSED", "Планировщик отклонил запрос: {0}"),
+    ("PLANNER_REFUSED", "Планировщик не смог принять этот запрос."),
     ("REQUEST_SENT", "Запрос отправлен. Планировщик уже работает."),
     ("PLANNER_FAILED", "Планировщик не смог на это ответить."),
     ("NEW_PLAN", "Новый план готов. Бори заберёт его при следующем входе."),
     ("PAIRING_APPROVED", "Одобрено."),
     ("PAIRING_REVOKED", "Этот ПК отключён."),
     ("PAIRING_WAITING", "Жду разового одобрения."),
-    ("CHOOSE_RETAIL_SUFFIX", "Выбери папку Retail."),
+    ("PAIRING_CHOOSE_RETAIL", "{0} Выбери папку Retail."),
+    ("ERR_UNEXPECTED", "Что-то пошло не так на этом ПК. Я попробую ещё раз; если повторяется, перезапусти Companion."),
+    ("ERR_OFFLINE", "Не могу выйти в интернет. Я продолжаю пробовать; быстрые планы в игре работают и так."),
+    ("ERR_PLANNER_ANSWER", "Планировщик прислал ответ, который я не смог прочитать. Спрошу ещё раз чуть позже."),
+    ("ERR_PLAN_STRING", "Эта строка плана не похожа на правильную. Лучше забери план кнопкой."),
+    ("ERR_GAME_FILES", "Не получилось записать файлы Бори в папку игры. Проверь, что папка не только для чтения; я попробую ещё раз."),
+    ("ERR_ADDON_DOWNLOAD", "Загрузка Бори пришла битой, так что я оставил тот, что есть. Попробую позже."),
+    ("ERR_NO_ACCOUNT_FOLDER", "У одного персонажа нет папки учётной записи, я его пропустил."),
+    ("ERR_ACCOUNT_SALT", "Файл настроек на этом ПК повреждён. Перезапусти Companion; если не поможет, переустанови его."),
+    ("ERR_PLANNER_URL", "Адрес планировщика должен начинаться с https://."),
     ("GITHUB_RETURNED", "GitHub ответил ошибкой ({0})."),
     ("NO_ADDON_RELEASE", "Не нашёл выпуск аддона."),
     ("ADDON_INSTALLED", "Аддон {0} установлен."),
@@ -368,6 +457,7 @@ const RU: &[(&str, &str)] = &[
     ("UI_PROGRESS_ROW", "{0} - {1}: сделано {2}, пропущено {3}"),
     ("UI_PROGRESS_NOW", ", сейчас {0}"),
     ("UI_NOTHING", "Companion ничего не вернул."),
+    ("UI_OUTSIDE_APP", "Открой это окно из приложения Unbored Companion."),
 ];
 
 #[cfg(test)]
@@ -403,6 +493,57 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn every_error_code_has_words_in_both_languages() {
+        let codes: Vec<&str> = EN
+            .iter()
+            .map(|(key, _)| *key)
+            .filter(|key| key.starts_with("ERR_"))
+            .collect();
+        assert!(codes.len() >= 9);
+        for key in codes {
+            let en = shown_in(Lang::En, &code(key, &[]));
+            let ru = shown_in(Lang::Ru, &code(key, &[]));
+            assert_eq!(en, tr_in(Lang::En, key), "{key} in English");
+            assert_eq!(ru, tr_in(Lang::Ru, key), "{key} in Russian");
+            assert_ne!(en, ru, "{key} is translated");
+            assert!(
+                ru.chars().any(|c| ('а'..='я').contains(&c)),
+                "{key} reads Russian"
+            );
+        }
+    }
+
+    #[test]
+    fn shows_our_words_and_hides_raw_messages() {
+        let ours = trf_in(Lang::Ru, "PLANNER_RETURNED", &["503"]);
+        assert_eq!(shown_in(Lang::Ru, &ours), ours);
+        assert_eq!(
+            shown_in(Lang::En, &tr_in(Lang::En, "PROGRESS_READ")),
+            tr_in(Lang::En, "PROGRESS_READ")
+        );
+        let waiting = trf_in(
+            Lang::En,
+            "PAIRING_CHOOSE_RETAIL",
+            &[&tr_in(Lang::En, "PAIRING_WAITING")],
+        );
+        assert_eq!(shown_in(Lang::En, &waiting), waiting);
+        for raw in [
+            "error sending request for url (https://unbored.kosarev.space/v1/devices/me)",
+            "The system cannot find the path specified. (os error 3)",
+            "Could not write the plan: Access is denied. (os error 5)",
+            "ERR_NO_SUCH_CODE",
+        ] {
+            assert_eq!(
+                shown_in(Lang::Ru, raw),
+                tr_in(Lang::Ru, "ERR_UNEXPECTED"),
+                "{raw}"
+            );
+        }
+        assert_eq!(shown_in(Lang::En, ""), "");
+        assert_eq!(code("ERR_OFFLINE", &["a|b"]), "ERR_OFFLINE|a/b");
     }
 
     #[test]

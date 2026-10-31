@@ -5,6 +5,7 @@ pub const DEFAULT_PLANNER_URL: &str = "https://unbored.kosarev.space";
 
 use serde_json::{json, Value};
 
+use crate::i18n::code;
 use crate::savedvars::SessionProgress;
 use crate::wow::CharacterFile;
 
@@ -20,7 +21,7 @@ pub fn validate_endpoint(url: &str) -> Result<(), String> {
     if lower.starts_with("http://127.0.0.1") || lower.starts_with("http://localhost") {
         return Ok(());
     }
-    Err("The planner URL must be https, or http://localhost for a local test.".into())
+    Err(code("ERR_PLANNER_URL", &[]))
 }
 
 pub fn join_url(base: &str, path: &str) -> String {
@@ -30,7 +31,7 @@ pub fn join_url(base: &str, path: &str) -> String {
 }
 
 pub fn progress_payload(file: &CharacterFile, progress: &SessionProgress) -> Value {
-    json!({
+    let mut payload = json!({
         "account": file.account,
         "realm": file.realm,
         "character": file.character,
@@ -46,7 +47,11 @@ pub fn progress_payload(file: &CharacterFile, progress: &SessionProgress) -> Val
             "skipped": stamps_json(&progress.skipped),
             "remaining": progress.remaining,
         }
-    })
+    });
+    if let Some(stamp) = progress.generated_at {
+        payload["progress"]["generatedAt"] = json!(stamp);
+    }
+    payload
 }
 
 fn stamps_json(stamps: &[crate::savedvars::Stamp]) -> Vec<Value> {
@@ -99,12 +104,22 @@ mod tests {
             }],
             skipped: vec![],
             remaining: vec!["b".into()],
+            generated_at: Some(1_790_000_000),
         };
         let body = progress_payload(&file, &progress);
         assert_eq!(body["account"], "111111#1");
         assert_eq!(body["progress"]["kind"], "progress");
         assert_eq!(body["progress"]["done"][0]["id"], "a");
         assert_eq!(body["progress"]["remaining"][0], "b");
+        assert_eq!(body["progress"]["generatedAt"], 1_790_000_000);
+        let older = progress_payload(
+            &file,
+            &SessionProgress {
+                generated_at: None,
+                ..progress
+            },
+        );
+        assert!(older["progress"].get("generatedAt").is_none());
         assert_eq!(
             join_url("https://planner.example/unbored/", "/v1/plan"),
             "https://planner.example/unbored/v1/plan"

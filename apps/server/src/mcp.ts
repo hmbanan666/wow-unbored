@@ -43,6 +43,7 @@ The card (all optional, but a plan without a title gets a warning):
 - goal: one sentence, at most 160 bytes: what the player does and why it is worth it. May carry tokens.
 - details: at most 600 bytes of facts and state (currency counts, what Alts already did). May carry tokens.
 - rewards: up to 6 strings, each exactly one token of kind mount, ach, item, toy, currency or pet, e.g. ["{mount:183}", "{ach:964}"].
+- contains: optional reward contents, { "<item reward token>": ["<token>", ...] }. A container (cage, chest, bag) that drops is the reward; what it may hold goes in \`contains\`. Never list the possible contents as rewards themselves. The key is one {item:ID} that is also in rewards or a step's rewards; the list is 1 to 6 single tokens of kind mount, toy, pet or item; at most 2 containers; the contents count toward the 12 tokens of goal plus details. Bory shows "[cage] · may contain 1 of 3 mounts" and leaves out what the player already has.
 Bory shows a calm card: closed it is only the title, the step, its why and the first reward; everything else opens on "Show more". So keep every text short: a step title is one line of what to do, why is one short reason, and long text belongs in note or details. No walls of text.
 
 Each task:
@@ -57,6 +58,7 @@ Each task:
 - condition: optional { text, check }. text (at most 160 bytes) is shown before the step, e.g. "If you have 5,000 {currency:1166}". check = { kind: currency | item | level | quest | ach, id, atLeast? } is evaluated live in the game: met shows Ready; unmet shows the live count and Skip moves past without counting it as skipped. For level, id is the level. Never guess the player's numbers; let the check read them.
 - waypoints: optional, 1 to 10 points [{ mapID, x, y, label }] in route order. x and y are 0 to 1, label at most 80 bytes. The addon sets the native waypoint arrow (and TomTom when installed) on point 1 and moves to the next point when the player comes within about 30 yards. Use it for a multi-stop task. Without waypoints the task's own mapID, x, y is the single point.
 - complete: how the game finishes the task. Omit it and the player presses Done.
+- group: optional, 1 to 24 characters a-z, 0-9 and hyphen. Steps that can be done in any order (several rares, treasures, dailies in one zone) share a \`group\`. Give each grouped step a \`complete\` the game can check (quest or vignette for rares); a manual step in a group works but needs Done. Grouped steps must be next to each other, at least 2; the player flips between them with arrows and they tick off in any order.
 
 ${MARKUP}
 
@@ -133,7 +135,7 @@ const entitiesSchema = z
 export function createMcpServer(store: Store, dataDir: string, gameIds?: BlizzardIds): McpServer {
   const server = new McpServer({
     name: "unbored",
-    version: "0.9.1",
+    version: "0.10.0",
   });
 
   const taskSchema = z
@@ -168,6 +170,10 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         .optional()
         .describe("Route points in order. Coordinates are 0 to 1."),
       complete: z.unknown().optional(),
+      group: z
+        .string()
+        .optional()
+        .describe("Step group: consecutive steps done in any order, 1-24 of a-z, 0-9, hyphen"),
     })
     .strict();
   const planSchema = z
@@ -185,6 +191,12 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         .max(6)
         .optional()
         .describe('Up to 6 single link tokens, like "{mount:183}"'),
+      contains: z
+        .record(z.string(), z.array(z.string()).max(6))
+        .optional()
+        .describe(
+          "Reward contents: a container {item:ID} reward to the 1-6 mount, toy, pet or item tokens it may hold",
+        ),
       generatedAt: z.number().optional(),
       tasks: z.array(taskSchema).min(1).max(40),
       entities: entitiesSchema
@@ -416,7 +428,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Get the player history",
       description:
-        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), and advice (a put_item_advice batch). What changed in the game data itself (new quests done, mounts, item counts, gold) is in get_data_changes. Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
+        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), advice (a put_item_advice batch), and win (something a plan promised that game data later showed obtained: ref like mount:ID, body with planId, requestId, kind, id, token, planTitle, category; see list_wins). What changed in the game data itself (new quests done, mounts, item counts, gold) is in get_data_changes. Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
       inputSchema: {
         character: z.string().max(80).optional(),
         realm: z.string().max(80).optional(),
@@ -472,7 +484,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Overview of an Account",
       description:
-        "Every Character of an Account (or of every Account) with class, spec, level, item level, gold, professions, last seen, and how fresh each Game data Section is. Start here before planning for a player with Alts.",
+        "Every Character of an Account (or of every Account) with class, spec, level, item level, gold, professions, last seen, how fresh each Game data Section is, and missing: expected Sections it does not have, each with reason window (read only while the bank or a profession is open; hint says which), dropped (the addon dropped it to stay small), sharing (data sharing is off) or never (not uploaded yet). Start here before planning for a player with Alts.",
       inputSchema: { account: whoSchema.account },
     },
     async ({ account }) => {
@@ -489,6 +501,55 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         })),
       });
     },
+  );
+
+  server.registerTool(
+    "get_ready_now",
+    {
+      title: "What the player can do now",
+      description:
+        "Ready now: what one Character can do or finish now, computed on demand by fixed rules from its latest Game data (every id comes from its Sections; nothing is guessed). Call it first for a plan request's Character and build from its items when they fit the pick. items (at most 25, best score first) each have kind (vault, paragon, lockout, achievement, renown, standing, currency, chain, event, key), key, title when the data has a name, tokens (link tokens you may use as is), have/need/left numbers, resetAt, why (plain English for you, not for the player), score and source (the Section). Rules: a vault or paragon reward waiting; a raid or dungeon lockout with bosses left this week; achievements at least 70% done (achProgress); renown within 25% of the next level with its rewards; a standing within 15% of the next; a currency near its cap or with weekly room; the 5 most finished quest chains; events on now; your keystone. taste is the player's history per category (picked, finished, doneSteps, skippedSteps, wins, rate, bonus -15 to 15, already in the scores): prefer what they finish, avoid what they keep skipping. alts lists achievements another Character of the Account is at least 20% further on: say it is easier on that Alt. missing names Sections the rules needed and did not have (see data_catalog for why).",
+      inputSchema: whoSchema,
+    },
+    async (who) => {
+      const ready = store.readyNow(who);
+      if (!ready) return failure(new Error("No game data for that Character yet."));
+      return text(ready);
+    },
+  );
+
+  server.registerTool(
+    "list_errors",
+    {
+      title: "List addon error reports",
+      description:
+        "Where the addon broke, as sent with the player's data when sharing is on (never what they typed or who they are): newest first, one row per Account, addon version, where (section:<name>, event:<EVENT>, ui:<view>, init) and message, with the stack (addon files only), how many times it happened (count), first and last time (firstAt, lastAt), the device name and the Character of the upload. new is true when the Server first saw it at or after since. Read it after each session and report new ones.",
+      inputSchema: {
+        account: whoSchema.account,
+        since: z.number().int().optional().describe("Unix seconds; rows seen or updated since."),
+        version: z.string().max(20).optional().describe("Only this addon version, like 0.10.0."),
+        limit: z.number().int().min(1).max(200).optional().describe("Default 50."),
+      },
+    },
+    async ({ account, since, version, limit }) =>
+      text({ errors: store.listErrors({ account, since, version, limit: limit ?? 50 }) }),
+  );
+
+  server.registerTool(
+    "list_wins",
+    {
+      title: "List wins",
+      description:
+        "Wins: things a plan promised (its rewards, a container's contents, the last step's quest, mount, toy, pet or achievement) that the player's game data later showed newly obtained, after the plan was made, within 30 days, one per id per Account. Only plans made for a request count. Returns wins (newest first: at, character, kind mount|ach|toy|pet|item|quest, id, token, planId, requestId, planTitle, category), totals per kind, and days (UTC YYYY-MM-DD, newest first). Do not tell the player about wins yet; use it to avoid offering what they just got.",
+      inputSchema: {
+        account: whoSchema.account,
+        character: whoSchema.character,
+        since: z.number().int().optional().describe("Unix seconds; wins at or after it."),
+        limit: z.number().int().min(1).max(500).optional().describe("Default 100."),
+      },
+    },
+    async ({ account, character, since, limit }) =>
+      text(store.listWins({ account, character, since, limit: limit ?? 100 })),
   );
 
   server.registerTool(
@@ -620,7 +681,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Data explorer",
       description:
-        "The Data explorer: every Account and Character with each Game data Section (version, read time, savedAt, size in bytes, id and item counts, the last change), Sections the addon dropped to stay small, unknown Sections a newer addon sent, and for unresolvedIds the count per kind (quest, item, advice: ids Bory could not resolve or had no advice for). Use it to see what was collected; read bodies with get_game_data.",
+        "The Data explorer: every Account and Character with each Game data Section (version, read time, savedAt, size in bytes, id and item counts, the last change), Sections the addon dropped to stay small, unknown Sections a newer addon sent, and for unresolvedIds the count per kind (quest, item, advice: ids Bory could not resolve or had no advice for). Each Account and Character also has expected (every Section it should have; errors and the 0.6 profile are not expected) and missing (each with reason window, dropped, sharing or never, and a hint for window). Use it to see whether everything arrived; read bodies with get_game_data.",
       inputSchema: { account: whoSchema.account },
     },
     async ({ account }) => text(data.catalog({ account })),

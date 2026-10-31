@@ -89,10 +89,10 @@ Installed 0.8 Companions still verify with the previous public key:
 dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3NjIzREE2MkJDODNGNEQKUldSTlA4Z3JwajFpOTNsTGZZaVZGSmt5Mzd1MjRSNzN3SDBxbWpMWUtqaVhFNnJYK0JFUWxLUkwK
 ```
 
-1. Do not change the GitHub secret `TAURI_SIGNING_PRIVATE_KEY` before 0.9 is published. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` stays empty.
+1. Do not change the GitHub secret `TAURI_SIGNING_PRIVATE_KEY` before 0.9 is published.
 2. Tag **0.9** signed with that current secret (the old private key). The 0.9 binary contains the new public key, so Companions on 0.8 accept 0.9 and then trust the new key.
-3. After those installs have moved to 0.9, replace `TAURI_SIGNING_PRIVATE_KEY` with the new private key. The password is empty. Do not commit the private key.
-4. Tag **0.9.1** and later with the new secret. The pubkey in `tauri.conf.json` stays the new one.
+3. After those installs have moved to 0.9, replace `TAURI_SIGNING_PRIVATE_KEY` with the new private key. It has no password, and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is gone from the secrets and the workflows. Do not commit the private key. (Done 2026-10-31.)
+4. Tag **0.10.0** and later with the new secret. The pubkey in `tauri.conf.json` stays the new one. The release `publish` job verifies each installer `.sig` against `updater-pubkey-v2.pub` with `minisign` (`.github/scripts/verify-updater-sigs.sh`, D218), so the dry run fails if the secret is not the new key.
 
 A release dry run prints the embedded pubkey in the job summary (`scripts/print-updater-pubkey.sh`) and fails when it is not the committed public half, `apps/companion/src-tauri/updater-pubkey-v2.pub` (`scripts/check-updater-pubkey.sh`, D151); `cargo test` checks the same. Swapping the secret before 0.9 ships would make every installed Companion reject the update.
 
@@ -125,9 +125,10 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 | `questsDone` | char | C_QuestLog.GetAllCompletedQuestIDs (packed) | login, QUEST_TURNED_IN | 52 KB |
 | `questLog` | char | C_QuestLog, GetQuestObjectives | QUEST_LOG_UPDATE and quest events | 16 KB |
 | `questLines` (v1) | char | C_CampaignInfo (InProgress or Stalled campaigns), C_QuestLine.GetQuestLineInfo for each log quest, GetAvailableQuestLines for the current map and the 3 most played maps; GetQuestLineQuests against IsQuestFlaggedCompleted gives `done`/`total`/`nextQuestID`. Up to 40 rows `{ questLineID, name, campaignID?, chapter?, mapID, x?, y?, done, total, nextQuestID?, flags }`, names in the client language | 20 s after the login pass (map requests 10 s before it), QUEST_TURNED_IN | ~4 KB |
-| `reputation` | char | C_Reputation, C_MajorFactions, C_GossipInfo.GetFriendshipReputation | login, UPDATE_FACTION | 52 KB |
+| `reputation` (v2) | char | C_Reputation, C_MajorFactions, C_GossipInfo.GetFriendshipReputation; v2 adds per renown row `next` (up to 4 rewards of the next level from `C_MajorFactions.GetRenownRewardsForLevel`) and `max`, and per paragon faction `paragon = { value, threshold, questID, pending }` (D181) | login, UPDATE_FACTION | 52 KB |
 | `achievements` | account | GetCategoryList, GetAchievementInfo (packed) | staged scan once a day, ACHIEVEMENT_EARNED | 12 KB |
 | `achievementsMine` | char | ACHIEVEMENT_EARNED | events | 6 KB |
+| `achProgress` | char | GetAchievementNumCriteria, GetAchievementCriteriaInfo on incomplete non-guild achievements (a single progress-bar criterion uses its quantity); rows `{ id, d, t, open }` with ratio >= 0.5, at most 200, best first; skips achievements with more than 60 criteria and stops at 60,000 calls (D182). Priority 20, dropped first | staged, once a day per Character, 60 s after login | |
 | `mounts` | account | C_MountJournal (packed) | login, NEW_MOUNT_ADDED | 3 KB |
 | `pets` | account | C_PetJournal | login (staged), NEW_PET_ADDED | 12 KB |
 | `toys` | account | C_ToyBox, PlayerHasToy (packed) | login (staged), NEW_TOY_ADDED | 3.7 KB |
@@ -139,6 +140,7 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 | `sessions` | char | zones with mapID and minutes, deaths, level ups (last 20) | events | 24 KB |
 | `addons` | account | C_AddOns.IsAddOnLoaded for TomTom, Auctionator, TSM, Bagnon | login | |
 | `unresolvedIds` | char | Plan ids the game could not resolve, and items Bory had no tooltip advice for (`kind = "advice"`, was the 0.6 profile's `unmatchedItems`) | when a link fails, when an item has no line | |
+| `errors` | account | `ns.ReportError`: rows `{ at, lastAt, count, version, where, text, stack }`, same `where`+`text`+`version` counts up, 10 rows; paths cut to `Interface/AddOns/`, quoted text replaced by `"…"`, stack lines only from `AddOns/Unbored/` or `[C]` (D173-D176). Not essential: with sharing off it stays on this PC | when a protected call fails | 4 KB |
 
 "Share game data to make Bory smarter" (`UnboredDB.shareData`, on by default) off keeps only `char`, `gear`, `questLog` and `sessions`, the Sections a Plan Request needs. The owner sees what arrived with the MCP tools `data_catalog` and `get_game_data`.
 
@@ -150,7 +152,7 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 
 Players never need them. Keybinds (Esc → Options → Keybindings → AddOns → Unbored): pick a new plan, Done, Skip, point the arrow again, and Refresh (reloads the UI; a keypress counts as the click Blizzard requires).
 
-`/unbored` (the presets), `/unbored show|hide`, `/unbored item`, `/unbored lock|reset`, `/unbored build`, `/unbored roam|quests|events|fun|farm`, `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the Companion file again), `/unbored where` (map id and 0–100 coordinates, for people adding data), and `/unbored errors` (caught Lua errors; the player only ever sees one friendly line).
+`/unbored` (the presets), `/unbored show|hide`, `/unbored item`, `/unbored lock|reset`, `/unbored build`, `/unbored roam|quests|events|fun|farm`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the Companion file again), `/unbored where` (map id and 0–100 coordinates, for people adding data), and `/unbored errors` (caught Lua errors; the player only ever sees one friendly line).
 
 ## What the modes suggest
 
@@ -182,17 +184,41 @@ The current task advances on `ACHIEVEMENT_EARNED`, `CRITERIA_UPDATE`, `CRITERIA_
 
 Account-wide achievement completion counts as done. See open questions below if that should be this character only.
 
-## Import and export
+## Plans from the Companion
 
-An outside planner builds a line that starts with `UNB1:`. You paste it with `/unbored import`. The list switches immediately. No reload.
+There is no paste window: `/unbored import` and `/unbored export` were removed in 0.10 ([ADR 0046](adr/0046-choices-only.md), D214). `Core/Import.lua` still decodes the `UNB1:` string the Companion writes; the format and the JSON schema are in [`plan-format.md`](plan-format.md).
 
-`/unbored export` selects an `UNB1P:` line: done and skipped task ids, timestamps, and what is left. Send that back to the planner.
+The Companion writes `Interface/AddOns/Unbored_Plan/Plan.lua`. A plan or answer for this character's pending Request is taken at the next login or Refresh; a Full plan over a running Quick plan is offered first. A plan the planner put directly starts once per character, when no request is waiting. `/unbored companion` applies the file again. The older `Companion/Plan.lua` and `UnboredDB.companionPlan` seam is still applied on login when its `generatedAt` is newer than the saved session. Progress carries the plan's `generatedAt`, so the Server can tell which plan it belongs to (taste, D191).
 
-The format, the JSON schema, and a paste-ready example are in [`plan-format.md`](plan-format.md).
+Build plan (without the companion) replaces a Companion plan with one made in game.
 
-The Companion writes `Interface/AddOns/Unbored_Plan/Plan.lua`. A plan or answer for this character's pending Request is taken at the next login or Refresh; a Full plan over a running Quick plan is offered first. A plan the planner put directly starts once per character, when no request is waiting. `/unbored companion` applies the file again. The older `Companion/Plan.lua` and `UnboredDB.companionPlan` seam is still applied on login when its `generatedAt` is newer than the saved session. The import string remains the path that does not need the desktop app.
+## Error reports
 
-Build plan (without the companion) replaces an imported list with one made in game.
+`ns.ReportError(where, err, stack)` keeps one row per problem in the account Section `errors` (above); the protected call sites (`Init.lua` event dispatch and setup, `Events.lua`, `Store.lua` `S.Read`, the staged worker) use `xpcall` with `ns.ErrorHandler(where)`, which adds `debugstack`. The player sees one friendly line per session (`OOPS`); `/unbored errors` lists them in chat. The Server upserts each row into `addon_errors` keyed by `sha256(version|where|text)`, count = the most seen; the MCP tool `list_errors` reads them newest first with the device name, and `delete_account_data` and Forget my data erase them ([ADR 0051](adr/0051-addon-error-reports.md)).
+
+## Ready now, taste and wins
+
+`apps/server/src/ready.ts` computes **Ready now** per Character on demand from the latest Sections (MCP `get_ready_now`, [ADR 0052](adr/0052-ready-now.md)); at most 25 items, sorted by score:
+
+| Rule | Source | Score |
+| --- | --- | --- |
+| Great Vault reward waiting, paragon reward waiting | `vault`, `reputation` v2 | 100 |
+| Event on now with open catalog tasks | `calendar` + catalog | 90 |
+| Lockout with bosses left this week | `lockouts` | 80, +10 when it resets within 2 days |
+| Renown within 25% of the next level | `reputation` | 75 with a mount or item reward, 60 without |
+| Achievement at least 70% done | `achProgress` | 70 + 30 × (ratio - 0.7) / 0.3 |
+| Vault activity 1-2 short of the next slot | `vault` | 70 (TODO: not in the D186 table) |
+| Currency at 90% of its cap | `currencies` | 65 |
+| Open quest chain (top 5) | `questLines` | 60 |
+| Your keystone | `mplus` | 55 (TODO: not in the D186 table) |
+| Classic or friendship standing within 15% of the next step | `reputation` | 50 |
+| Weekly currency room left | `currencies` | 40 |
+
+Vault activity types are named from `Enum.WeeklyRewardChestThresholdType` (comment in `ready.ts`), else "type N". `alts` lists up to 5 achievements another Character of the Account is at least 0.2 further along on (and at least half done), `{ achievementID, character, d, t }` (D210). `missing` names Sections the rules needed and did not have.
+
+**Taste** (`taste.ts`, [ADR 0053](adr/0053-player-taste.md)) is computed per Account over 60 days and per category (the Request's idea kind or `preset:<topic>`, `surprise`, or a local plan's progress `source`): `rate = (finished + wins + 1) / (picked + 2)`, bonus `round((rate - 0.5) × 30)` clamped to ±15, nothing under 3 picks, at most -5 when skipped steps are more than twice the done ones. It reorders ideas and Ready now items before the cut and never hides one. Progress joins its plan by `generatedAt` (`plans.generated_at`, backfilled from the body).
+
+**Wins** (`wins.ts`, [ADR 0054](adr/0054-wins-from-game-data.md)): a plan's targets are its reward tokens, its steps' rewards, the contents of a container (`contains`; the container itself is not a target) and the last step's `complete` (quest, mount, toy, pet, achievement). When a snapshot diff adds one of those ids to `mounts`, `toys`, `pets`, `achievements`, `achievementsMine`, `questsDone` or a bag/bank Section, after a plan of the same Account made in the last 30 days, the Server writes one history row of kind `win` per Account and id. A first upload (`initial`), a whole-body Section, a version change, an item that only moved between bags and banks, or one another character already holds never count. MCP `list_wins` gives totals per kind and UTC days; `get_player_history` shows them. Players do not see wins in 0.10.
 
 ## Add a data row
 
@@ -271,6 +297,8 @@ Each mode is a provider in `Providers/` with `Build(ctx)` returning tasks `{ id,
 - Midnight zone rows, once ui map ids are confirmed in `/unbored where`.
 - Transmog-only dungeon trips, using the `appearances` field that Farm already understands.
 - A real options panel. The slash commands cover the MVP.
+- Collections with missing parts (pets, transmog sets, recipes) are deferred to 0.11 (D212). The cheapest first step is a transmog set Section from `C_TransmogSets` (client data, no invented ids).
+- Open catalog ids (Timewalking quests, prices, weeks, faction mounts) and how to get them: [data-sources.md](data-sources.md).
 
 ## Known limits
 

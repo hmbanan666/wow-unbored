@@ -75,6 +75,103 @@ S.Register({
   end,
 })
 
+-- Progress toward achievements nobody on the Account has finished (D182):
+-- a staged walk once a day per Character, a minute after the login pass.
+-- Rows at least half done, best first; the Server's Ready now lists >= 0.7.
+-- TODO(verify-in-game): one pass stays under ~60 s of staged frames on a big
+-- Account.
+S.ACH_MIN_RATIO = 0.5
+S.ACH_MAX_ROWS = 200
+S.ACH_MAX_CRITERIA = 60
+S.ACH_MAX_CALLS = 60000
+S.ACH_OPEN = 5
+
+-- d of t done and up to five criteria still open, or nil to skip it.
+local function achievementProgress(id, counter)
+  local count = num(call(GetAchievementNumCriteria, id))
+  counter.calls = counter.calls + 1
+  if not count or count < 1 or count > S.ACH_MAX_CRITERIA then
+    return nil
+  end
+  if count == 1 then
+    local _, _, done, quantity, required, _, _, _, _, criteriaID = call(GetAchievementCriteriaInfo, id, 1)
+    counter.calls = counter.calls + 1
+    quantity, required = num(quantity), num(required)
+    if done == true or not quantity or not required or required <= 1 then
+      return nil
+    end
+    return math.min(quantity, required), required, { num(criteriaID) }
+  end
+  local d, open = 0, {}
+  for k = 1, count do
+    local _, _, done, _, _, _, _, _, _, criteriaID = call(GetAchievementCriteriaInfo, id, k)
+    counter.calls = counter.calls + 1
+    if done == true then
+      d = d + 1
+    elseif #open < S.ACH_OPEN then
+      open[#open + 1] = num(criteriaID)
+    end
+  end
+  return d, count, open
+end
+
+S.Register({
+  name = "achProgress",
+  v = 1,
+  prio = 20,
+  every = DAY,
+  delay = 60,
+  read = function()
+    if type(GetCategoryList) ~= "function" or type(GetCategoryNumAchievements) ~= "function"
+      or type(GetAchievementInfo) ~= "function" or type(GetAchievementNumCriteria) ~= "function"
+      or type(GetAchievementCriteriaInfo) ~= "function" then
+      return nil
+    end
+    local categories = call(GetCategoryList)
+    if type(categories) ~= "table" or #categories == 0 then
+      return nil
+    end
+    local rows, counter, nextYield = {}, { calls = 0 }, 100
+    for i = 1, #categories do
+      local total = num(call(GetCategoryNumAchievements, categories[i], true)) or 0
+      for j = 1, total do
+        if counter.calls >= S.ACH_MAX_CALLS then
+          break
+        end
+        local id, _, _, completed, _, _, _, _, _, _, _, isGuild = call(GetAchievementInfo, categories[i], j)
+        id = num(id)
+        counter.calls = counter.calls + 1
+        if id and completed ~= true and isGuild ~= true then
+          local d, t, open = achievementProgress(id, counter)
+          if d and t and t > 0 and d < t and d / t >= S.ACH_MIN_RATIO then
+            rows[#rows + 1] = { id = id, d = d, t = t, open = open and #open > 0 and open or nil }
+          end
+        end
+        if counter.calls >= nextYield then
+          nextYield = counter.calls + 100
+          S.Yield()
+        end
+      end
+    end
+    table.sort(rows, function(a, b)
+      local ra, rb = a.d / a.t, b.d / b.t
+      if ra == rb then
+        return a.id < b.id
+      end
+      return ra > rb
+    end)
+    for k = #rows, S.ACH_MAX_ROWS + 1, -1 do
+      rows[k] = nil
+    end
+    return {
+      rows = rows,
+      count = #rows,
+      capped = counter.calls >= S.ACH_MAX_CALLS or nil,
+      scannedAt = ns.Now(),
+    }
+  end,
+})
+
 -- Achievements this character earned itself; written by the daily scan.
 S.Register({
   name = "achievementsMine",

@@ -65,6 +65,7 @@ read_globals = {
   "C_Traits",
   "C_WeeklyRewards",
   "debugprofilestop",
+  "debugstack",
   "GetCategoryList",
   "GetCategoryNumAchievements",
   "GetNumSavedWorldBosses",

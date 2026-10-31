@@ -132,6 +132,30 @@ struct AppState {
     wake: (Mutex<bool>, Condvar),
 }
 
+/// A command error as the window shows it: always words, never a raw message (D215).
+#[derive(Debug)]
+struct Shown(String);
+
+impl From<String> for Shown {
+    fn from(text: String) -> Self {
+        Shown(i18n::shown(&text))
+    }
+}
+
+impl Serialize for Shown {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+fn offline(_: reqwest::Error) -> String {
+    i18n::code("ERR_OFFLINE", &[])
+}
+
+fn game_files(_: crate::plan::PlanError) -> String {
+    i18n::code("ERR_GAME_FILES", &[])
+}
+
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -253,7 +277,7 @@ fn post_progress(
             .bearer_auth(bearer)
             .json(&body)
             .send()
-            .map_err(|err| err.to_string())?;
+            .map_err(offline)?;
         if !response.status().is_success() {
             return Err(trf(
                 "PLANNER_RETURNED_FOR",
@@ -314,7 +338,7 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
     if plan.generated_at.is_none() {
         plan.generated_at = Some(now_secs());
     }
-    let written = install_plan(&retail, plan).map_err(|err| err.0)?;
+    let written = install_plan(&retail, plan).map_err(game_files)?;
     Ok(trf("WROTE_PLAN", &[&written.path.display().to_string()]))
 }
 
@@ -387,7 +411,7 @@ fn snapshot(app: &AppHandle, model: &Model) -> UiState {
         installs: model.installs.clone(),
         accounts: model.accounts.clone(),
         progress: model.progress.clone(),
-        status: model.status.clone(),
+        status: i18n::shown(&model.status),
         autostart,
         needs_wow_path: model.needs_wow_path,
         addon_version: model.addon_version.clone(),
@@ -412,13 +436,13 @@ fn refresh_autostart(app: &AppHandle) -> bool {
 }
 
 #[tauri::command]
-fn get_state(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
+fn get_state(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let model = state.inner.lock().map_err(|err| err.to_string())?;
     Ok(snapshot(&app, &model))
 }
 
 #[tauri::command]
-fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
+fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let found = detect_installs();
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     model.installs = found.iter().map(|p| p.display().to_string()).collect();
@@ -443,7 +467,7 @@ fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, String>
 }
 
 #[tauri::command]
-fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<UiState, String> {
+fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<UiState, Shown> {
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     let chosen = path.trim();
     model.settings.wow_path = retail_dir(Path::new(chosen))
@@ -469,7 +493,7 @@ fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<
 }
 
 #[tauri::command]
-fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Result<UiState, String> {
+fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Result<UiState, Shown> {
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     model.settings.account = account;
     model.progress = scan_progress(&model.settings);
@@ -480,8 +504,8 @@ fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Resul
 /// D61: the first-run line links to the README privacy section, in the
 /// Companion's language. The URL is fixed here, never taken from the window.
 #[tauri::command]
-fn open_privacy() -> Result<(), String> {
-    open_in_browser(i18n::privacy_url(i18n::current()))
+fn open_privacy() -> Result<(), Shown> {
+    Ok(open_in_browser(i18n::privacy_url(i18n::current()))?)
 }
 
 #[cfg(windows)]
@@ -504,7 +528,7 @@ fn set_endpoint(
     state: State<AppState>,
     url: String,
     poll_minutes: u32,
-) -> Result<UiState, String> {
+) -> Result<UiState, Shown> {
     let url = url.trim().to_string();
     validate_endpoint(&url)?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
@@ -517,7 +541,7 @@ fn set_endpoint(
 }
 
 #[tauri::command]
-fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
+fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, Shown> {
     use tauri_plugin_autostart::ManagerExt;
     if enabled {
         app.autolaunch().enable().map_err(|err| err.to_string())?;
@@ -528,12 +552,8 @@ fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn write_plan_text(
-    app: AppHandle,
-    state: State<AppState>,
-    text: String,
-) -> Result<UiState, String> {
-    let mut plan = decode_unb1(&text).map_err(|err| err.0)?;
+fn write_plan_text(app: AppHandle, state: State<AppState>, text: String) -> Result<UiState, Shown> {
+    let mut plan = decode_unb1(&text).map_err(|_| i18n::code("ERR_PLAN_STRING", &[]))?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     model.status = write_plan(&model.settings, &mut plan)?;
     let _ = save_settings(&app, &model.settings);
@@ -541,7 +561,7 @@ fn write_plan_text(
 }
 
 #[tauri::command]
-fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
+fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let (settings, device, approved) = {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
         let device = state.device.lock().map_err(|err| err.to_string())?;
@@ -578,7 +598,7 @@ fn forget_on_planner(url: &str, secret: &str) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
+fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let (settings, secret) = {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
         let device = state.device.lock().map_err(|err| err.to_string())?;
@@ -596,7 +616,7 @@ fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Str
         .map_err(|err| err.to_string())?
         .clear();
     if let Some(retail) = retail_path(&settings) {
-        clear_helper(&retail).map_err(|err| err.0)?;
+        clear_helper(&retail).map_err(game_files)?;
     }
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     model.posted.clear();
@@ -647,12 +667,12 @@ fn reconnect_on_planner(
 }
 
 #[tauri::command]
-fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
+fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let (settings, old) = {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
         let device = state.device.lock().map_err(|err| err.to_string())?;
         if model.settings.forgotten_at.is_none() {
-            return Err(tr("RECONNECT_ONLY_AFTER"));
+            return Err(tr("RECONNECT_ONLY_AFTER").into());
         }
         (model.settings.clone(), device.clone())
     };
@@ -686,7 +706,7 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Stri
 }
 
 #[tauri::command]
-fn rescan_progress(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
+fn rescan_progress(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     let bearer = if model.approved {
         state.device.lock().ok().map(|device| device.secret.clone())
@@ -878,14 +898,17 @@ fn get_json(
         .get(url)
         .bearer_auth(secret)
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(offline)?;
     if response.status().as_u16() == 404 {
         return Ok(None);
     }
     if !response.status().is_success() {
         return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
     }
-    response.json().map(Some).map_err(|err| err.to_string())
+    response
+        .json()
+        .map(Some)
+        .map_err(|_| i18n::code("ERR_PLANNER_ANSWER", &[]))
 }
 
 fn planner_state(
@@ -974,7 +997,7 @@ fn post_requests(
             .bearer_auth(secret)
             .json(&body)
             .send()
-            .map_err(|err| err.to_string())?;
+            .map_err(offline)?;
         let code = response.status();
         if code.is_client_error() && code.as_u16() != 401 {
             let why = response
@@ -1079,7 +1102,7 @@ fn post_snapshots(
             .header("Content-Encoding", "gzip")
             .body(bytes)
             .send()
-            .map_err(|err| err.to_string())?;
+            .map_err(offline)?;
         if response.status().as_u16() == 404 {
             // A Server older than 0.7: the profile upload still carries the basics.
             return Ok(());
@@ -1136,7 +1159,7 @@ fn post_profiles(
             .bearer_auth(secret)
             .json(&body)
             .send()
-            .map_err(|err| err.to_string())?;
+            .map_err(offline)?;
         if !response.status().is_success() {
             return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
         }
@@ -1156,7 +1179,7 @@ fn sync_advice(settings: &Settings, retail: &Path, secret: &str) -> Result<bool,
     let Some(body) = get_json(&client, &url, secret)? else {
         return Ok(false);
     };
-    install_advice(retail, &body["characters"], &body["holdings"]).map_err(|err| err.0)
+    install_advice(retail, &body["characters"], &body["holdings"]).map_err(game_files)
 }
 
 /// Bory's ideas for this PC's characters, into Suggestions.lua (D107).
@@ -1166,7 +1189,7 @@ fn sync_suggestions(settings: &Settings, retail: &Path, secret: &str) -> Result<
     let Some(body) = get_json(&client, &url, secret)? else {
         return Ok(false);
     };
-    install_suggestions(retail, &body).map_err(|err| err.0)
+    install_suggestions(retail, &body).map_err(game_files)
 }
 
 /// Sends in-game requests, then writes the one Plan.lua the game should see.
@@ -1181,22 +1204,22 @@ fn sync_plans(
     let Some(retail) = retail_path(settings) else {
         return Ok(Some(tr("APPROVED_CHOOSE_RETAIL")));
     };
-    ensure_helper(&retail).map_err(|err| err.0)?;
+    ensure_helper(&retail).map_err(game_files)?;
     let Posted { rejected, waiting } = post_requests(settings, &retail, secret, seal)?;
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(settings, &retail, secret, seal);
     let _ = post_profiles(settings, &retail, secret, seal);
     let _ = sync_suggestions(settings, &retail, secret);
     let _ = sync_advice(settings, &retail, secret);
-    if let Some((request, why)) = rejected.first() {
+    if let Some((request, _)) = rejected.first() {
         // Only the Reason code goes to the game; Bory says its own line.
         let file = PlanFile {
             body: render_request_lua(request, "failed", None),
             ready_request: None,
             ready_kind: None,
         };
-        let written = install_plan_file(&retail, &file).map_err(|err| err.0)?;
-        return Ok(written.changed.then(|| trf("PLANNER_REFUSED", &[why])));
+        let written = install_plan_file(&retail, &file).map_err(game_files)?;
+        return Ok(written.changed.then(|| tr("PLANNER_REFUSED")));
     }
     let state = planner_state(settings, secret, waiting.as_deref())?;
     let pending = state
@@ -1209,7 +1232,7 @@ fn sync_plans(
     let Some(file) = pick_plan_file(&state) else {
         return Ok(None);
     };
-    let written = install_plan_file(&retail, &file).map_err(|err| err.0)?;
+    let written = install_plan_file(&retail, &file).map_err(game_files)?;
     if let Some(id) = &file.ready_request {
         if notified.insert(id.clone()) && written.changed {
             let kind = file.ready_kind.clone().unwrap_or_else(|| "plan".into());
@@ -1243,11 +1266,13 @@ fn register_device(url: &str, device: &DeviceCredential) -> Result<String, Strin
             "secretHash": device.secret_hash(),
         }))
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(offline)?;
     if !response.status().is_success() {
         return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
     }
-    let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
+    let body: serde_json::Value = response
+        .json()
+        .map_err(|_| i18n::code("ERR_PLANNER_ANSWER", &[]))?;
     Ok(body
         .get("status")
         .and_then(|value| value.as_str())
@@ -1261,11 +1286,13 @@ fn device_status(url: &str, secret: &str) -> Result<String, String> {
         .get(join_url(url, "v1/devices/me"))
         .bearer_auth(secret)
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(offline)?;
     if !response.status().is_success() {
         return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
     }
-    let body: serde_json::Value = response.json().map_err(|err| err.to_string())?;
+    let body: serde_json::Value = response
+        .json()
+        .map_err(|_| i18n::code("ERR_PLANNER_ANSWER", &[]))?;
     Ok(body
         .get("status")
         .and_then(|value| value.as_str())
@@ -1280,7 +1307,7 @@ fn pairing_message(status: &str, needs_path: bool) -> String {
         _ => tr("PAIRING_WAITING"),
     };
     if needs_path {
-        format!("{base} {}", tr("CHOOSE_RETAIL_SUFFIX"))
+        trf("PAIRING_CHOOSE_RETAIL", &[&base])
     } else {
         base
     }
@@ -1326,7 +1353,7 @@ fn ensure_addon(app: &AppHandle, retail: &Path, version_file: &Path) -> Result<S
         .get("https://api.github.com/repos/hmbanan666/wow-unbored/releases?per_page=20")
         .header("Accept", "application/vnd.github+json")
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(offline)?;
     if !response.status().is_success() {
         return Err(trf("GITHUB_RETURNED", &[response.status().as_str()]));
     }
@@ -1453,7 +1480,7 @@ fn sync_once(
                     // Try again in about 5 minutes; GitHub limits unauthenticated calls.
                     *addon_checked =
                         Some(now.checked_sub(Duration::from_secs(25 * 60)).unwrap_or(now));
-                    publish_status(app, &trf("ADDON_CHECK", &[&err]));
+                    publish_status(app, &trf("ADDON_CHECK", &[&i18n::shown(&err)]));
                 }
             }
         }

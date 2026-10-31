@@ -22,11 +22,26 @@ import {
   type DigestAlt,
   mergeProfile,
   type CleanSnapshot,
+  type SectionChange,
   type SnapshotResult,
 } from "./data.ts";
 import type { Holdings } from "./holdings.ts";
 import type { ProfileUpload } from "./profile.ts";
 import { SuggestionStore } from "./suggestions.ts";
+import { readyNow, type ReadyNow } from "./ready.ts";
+import { computeTaste, requestCategory, type TasteRow } from "./taste.ts";
+import {
+  addedIds,
+  planTargets,
+  removedIds,
+  WIN_PLAN_DAYS,
+  WIN_SECTIONS,
+  winSummary,
+  type WinEntry,
+  type WinKind,
+  type WinTarget,
+} from "./wins.ts";
+import { unpackIds } from "@unbored/contracts";
 
 export { mergeProfile };
 
@@ -191,6 +206,13 @@ export class Store {
       ["suggestion_json", "TEXT"],
     ]);
     this.addColumns("devices", [["forget_revoked", "INTEGER NOT NULL DEFAULT 0"]]);
+    this.addColumns("plans", [["generated_at", "INTEGER"]]);
+    // D190: progress names its plan by generatedAt; plans stored before 0.10 get theirs from the body.
+    this.db.exec(
+      `UPDATE plans SET generated_at = json_extract(body_json, '$.generatedAt')
+       WHERE generated_at IS NULL AND json_valid(body_json)`,
+    );
+    this.db.exec(`CREATE INDEX IF NOT EXISTS plans_generated ON plans (generated_at)`);
     this.data = new DataStore(this.db);
     this.gameIds = new IdCache(this.db);
     this.creatureNames = new NameCache(this.db);
@@ -221,10 +243,10 @@ export class Store {
     const createdAt = nowSeconds;
     const result = this.db
       .prepare(
-        `INSERT INTO plans (player_key, created_at, body_json, unb1)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO plans (player_key, created_at, body_json, unb1, generated_at)
+         VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(PLAYER, createdAt, JSON.stringify(plan), unb1);
+      .run(PLAYER, createdAt, JSON.stringify(plan), unb1, plan.generatedAt);
     return { id: Number(result.lastInsertRowid), createdAt, plan, unb1 };
   }
 
@@ -737,7 +759,13 @@ export class Store {
     deviceId: string,
     nowSeconds = Math.floor(Date.now() / 1000),
   ): SnapshotResult {
-    const result = this.data.ingestSnapshot(snapshot, deviceId, nowSeconds);
+    const changes: SectionChange[] = [];
+    const result = this.data.ingestSnapshot(snapshot, deviceId, nowSeconds, changes);
+    try {
+      this.detectWins(result.account, snapshot.character, snapshot.realm, changes, nowSeconds);
+    } catch {
+      // Wins are a bonus; a bad body must not fail the upload that was already stored.
+    }
     if (result.stored.length > 0) {
       this.suggestions.schedule(result.account);
       const view = this.exactProfile(snapshot.character, snapshot.realm);
@@ -752,6 +780,212 @@ export class Store {
       });
     }
     return result;
+  }
+
+  /**
+   * Plans linked to a Request of this Account, made in the last 30 days, with
+   * what each promised (D194, D195). Newest first.
+   */
+  private openPlans(account: string, now: number) {
+    const own = new Set(this.data.characters(account).map((row) => `${row.name}\0${row.realm}`));
+    const rows = this.db
+      .prepare(
+        `SELECT r.id AS request_id, r.account, r.character_name, r.realm, r.topic, r.mode,
+                r.suggestion_json, p.id AS plan_id, p.created_at, p.body_json
+         FROM requests r JOIN plans p ON p.id = r.plan_id
+         WHERE p.created_at >= ? ORDER BY p.created_at DESC, p.id DESC`,
+      )
+      .all(now - WIN_PLAN_DAYS * 86_400) as {
+      request_id: string;
+      account: string | null;
+      character_name: string;
+      realm: string;
+      topic: string | null;
+      mode: string | null;
+      suggestion_json: string | null;
+      plan_id: number;
+      created_at: number;
+      body_json: string;
+    }[];
+    return rows
+      .filter(
+        (row) =>
+          (account !== "" && row.account === account) ||
+          own.has(`${row.character_name}\0${row.realm}`),
+      )
+      .map((row) => {
+        const plan = parseJson<Plan>(row.body_json);
+        const suggestion = parseJson<{ kind?: string }>(row.suggestion_json);
+        return {
+          planId: row.plan_id,
+          requestId: row.request_id,
+          createdAt: row.created_at,
+          title: plan?.title ?? null,
+          category: requestCategory({
+            topic: row.topic,
+            mode: row.mode,
+            suggestionKind: suggestion?.kind ?? null,
+          }),
+          targets: new Map<string, WinTarget>(
+            (plan ? planTargets(plan) : []).map((target) => [
+              `${target.kind}:${target.id}`,
+              target,
+            ]),
+          ),
+        };
+      });
+  }
+
+  /** True when another bag or bank of the Account already holds the item. */
+  private itemElsewhere(account: string, change: SectionChange, id: number): boolean {
+    const places: { scope: "char" | "account"; owner: string; section: string }[] = [
+      { scope: "account", owner: account, section: "warband" },
+    ];
+    for (const row of this.data.characters(account)) {
+      for (const section of ["bags", "bank", "reagentBank"]) {
+        places.push({ scope: "char", owner: row.id, section });
+      }
+    }
+    return places.some((place) => {
+      if (
+        place.scope === change.scope &&
+        place.owner === change.ownerId &&
+        place.section === change.section
+      )
+        return false;
+      const body = this.data.section(place.scope, place.owner, place.section)?.body;
+      return body ? unpackIds(body.items).includes(id) : false;
+    });
+  }
+
+  /**
+   * Wins (D196, D197): ids a stored Section newly gained that an open plan of
+   * this Account promised, changed after the plan was made. One per id, ever.
+   */
+  private detectWins(
+    account: string,
+    character: string,
+    realm: string,
+    changes: SectionChange[],
+    now: number,
+  ): number {
+    const relevant = changes.filter((change) => WIN_SECTIONS[change.section]);
+    if (!account || relevant.length === 0) return 0;
+    const plans = this.openPlans(account, now);
+    if (plans.length === 0) return 0;
+    const moved = new Set(
+      changes.filter((change) => WIN_SECTIONS[change.section] === "item").flatMap(removedIds),
+    );
+    const known = this.db.prepare(
+      `SELECT 1 FROM history WHERE kind = 'win' AND account = ? AND ref = ? LIMIT 1`,
+    );
+    let found = 0;
+    for (const change of relevant) {
+      const kind = WIN_SECTIONS[change.section]!;
+      for (const id of addedIds(change)) {
+        const ref = `${kind}:${id}`;
+        const plan = plans.find((row) => row.createdAt < change.at && row.targets.has(ref));
+        if (!plan || known.get(account, ref)) continue;
+        if (kind === "item" && (moved.has(id) || this.itemElsewhere(account, change, id))) continue;
+        this.addHistory({
+          at: change.at,
+          account,
+          character,
+          realm,
+          kind: "win",
+          ref,
+          body: {
+            planId: plan.planId,
+            requestId: plan.requestId,
+            kind,
+            id,
+            token: plan.targets.get(ref)!.token,
+            planTitle: plan.title,
+            category: plan.category,
+          },
+        });
+        found += 1;
+      }
+    }
+    return found;
+  }
+
+  /** list_wins (D198): newest first, with totals and UTC days. */
+  listWins(filter: { account?: string; character?: string; since?: number; limit: number }) {
+    const wins: WinEntry[] = this.history({
+      account: filter.account,
+      character: filter.character,
+      since: filter.since,
+      kinds: ["win"],
+      limit: filter.limit,
+    }).map((entry) => {
+      const body = (entry.body ?? {}) as Record<string, unknown>;
+      return {
+        at: entry.at,
+        account: entry.account,
+        character: entry.character,
+        realm: entry.realm,
+        kind: body.kind as WinKind,
+        id: Number(body.id),
+        token: String(body.token ?? ""),
+        planId: Number(body.planId),
+        requestId: String(body.requestId ?? ""),
+        planTitle: typeof body.planTitle === "string" ? body.planTitle : null,
+        category: String(body.category ?? ""),
+      };
+    });
+    return winSummary(wins);
+  }
+
+  /** Ready now for one Character (D179), computed from its latest Sections. */
+  readyNow(
+    filter: { account?: string; character?: string; realm?: string },
+    now = Math.floor(Date.now() / 1000),
+  ): ReadyNow | undefined {
+    const row = filter.character
+      ? this.data.character(filter.character, filter.realm)
+      : filter.account
+        ? this.data.characters(filter.account)[0]
+        : this.data.character();
+    if (!row || (filter.account && row.accountId !== accountKey(filter.account))) return undefined;
+    const others = row.accountId
+      ? this.data
+          .characters(row.accountId)
+          .filter((other) => other.id !== row.id)
+          .map((other) => ({ name: other.name, sections: this.data.sectionsFor(other) }))
+      : [];
+    return readyNow({
+      character: row.name,
+      realm: row.realm,
+      account: row.accountId,
+      sections: this.data.sectionsFor(row),
+      others,
+      taste: row.accountId ? this.taste(row.accountId, now) : [],
+      now,
+    });
+  }
+
+  /** Taste of one Account (D189-D191). */
+  taste(account: string, now = Math.floor(Date.now() / 1000)): TasteRow[] {
+    return computeTaste(this.db, accountKey(account), this.data.characters(account), now);
+  }
+
+  /** list_errors (D178): newest first, with the device name; `new` when first seen after since. */
+  listErrors(filter: { account?: string; since?: number; version?: string; limit: number }) {
+    return this.data.errors(filter).map((row) => ({
+      account: row.account,
+      device: row.deviceId ? (this.deviceById(row.deviceId)?.name ?? null) : null,
+      character: row.character,
+      realm: row.realm,
+      version: row.version,
+      where: row.where,
+      text: row.text,
+      stack: row.stack,
+      count: row.count,
+      firstAt: row.firstAt,
+      lastAt: row.lastAt,
+      new: filter.since !== undefined ? row.seenAt >= filter.since : false,
+    }));
   }
 
   private exactProfile(character: string, realm: string): StoredProfile | undefined {
@@ -970,6 +1204,10 @@ export class Store {
       if (dest) this.db.prepare(`DELETE FROM accounts WHERE id = ?`).run(from);
       else this.db.prepare(`UPDATE accounts SET id = ?, label = ? WHERE id = ?`).run(to, to, from);
       this.db.prepare(`UPDATE characters SET account_id = ? WHERE account_id = ?`).run(to, from);
+      this.db
+        .prepare(`UPDATE OR IGNORE addon_errors SET account = ? WHERE account = ?`)
+        .run(to, from);
+      this.db.prepare(`DELETE FROM addon_errors WHERE account = ?`).run(from);
       for (const table of [
         "progress",
         "requests",
@@ -1572,7 +1810,8 @@ export type HistoryKind =
   | "failed"
   | "progress"
   | "profile"
-  | "advice";
+  | "advice"
+  | "win";
 export const HISTORY_KINDS: HistoryKind[] = [
   "request",
   "answer",
@@ -1581,6 +1820,7 @@ export const HISTORY_KINDS: HistoryKind[] = [
   "progress",
   "profile",
   "advice",
+  "win",
 ];
 
 export type HistoryEntry = {

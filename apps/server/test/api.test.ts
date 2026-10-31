@@ -281,10 +281,13 @@ test("mcp lists the planner tools", async () => {
       "get_player_history",
       "get_player_profile",
       "get_progress",
+      "get_ready_now",
       "get_suggestions",
       "list_devices",
+      "list_errors",
       "list_requests",
       "list_sessions",
+      "list_wins",
       "put_item_advice",
       "put_plan",
       "resolve_criteria",
@@ -293,6 +296,8 @@ test("mcp lists the planner tools", async () => {
     const put = tools.find((tool) => tool.name === "put_plan");
     assert.ok(put?.description.includes("0 to 1"));
     assert.ok(put?.description.includes("achievementID"));
+    assert.ok(put?.description.includes("what it may hold goes in `contains`"));
+    assert.ok(put?.description.includes("share a `group`"));
     const requests = tools.find((tool) => tool.name === "list_requests");
     for (const tool of [put, requests]) {
       assert.ok(tool, "put_plan and list_requests are listed");

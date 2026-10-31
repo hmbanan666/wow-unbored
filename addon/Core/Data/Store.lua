@@ -193,7 +193,7 @@ local function readInWorker(def, name, previous, src)
     local ok, body = coroutine.resume(reader)
     if not ok then
       S.readCo = nil
-      ns.ReportError(body)
+      ns.ReportError(body, "section:" .. name, ns.CoroutineStack(reader))
       return false
     end
     if coroutine.status(reader) == "dead" then
@@ -206,7 +206,7 @@ end
 
 function S.Read(name, src)
   local def = S.defs[name]
-  if not def or not S.Allowed(name) then
+  if not def or not def.read or not S.Allowed(name) then
     return false
   end
   if ns.IsCombat() then
@@ -217,9 +217,10 @@ function S.Read(name, src)
   if coroutine.running() == S.co then
     return readInWorker(def, name, previous, src)
   end
-  local ok, body = pcall(def.read, previous)
+  local ok, body = xpcall(function()
+    return def.read(previous)
+  end, ns.ErrorHandler("section:" .. name))
   if not ok then
-    ns.ReportError(body)
     return false
   end
   return S.Write(name, body, src)
@@ -264,6 +265,7 @@ end
 local function worker()
   while #S.queue > 0 do
     local job = table.remove(S.queue, 1)
+    S.current = job.name
     S.Read(job.name, job.src)
     if job.after then
       pcall(job.after)
@@ -286,7 +288,7 @@ function S.Step(unbounded)
   S.stepStart = unbounded and clockMs() + 1e12 or clockMs()
   local ok, err = coroutine.resume(S.co)
   if not ok then
-    ns.ReportError(err)
+    ns.ReportError(err, "section:" .. tostring(S.current or "worker"), ns.CoroutineStack(S.co))
     S.co = nil
     S.readCo = nil
     S.queue = {}
@@ -327,7 +329,7 @@ local function startRunner()
 end
 
 function S.Queue(name, src)
-  if not S.defs[name] or not S.Allowed(name) then
+  if not S.defs[name] or not S.defs[name].read or not S.Allowed(name) then
     return
   end
   enqueue(name, src)
@@ -347,7 +349,7 @@ function S.LoginPass()
   S.loginDone = true
   for i = 1, #S.order do
     local def = S.defs[S.order[i]]
-    if def.login and not def.window and due(def) then
+    if def.login and def.read and not def.window and due(def) then
       if def.delay and C_Timer and C_Timer.After then
         local name = def.name
         pcall(C_Timer.After, def.delay, function()
@@ -552,3 +554,7 @@ function S.Enforce()
     end
   end
 end
+
+-- Error reports (docs/adr/0051): written by ns.ReportError, never read. Prio
+-- 10, so it is the first Section to go when the file is too big.
+S.Register({ name = "errors", scope = "account", v = 1, prio = 10, login = false })

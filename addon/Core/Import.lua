@@ -311,13 +311,109 @@ function ns.CleanWaypoints(raw, index)
   return out
 end
 
+-- Reward contents (docs/adr/0055): "{item:ID}" container -> what it may hold.
+ns.CONTAINS_MAX = 2
+ns.CONTAINS_ITEMS = 6
+local CONTAINS_KINDS = { mount = true, toy = true, pet = true, item = true }
+
+local function tokenKey(token)
+  local kind, id = tostring(token or ""):match("^{(%l+):(%d+)[^{}]*}$")
+  if not kind then
+    return nil
+  end
+  return "{" .. kind .. ":" .. id .. "}", kind
+end
+ns.RewardKey = tokenKey
+
+-- Keys must name an item reward of the plan or a step; anything else goes.
+function ns.CleanContains(raw, rewards, tasks)
+  raw = plain(raw)
+  if type(raw) ~= "table" then
+    return nil
+  end
+  local offered = {}
+  local function offer(list)
+    for i = 1, #(list or {}) do
+      local key, kind = tokenKey(list[i])
+      if kind == "item" then
+        offered[key] = true
+      end
+    end
+  end
+  offer(rewards)
+  for i = 1, #(tasks or {}) do
+    offer(tasks[i].rewards)
+  end
+  local keys = {}
+  for key in pairs(raw) do
+    if type(key) == "string" then
+      keys[#keys + 1] = key
+    end
+  end
+  table.sort(keys)
+  local out, count = {}, 0
+  for i = 1, #keys do
+    local key, kind = tokenKey(keys[i])
+    local values = plain(raw[keys[i]])
+    if kind == "item" and offered[key] and not out[key] and type(values) == "table" and count < ns.CONTAINS_MAX then
+      local list, seen = {}, {}
+      for j = 1, #values do
+        local token = cleanText(values[j], ns.Markup.MAX_LABEL_BYTES + 24)
+        local valueKey, valueKind = tokenKey(token)
+        if valueKind and CONTAINS_KINDS[valueKind] and valueKey ~= key and not seen[valueKey]
+          and #list < ns.CONTAINS_ITEMS then
+          seen[valueKey] = true
+          list[#list + 1] = token
+        end
+      end
+      if #list > 0 then
+        out[key] = list
+        count = count + 1
+      end
+    end
+  end
+  return count > 0 and out or nil
+end
+
+-- Step groups (docs/adr/0056): consecutive steps with the same group, at
+-- least two; a lone or split group is dropped from those steps.
+function ns.CleanGroups(tasks)
+  local runs, broken = {}, {}
+  local previous
+  for i = 1, #tasks do
+    local group = tasks[i].group
+    if group then
+      if group ~= previous and runs[group] then
+        broken[group] = true
+      end
+      runs[group] = (runs[group] or 0) + 1
+    end
+    previous = group
+  end
+  for i = 1, #tasks do
+    local group = tasks[i].group
+    if group and (broken[group] or runs[group] < 2) then
+      tasks[i].group = nil
+    end
+  end
+  return tasks
+end
+
+local function cleanGroup(value)
+  value = plain(value)
+  if type(value) ~= "string" or #value < 1 or #value > 24 or not value:match("^[a-z0-9%-]+$") then
+    return nil
+  end
+  return value
+end
+
 function ns.ValidatePlan(raw, loose)
   if type(raw) ~= "table" then
     return nil, ns.T("ERR_JSON")
   end
   local kind = plain(raw.kind)
   if kind == "progress" then
-    return nil, ns.T("ERR_KIND_PROGRESS")
+    return nil, ns.T("ERR_KIND")
   end
   if kind ~= nil and kind ~= "plan" then
     return nil, ns.T("ERR_KIND")
@@ -438,8 +534,10 @@ function ns.ValidatePlan(raw, loose)
       why = why,
       rewards = ns.CleanRewards(task.rewards, ns.PLAN_LIMITS.stepRewards),
       condition = condition,
+      group = cleanGroup(task.group),
     }
   end
+  ns.CleanGroups(cleanTasks)
 
   return {
     v = 1,
@@ -453,6 +551,7 @@ function ns.ValidatePlan(raw, loose)
     rewards = rewards,
     npcs = npcs and ns.Markup.NpcsFor(npcs, goal, details) or nil,
     tasks = cleanTasks,
+    contains = ns.CleanContains(raw.contains, rewards, cleanTasks),
     generatedAt = whole(raw.generatedAt, 0, 4000000000),
   }
 end
@@ -463,7 +562,7 @@ function ns.DecodeImport(text)
     return nil, ns.CodecError(err)
   end
   if prefix == "UNB1P" or plain(value.kind) == "progress" then
-    return nil, ns.T("ERR_KIND_PROGRESS")
+    return nil, ns.T("ERR_KIND")
   end
   return ns.ValidatePlan(value, false)
 end
@@ -495,6 +594,7 @@ function ns.EncodePlan(plan)
     goal = clean.goal,
     details = clean.details,
     rewards = clean.rewards,
+    contains = clean.contains,
     tasks = tasks,
     entities = next(npc) and { npc = npc } or nil,
   }

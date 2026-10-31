@@ -43,7 +43,7 @@ function ns.Events.Pulse()
   if not task then
     return
   end
-  if ns.IsTaskComplete(task) then
+  if ns.IsTaskComplete(task) or ns.Session:GroupDoneOffscreen() then
     ns.Session:CheckCurrent()
     return
   end
@@ -98,10 +98,10 @@ function ns.Events.OnEvent(event, ...)
     return
   end
   if ns.Profile then
-    pcall(ns.Profile.OnEvent, event, ...)
+    ns.Guard("event:" .. tostring(event), ns.Profile.OnEvent, event, ...)
   end
   if ns.Snapshot then
-    pcall(ns.Snapshot.OnEvent, event, ...)
+    ns.Guard("event:" .. tostring(event), ns.Snapshot.OnEvent, event, ...)
   end
   if ns.Session and ns.Session.OnEvent then
     ns.Session:OnEvent(event, ...)
@@ -113,10 +113,10 @@ function ns.Events.StartTicker()
     return
   end
   ns.Events.ticker = C_Timer.NewTicker(0.75, function()
-    local ok, err = pcall(ns.Events.Pulse)
-    if not ok and not ns.Events.reported then
+    if ns.Events.reported then
+      pcall(ns.Events.Pulse)
+    elseif not ns.Guard("ui:pulse", ns.Events.Pulse) then
       ns.Events.reported = true
-      ns.ReportError(err)
     end
   end)
 end

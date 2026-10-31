@@ -88,35 +88,29 @@ function ns.OnAddonLoaded()
   initDB()
   ns.Markup.Hook()
   if ns.UI and ns.UI.Create then
-    local ok, err = pcall(ns.UI.Create)
-    if not ok then
-      ns.ReportError(err)
-    end
+    ns.Guard("init", ns.UI.Create)
   end
   if ns.Mascot and ns.Mascot.Create then
-    local ok, err = pcall(ns.Mascot.Create, ns.Mascot)
-    if not ok then
-      ns.ReportError(err)
-    end
+    ns.Guard("init", ns.Mascot.Create, ns.Mascot)
   end
   if ns.Items and ns.Items.Hook then
-    pcall(ns.Items.Hook)
+    ns.Guard("init", ns.Items.Hook)
   end
   if ns.CreateMinimapButton then
-    pcall(ns.CreateMinimapButton)
+    ns.Guard("init", ns.CreateMinimapButton)
   end
   if ns.RegisterCompartment then
     pcall(ns.RegisterCompartment)
   end
   if ns.Events and ns.Events.StartTicker then
-    pcall(ns.Events.StartTicker)
+    ns.Guard("init", ns.Events.StartTicker)
   end
   askForWorldData()
 end
 
 function ns.OnEnteringWorld(initialLogin)
   if ns.Profile then
-    pcall(ns.Profile.StartSession, initialLogin == true)
+    ns.Guard("init", ns.Profile.StartSession, initialLogin == true)
   end
   if ns.RegisterCompartment then
     pcall(ns.RegisterCompartment)
@@ -127,21 +121,16 @@ function ns.OnEnteringWorld(initialLogin)
     ns.AskCalendarLater()
   end
   if ns.Snapshot then
-    pcall(ns.Snapshot.OnEnteringWorld)
+    ns.Guard("init", ns.Snapshot.OnEnteringWorld)
   end
   if ns.Session and ns.Session.Start then
-    local ok, err = pcall(function()
-      ns.Session:Start(initialLogin == true)
-    end)
-    if not ok then
-      ns.ReportError(err)
-    end
+    ns.Guard("init", ns.Session.Start, ns.Session, initialLogin == true)
   end
 end
 
 local function slash(message)
   message = ns.Trim(message or "")
-  local command, rest = message:match("^(%S*)%s*(.*)$")
+  local command = message:match("^(%S*)")
   command = (command or ""):lower()
   if command == "" then
     ns.Mascot:ShowChoice()
@@ -160,7 +149,9 @@ local function slash(message)
       ns.Print(ns.T("ERRORS_NONE"))
     end
     for i = 1, #list do
-      ns.Print(tostring(list[i].version) .. ": " .. tostring(list[i].text))
+      local row = list[i]
+      local head = tostring(row.version) .. " " .. tostring(row.where or "") .. " x" .. tostring(row.count or 1)
+      ns.Print(head .. ": " .. tostring(row.text))
     end
   elseif command == "lock" then
     local locked = not ns.Mascot:Locked()
@@ -170,10 +161,6 @@ local function slash(message)
     ns.Mascot:ResetPosition()
   elseif command == "build" then
     ns.Session:BuildHere()
-  elseif command == "import" then
-    ns.ShowImport(rest)
-  elseif command == "export" then
-    ns.ShowExport()
   elseif command == "roam" or command == "quests" or command == "events" or command == "fun" or command == "farm" then
     ns.Session:SetMode(command)
     ns.Mascot:ShowChoice()
@@ -247,6 +234,7 @@ if CreateFrame then
   local driver = CreateFrame("Frame")
   driver:RegisterEvent("ADDON_LOADED")
   driver:RegisterEvent("PLAYER_ENTERING_WORLD")
+  driver:RegisterEvent("PLAYER_LOGIN")
   driver:RegisterEvent("ZONE_CHANGED_NEW_AREA")
   if ns.Events and ns.Events.Register then
     ns.Events.Register(driver)
@@ -258,12 +246,16 @@ if CreateFrame then
       end
       return
     end
+    if event == "PLAYER_LOGIN" then
+      ns.Guard("init", ns.FlushErrors)
+      return
+    end
     if event == "PLAYER_ENTERING_WORLD" then
       ns.OnEnteringWorld(arg1)
       return
     end
     if ns.Events and ns.Events.OnEvent then
-      ns.Events.OnEvent(event, arg1, ...)
+      ns.Guard("event:" .. tostring(event), ns.Events.OnEvent, event, arg1, ...)
     end
   end)
 end

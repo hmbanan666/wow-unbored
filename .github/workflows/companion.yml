@@ -45,9 +45,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      # The release job restores this same cache (D216); only main saves it.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/companion/src-tauri -> target
+          shared-key: companion-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: pnpm/action-setup@v4
         with:
           version: 12.16.1
@@ -77,8 +80,6 @@ jobs:
       - name: Build installer without publishing
         working-directory: apps/companion
         shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm exec tauri build ${{ steps.sign.outputs.args }}
       - name: Check the window ships every Bory picture
         shell: bash

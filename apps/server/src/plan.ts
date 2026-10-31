@@ -3,6 +3,7 @@ import {
   cleanEntities,
   cleanMarkup,
   markupIds,
+  MAX_TOKENS,
   parseMarkup,
   type ConditionKind,
   type Entities,
@@ -413,6 +414,9 @@ export function planMarkupIds(raw: unknown): string[] {
   const body = raw as Record<string, unknown>;
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
   const texts: unknown[] = [body.note, body.goal, body.details, ...list(body.rewards)];
+  if (typeof body.contains === "object" && body.contains !== null) {
+    for (const [key, values] of Object.entries(body.contains)) texts.push(key, ...list(values));
+  }
   for (const item of list(body.tasks)) {
     const task = (item ?? {}) as Record<string, unknown>;
     const condition = (task.condition ?? {}) as Record<string, unknown>;
@@ -466,7 +470,12 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
     count: 0,
   });
   const rewards = cleanRewards(body.rewards, CARD_LIMITS.rewards, scope, "Plan reward");
-  const tasks = body.tasks.map((item, index) => cleanTask(item, index + 1, scope));
+  const tasks = cleanGroups(
+    body.tasks.map((item, index) => cleanTask(item, index + 1, scope)),
+    check,
+  );
+  const contains = cleanContains(body.contains, rewards, tasks, goal, details, scope);
+  warnLooseContents(rewards, contains, check);
   const generatedAt =
     body.generatedAt === undefined ? nowSeconds : integer(body.generatedAt, 0, 4_000_000_000);
   if (generatedAt === undefined) {
@@ -478,9 +487,142 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
   if (goal !== undefined) plan.goal = goal;
   if (details !== undefined) plan.details = details;
   if (rewards !== undefined) plan.rewards = rewards;
+  if (contains !== undefined) plan.contains = contains;
   const entities = usedEntities(scope);
   if (entities) plan.entities = entities;
   return plan;
+}
+
+export const CONTAINS_MAX = 2;
+export const CONTAINS_ITEMS = 6;
+const CONTAINS_TYPES = new Set(["mount", "toy", "pet", "item"]);
+const GROUP_RE = /^[a-z0-9-]{1,24}$/;
+
+/** `{item:ID}` or `{item:ID|label}` as one token, else undefined. */
+function singleToken(text: unknown) {
+  if (typeof text !== "string") return undefined;
+  const parts = parseMarkup(text.trim());
+  const token = parts.length === 1 && typeof parts[0] !== "string" ? parts[0] : undefined;
+  return token && token.raw === text.trim() ? token : undefined;
+}
+
+/**
+ * Reward contents (ADR 0055): a container `{item:ID}` offered as a plan or
+ * step reward, to 1-6 mount, toy, pet or item tokens. Values count toward the
+ * 12-token limit shared with goal and details; anything invalid is a warning.
+ */
+function cleanContains(
+  raw: unknown,
+  rewards: string[] | undefined,
+  tasks: Task[],
+  goal: string | undefined,
+  details: string | undefined,
+  scope: MarkupScope,
+): Record<string, string[]> | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const warn = (line: string) => scope.check.warnings?.push(`Plan contains: ${line}`);
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    warn("must be an object from a reward token to a list of tokens; dropped");
+    return undefined;
+  }
+  const offered = new Set<string>();
+  for (const token of [...(rewards ?? []), ...tasks.flatMap((task) => task.rewards ?? [])]) {
+    const parsed = singleToken(token);
+    if (parsed?.type === "item") offered.add(`item:${parsed.id}`);
+  }
+  let room =
+    MAX_TOKENS - (goal ? markupIds(goal).length : 0) - (details ? markupIds(details).length : 0);
+  const out: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(raw as Record<string, unknown>)) {
+    const container = singleToken(key);
+    const ref = container ? `${container.type}:${container.id}` : "";
+    if (!container || container.type !== "item" || !offered.has(ref)) {
+      warn(`${key} must be an {item:ID} that is also a plan or step reward; dropped`);
+      continue;
+    }
+    if (Object.keys(out).length >= CONTAINS_MAX) {
+      warn(`more than ${CONTAINS_MAX} containers; ${key} dropped`);
+      continue;
+    }
+    if (!Array.isArray(values) || values.length === 0) {
+      warn(`${key} needs a list of 1 to ${CONTAINS_ITEMS} tokens; dropped`);
+      continue;
+    }
+    const kept: string[] = [];
+    const seen = new Set<string>([ref]);
+    for (const value of values) {
+      const token = singleToken(value);
+      const id = token ? `${token.type}:${token.id}` : "";
+      if (!token || !CONTAINS_TYPES.has(token.type)) {
+        warn(
+          `${key}: ${String(value).slice(0, 40)} must be one mount, toy, pet or item token; dropped`,
+        );
+        continue;
+      }
+      if (seen.has(id)) continue;
+      if (kept.length >= CONTAINS_ITEMS) {
+        warn(`${key}: more than ${CONTAINS_ITEMS} contents; the rest are dropped`);
+        break;
+      }
+      if (room <= 0) {
+        warn(`${key}: more than ${MAX_TOKENS} tokens with goal and details; the rest are dropped`);
+        break;
+      }
+      const text = (value as string).trim();
+      if (cleanText(text, scope, `Plan contains ${key}`, { count: 0 }) !== text) continue;
+      seen.add(id);
+      kept.push(text);
+      room -= 1;
+    }
+    if (kept.length) out[container.raw] = kept;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** D202: two or more mounts next to an item reward usually means a cage listed with its contents. */
+function warnLooseContents(
+  rewards: string[] | undefined,
+  contains: Record<string, string[]> | undefined,
+  check: MarkupCheck,
+): void {
+  const kinds = (rewards ?? []).map((token) => singleToken(token));
+  const mounts = kinds.filter((token) => token?.type === "mount").length;
+  const loose = kinds.some((token) => token?.type === "item" && !contains?.[token.raw]);
+  if (mounts >= 2 && loose) {
+    check.warnings?.push(
+      "Plan rewards: 2+ mounts and an item without contains. If the item is a cage, chest or bag that drops, it is the reward and the mounts go in contains",
+    );
+  }
+}
+
+/** Step groups (ADR 0056): consecutive, at least 2; a lone or split group is dropped with a warning. */
+function cleanGroups(tasks: Task[], check: MarkupCheck): Task[] {
+  const runs = new Map<string, number>();
+  const broken = new Set<string>();
+  let previous: string | undefined;
+  for (const task of tasks) {
+    const group = task.group;
+    if (group) {
+      if (group !== previous && runs.has(group)) broken.add(group);
+      runs.set(group, (runs.get(group) ?? 0) + 1);
+    }
+    previous = group;
+  }
+  for (const [group, count] of runs) {
+    if (broken.has(group)) {
+      check.warnings?.push(
+        `Step group ${group}: its steps must be next to each other; group dropped`,
+      );
+    } else if (count < 2) {
+      check.warnings?.push(`Step group ${group}: a group needs at least 2 steps; group dropped`);
+    }
+  }
+  for (const task of tasks) {
+    if (task.group && (broken.has(task.group) || (runs.get(task.group) ?? 0) < 2)) {
+      delete task.group;
+    }
+  }
+  return tasks;
 }
 
 function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
@@ -552,6 +694,13 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
   if (rewards !== undefined) cleaned.rewards = rewards;
   if (condition !== undefined) cleaned.condition = condition;
   if (waypoints) cleaned.waypoints = waypoints;
+  if (task.group !== undefined && task.group !== null) {
+    if (typeof task.group === "string" && GROUP_RE.test(task.group)) cleaned.group = task.group;
+    else
+      scope.check.warnings?.push(
+        `Task ${index} group: 1 to 24 lowercase letters, digits or hyphens; dropped`,
+      );
+  }
   return cleaned;
 }
 
@@ -597,7 +746,7 @@ export function encodeUnb1(plan: Plan): string {
   };
   if (plan.budget !== undefined) payload.budget = plan.budget;
   if (plan.note !== undefined) payload.note = plan.note;
-  for (const key of ["title", "goal", "details", "rewards"] as const) {
+  for (const key of ["title", "goal", "details", "rewards", "contains"] as const) {
     if (plan[key] !== undefined) payload[key] = plan[key];
   }
   if (plan.entities !== undefined) payload.entities = plan.entities;
@@ -618,6 +767,8 @@ export type ProgressBody = {
   done: Stamp[];
   skipped: Stamp[];
   remaining: string[];
+  /** The plan's own generatedAt (D190); absent from 0.9 clients. */
+  generatedAt?: number;
 };
 
 export type Stamp = { id: string; at: number | null };
@@ -989,7 +1140,7 @@ export function cleanProgress(raw: unknown): ProgressPost {
     }
     return item;
   });
-  return {
+  const out: ProgressPost = {
     account,
     realm,
     character,
@@ -1006,4 +1157,10 @@ export function cleanProgress(raw: unknown): ProgressPost {
       remaining,
     },
   };
+  if (progress.generatedAt !== undefined && progress.generatedAt !== null) {
+    const stamp = integer(progress.generatedAt, 0, 4_000_000_000);
+    if (stamp === undefined) throw new PlanError("progress.generatedAt must be a unix timestamp.");
+    out.progress.generatedAt = stamp;
+  }
+  return out;
 }

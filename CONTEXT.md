@@ -185,4 +185,28 @@ _Avoid_: database, game DB, wiki dump.
 The small tables bundled with the addon (`Data/*.lua`) that let Bory answer locally.
 _Avoid_: database, wiki, cache.
 
-**Avoid in anything user-facing**: tracker, All steps (window), wizard, token, URL, server address, API key, registration, login, delete (Advice never says it), Ask, chat, wish.
+**Error report**
+One row of the account Section `errors`: where the addon broke (`where`, cleaned message, Unbored stack lines), the addon version and how often. Never what the player typed, no names, no SavedVariables values; with data sharing off it stays on the PC (ADR 0051). The player only sees Bory's one "tripped over something" line.
+_Avoid_: crash report, telemetry, bug log.
+
+**Ready now**
+The Server's per-Character view of what the player can do or finish now (a renown level close by, a paragon chest, an almost done achievement, an open lockout, the Great Vault, a currency near its cap), each with ids from game data and a score. A Planner and owner word (MCP `get_ready_now`); the player sees only the Plans and Ideas made from it (ADR 0052).
+_Avoid_: digest, dashboard, feed.
+
+**Taste**
+What an Account tends to pick and finish, per idea kind or Preset, over the last 60 days. It nudges Suggestion and Ready now scores by at most 15 (ADR 0053).
+_Avoid_: profile, preferences, tracking.
+
+**Win**
+Something a Plan promised (a mount, toy, pet, achievement, item or quest) that game data later shows the player got. Stored in Player history, one per Account and id; not shown to the player in 0.10 (ADR 0054).
+_Avoid_: success story, achievement (that is the game's word), score.
+
+**Reward contents**
+What a container reward (a cage, a chest, a bag) may hold, shown on its Reward line as "may contain 1 of 3 mounts", without the ones the Account already has (ADR 0055). Contract field `contains`.
+_Avoid_: loot table, drops, drop chance.
+
+**Step group**
+Steps of a Plan that can be done in any order (several rares in one zone). The card flips between them with two arrows; Skip in a group means "won't do" (ADR 0056). Contract field `group`.
+_Avoid_: unordered, batch, subplan.
+
+**Avoid in anything user-facing**: success story, digest, telemetry, crash report, tracker, All steps (window), wizard, token, URL, server address, API key, registration, login, delete (Advice never says it), Ask, chat, wish.
