@@ -63,6 +63,27 @@ local function askForWorldData()
   end
 end
 
+ns.CALENDAR_ASK_DELAY = 5
+
+-- A call during loading never returns (D127), so the calendar is asked
+-- again once the world is up, and later if that moment was a fight.
+-- TODO(verify-in-game): CALENDAR_UPDATE_EVENT_LIST fires after this call.
+function ns.AskCalendarLater(tries)
+  tries = tries or 3
+  if not C_Timer or not C_Timer.After or not C_Calendar or not C_Calendar.OpenCalendar then
+    return
+  end
+  C_Timer.After(ns.CALENDAR_ASK_DELAY, function()
+    if ns.IsCombat() then
+      if tries > 1 then
+        ns.AskCalendarLater(tries - 1)
+      end
+      return
+    end
+    pcall(C_Calendar.OpenCalendar)
+  end)
+end
+
 function ns.OnAddonLoaded()
   initDB()
   ns.Markup.Hook()
@@ -101,6 +122,10 @@ function ns.OnEnteringWorld(initialLogin)
     pcall(ns.RegisterCompartment)
   end
   askForWorldData()
+  if not ns.calendarAsked then
+    ns.calendarAsked = true
+    ns.AskCalendarLater()
+  end
   if ns.Snapshot then
     pcall(ns.Snapshot.OnEnteringWorld)
   end
@@ -124,8 +149,11 @@ local function slash(message)
     ns.Mascot:Reveal()
   elseif command == "hide" then
     ns.Mascot:Hide()
-  elseif command == "ask" or command == "nearby" or command == "item" then
-    ns.Mascot:ShowAsk(command, rest ~= "" and rest or nil)
+  elseif command == "item" then
+    ns.Mascot:StartPick()
+  elseif command == "ask" or command == "nearby" then
+    -- Ask is gone (docs/adr/0046): the old commands open the ideas.
+    ns.Mascot:ShowChoice()
   elseif command == "errors" then
     local list = type(ns.DB.errors) == "table" and ns.DB.errors or {}
     if #list == 0 then
@@ -148,7 +176,7 @@ local function slash(message)
     ns.ShowExport()
   elseif command == "roam" or command == "quests" or command == "events" or command == "fun" or command == "farm" then
     ns.Session:SetMode(command)
-    ns.Mascot:ShowWish()
+    ns.Mascot:ShowChoice()
   elseif command == "tomtom" then
     ns.DB.tomtomArrow = not ns.DB.tomtomArrow
     ns.Print(ns.DB.tomtomArrow and ns.T("TOMTOM_ON") or ns.T("TOMTOM_OFF"))

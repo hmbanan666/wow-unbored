@@ -48,6 +48,8 @@ jobs:
             echo
             echo "0.9 is signed with the previous private key. Swap the GitHub secret at 0.9.1. See docs/DEVELOPMENT.md."
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: The embedded pubkey is the committed new key (D151)
+        run: bash scripts/check-updater-pubkey.sh
       - name: The version this run releases
         id: pick
         run: |

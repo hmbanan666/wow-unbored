@@ -21,8 +21,20 @@ local function stamp(t)
   return string.format("%04d-%02d-%02d %02d:%02d", year, month, day, num(t.hour) or 0, num(t.minute) or 0)
 end
 
+local DESCRIPTION_BYTES = 300
+
+-- GetHolidayInfo only answers for monthOffset 0 and 1.
+local function holidayDescription(api, monthOffset, day, index)
+  if not api.GetHolidayInfo or monthOffset < 0 or monthOffset > 1 then
+    return nil
+  end
+  local info = call(api.GetHolidayInfo, monthOffset, day, index)
+  return type(info) == "table" and str(info.description, DESCRIPTION_BYTES) or nil
+end
+
 -- The month the player is looking at is never changed: days are read by
--- offset from whatever month the calendar shows.
+-- offset from whatever month the calendar shows. Invite fields are never
+-- read (D48).
 function S.ReadCalendar()
   local api = C_Calendar
   if not api or not api.GetMonthInfo or not api.GetNumDayEvents or not api.GetDayEvent then
@@ -38,7 +50,7 @@ function S.ReadCalendar()
   local daysInMonth = type(monthInfo) == "table" and num(monthInfo.numDays) or 31
   local events, seen = {}, {}
   local day, monthOffset = today.monthDay, offset
-  for _ = 0, CALENDAR_DAYS do
+  for ahead = 0, CALENDAR_DAYS do
     if day > daysInMonth then
       day, monthOffset = 1, monthOffset + 1
       local nextInfo = call(api.GetMonthInfo, monthOffset)
@@ -50,12 +62,17 @@ function S.ReadCalendar()
         local key = tostring(e.eventID or e.title) .. "@" .. tostring(stamp(e.startTime))
         if not seen[key] then
           seen[key] = true
+          local holiday = e.calendarType == "HOLIDAY"
           events[#events + 1] = {
             eventID = num(e.eventID),
             title = str(e.title, 80),
             kind = str(e.calendarType, 20),
             starts = stamp(e.startTime),
             ends = stamp(e.endTime),
+            texture = num(e.iconTexture),
+            sequenceType = str(e.sequenceType, 10),
+            numSequenceDays = num(e.numSequenceDays),
+            description = holiday and ahead <= 1 and holidayDescription(api, monthOffset, day, index) or nil,
           }
         end
       end
@@ -65,15 +82,25 @@ function S.ReadCalendar()
   return { events = events, from = stamp(today) }
 end
 
--- OpenCalendar does not answer during loading: it is asked for at load
--- (Core/Init.lua), and read 15 s after entering the world, once per login.
+-- OpenCalendar does not answer during loading (D127): Core/Init.lua asks
+-- again 5 s after entering the world, and the first CALENDAR_UPDATE_EVENT_LIST
+-- after that is read once it has settled, once per login. The login pass
+-- reads it too, for when the game's own calendar asked first.
 S.Register({
   name = "calendar",
   scope = "account",
-  v = 1,
+  v = 2,
   prio = 30,
   delay = 5,
+  events = { "CALENDAR_UPDATE_EVENT_LIST" },
   read = S.ReadCalendar,
+  onEvent = function()
+    if S.calendarMarked or not S.loginDone then
+      return
+    end
+    S.calendarMarked = true
+    S.Mark("calendar", "event")
+  end,
 })
 
 local MAX_SESSIONS = 20

@@ -279,6 +279,30 @@ test("check_ids, the overview, the Data explorer and /owner/data read the stored
     const questsDone = explorer[0]?.characters[0]?.sections.find((s) => s.name === "questsDone");
     assert.equal(questsDone?.counts?.ids, quests.length);
 
+    const unresolved = withSection(
+      "unresolvedIds",
+      {
+        list: [
+          { kind: "advice", id: 1, at: 1 },
+          { kind: "advice", id: 2, at: 1 },
+          { kind: "quest", id: 3, at: 1 },
+        ],
+      },
+      fixture.savedAt + 120,
+    );
+    unresolved.sections.unresolvedIds = {
+      ...fixture.sections.questsDone,
+      body: unresolved.sections.unresolvedIds.body,
+      hash: unresolved.sections.unresolvedIds.hash,
+    };
+    await post(app, unresolved);
+    const byKind = (await mcpCall(app, "data_catalog", {})).value.accounts as typeof explorer;
+    const ids = byKind[0]?.characters[0]?.sections.find((s) => s.name === "unresolvedIds") as
+      | { byKind?: Record<string, number> }
+      | undefined;
+    assert.deepEqual(ids?.byKind, { advice: 2, quest: 1 }, "unresolved ids are counted per kind");
+    const catalogNow = await mcpCall(app, "data_catalog", {});
+
     assert.equal((await app.request("/owner/data")).status, 401);
     const denied = await app.request("/owner/data", {
       headers: { authorization: `Bearer ${companion}` },
@@ -288,7 +312,37 @@ test("check_ids, the overview, the Data explorer and /owner/data read the stored
       headers: { authorization: `Bearer ${planner}` },
     });
     assert.equal(owner.status, 200);
-    assert.deepEqual(await json(owner), catalog.value);
+    assert.deepEqual(await json(owner), catalogNow.value);
+  } finally {
+    close();
+  }
+});
+
+test("GET /v1/advice carries the Account holdings index", async () => {
+  const { app, close } = build();
+  try {
+    await post(app, fixture);
+    const alt = withSection(
+      "bags",
+      { slots: 20, count: 1, items: ["idv1", "5d0:14"] },
+      fixture.savedAt,
+    );
+    alt.character = "Grubbyman";
+    await post(app, alt);
+    const response = await app.request("/v1/advice", {
+      headers: { authorization: `Bearer ${companion}` },
+    });
+    assert.equal(response.status, 200);
+    const holdings = (await json(response)).holdings as {
+      places: string[];
+      items: Record<string, string>;
+    };
+    assert.deepEqual(
+      holdings.places,
+      ["Grubbyman-Silvermoon", "Mira-Silvermoon"],
+      "the fixture's Warband bank was read over 60 days ago, so it is left out",
+    );
+    assert.equal(holdings.items["6948"], "1:40,2:1", "both bags, largest first");
   } finally {
     close();
   }

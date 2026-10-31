@@ -217,6 +217,28 @@ local function mountIDList(spec)
   return ids
 end
 
+-- The minimap name of a live vignette for this npc, in the client language.
+function ns.VignetteName(npcID)
+  npcID = ns.AsNumber(npcID)
+  if not npcID or not C_VignetteInfo or not C_VignetteInfo.GetVignettes or not C_VignetteInfo.GetVignetteInfo then
+    return nil
+  end
+  local ok, list = pcall(C_VignetteInfo.GetVignettes)
+  if not ok or type(list) ~= "table" then
+    return nil
+  end
+  for i = 1, #list do
+    local okInfo, info = pcall(C_VignetteInfo.GetVignetteInfo, list[i])
+    local guid = okInfo and type(info) == "table" and ns.SafeString(info.objectGUID, 80) or nil
+    -- Creature-0-server-instance-zone-npcID-spawn
+    local id = guid and ns.AsNumber(guid:match("^[^-]+%-[^-]+%-[^-]+%-[^-]+%-[^-]+%-(%d+)"))
+    if id == npcID then
+      return ns.SafeString(info.name, 80)
+    end
+  end
+  return nil
+end
+
 function ns.VignetteComplete(spec)
   if spec.questID and ns.QuestDone(spec.questID) then
     return true

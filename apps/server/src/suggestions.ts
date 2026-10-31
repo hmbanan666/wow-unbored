@@ -21,8 +21,8 @@ export type { Suggestion, SuggestionKind, SuggestionsBody };
 export type CharacterSuggestions = { character: string; realm: string; list: Suggestion[] };
 
 export const SUGGESTION_LIMITS = {
-  perCharacter: 6,
-  perRule: 2,
+  perCharacter: 10,
+  perRule: 3,
   title: 40,
   goal: 140,
   why: 100,
@@ -31,9 +31,15 @@ export const SUGGESTION_LIMITS = {
 
 const DAY = 86_400;
 const SOON = 3 * DAY;
+/** A chain with no progress this long was dropped (D137). */
+const STOPPED_AFTER = 14 * DAY;
 const SCORE = {
   event: 100,
   eventEndsSoon: 20,
+  eventStartsSoon: 70,
+  chain: 70,
+  chainCampaign: 10,
+  chainStopped: 5,
   achievement: 60,
   rare: 50,
   collection: 40,
@@ -45,13 +51,17 @@ type CatalogTask = {
   fallbackTitle?: string;
   achievementIDs?: number[];
   mountID?: number;
+  toyID?: number;
+  /** A weekly quest: open while this Character has not turned it in. */
+  questID?: number;
+  cost?: { currencyID: number; amount: number };
   faction?: string;
 };
+/** One row of the event catalog (D128): any key in `match` names the event. */
 type CatalogHoliday = {
-  holidayID?: number;
-  holidayIDs?: number[];
+  id: string;
+  match: { holidayIDs?: number[]; textures?: number[]; titles?: string[] };
   fallbackTitle?: string;
-  titles?: string[];
   tasks: CatalogTask[];
 };
 type CatalogAchievement = {
@@ -60,7 +70,13 @@ type CatalogAchievement = {
   fallbackTitle: string;
   mapID?: number;
 };
-type CatalogRare = { id: string; fallbackTitle: string; mapID?: number; questID?: number };
+type CatalogRare = {
+  id: string;
+  fallbackTitle: string;
+  npcID?: number;
+  mapID?: number;
+  questID?: number;
+};
 type CatalogFarm = {
   id: string;
   fallbackTitle: string;
@@ -128,6 +144,10 @@ const TEXT: Record<
     generic: Record<string, string>;
     eventGoal: (name: string, left: number) => string;
     startsSoon: string;
+    startsIn: (days: number) => string;
+    chainGoal: (done: number, total: number) => string;
+    altDone: (name: string) => string;
+    stopped: (days: number) => string;
     endsIn: (days: number) => string;
     alts: (count: number) => string;
     achievementGoal: (token: string) => string;
@@ -149,6 +169,13 @@ const TEXT: Record<
     eventGoal: (name, left) =>
       `${name} is on: ${left} thing${left === 1 ? "" : "s"} you have not done yet.`,
     startsSoon: "Starts soon",
+    startsIn: (days) => (days <= 1 ? "Starts tomorrow" : `Starts in ${days} days`),
+    chainGoal: (done, total) => `Continue: ${done} of ${total} done`,
+    altDone: (name) => `Your ${name} already finished it`,
+    stopped: (days) =>
+      days >= 14
+        ? `You stopped here ${Math.floor(days / 7)} weeks ago`
+        : `You stopped here ${days} days ago`,
     endsIn: (days) => `Ends in ${days} day${days === 1 ? "" : "s"}`,
     alts: (count) => `None of your ${count} characters has it yet`,
     achievementGoal: (token) => `Earn ${token} close to where you play.`,
@@ -169,6 +196,13 @@ const TEXT: Record<
     eventGoal: (name, left) =>
       `Идёт «${name}»: осталось ${left} ${ruCount(left, "дело", "дела", "дел")}.`,
     startsSoon: "Скоро начнётся",
+    startsIn: (days) => (days <= 1 ? "Начнётся завтра" : `Начнётся через ${days} дн.`),
+    chainGoal: (done, total) => `Продолжи: сделано ${done} из ${total}`,
+    altDone: (name) => `У ${name} эта цепочка уже пройдена`,
+    stopped: (days) =>
+      days >= 14
+        ? `Цепочка стоит уже ${Math.floor(days / 7)} нед.`
+        : `Цепочка стоит уже ${days} дн.`,
     endsIn: (days) => `Закончится через ${days} ${ruCount(days, "день", "дня", "дней")}`,
     alts: (count) => `Нет ни у одного из твоих ${count} персонажей`,
     achievementGoal: (token) => `Получи ${token} рядом с местами, где ты играешь.`,
@@ -228,6 +262,12 @@ export type SuggestInput = {
   characters: number;
   /** The Character's language (its char Section, else its last Request); English by default. */
   lang?: IdeaLang;
+  /** The other Characters by name, with their questsDone, for "Your <Alt> already finished it". */
+  alts?: { name: string; quests: Set<number> }[];
+  /** questLineID to the time its progress last changed on this Character (D137). */
+  chainSince?: Map<number, number>;
+  /** A creature's name in the idea's language, from the Blizzard cache (D154). */
+  npcName?: (npcID: number) => string | undefined;
 };
 
 type Candidate = Suggestion & { score: number; rule: SuggestionKind; key: string };
@@ -267,13 +307,13 @@ function altBonus(candidate: Candidate, characters: number, lang: IdeaLang): Can
   return candidate;
 }
 
-function holidayFor(catalog: Catalog, event: { eventID?: unknown; title?: unknown }) {
+function holidayFor(catalog: Catalog, event: Record<string, unknown>) {
   const title = typeof event.title === "string" ? event.title.trim().toLowerCase() : "";
   return catalog.holidays.find((row) => {
-    const keys = [row.holidayID, ...(row.holidayIDs ?? [])].filter((id) => id !== undefined);
-    if (typeof event.eventID === "number" && keys.includes(event.eventID)) return true;
-    const names = [row.fallbackTitle, ...(row.titles ?? [])].map((name) => name?.toLowerCase());
-    return title !== "" && names.includes(title);
+    const match = row.match ?? {};
+    if (typeof event.eventID === "number" && match.holidayIDs?.includes(event.eventID)) return true;
+    if (typeof event.texture === "number" && match.textures?.includes(event.texture)) return true;
+    return title !== "" && (match.titles ?? []).some((name) => name.toLowerCase() === title);
   });
 }
 
@@ -285,20 +325,23 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
   const achievements = ids(sections.get("achievements"));
   for (const id of ids(sections.get("achievementsMine"))) achievements.add(id);
   const mounts = ids(sections.get("mounts"));
+  const toys = ids(sections.get("toys"));
   const questsDone = ids(sections.get("questsDone"));
   const faction = sections.get("char")?.body.faction;
   const zones = recentMaps(sections.get("sessions"));
   const near = new Set(zones);
   const candidates: Candidate[] = [];
 
-  // 1. Events: a known holiday on now or within 3 days, with something left to get.
+  // 1. Events: a catalog event on now or within 3 days, with something left for you (D129, D130).
   const events = sections.get("calendar")?.body.events;
+  const seenEvents = new Set<string>();
   for (const event of Array.isArray(events) ? (events as Record<string, unknown>[]) : []) {
     const starts = calendarTime(event.starts);
     const ends = calendarTime(event.ends);
     if (starts === undefined || ends === undefined || ends < now || starts > now + SOON) continue;
     const holiday = holidayFor(catalog, event);
-    if (!holiday) continue;
+    if (!holiday || seenEvents.has(holiday.id)) continue;
+    seenEvents.add(holiday.id);
     const rewards: string[] = [];
     let left = 0;
     for (const task of holiday.tasks) {
@@ -313,23 +356,87 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
         left += 1;
         rewards.unshift(`{mount:${task.mountID}}`);
       }
+      if (task.toyID !== undefined && !toys.has(task.toyID)) {
+        left += 1;
+        rewards.push(`{toy:${task.toyID}}`);
+      }
+      if (task.questID !== undefined && !questsDone.has(task.questID)) left += 1;
     }
     if (left === 0) continue;
     const name =
       (typeof event.title === "string" && event.title.trim()) || holiday.fallbackTitle || "";
     if (!name) continue;
-    const key = String(holiday.holidayID ?? holiday.holidayIDs?.[0] ?? name);
-    const days = Math.max(1, Math.ceil((ends - now) / DAY));
-    const candidate = make(lang, "event", `event:${key}:${starts}`, SCORE.event, {
-      title: name,
-      goal: say.eventGoal(name, left),
-      why: starts > now ? say.startsSoon : say.endsIn(days),
-      reason: { kind: "ends", at: ends },
-      rewards,
-      expiresAt: ends,
-    });
-    if (ends - now <= SOON) candidate.score += SCORE.eventEndsSoon;
+    const upcoming = starts > now;
+    const days = Math.max(1, Math.ceil(((upcoming ? starts : ends) - now) / DAY));
+    const candidate = make(
+      lang,
+      "event",
+      `event:${holiday.id}:${starts}`,
+      upcoming ? SCORE.eventStartsSoon : SCORE.event,
+      {
+        title: name,
+        goal: say.eventGoal(name, left),
+        why: upcoming ? say.startsIn(days) : say.endsIn(days),
+        reason: upcoming ? { kind: "starts", at: starts, count: days } : { kind: "ends", at: ends },
+        rewards: [...new Set(rewards)],
+        expiresAt: ends,
+      },
+    );
+    if (!upcoming && ends - now <= SOON) candidate.score += SCORE.eventEndsSoon;
     candidates.push(altBonus(candidate, input.characters, lang));
+  }
+
+  // Unfinished quest chains of this Character (D135), and the ones it dropped (D137).
+  const lines = sections.get("questLines")?.body.lines;
+  for (const line of Array.isArray(lines) ? (lines as Record<string, unknown>[]) : []) {
+    const questLineID = Number(line.questLineID);
+    const done = Number(line.done);
+    const total = Number(line.total);
+    const title = typeof line.name === "string" ? line.name.trim() : "";
+    if (!Number.isInteger(questLineID) || questLineID <= 0 || !title) continue;
+    if (!Number.isInteger(total) || total <= 0 || !Number.isInteger(done) || done >= total)
+      continue;
+    const nextQuestID = Number.isInteger(line.nextQuestID)
+      ? (line.nextQuestID as number)
+      : undefined;
+    if (nextQuestID !== undefined && questsDone.has(nextQuestID)) continue;
+    const flags = typeof line.flags === "string" ? line.flags.split("|") : [];
+    const mapID =
+      Number.isInteger(line.mapID) && (line.mapID as number) > 0
+        ? (line.mapID as number)
+        : undefined;
+    let score = SCORE.chain + (flags.includes("c") ? SCORE.chainCampaign : 0);
+    let reason: Suggestion["reason"];
+    let why: string | undefined;
+    const since = input.chainSince?.get(questLineID);
+    const stoppedDays = since === undefined ? 0 : Math.floor((now - since) / DAY);
+    const finisher =
+      flags.includes("a") && nextQuestID !== undefined
+        ? input.alts?.find((alt) => alt.quests.has(nextQuestID))
+        : undefined;
+    if (since !== undefined && now - since >= STOPPED_AFTER) {
+      score += SCORE.chainStopped;
+      reason = { kind: "stopped", at: since };
+      why = say.stopped(stoppedDays);
+    } else if (finisher) {
+      reason = { kind: "altDone", name: finisher.name.slice(0, 60) };
+      why = say.altDone(finisher.name);
+    }
+    candidates.push(
+      make(lang, "chain", `chain:${questLineID}`, score, {
+        title,
+        goal: say.chainGoal(done, total),
+        ...(why !== undefined ? { why } : {}),
+        ...(reason !== undefined ? { reason } : {}),
+        ...(mapID !== undefined ? { mapID } : {}),
+        chain: {
+          questLineID,
+          ...(nextQuestID !== undefined ? { nextQuestID } : {}),
+          done,
+          total,
+        },
+      }),
+    );
   }
 
   // 2. Achievements tied to a zone the player has been playing in.
@@ -357,14 +464,16 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     );
   }
 
-  // 3. Rares and treasures not looted here, in a recent zone.
+  // 3. Rares and treasures not looted here, in a recent zone. The name comes from the
+  // Blizzard creature cache in the idea's language, else the catalog's English (D154, D155).
   for (const row of catalog.rares) {
     if (row.questID === undefined || row.mapID === undefined || !near.has(row.mapID)) continue;
     if (questsDone.has(row.questID)) continue;
-    // TODO: the catalog has no Russian rare names and no npc ids, so a Russian idea keeps the English name.
+    const name = (row.npcID !== undefined && input.npcName?.(row.npcID)) || row.fallbackTitle;
+    const label = name.replace(/[{}|]/g, "").slice(0, 80);
     let candidate = make(lang, "rare", `rare:${row.id}`, SCORE.rare, {
-      title: row.fallbackTitle,
-      goal: say.rareGoal(row.fallbackTitle),
+      title: name,
+      goal: say.rareGoal(row.npcID !== undefined ? `{npc:${row.npcID}|${label}}` : name),
       reason: { kind: "near", mapID: row.mapID },
       mapID: row.mapID,
     });
@@ -426,15 +535,33 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
 export const SUGGEST_DEBOUNCE_MS = 30_000;
 
 /** Cached Suggestions per Character, recomputed after uploads (debounced per Account). */
+/** Creature names per locale, filled from the Blizzard Game Data API (blizzard.ts). */
+export type NameLookup = {
+  get(npcID: number, locale: string): string | undefined;
+  /** Fetches the names not cached yet; resolves when done or off. */
+  warm?(npcIDs: number[], locales: string[]): Promise<void>;
+};
+
+export const LOCALE_FOR: Record<IdeaLang, string> = { en: "en_US", ru: "ru_RU" };
+
 export class SuggestionStore {
   private db: DatabaseSync;
   private data: DataStore;
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  names: NameLookup | undefined;
 
-  constructor(db: DatabaseSync, data: DataStore) {
+  constructor(db: DatabaseSync, data: DataStore, names?: NameLookup) {
     this.db = db;
     this.data = data;
+    this.names = names;
     db.exec(`
+      CREATE TABLE IF NOT EXISTS chain_progress (
+        character_id TEXT NOT NULL,
+        quest_line_id INTEGER NOT NULL,
+        done INTEGER NOT NULL,
+        changed_at INTEGER NOT NULL,
+        PRIMARY KEY (character_id, quest_line_id)
+      );
       CREATE TABLE IF NOT EXISTS suggestions (
         owner_id TEXT NOT NULL,
         character_id TEXT PRIMARY KEY,
@@ -451,11 +578,19 @@ export class SuggestionStore {
     if (pending) clearTimeout(pending);
     const timer = setTimeout(() => {
       this.timers.delete(account);
-      try {
-        this.computeAccount(account);
-      } catch {
-        // A bad Section must not take the Server down; the next upload tries again.
-      }
+      const npcIDs = loadCatalog()
+        .rares.map((row) => row.npcID)
+        .filter((id): id is number => id !== undefined);
+      const warm = this.names?.warm?.(npcIDs, Object.values(LOCALE_FOR)) ?? Promise.resolve();
+      void warm
+        .catch(() => undefined)
+        .then(() => {
+          try {
+            this.computeAccount(account);
+          } catch {
+            // A bad Section must not take the Server down; the next upload tries again.
+          }
+        });
     }, delayMs);
     timer.unref?.();
     this.timers.set(account, timer);
@@ -482,18 +617,51 @@ export class SuggestionStore {
     );
     for (const row of characters) {
       const sections = this.data.sectionsFor(row);
+      const lang = ideaLang(sections.get("char")?.body.lang) ?? this.lastRequestLang(row) ?? "en";
+      const others = characters.filter((other) => other.id !== row.id);
       const list = suggest({
         now,
         sections,
-        lang: ideaLang(sections.get("char")?.body.lang) ?? this.lastRequestLang(row),
-        altQuests: characters
-          .filter((other) => other.id !== row.id)
-          .map((other) => quests.get(other.id)!),
+        lang,
+        altQuests: others.map((other) => quests.get(other.id)!),
+        alts: others.map((other) => ({ name: other.name, quests: quests.get(other.id)! })),
         characters: characters.length,
+        chainSince: this.chainSince(row.id, sections.get("questLines")?.body.lines, now),
+        npcName: (npcID) => this.names?.get(npcID, LOCALE_FOR[lang]),
       });
       save.run(row.accountId, row.id, now, JSON.stringify(list));
     }
     return characters.length;
+  }
+
+  /**
+   * When each chain last moved on this Character: a new done count restarts the
+   * clock, so a chain untouched for 14 days reads as dropped (D137).
+   */
+  private chainSince(characterId: string, lines: unknown, now: number): Map<number, number> {
+    const out = new Map<number, number>();
+    if (!Array.isArray(lines)) return out;
+    const read = this.db.prepare(
+      `SELECT done, changed_at FROM chain_progress WHERE character_id = ? AND quest_line_id = ?`,
+    );
+    const save = this.db.prepare(
+      `INSERT INTO chain_progress (character_id, quest_line_id, done, changed_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (character_id, quest_line_id) DO UPDATE SET done = excluded.done,
+         changed_at = excluded.changed_at`,
+    );
+    for (const line of lines as Record<string, unknown>[]) {
+      const id = Number(line?.questLineID);
+      const done = Number(line?.done);
+      if (!Number.isInteger(id) || !Number.isInteger(done)) continue;
+      const stored = read.get(characterId, id) as { done: number; changed_at: number } | undefined;
+      if (!stored || stored.done !== done) {
+        save.run(characterId, id, done, now);
+        out.set(id, now);
+      } else {
+        out.set(id, stored.changed_at);
+      }
+    }
+    return out;
   }
 
   /** The language of the Character's last Request, when the char Section does not say. */

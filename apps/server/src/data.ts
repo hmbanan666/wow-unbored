@@ -10,6 +10,7 @@ import {
   type SectionScope,
 } from "@unbored/contracts";
 
+import { buildHoldings, WARBAND_PLACE, type Holdings, type HoldingsPlace } from "./holdings.ts";
 import { PlanError } from "./plan.ts";
 
 // docs/adr/0029: the Companion posts only the Sections that changed; the
@@ -36,6 +37,7 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   recipes: { scope: "char", v: 1 },
   questsDone: { scope: "char", v: 1 },
   questLog: { scope: "char", v: 1 },
+  questLines: { scope: "char", v: 1 },
   reputation: { scope: "char", v: 1 },
   achievements: { scope: "account", v: 1 },
   achievementsMine: { scope: "char", v: 1 },
@@ -46,7 +48,7 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   lockouts: { scope: "char", v: 1 },
   mplus: { scope: "char", v: 1 },
   vault: { scope: "char", v: 1 },
-  calendar: { scope: "account", v: 1 },
+  calendar: { scope: "account", v: 2 },
   sessions: { scope: "char", v: 1 },
   addons: { scope: "account", v: 1 },
   unresolvedIds: { scope: "char", v: 1 },
@@ -488,6 +490,7 @@ export function mergeProfile(old: Raw, fresh: Raw): Raw {
 
 export class DataStore {
   private db: DatabaseSync;
+  private holdingsCache = new Map<string, { key: string; value: Holdings }>();
 
   constructor(db: DatabaseSync) {
     this.db = db;
@@ -1011,6 +1014,51 @@ export class DataStore {
   }
 
   /**
+   * The Account holdings index (ADR 0048) from every Character's bags, bank
+   * and reagent bank and the Warband bank. Kept until one of those changes.
+   */
+  holdings(row: CharacterRow, now = Math.floor(Date.now() / 1000)): Holdings {
+    if (!row.accountId) return { places: [], items: {} };
+    const characters = this.characters(row.accountId);
+    const owners = [row.accountId, ...characters.map((other) => other.id)];
+    const stamp = this.db
+      .prepare(
+        `SELECT COALESCE(MAX(updated_at), 0) AS at, COUNT(*) AS n FROM sections_latest
+         WHERE section IN ('bags', 'bank', 'reagentBank', 'warband')
+           AND owner_id IN (${owners.map(() => "?").join(",")})`,
+      )
+      .get(...owners) as { at: number; n: number };
+    const key = `${owners.join(",")}|${stamp.at}|${stamp.n}|${Math.floor(now / 86400)}`;
+    const cached = this.holdingsCache.get(row.accountId);
+    if (cached?.key === key) return cached.value;
+    const items = (section: SectionRow | undefined) =>
+      section && isPackedIdSet(section.body.items)
+        ? unpackRows(section.body.items).map((item) => ({
+            id: item.id,
+            count: item.values[0] ?? 1,
+          }))
+        : [];
+    const places: HoldingsPlace[] = characters.map((other) => {
+      const sections = this.sections("char", other.id, ["bags", "bank", "reagentBank"]);
+      return {
+        key: `${other.name}-${other.realm}`,
+        seenAt: other.lastSeen,
+        items: sections.flatMap(items),
+      };
+    });
+    const warband = this.section("account", row.accountId, "warband");
+    if (warband)
+      places.push({
+        key: WARBAND_PLACE,
+        seenAt: warband.at ?? warband.updatedAt,
+        items: items(warband),
+      });
+    const value = buildHoldings(places, now);
+    this.holdingsCache.set(row.accountId, { key, value });
+    return value;
+  }
+
+  /**
    * The player profile in its 0.6 shape for get_player_profile: the stored
    * 0.6 upload, with every 0.7 Section the Character has laid over it.
    */
@@ -1190,6 +1238,15 @@ export class DataStore {
     const counts: Raw = {};
     for (const [path, set] of packedSets(row.body)) counts[path] = unpackRows(set).length;
     const last = this.lastChange(row.ownerKind, row.ownerId, row.section);
+    // D160: ids Bory could not help with, counted per kind (quest, item, advice, ...).
+    let byKind: Record<string, number> | undefined;
+    if (row.section === "unresolvedIds" && Array.isArray(row.body.list)) {
+      byKind = {};
+      for (const entry of row.body.list as Raw[]) {
+        const kind = typeof entry?.kind === "string" ? entry.kind : "unknown";
+        byKind[kind] = (byKind[kind] ?? 0) + 1;
+      }
+    }
     return {
       name: row.section,
       v: row.v,
@@ -1200,6 +1257,7 @@ export class DataStore {
       unknown: row.unknown,
       ...(Object.keys(counts).length ? { counts } : {}),
       ...(typeof row.body.count === "number" ? { count: row.body.count } : {}),
+      ...(byKind ? { byKind } : {}),
       lastChange: last ? { at: last.at, ...changeSummary(last.kind, last.body) } : null,
     };
   }

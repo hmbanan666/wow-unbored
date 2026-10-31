@@ -102,6 +102,9 @@ function ns.Session:Finish(bucket)
     local title = ns.Markup.Plain(task.title or "", task.npcs)
     ns.Mascot:Echo(ns.T(bucket == "skipped" and "ECHO_SKIPPED" or "ECHO_DONE", title))
     ns.Mascot:Lead(bucket == "skipped" and "OK_NEXT" or "NICE")
+    if bucket ~= "skipped" and ns.Mascot.StepDone then
+      ns.Mascot:StepDone()
+    end
   end
   -- The title is kept so the inline list can show what was finished.
   list[#list + 1] = { id = task.id, at = ns.Now(), title = ns.SafeString(ns.Markup.Plain(task.title, task.npcs), 120) }
@@ -611,9 +614,10 @@ end
 
 -- The Request flow (docs/adr/0033, D65): one state machine kept in
 -- UnboredCharDB.request.state, so it survives a reload, logout or character
--- switch. idle -> quick -> survey -> confirm -> queued | sent -> waiting ->
--- (offer) -> idle, with failed and expired on the side. Before it is sent the
--- table has no id, so the Companion does not see it.
+-- switch. idle -> quick -> confirm -> sent -> waiting -> (offer) -> idle, with
+-- failed and expired on the side; "queued" is only ever a 0.7 Request. There
+-- is no Survey step any more: the player only picks (docs/adr/0046). Before it
+-- is sent the table has no id, so the Companion does not see it.
 ns.REQUEST_EXPIRE_SECONDS = 60 * 60
 ns.ETA_DEFAULT_SECONDS = 180
 ns.ETA_AGAIN_SECONDS = 120
@@ -637,6 +641,10 @@ function ns.Session:FlowState()
   if state == nil then
     -- A Request saved by 0.6 has an id and no state.
     state = type(req.id) == "string" and req.id ~= "" and "waiting" or "idle"
+  end
+  -- A 0.8 draft that stopped in the Survey is a Confirm now.
+  if state == "survey" then
+    state = "confirm"
   end
   if state == "quick" and not self:Current() then
     return "idle"
@@ -666,7 +674,7 @@ local function setFlow(fields)
 end
 
 -- A preset: the Quick plan at once and, with the Companion, one button for a
--- proper plan. An empty Quick plan goes straight to the Survey.
+-- proper plan. An empty Quick plan goes straight to Confirm.
 function ns.Session:BeginQuick(preset)
   self:QuickPlan(preset)
   if not (ns.UI and ns.UI.HasCompanion()) or self.rebuildQueued then
@@ -674,7 +682,7 @@ function ns.Session:BeginQuick(preset)
   end
   local empty = self:Current() == nil
   setFlow({
-    state = empty and "survey" or "quick",
+    state = empty and "confirm" or "quick",
     mode = preset.mode,
     topic = preset.id,
     wish = preset.wish,
@@ -686,11 +694,46 @@ end
 
 -- An idea (D109): a live local one starts its Quick plan as a preset does;
 -- a Server one goes straight to Confirm. Never a time field (D110).
+-- A live idea that already is a plan (an event's open tasks, a chain's
+-- quests): its steps at once, no reload (D130, D136).
+function ns.Session:IdeaPlan(idea, steps)
+  if type(UnboredCharDB) == "table" then
+    UnboredCharDB.offer = nil
+  end
+  local mode = ns.Suggestions.MODE[idea.kind] or "roam"
+  self:ApplyPlan({ mode = mode, tasks = steps }, "provider", false)
+  if not self.state then
+    return
+  end
+  self.state.quick = true
+  self.state.topic = "suggestion"
+  self:Save()
+  self:Started()
+end
+
+local function ideaSteps(idea)
+  if type(idea.steps) == "table" and #idea.steps > 0 then
+    return idea.steps
+  end
+  if idea.chain then
+    return ns.Suggestions.ChainSteps(idea)
+  end
+  return nil
+end
+
 function ns.Session:BeginSuggestion(idea)
   local mode = ns.Suggestions.MODE[idea.kind] or "roam"
   local companion = ns.UI and ns.UI.HasCompanion()
   if idea.quick or not companion then
-    self:QuickPlan({ id = "suggestion", mode = mode })
+    local steps = ideaSteps(idea)
+    if ns.IsCombat() then
+      self:QuickPlan({ id = "suggestion", mode = mode })
+      return
+    elseif steps and #steps > 0 then
+      self:IdeaPlan(idea, steps)
+    else
+      self:QuickPlan({ id = "suggestion", mode = mode })
+    end
     if self.rebuildQueued then
       return
     end
@@ -705,7 +748,7 @@ function ns.Session:BeginSuggestion(idea)
   end
   local empty = idea.quick and self:Current() == nil
   setFlow({
-    state = idea.quick and (empty and "survey" or "quick") or "confirm",
+    state = idea.quick and not empty and "quick" or "confirm",
     mode = mode,
     topic = "suggestion",
     suggestionId = idea.id,
@@ -717,60 +760,52 @@ function ns.Session:BeginSuggestion(idea)
   self:RefreshUI()
 end
 
--- "Something else..." or "Make a plan" under an Answer: the Survey with
--- free text, where minutes may be typed (docs/adr/0037).
-function ns.Session:BeginSurvey(fields)
-  fields = type(fields) == "table" and fields or {}
-  setFlow({ state = "survey", custom = true, wish = fields.wish })
-  self:NoteRequest()
-  self:RefreshUI()
-end
-
-function ns.Session:ToSurvey()
+-- "Want a proper plan?": the summary with [Send now]; nothing to type (D122).
+function ns.Session:ToConfirm()
   local req = self.Flow()
   if req and req.state == "quick" then
-    req.state = "survey"
+    req.state = "confirm"
   end
   self:RefreshUI()
 end
 
--- wish: the optional line (required for a custom wish); budget: typed minutes.
-function ns.Session:SurveyDone(wish, budget)
-  local req = self.Flow()
-  if not req or req.state ~= "survey" then
-    return
-  end
-  wish = ns.Utf8Truncate(ns.Trim(type(wish) == "string" and wish or ""), 300)
-  if wish ~= "" then
-    req.extra = req.topic and wish or nil
-    if not req.topic then
-      req.wish = wish
-    end
-  end
-  req.budget = req.custom and budget or nil
-  req.state = "confirm"
-  self:RefreshUI()
-end
-
--- Back from the Survey goes to the Quick plan (or nothing); from Confirm to the Survey.
+-- Back from Confirm goes to the Quick plan when there is one, else drops the draft.
 function ns.Session:FlowBack()
   local req = self.Flow()
   if not req then
     return
   end
-  if req.state == "confirm" then
-    req.state = "survey"
-  elseif req.state == "survey" and req.topic and not req.quickEmpty and self:Current() then
+  local state = req.state == "survey" and "confirm" or req.state
+  if state == "confirm" and req.topic and not req.quickEmpty and self:Current() then
     req.state = "quick"
-  elseif req.state == "survey" or req.state == "quick" then
+  elseif state == "confirm" or state == "quick" then
     UnboredCharDB.request = nil
   end
   self:RefreshUI()
 end
 
+-- A 0.8 "Something else" draft the player had not sent is dropped at login,
+-- quietly (D124). One that was sent or queued still goes once.
+function ns.Session.DropCustomDraft()
+  local saved = type(UnboredCharDB) == "table" and UnboredCharDB or nil
+  if not saved then
+    return false
+  end
+  saved.lastWish = nil
+  local req = saved.request
+  if type(req) ~= "table" or not req.custom then
+    return false
+  end
+  if type(req.id) == "string" and req.id ~= "" then
+    return false
+  end
+  saved.request = nil
+  return true
+end
+
 -- Turns the confirmed flow into a plan Request (the only type the addon
 -- sends, D64). Nothing reloads here.
-function ns.Session:Ask(ask)
+function ns.Session:BuildRequest(ask)
   ask = type(ask) == "table" and ask or {}
   local name = ns.SafeString(ns.Call(UnitName, "player"), 80) or "player"
   local realm = ns.SafeString(ns.Call(GetRealmName), 80) or ""
@@ -780,10 +815,6 @@ function ns.Session:Ask(ask)
   end
   local okContext, context = pcall(ns.PlayerContext)
   local wish = text(ask.wish, 600)
-  local extra = text(ask.extra, 300)
-  if extra then
-    wish = wish and (wish .. ". " .. extra) or extra
-  end
   local request = {
     id = string.format("req-%d-%04d", ns.Now(), math.random(0, 9999)),
     type = "plan",
@@ -795,12 +826,8 @@ function ns.Session:Ask(ask)
     mode = ns.MODE_IDS[ask.mode] and ask.mode ~= "custom" and ask.mode or self.ChosenMode(),
     custom = ask.custom or nil,
   }
-  local lang = wish and ns.Intents.Lang(wish) or ns.LANG
+  local lang = ns.LANG
   request.lang = (lang == "ru" or lang == "en") and lang or "en"
-  local budget = tonumber(ask.budget)
-  if budget and budget >= 5 and budget <= 240 then
-    request.budget = math.floor(budget)
-  end
   if type(ask.topic) == "string" and ask.topic:match("^[a-z_-]+$") and #ask.topic <= 40 then
     request.topic = ask.topic
   end
@@ -815,9 +842,6 @@ function ns.Session:Ask(ask)
     UnboredCharDB = {}
   end
   UnboredCharDB.offer = nil
-  if not request.topic and wish then
-    UnboredCharDB.lastWish = wish
-  end
   return request
 end
 
@@ -834,7 +858,7 @@ function ns.Session:Send()
   if not req or req.state ~= "confirm" then
     return nil
   end
-  local request = self:Ask(req)
+  local request = self:BuildRequest(req)
   request.state = "sent"
   request.sentAt = ns.Now()
   UnboredCharDB.request = request
@@ -856,7 +880,6 @@ function ns.Session:Retry()
     suggestionId = req.suggestionId,
     suggestion = req.suggestion,
     wish = req.wish,
-    budget = req.budget,
     custom = req.custom or (not req.topic) or nil,
   })
   self:NoteRequest()
@@ -933,48 +956,6 @@ end
 function ns.Session:CheckedAgain()
   local req = self:PendingRequest()
   return req ~= nil and (tonumber(req.checks) or 0) > 0 and self.requestNote == "preparing"
-end
-
--- A question: the local answer at once (docs/adr/0014). What the intents
--- cannot answer becomes "Want a plan from it?" through the Survey (D64).
-function ns.Session:AskQuestion(question, topic)
-  question = ns.Utf8Truncate(ns.Trim(type(question) == "string" and question or ""), 600)
-  if question == "" then
-    return nil
-  end
-  local lang = ns.Intents.Lang(question)
-  local intent = topic == "nearby" and "here" or ns.Intents.Detect(question)
-  local found = intent and ns.Intents.Answer(intent, lang) or nil
-  local toPlan = not found and ns.UI and ns.UI.HasCompanion()
-  local messages = found and found.messages or { ns.TL(lang, toPlan and "ASK_TO_PLAN" or "ASK_LOCAL_ONLY") }
-  if type(UnboredCharDB) ~= "table" then
-    UnboredCharDB = {}
-  end
-  UnboredCharDB.answer = {
-    type = "question",
-    planWish = toPlan and question or nil,
-    question = question,
-    message = table.concat(messages, "\n\n"),
-    messages = messages,
-    lang = lang,
-    tasks = found and #found.tasks > 0 and found.tasks or nil,
-    intent = intent,
-    isLocal = true,
-    at = ns.Now(),
-  }
-  self:RefreshUI()
-  return true
-end
-
--- "Make it a plan" under a local answer.
-function ns.Session:AnswerPlan()
-  local answer = self.UnreadAnswer()
-  if not answer or type(answer.tasks) ~= "table" or #answer.tasks == 0 then
-    return
-  end
-  local tasks = answer.tasks
-  answer.seen = true
-  self:ApplyPlan({ mode = "roam", tasks = tasks }, "provider", true)
 end
 
 ns.ITEM_NOTES_MAX = 200
@@ -1245,6 +1226,7 @@ function ns.Session:Start(initialLogin)
     return
   end
   self.started = true
+  self.DropCustomDraft()
   self:MarkLoaded()
   local saved = UnboredCharDB and UnboredCharDB.session
   if type(saved) == "table" and saved.version == 1 and type(saved.tasks) == "table" then

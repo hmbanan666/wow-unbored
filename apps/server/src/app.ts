@@ -62,6 +62,11 @@ export function createApp(
     config.blizzardFetch,
   );
   log(gameIds.describe());
+  // Russian rare names for ideas come from the same Blizzard credentials (D154).
+  store.suggestions.names = {
+    get: (npcID, locale) => store.creatureNames.get(npcID, locale),
+    warm: (npcIDs, locales) => gameIds.warmCreatureNames(store.creatureNames, npcIDs, locales),
+  };
 
   // Method, path, status, and why a request was refused. Never headers or bodies.
   app.use("*", async (c, next) => {
@@ -269,11 +274,16 @@ export function createApp(
     return c.json(requestWithPlan(request));
   });
 
-  // Personal advice for this device's characters (docs/adr/0019).
+  // Personal advice for this device's characters (docs/adr/0019) and the
+  // Account holdings index (docs/adr/0048).
   app.get("/v1/advice", (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
-    return c.json({ characters: store.adviceForDevice(access.deviceId) });
+    const holdings = store.holdingsForDevice(access.deviceId);
+    return c.json({
+      characters: store.adviceForDevice(access.deviceId),
+      ...(holdings ? { holdings } : {}),
+    });
   });
 
   // Ideas from the player's data for the choice Bubble (docs/adr/0040).

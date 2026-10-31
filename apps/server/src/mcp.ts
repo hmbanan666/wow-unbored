@@ -133,7 +133,7 @@ const entitiesSchema = z
 export function createMcpServer(store: Store, dataDir: string, gameIds?: BlizzardIds): McpServer {
   const server = new McpServer({
     name: "unbored",
-    version: "0.8.0",
+    version: "0.9.0",
   });
 
   const taskSchema = z
@@ -350,7 +350,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     "list_requests",
     {
       title: "List in-game plan requests",
-      description: `List requests the player made in game, newest first. Pending is the default. type is plan (a preset chip or Something else: mode, wish, and budget only when the player typed minutes into the custom form; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun; no topic means the wish is the player's own words), question (Ask something: the player's free text in question, and topic "nearby" for What to do nearby), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). topic "suggestion" means the player picked one of Bory's ideas (get_suggestions): suggestionId names it and suggestion is a copy of it (title, goal, rewards, mapID); its tokens are ground truth for ids, so build the plan around them and do not swap in other ids. lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position. ${PLAN_SCOPE}`,
+      description: `List requests the player made in game, newest first. Pending is the default. The player never types anything (0.9): every request is a pick. type is plan (a preset chip, Surprise me, or one of Bory's ideas: mode; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). Addons 0.8 and older may still send topic "custom" with the player's own words in wish and minutes in budget, and question requests (free text in question): answer them as before. topic "suggestion" means the player picked one of Bory's ideas (get_suggestions): suggestionId names it and suggestion is a copy of it (title, goal, rewards, mapID); its tokens are ground truth for ids, so build the plan around them and do not swap in other ids. A suggestion with kind "chain" is an unfinished quest chain: suggestion.chain carries questLineID, nextQuestID, done and total from the game, so plan from nextQuestID on (the questLines Section in get_game_data has the same row) and never guess the chain's quests. lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Start any route near that position. ${PLAN_SCOPE}`,
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -496,7 +496,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Get Bory's ideas",
       description:
-        "The Suggestions the Server made for a Character from its own Game data and the addon's catalog (no guessing): current events with rewards still missing, achievements near where the player plays, rares not looted yet, and mounts nobody on the Account owns. Each has id, kind (event, achievement, rare, collection), title, goal, rewards (link tokens), why, and the request it sends when picked. Expired ones are left out. Pass account for every Character of that Account, or character (and realm) for one; without arguments you get the most recently seen Character. computedAt is when they were made (after each upload, 30 s after the last one). They are written in the Character's language (en or ru: its char Section, else its last Request).",
+        "The Suggestions the Server made for a Character from its own Game data and the addon's catalog (no guessing): current events (on now or starting within 3 days) with rewards still missing, unfinished quest chains (chain: questLineID, nextQuestID, done, total), achievements near where the player plays, rares not looted yet, and mounts nobody on the Account owns. Each has id, kind (event, chain, achievement, rare, collection), title, goal, rewards (link tokens), why, reason, and the request it sends when picked; up to 10 per Character. Expired ones are left out. Pass account for every Character of that Account, or character (and realm) for one; without arguments you get the most recently seen Character. computedAt is when they were made (after each upload, 30 s after the last one). They are written in the Character's language (en or ru: its char Section, else its last Request).",
       inputSchema: whoSchema,
     },
     async (who) => {
@@ -518,7 +518,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Read Game data Sections",
       description:
-        "The latest bodies of Game data Sections for one Character (Character Sections plus its Account Sections). Pass sections to pick some (data_catalog lists them). Packed id sets come back as counts; pass expand to get the ids (capped at 2000 per set, with more saying how many were cut). For a yes/no on specific ids use check_ids instead.",
+        "The latest bodies of Game data Sections for one Character (Character Sections plus its Account Sections). Pass sections to pick some (data_catalog lists them). questLines holds the Character's unfinished quest chains (questLineID, name, campaignID, chapter, mapID, x, y, done, total, nextQuestID, flags c = campaign, i = important, l = local story, a = finished on another Character); calendar holds the game events of the next 14 days (eventID, title, texture, starts, ends, sequenceType, and a description for today and tomorrow). Packed id sets come back as counts; pass expand to get the ids (capped at 2000 per set, with more saying how many were cut). For a yes/no on specific ids use check_ids instead.",
       inputSchema: {
         ...whoSchema,
         sections: z.array(z.string().max(40)).max(40).optional().describe("Section names."),
@@ -620,7 +620,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     {
       title: "Data explorer",
       description:
-        "The Data explorer: every Account and Character with each Game data Section (version, read time, savedAt, size in bytes, id and item counts, the last change), Sections the addon dropped to stay small, and unknown Sections a newer addon sent. Use it to see what was collected; read bodies with get_game_data.",
+        "The Data explorer: every Account and Character with each Game data Section (version, read time, savedAt, size in bytes, id and item counts, the last change), Sections the addon dropped to stay small, unknown Sections a newer addon sent, and for unresolvedIds the count per kind (quest, item, advice: ids Bory could not resolve or had no advice for). Use it to see what was collected; read bodies with get_game_data.",
       inputSchema: { account: whoSchema.account },
     },
     async ({ account }) => text(data.catalog({ account })),

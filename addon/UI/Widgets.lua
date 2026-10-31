@@ -5,7 +5,6 @@ local _, ns = ...
 
 ns.UI = ns.UI or {}
 
-local INNER = 308
 local GOLD = ns.PALETTE.highlight
 local P = ns.PALETTE
 
@@ -72,19 +71,6 @@ function ns.UI.MakeLink(parent, text)
   end)
   button:SetLabel(text)
   return button
-end
-
-local function font(parent, template)
-  local fs = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlight")
-  fs:SetJustifyH("LEFT")
-  fs:SetJustifyV("TOP")
-  if fs.SetWordWrap then
-    fs:SetWordWrap(true)
-  end
-  if fs.SetNonSpaceWrap then
-    fs:SetNonSpaceWrap(true)
-  end
-  return fs
 end
 
 -- Width first, then the wrapped height, so the next row never overlaps.
@@ -196,100 +182,11 @@ function ns.UI.HasCompanion()
   return false
 end
 
--- A multiline box with a grey hint inside it. onChange(text) on every edit.
-function ns.UI.MakeTextBox(parent, hint, maxLetters, onChange, width, height)
-  width = width or INNER
-  local okBox, box = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
-  if not okBox or not box then
-    box = CreateFrame("Frame", nil, parent)
-  end
-  box:SetSize(width, height or 92)
-  ns.UI.ApplyBackdrop(box, { P.raised[1], P.raised[2], P.raised[3], 0.9 }, { P.muted[1], P.muted[2], P.muted[3], 0.8 })
-  local edit = CreateFrame("EditBox", nil, box)
-  edit:SetMultiLine(true)
-  edit:SetAutoFocus(false)
-  edit:SetMaxLetters(maxLetters)
-  edit:SetFontObject(ChatFontNormal or GameFontHighlight)
-  edit:SetPoint("TOPLEFT", 8, -7)
-  edit:SetPoint("BOTTOMRIGHT", -8, 7)
-  edit:SetWidth(width - 16)
-  edit:SetTextInsets(0, 0, 0, 0)
-  local placeholder = font(box, "GameFontDisable")
-  placeholder:SetPoint("TOPLEFT", 9, -8)
-  placeholder:SetWidth(width - 18)
-  placeholder:SetText(hint)
-  box.placeholder = placeholder
-  local function update()
-    local text = edit:GetText() or ""
-    placeholder:SetShown(text == "" and not edit:HasFocus())
-  end
-  box.UpdatePlaceholder = update
-  edit:SetScript("OnEscapePressed", function(self)
-    self:ClearFocus()
-  end)
-  edit:SetScript("OnTextChanged", function()
-    update()
-    if onChange then
-      onChange(ns.Trim(edit:GetText() or ""))
-    end
-  end)
-  edit:SetScript("OnEditFocusGained", update)
-  edit:SetScript("OnEditFocusLost", update)
-  box:EnableMouse(true)
-  box:SetScript("OnMouseDown", function()
-    edit:SetFocus()
-  end)
-  update()
-  return box, edit
-end
-
--- A one-line box for a small whole number, with a grey hint inside it.
-function ns.UI.MakeNumberBox(parent, hint, maxLetters, width)
-  local okBox, box = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
-  if not okBox or not box then
-    box = CreateFrame("Frame", nil, parent)
-  end
-  box:SetSize(width, 24)
-  ns.UI.ApplyBackdrop(box, { P.raised[1], P.raised[2], P.raised[3], 0.9 }, { P.muted[1], P.muted[2], P.muted[3], 0.8 })
-  local edit = CreateFrame("EditBox", nil, box)
-  edit:SetAutoFocus(false)
-  edit:SetNumeric(true)
-  edit:SetMaxLetters(maxLetters)
-  edit:SetFontObject(ChatFontNormal or GameFontHighlight)
-  edit:SetPoint("TOPLEFT", 8, -4)
-  edit:SetPoint("BOTTOMRIGHT", -8, 4)
-  edit:SetTextInsets(0, 0, 0, 0)
-  local placeholder = font(box, "GameFontDisable")
-  placeholder:SetPoint("LEFT", 9, 0)
-  placeholder:SetWidth(width - 18)
-  placeholder:SetText(hint)
-  box.placeholder = placeholder
-  local function update()
-    local text = edit:GetText() or ""
-    placeholder:SetShown(text == "" and not edit:HasFocus())
-  end
-  box.UpdatePlaceholder = update
-  edit:SetScript("OnEscapePressed", function(self)
-    self:ClearFocus()
-  end)
-  edit:SetScript("OnEnterPressed", function(self)
-    self:ClearFocus()
-  end)
-  edit:SetScript("OnTextChanged", update)
-  edit:SetScript("OnEditFocusGained", update)
-  edit:SetScript("OnEditFocusLost", update)
-  box:EnableMouse(true)
-  box:SetScript("OnMouseDown", function()
-    edit:SetFocus()
-  end)
-  update()
-  return box, edit
-end
-
 -- Old entry points (keybinds, slash commands, other addons) open the bubble.
+-- Ask is gone (docs/adr/0046): "ask" and "nearby" open the choice.
 function ns.UI.Open(_, mode)
-  if mode == "ask" or mode == "nearby" or mode == "item" then
-    ns.Mascot:ShowAsk(mode)
+  if mode == "item" then
+    ns.Mascot:StartPick()
   else
     ns.Mascot:ShowChoice()
   end

@@ -7,14 +7,14 @@ UnboredSuggestions = {
       {
         ["expiresAt"] = 1793530800,
         ["goal"] = "Hallow's End is on: 4 things you have not done yet.",
-        ["id"] = "event:324:1792317600",
+        ["id"] = "event:hallows-end:1792317600",
         ["kind"] = "event",
         ["reason"] = {
           ["at"] = 1793530800,
           ["kind"] = "ends",
         },
         ["request"] = {
-          ["suggestionId"] = "event:324:1792317600",
+          ["suggestionId"] = "event:hallows-end:1792317600",
           ["topic"] = "suggestion",
           ["wish"] = "Hallow's End: Hallow's End is on: 4 things you have not done yet.",
         },
@@ -26,7 +26,27 @@ UnboredSuggestions = {
         ["why"] = "Ends in 2 days",
       },
       {
-        ["goal"] = "Hunt Huolon near where you play.",
+        ["chain"] = {
+          ["done"] = 3,
+          ["nextQuestID"] = 79100,
+          ["questLineID"] = 5678,
+          ["total"] = 8,
+        },
+        ["goal"] = "Continue: 3 of 8 done",
+        ["id"] = "chain:5678",
+        ["kind"] = "chain",
+        ["mapID"] = 2248,
+        ["request"] = {
+          ["suggestionId"] = "chain:5678",
+          ["topic"] = "suggestion",
+          ["wish"] = "The Forgotten Path: Continue: 3 of 8 done",
+        },
+        ["rewards"] = {
+        },
+        ["title"] = "The Forgotten Path",
+      },
+      {
+        ["goal"] = "Hunt {npc:73167|Huolon} near where you play.",
         ["id"] = "rare:rare-huolon",
         ["kind"] = "rare",
         ["mapID"] = 554,
@@ -83,6 +103,27 @@ UnboredSuggestions = {
         },
         ["title"] = "Battle of Dazar'alor",
         ["titleToken"] = "{instance:2070}",
+        ["why"] = "None of your 2 characters has it yet",
+      },
+      {
+        ["goal"] = "Run {instance:2164|The Eternal Palace} for {mount:1219}.",
+        ["id"] = "mount:1219",
+        ["kind"] = "collection",
+        ["mapID"] = 1355,
+        ["reason"] = {
+          ["count"] = 2,
+          ["kind"] = "alts",
+        },
+        ["request"] = {
+          ["suggestionId"] = "mount:1219",
+          ["topic"] = "suggestion",
+          ["wish"] = "The Eternal Palace: Run The Eternal Palace for a mount.",
+        },
+        ["rewards"] = {
+          "{mount:1219}",
+        },
+        ["title"] = "The Eternal Palace",
+        ["titleToken"] = "{instance:2164}",
         ["why"] = "None of your 2 characters has it yet",
       },
     },

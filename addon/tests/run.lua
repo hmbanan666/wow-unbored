@@ -30,6 +30,7 @@ local files = {
   "Core/Data/Inventory.lua",
   "Core/Data/Professions.lua",
   "Core/Data/Quests.lua",
+  "Core/Data/QuestLines.lua",
   "Core/Data/Reputation.lua",
   "Core/Data/Collections.lua",
   "Core/Data/Progress.lua",
@@ -533,20 +534,31 @@ ns.UI.HasCompanion = function()
   return true
 end
 
--- The Request flow (docs/adr/0033): quick -> survey -> confirm -> sent -> waiting.
+-- D124: a 0.8 "Something else" draft is dropped at login, quietly; a queued one still goes once.
+local keptFlow = UnboredCharDB.request
+UnboredCharDB.request = { state = "survey", custom = true, wish = "old wish" }
+UnboredCharDB.lastWish = "old wish"
+check(ns.Session.DropCustomDraft() == true and UnboredCharDB.request == nil and UnboredCharDB.lastWish == nil,
+  "an unsent custom draft is dropped")
+UnboredCharDB.request = { id = "req-c", type = "plan", custom = true, wish = "old", state = "queued", createdAt = 1 }
+check(ns.Session.DropCustomDraft() == false and UnboredCharDB.request.id == "req-c"
+  and ns.Session:FlowState() == "queued", "a queued 0.8 custom Request is kept and still sends")
+UnboredCharDB.request = { state = "survey", topic = "mount", mode = "farm" }
+check(ns.Session:FlowState() == "confirm", "a 0.8 draft left in the Survey is a Confirm now")
+UnboredCharDB.request = keptFlow
+
+-- The Request flow (docs/adr/0033, 0046): quick -> confirm -> sent -> waiting. Nothing is typed.
 local mountPreset = ns.Data.Presets[2]
 local stateBefore = ns.Session.state
 ns.Session:BeginQuick(mountPreset)
-check(ns.Session:FlowState() == "quick" or ns.Session:FlowState() == "survey", "a preset starts the flow")
+check(ns.Session:FlowState() == "quick" or ns.Session:FlowState() == "confirm", "a preset starts the flow")
 check(ns.Session:PendingRequest() == nil and reloads == 0, "nothing is sent by a preset")
-ns.Session:BeginSurvey({ wish = "mount, stay in this zone" })
-check(ns.Session:FlowState() == "survey" and ns.Session.Flow().custom, "Something else opens the Survey")
-check(not ns.Session:Locked(), "the Survey does not lock Bory")
-ns.Session:SurveyDone("mount, stay in this zone", 45)
-check(ns.Session:FlowState() == "confirm" and ns.Session.Flow().budget == 45, "typed minutes go with a custom wish")
-ns.Session:FlowBack()
-check(ns.Session:FlowState() == "survey", "Back from Confirm is the Survey")
-ns.Session:SurveyDone("mount, stay in this zone", nil)
+check(ns.Session.BeginSurvey == nil and ns.Session.SurveyDone == nil and ns.Session.AskQuestion == nil,
+  "no Survey with free text and no Ask (D122)")
+UnboredCharDB.request.state = "quick"
+ns.Session:ToConfirm()
+check(ns.Session:FlowState() == "confirm" and not ns.Session:Locked(), "Want a proper plan? is Confirm at once")
+UnboredCharDB.request.wish = "mount, stay in this zone"
 check(ns.Session:Send() ~= nil and reloads == 1, "Send now writes the Request and reloads in the click")
 local req = UnboredCharDB.request
 check(req.state == "sent" and ns.Session:Locked(), "sent locks Bory")
@@ -554,7 +566,8 @@ check(req.state == "sent" and ns.Session:Locked(), "sent locks Bory")
 req.state, req.sentAt = "queued", nil
 reloads = 0
 check(ns.Session:Locked(), "a queued Request from 0.7 still locks Bory")
-check(req and req.type == "plan" and req.mode == "farm" and req.budget == nil, "a plan Request with no time budget")
+check(req and req.type == "plan" and req.mode == "farm" and req.budget == nil and req.custom == nil,
+  "a plan Request with no time budget")
 check(req and req.wish == "mount, stay in this zone" and req.character == "player", "the Request keeps the wish")
 check(req and type(req.context) == "table" and req.context.mapID == 84, "the Request keeps the player context")
 check(req and near(req.context.x, 0.2) and req.context.zone == "Stormwind City", "context has position and zone")
@@ -693,7 +706,7 @@ for i = 1, 11 do
 end
 check(ns.DecodeImport(waypointPlan(many)) == nil, "more than ten route points is rejected")
 
-local asked = ns.Session:Ask({ type = "question", question = "Where is the bank?", topic = "Bad Topic" })
+local asked = ns.Session:BuildRequest({ type = "question", question = "Where is the bank?", topic = "Bad Topic" })
 check(asked.type == "plan" and asked.topic == nil, "the addon only makes plan Requests; a bad topic is dropped")
 -- A 0.6 question Request still in SavedVariables is answered as before.
 UnboredCharDB.request =
@@ -729,14 +742,16 @@ UnitName = function() return "Mira" end
 GetRealmName = function() return "Silvermoon" end
 ns.Now = function() return UnboredSuggestions.computedAt end
 local ideas = ns.Suggestions.Read()
-check(#ideas == 4 and ideas[1].kind == "event" and ideas[3].id == "mount:183", "the Companion's ideas are read")
-check(ideas[3].rewards[1] == "{mount:183}" and ideas[3].mapID == 109, "an idea keeps its reward and map")
+check(#ideas == 6 and ideas[1].kind == "event" and ideas[2].kind == "chain" and ideas[4].id == "mount:183",
+  "the Companion's ideas are read")
+check(ideas[2].chain.questLineID == 5678 and ideas[2].chain.nextQuestID == 79100, "a chain idea keeps its ids")
+check(ideas[4].rewards[1] == "{mount:183}" and ideas[4].mapID == 109, "an idea keeps its reward and map")
 check(ideas[1].wish ~= nil and ideas[1].quick == nil, "a Server idea has its wish and no Quick plan")
-check(ns.Suggestions.Line(ideas[1]) == "Ends soon" and ns.Suggestions.Line(ideas[3]) ==
+check(ns.Suggestions.Line(ideas[1]) == "Ends soon" and ns.Suggestions.Line(ideas[4]) ==
   "None of your 2 characters has it yet", "the line under a title comes from the reason")
-check(ns.Suggestions.Line(ideas[2]) == "Near where you play", "a rare near where you play")
+check(ns.Suggestions.Line(ideas[3]) == "Near where you play", "a rare near where you play")
 ns.Now = function() return UnboredSuggestions.computedAt + 3 * 86400 end
-check(#ns.Suggestions.Read() == 3, "an idea that ran out is not shown")
+check(#ns.Suggestions.Read() == 5, "an idea that ran out is not shown")
 ns.Now = function() return UnboredSuggestions.computedAt end
 GetRealmName = function() return "Elsewhere" end
 check(#ns.Suggestions.Read() == 0, "another character's ideas are not shown")
@@ -767,7 +782,7 @@ local localIdeas = {
 local merged = ns.Suggestions.Merge(ideas, localIdeas, 4)
 check(#merged == 4 and merged[1].id == ideas[1].id and merged[4].id == ideas[4].id,
   "Server ideas come first and only four are shown")
-merged = ns.Suggestions.Merge({ ideas[1], ideas[3] }, localIdeas, 4)
+merged = ns.Suggestions.Merge({ ideas[1], ideas[4] }, localIdeas, 4)
 check(#merged == 3 and merged[3].id == "rare:new", "the same holiday or reward is shown once")
 
 ns.Suggestions.cache = nil
@@ -786,15 +801,158 @@ ns.Data.Rares = savedRares
 C_Map.GetBestMapForUnit = savedMapFor
 ns.Suggestions.cache = nil
 
+-- Events as ideas (D128-D131): only what is still open for this player.
+local savedCalendar, savedDate = C_Calendar, C_DateAndTime
+local savedAch, savedMount, savedQuestDone = ns.AchievementState, ns.MountState, ns.QuestDone
+local calendarDays = {}
+C_DateAndTime = {
+  GetCurrentCalendarTime = function()
+    return { year = 2026, month = 10, monthDay = 28, weekday = 4, hour = 12, minute = 0 }
+  end,
+}
+C_Calendar = {
+  GetMonthInfo = function()
+    return { year = 2026, month = 10, numDays = 31 }
+  end,
+  GetNumDayEvents = function(_, day)
+    return calendarDays[day] and 1 or 0
+  end,
+  GetDayEvent = function(_, day)
+    return calendarDays[day]
+  end,
+}
+local ownedMounts, earned = {}, {}
+ns.AchievementState = function(id)
+  return { id = id, name = "Ach " .. id, done = earned[id] == true }
+end
+ns.MountState = function(id)
+  return { name = "Mount " .. id, collected = ownedMounts[id] == true }
+end
+local function eventIdeaOf(list)
+  for i = 1, #list do
+    if list[i].kind == "event" then
+      return list[i]
+    end
+  end
+  return nil
+end
+calendarDays = {
+  [28] = { calendarType = "HOLIDAY", eventID = 559, title = "Timewalking Dungeon Event",
+    startTime = { year = 2026, month = 10, monthDay = 28, weekday = 4, hour = 9, minute = 0 },
+    endTime = { year = 2026, month = 11, monthDay = 4, weekday = 4, hour = 8, minute = 0 } },
+}
+local tw = eventIdeaOf(ns.Suggestions.Local())
+check(tw and tw.title == "Timewalking Dungeon Event" and tw.reason.kind == "now",
+  "a Timewalking week on now is an idea, named by the calendar")
+check(tw and tw.rewards[1] == "{mount:778}" and #tw.steps == 2, "with the mounts you do not have as its steps")
+check(tw and tw.expiresAt ~= nil and tw.expiresAt > ns.Now(), "and it runs out when the week ends")
+ownedMounts[778], ownedMounts[781] = true, true
+ns.Suggestions.Invalidate()
+check(eventIdeaOf(ns.Suggestions.Local()) == nil, "an event with nothing left for you is no idea")
+ownedMounts = {}
+calendarDays = {
+  [30] = { calendarType = "HOLIDAY", eventID = 42, title = "Brewfest",
+    startTime = { year = 2026, month = 10, monthDay = 30, weekday = 6, hour = 10, minute = 0 },
+    endTime = { year = 2026, month = 11, monthDay = 13, weekday = 6, hour = 10, minute = 0 } },
+}
+ns.Suggestions.Invalidate()
+local brew = eventIdeaOf(ns.Suggestions.Local())
+check(brew and brew.reason.kind == "starts" and ns.Suggestions.Line(brew) == "Starts in 2 days",
+  "an event that starts in two days says so")
+check(brew and brew.steps[1].why == "Starts Friday", "and its plan says the day it starts")
+check(#ns.Providers.events.Build({}) == 0, "the Events preset only takes what is on today")
+earned[1185] = true
+ns.Suggestions.Invalidate()
+brew = eventIdeaOf(ns.Suggestions.Local())
+local sawDiet = false
+for i = 1, #(brew and brew.steps or {}) do
+  sawDiet = sawDiet or brew.steps[i].id == "event:brew-diet"
+end
+check(brew and not sawDiet, "an achievement already earned is not a step")
+local keepState2, keepRequest2 = ns.Session.state, UnboredCharDB.request
+UnboredCharDB.request = nil
+ns.Session:BeginSuggestion(brew)
+check(ns.Session.state and ns.Session.state.topic == "suggestion" and ns.Session:Current().why == "Starts Friday",
+  "picking it gives the plan for when it starts")
+check(ns.Suggestions.StillOpen({ id = "x", kind = "collection", rewards = { "{mount:202}" } }),
+  "an idea for a mount you lack stays")
+ownedMounts[202] = true
+check(not ns.Suggestions.StillOpen({ id = "x", kind = "collection", rewards = { "{mount:202}" } }),
+  "and goes the moment you learn it")
+check(not ns.Suggestions.StillOpen({ id = "x", kind = "event", rewards = {}, expiresAt = ns.Now() - 1 }),
+  "an event idea goes when the event ends")
+calendarDays = {}
+
+-- Chains of quests in the log (D135, D136).
+local savedQuestLine, savedLog = C_QuestLine, C_QuestLog
+local doneQuests = { [1] = true, [2] = true }
+ns.QuestDone = function(id)
+  return doneQuests[id] == true
+end
+C_QuestLine = {
+  GetQuestLineInfo = function(questID)
+    if questID == 3 then
+      return { questLineID = 100, questLineName = "The Long Road Home to the Far Away Valley of Stars",
+        x = 0.5, y = 0.25, isImportant = true }
+    end
+    return nil
+  end,
+  GetQuestLineQuests = function(id)
+    return id == 100 and { 1, 2, 3, 4 } or {}
+  end,
+  IsComplete = function()
+    return false
+  end,
+}
+C_QuestLog = setmetatable({
+  GetNumQuestLogEntries = function()
+    return 1
+  end,
+  GetInfo = function()
+    return { questID = 3, title = "Third" }
+  end,
+  GetLogIndexForQuestID = function(id)
+    return id == 3 and 1 or nil
+  end,
+  GetTitleForQuestID = function(id)
+    return id == 4 and "Home at Last" or nil
+  end,
+}, { __index = savedLog })
+ns.Suggestions.Invalidate()
+local chainIdea
+for _, idea in ipairs(ns.Suggestions.Local()) do
+  chainIdea = idea.kind == "chain" and idea or chainIdea
+end
+check(chainIdea and chainIdea.goal == "Continue: 2 of 4 done" and chainIdea.chain.nextQuestID == 3,
+  "a chain in the log is an idea with its progress")
+check(chainIdea and #chainIdea.title <= 40 and chainIdea.title == "The Long Road Home to the Far Away",
+  "its name is cut at a word")
+UnboredCharDB.request = nil
+ns.Session:BeginSuggestion(chainIdea)
+local first = ns.Session:Current()
+check(first and first.id == "quest:3" and first.title == "{quest:3} (in your log)" and first.complete.questID == 3,
+  "picking it gives the chain at once: the next quest first")
+check(ns.Session.state.tasks[2].title == "Home at Last" and #ns.Session.state.tasks == 2,
+  "then the rest by title")
+doneQuests[3] = true
+ns.Session:CheckCurrent()
+check(ns.Session:Current() and ns.Session:Current().id == "quest:4", "turning the quest in moves the plan on")
+check(not ns.Suggestions.StillOpen(chainIdea), "and the chain idea with the old next quest goes")
+C_QuestLine, C_QuestLog = savedQuestLine, savedLog
+ns.Session.state, UnboredCharDB.request = keepState2, keepRequest2
+C_Calendar, C_DateAndTime = savedCalendar, savedDate
+ns.AchievementState, ns.MountState, ns.QuestDone = savedAch, savedMount, savedQuestDone
+ns.Suggestions.Invalidate()
+
 -- Picking a Server idea: straight to Confirm, then a Request with its copy and no time.
 local keepRequest, keepState = UnboredCharDB.request, ns.Session.state
 UnboredCharDB.request = nil
-ns.Session:BeginSuggestion(ideas[3])
+ns.Session:BeginSuggestion(ideas[4])
 local flow = ns.Session.Flow()
 check(ns.Session:FlowState() == "confirm" and flow.topic == "suggestion" and flow.mode == "farm",
   "a Server idea goes straight to Confirm with its mode")
 check(flow.budget == nil and flow.suggestionId == "mount:183", "with its id and no time")
-local sent = ns.Session:Ask(flow)
+local sent = ns.Session:BuildRequest(flow)
 check(sent.topic == "suggestion" and sent.suggestionId == "mount:183" and sent.suggestion.title == "Tempest Keep",
   "the Request carries the idea")
 check(sent.suggestion.rewards[1] == "{mount:183}" and sent.suggestion.request == nil and sent.budget == nil,

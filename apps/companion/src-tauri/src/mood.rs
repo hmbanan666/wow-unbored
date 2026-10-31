@@ -1,5 +1,7 @@
 //! The one status line the window and tray show, in plain words.
 
+use crate::i18n::{tr_in, trf_in, Lang};
+
 pub const MASCOT_NAME: &str = "Bory";
 
 /// How long "ready in the game" stays up after a plan or answer arrives.
@@ -27,30 +29,53 @@ pub struct MoodInput {
     /// The player used Forget my data; the planner revoked this PC then.
     pub forgotten: bool,
     pub now: u64,
+    pub lang: Lang,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mood {
-    /// idle, thinking, busy, ready, pairing, setup, or error. The window
-    /// picks the mascot picture from it.
+    /// idle, thinking, busy, ready, pairing, setup, or error.
     pub phase: &'static str,
+    /// Bory's picture for the phase, from MOOD_FOR_PHASE.
+    pub picture: &'static str,
     pub headline: String,
     /// One line under the headline: what happens next, or what to do.
     pub hint: String,
 }
 
+/// D149: one picture per phase, the same moods the addon uses (idle,
+/// thinking, waiting, happy). A new mood is one more line; nothing animates.
+pub const MOOD_FOR_PHASE: &[(&str, &str)] = &[
+    ("idle", "idle"),
+    ("setup", "idle"),
+    ("busy", "thinking"),
+    ("thinking", "thinking"),
+    ("pairing", "waiting"),
+    ("error", "waiting"),
+    ("ready", "happy"),
+];
+
+pub fn picture(phase: &str) -> &'static str {
+    MOOD_FOR_PHASE
+        .iter()
+        .find(|(name, _)| *name == phase)
+        .map(|(_, picture)| *picture)
+        .unwrap_or("idle")
+}
+
 fn mood(phase: &'static str, headline: impl Into<String>, hint: impl Into<String>) -> Mood {
     Mood {
         phase,
+        picture: picture(phase),
         headline: headline.into(),
         hint: hint.into(),
     }
 }
 
-pub fn ready_text(kind: &str) -> &'static str {
+pub fn ready_text(lang: Lang, kind: &str) -> String {
     match kind {
-        "plan" => "Your plan is ready in the game",
-        _ => "Your answer is ready in the game",
+        "plan" => tr_in(lang, "READY_PLAN"),
+        _ => tr_in(lang, "READY_ANSWER"),
     }
 }
 
@@ -59,86 +84,45 @@ fn recent(at: Option<u64>, now: u64, seconds: u64) -> bool {
 }
 
 pub fn current(input: &MoodInput) -> Mood {
+    let lang = input.lang;
+    let t = |key: &str| tr_in(lang, key);
     if let Some(busy) = &input.busy {
         return mood("busy", busy.clone(), "");
     }
     if input.needs_wow_path {
-        return mood(
-            "setup",
-            "Show me where World of Warcraft is",
-            "I need your World of Warcraft folder to set up Bory in the game.",
-        );
+        return mood("setup", t("SETUP_HEAD"), t("SETUP_HINT"));
     }
     if input.error {
-        return mood(
-            "error",
-            "Can't reach the planner right now",
-            "Check your internet connection. I'll keep trying every 30 seconds; quick plans in the game still work.",
-        );
+        return mood("error", t("ERROR_HEAD"), t("ERROR_HINT"));
     }
     match input.pairing.as_str() {
         "approved" => {}
-        "revoked" if input.forgotten => {
-            return mood(
-                "idle",
-                "Done. I forgot everything about you",
-                "Your game data, plans and answers are gone from the planner, and this PC stopped sending. Click Connect again when you want the planner back. Quick plans in the game still work.",
-            )
-        }
-        "revoked" => {
-            return mood(
-                "error",
-                "This PC was disconnected",
-                "Ask the Unbored team to approve it again. Quick plans in the game still work.",
-            )
-        }
-        "" => return mood("pairing", "Connecting...", ""),
+        "revoked" if input.forgotten => return mood("idle", t("FORGOT_HEAD"), t("FORGOT_HINT")),
+        "revoked" => return mood("error", t("REVOKED_HEAD"), t("REVOKED_HINT")),
+        "" => return mood("pairing", t("CONNECTING"), ""),
         _ => {
             return mood(
                 "pairing",
-                "Waiting for a one-time OK",
-                format!(
-                    "This PC ({}) needs a one-time OK from the Unbored team. I check every 30 seconds; nothing to do here.",
-                    input.machine
-                ),
+                t("PAIRING_HEAD"),
+                trf_in(lang, "PAIRING_HINT", &[&input.machine]),
             )
         }
     }
     if recent(input.addon_updated_at, input.now, READY_SECONDS) {
-        return mood(
-            "ready",
-            "Bory was updated, press Load in game",
-            "Click Load in Bory's bubble once to finish the update.",
-        );
+        return mood("ready", t("UPDATED_HEAD"), t("UPDATED_HINT"));
     }
     if let Some((kind, at)) = &input.ready {
         if recent(Some(*at), input.now, READY_SECONDS) {
-            return mood(
-                "ready",
-                ready_text(kind),
-                "Bory picks it up next time you log in, or click Refresh in Bory's bubble.",
-            );
+            return mood("ready", ready_text(lang, kind), t("READY_HINT"));
         }
     }
     if recent(input.connected_at, input.now, CONNECTED_SECONDS) {
-        return mood(
-            "ready",
-            "Connected! You're all set",
-            "Start World of Warcraft and click Bory to pick a plan.",
-        );
+        return mood("ready", t("CONNECTED_HEAD"), t("CONNECTED_HINT"));
     }
     if input.request_pending {
-        return mood(
-            "thinking",
-            "Thinking about your request...",
-            "Keep playing. I'm working on it in the background.",
-        );
+        return mood("thinking", t("THINKING_HEAD"), t("THINKING_HINT"));
     }
-    mood(
-        "idle",
-        "All set, go play",
-        "I'll bring your plans and answers into the game.",
-    )
+    mood("idle", t("IDLE_HEAD"), t("IDLE_HINT"))
 }
 
 #[cfg(test)]
@@ -196,5 +180,33 @@ mod tests {
         assert!(!current(&input).hint.contains("Planner returned"));
         input.busy = Some("Updating addon...".into());
         assert_eq!(current(&input).headline, "Updating addon...");
+    }
+
+    #[test]
+    fn every_phase_has_one_of_the_four_pictures() {
+        let pictures = ["idle", "thinking", "waiting", "happy"];
+        for phase in [
+            "idle", "setup", "busy", "thinking", "pairing", "error", "ready",
+        ] {
+            assert!(pictures.contains(&picture(phase)), "{phase}");
+        }
+        assert_eq!(picture("error"), "waiting", "an error: Bory waits");
+        assert_eq!(picture("ready"), "happy");
+        assert_eq!(picture("thinking"), "thinking");
+        assert_eq!(picture("nope"), "idle");
+    }
+
+    #[test]
+    fn speaks_russian_when_asked() {
+        let input = MoodInput {
+            pairing: "pending".into(),
+            machine: "GAMING-PC".into(),
+            lang: Lang::Ru,
+            ..Default::default()
+        };
+        let mood = current(&input);
+        assert_eq!(mood.headline, "Жду разового одобрения");
+        assert!(mood.hint.contains("GAMING-PC"));
+        assert_eq!(ready_text(Lang::Ru, "plan"), "Твой план ждёт в игре");
     }
 }

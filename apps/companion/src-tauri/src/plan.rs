@@ -13,7 +13,7 @@ pub const HELPER_TOC: &str = "\
 ## Title: Unbored Plan
 ## Notes: Plans, answers and item tips from Unbored Companion. Bory reads them when you log in or press Refresh.
 ## Author: Unbored contributors
-## Version: 0.8.0
+## Version: 0.9.0
 ## LoadOnDemand: 0
 
 Plan.lua
@@ -291,7 +291,7 @@ const EMPTY_SUGGESTIONS_LUA: &str = "-- Written by Unbored Companion. No ideas y
 /// D107: Suggestions.lua has its own small share of the D76 budget.
 pub const SUGGESTIONS_MAX_BYTES: usize = 20 * 1024;
 pub const SUGGESTIONS_MAX_LITERALS: usize = 2_000;
-const MAX_SUGGESTIONS: usize = 6;
+const MAX_SUGGESTIONS: usize = 10;
 const SUGGESTION_TEXT: [(&str, usize); 6] = [
     ("id", 120),
     ("kind", 20),
@@ -310,18 +310,90 @@ const ADVICE_FIELDS: [(&str, usize); 4] =
 pub const MAX_DIGEST_ALTS: usize = 50;
 const MAX_ALT_PROFESSIONS: usize = 6;
 
-/// D76: everything the Companion writes into Unbored_Plan stays within this.
-pub const HELPER_MAX_BYTES: usize = 200 * 1024;
+/// D76, D143: everything the Companion writes into Unbored_Plan stays within this.
+pub const HELPER_MAX_BYTES: usize = 260 * 1024;
 pub const HELPER_MAX_LITERALS: usize = 20_000;
 
+/// The Account holdings index (docs/adr/0048): at most this many items and places.
+pub const MAX_HOLDINGS_ITEMS: usize = 3000;
+const MAX_HOLDINGS_PLACES: usize = 50;
+const MAX_HOLDINGS_VALUE: usize = 200;
+
 /// Advice.lua from GET /v1/advice: UnboredAdvice.characters["Realm-Name"].items[itemID]
-/// (docs/adr/0019) and .alts, the Account digest (D76). Only known fields are
-/// kept; the addon checks them again.
-pub fn render_advice_lua(characters: &Value) -> String {
-    render_advice_capped(characters, MAX_ADVICE_ITEMS, MAX_DIGEST_ALTS)
+/// (docs/adr/0019), .alts, the Account digest (D76), and .holdings (docs/adr/0048).
+/// Only known fields are kept; the addon checks them again.
+pub fn render_advice_lua(characters: &Value, holdings: &Value) -> String {
+    render_advice_capped(
+        characters,
+        holdings,
+        MAX_ADVICE_ITEMS,
+        MAX_DIGEST_ALTS,
+        MAX_HOLDINGS_ITEMS,
+    )
 }
 
-fn render_advice_capped(characters: &Value, max_items: usize, max_alts: usize) -> String {
+/// One holdings value: `place:count` pairs, the place a 1-based index or `w`.
+fn holdings_value(text: &str, places: usize) -> bool {
+    !text.is_empty()
+        && text.len() <= MAX_HOLDINGS_VALUE
+        && text.split(',').all(|pair| {
+            let Some((place, count)) = pair.split_once(':') else {
+                return false;
+            };
+            let place_ok = place == "w"
+                || place
+                    .parse::<usize>()
+                    .is_ok_and(|index| index >= 1 && index <= places);
+            place_ok && count.parse::<u64>().is_ok_and(|count| count > 0)
+        })
+}
+
+fn push_holdings(out: &mut String, holdings: &Value, max_items: usize) {
+    let places: Vec<&str> = holdings["places"]
+        .as_array()
+        .map(|list| list.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let places: Vec<&str> = places.into_iter().take(MAX_HOLDINGS_PLACES).collect();
+    let Some(items) = holdings["items"].as_object() else {
+        return;
+    };
+    if places.is_empty() || items.is_empty() || max_items == 0 {
+        return;
+    }
+    out.push_str("  [\"holdings\"] = {\n    [\"places\"] = {");
+    for place in &places {
+        out.push_str(" \"");
+        push_lua_string_body(out, &place.chars().take(80).collect::<String>());
+        out.push_str("\",");
+    }
+    let mut rows: Vec<(u64, &str)> = items
+        .iter()
+        .filter_map(|(id, value)| {
+            let id = id.parse::<u64>().ok().filter(|id| *id > 0)?;
+            let text = value
+                .as_str()
+                .filter(|text| holdings_value(text, places.len()))?;
+            Some((id, text))
+        })
+        .collect();
+    // Items in the most places are kept when the budget cuts (D143).
+    rows.sort_by_key(|(id, text)| (std::cmp::Reverse(text.matches(',').count()), *id));
+    rows.truncate(max_items);
+    rows.sort_by_key(|(id, _)| *id);
+    out.push_str(" },\n    [\"items\"] = {\n");
+    for (id, text) in rows {
+        out.push_str(&format!("      [{id}] = \"{text}\",\n"));
+    }
+    out.push_str("    },\n  },\n");
+}
+
+fn render_advice_capped(
+    characters: &Value,
+    holdings: &Value,
+    max_items: usize,
+    max_alts: usize,
+    max_holdings: usize,
+) -> String {
     let mut out = String::from(
         "-- Written by Unbored Companion. Personal advice, read at login or Refresh.\n",
     );
@@ -374,7 +446,9 @@ fn render_advice_capped(characters: &Value, max_items: usize, max_alts: usize) -
         push_alts(&mut out, &row["alts"], max_alts);
         out.push_str("    },\n");
     }
-    out.push_str("  },\n}\n");
+    out.push_str("  },\n");
+    push_holdings(&mut out, holdings, max_holdings);
+    out.push_str("}\n");
     out
 }
 
@@ -472,15 +546,38 @@ pub fn count_lua_literals(text: &str) -> usize {
     count
 }
 
-/// Advice.lua within what Plan.lua leaves of the D76 budget: fewer items per
-/// character first, then fewer Alts.
-pub fn render_advice_within(characters: &Value, used_bytes: usize, used_literals: usize) -> String {
+/// Advice.lua within what Plan.lua leaves of the D76 budget: fewer holdings
+/// items first (the Server already put the ones in most places first), then
+/// fewer items per character, then fewer Alts.
+pub fn render_advice_within(
+    characters: &Value,
+    holdings: &Value,
+    used_bytes: usize,
+    used_literals: usize,
+) -> String {
     let bytes = HELPER_MAX_BYTES.saturating_sub(used_bytes);
     let literals = HELPER_MAX_LITERALS.saturating_sub(used_literals);
     let fits = |text: &String| text.len() <= bytes && count_lua_literals(text) < literals;
+    let mut held = MAX_HOLDINGS_ITEMS;
+    loop {
+        let text = render_advice_capped(
+            characters,
+            holdings,
+            MAX_ADVICE_ITEMS,
+            MAX_DIGEST_ALTS,
+            held,
+        );
+        if fits(&text) {
+            return text;
+        }
+        if held == 0 {
+            break;
+        }
+        held = held.saturating_sub(250);
+    }
     let mut items = MAX_ADVICE_ITEMS;
     loop {
-        let text = render_advice_capped(characters, items, MAX_DIGEST_ALTS);
+        let text = render_advice_capped(characters, holdings, items, MAX_DIGEST_ALTS, 0);
         if fits(&text) || items == 0 {
             if fits(&text) {
                 return text;
@@ -492,7 +589,7 @@ pub fn render_advice_within(characters: &Value, used_bytes: usize, used_literals
     let mut alts = MAX_DIGEST_ALTS;
     while alts > 0 {
         alts /= 2;
-        let text = render_advice_capped(characters, 0, alts);
+        let text = render_advice_capped(characters, holdings, 0, alts, 0);
         if fits(&text) {
             return text;
         }
@@ -543,7 +640,24 @@ fn clean_suggestion(item: &Value) -> Option<Value> {
                 why.insert(field.into(), Value::from(number));
             }
         }
+        if let Some(name) = reason["name"]
+            .as_str()
+            .filter(|name| !name.trim().is_empty())
+        {
+            why.insert("name".into(), Value::String(clip(name, 60)));
+        }
         out.insert("reason".into(), Value::Object(why));
+    }
+    let chain = &item["chain"];
+    if let Some(line) = chain["questLineID"].as_u64().filter(|id| *id > 0) {
+        let mut info = serde_json::Map::new();
+        info.insert("questLineID".into(), Value::from(line));
+        for field in ["nextQuestID", "done", "total"] {
+            if let Some(number) = chain[field].as_u64() {
+                info.insert(field.into(), Value::from(number));
+            }
+        }
+        out.insert("chain".into(), Value::Object(info));
     }
     let request = &item["request"];
     if let Some(wish) = request["wish"].as_str() {
@@ -621,14 +735,18 @@ pub fn install_suggestions(retail: &Path, body: &Value) -> Result<bool, PlanErro
 }
 
 /// Writes Advice.lua only when it changed. Returns true when it did.
-pub fn install_advice(retail: &Path, characters: &Value) -> Result<bool, PlanError> {
+pub fn install_advice(
+    retail: &Path,
+    characters: &Value,
+    holdings: &Value,
+) -> Result<bool, PlanError> {
     let dir = helper_dir(retail);
     fs::create_dir_all(&dir)
         .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
     write_helper_toc(&dir)?;
     let mut used = fs::read_to_string(dir.join("Plan.lua")).unwrap_or_default();
     used.push_str(&fs::read_to_string(dir.join("Suggestions.lua")).unwrap_or_default());
-    let body = render_advice_within(characters, used.len(), count_lua_literals(&used));
+    let body = render_advice_within(characters, holdings, used.len(), count_lua_literals(&used));
     let path = dir.join("Advice.lua");
     if fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
         return Ok(false);
@@ -1193,8 +1311,8 @@ mod tests {
                 { "itemID": 5, "action": "keep", "line": "  " }
             ]
         }]);
-        assert!(install_advice(&retail, &advice).unwrap());
-        assert!(!install_advice(&retail, &advice).unwrap());
+        assert!(install_advice(&retail, &advice, &Value::Null).unwrap());
+        assert!(!install_advice(&retail, &advice, &Value::Null).unwrap());
         let text = fs::read_to_string(dir.join("Advice.lua")).unwrap();
         assert!(!text.contains("extra") && !text.contains("bad id"));
         let values = parse_saved_variables(&text).unwrap();
@@ -1222,7 +1340,7 @@ mod tests {
                 "professions": [{ "skillLine": 171, "name": "Alchemy", "skill": 75 }, { "name": "no id" }]
             }, { "realm": "no name" }]
         }]);
-        let text = render_advice_lua(&advice);
+        let text = render_advice_lua(&advice, &Value::Null);
         let values = parse_saved_variables(&text).unwrap();
         let chars = crate::savedvars::table_get(values.get("UnboredAdvice").unwrap(), "characters")
             .unwrap();
@@ -1255,14 +1373,65 @@ mod tests {
             .map(|n| serde_json::json!({ "character": format!("Hero{n}"), "realm": "Area 52", "items": items }))
             .collect();
         let advice = Value::Array(characters);
-        let full = render_advice_lua(&advice);
+        let full = render_advice_lua(&advice, &Value::Null);
         assert!(full.len() > HELPER_MAX_BYTES);
         let plan_bytes = 40 * 1024;
         let plan_literals = 2_000;
-        let text = render_advice_within(&advice, plan_bytes, plan_literals);
+        let text = render_advice_within(&advice, &Value::Null, plan_bytes, plan_literals);
         assert!(text.len() + plan_bytes <= HELPER_MAX_BYTES);
         assert!(count_lua_literals(&text) + plan_literals < HELPER_MAX_LITERALS);
         assert!(text.contains("[\"Area 52-Hero11\"]"));
+        assert!(parse_saved_variables(&text).is_ok());
+    }
+
+    #[test]
+    fn writes_the_holdings_index() {
+        let advice = serde_json::json!([{ "character": "Hero", "realm": "Area 52", "items": [] }]);
+        let holdings = serde_json::json!({
+            "places": ["Grubbyman-Area 52", "Hero-Area 52", "warband"],
+            "items": { "2447": "1:40,w:200", "12": "9:1", "13": "1:x", "0": "1:1", "14": "2:3" }
+        });
+        let text = render_advice_lua(&advice, &holdings);
+        let values = parse_saved_variables(&text).unwrap();
+        let held =
+            crate::savedvars::table_get(values.get("UnboredAdvice").unwrap(), "holdings").unwrap();
+        let places =
+            crate::savedvars::array_items(crate::savedvars::table_get(held, "places").unwrap());
+        assert_eq!(places.len(), 3);
+        assert_eq!(places[2].as_str(), Some("warband"));
+        assert!(text.contains("[2447] = \"1:40,w:200\""));
+        assert!(text.contains("[14] = \"2:3\""));
+        assert!(!text.contains("[12]") && !text.contains("[13]") && !text.contains("[0]"));
+        assert!(!render_advice_lua(&advice, &Value::Null).contains("holdings"));
+    }
+
+    #[test]
+    fn keeps_advice_with_holdings_within_the_helper_budget() {
+        let advice = serde_json::json!([{ "character": "Hero", "realm": "Area 52", "items": [] }]);
+        let mut items = serde_json::Map::new();
+        for id in 1..=3000u64 {
+            let value = if id % 2 == 0 { "1:40,2:3,w:200" } else { "1:1" };
+            items.insert(id.to_string(), Value::String(value.into()));
+        }
+        let holdings = serde_json::json!({ "places": ["A-R", "B-R", "warband"], "items": items });
+        let full = render_advice_lua(&advice, &holdings);
+        assert!(
+            full.len() > 60 * 1024,
+            "the full index is big: {}",
+            full.len()
+        );
+        let used = HELPER_MAX_BYTES - 40 * 1024;
+        let text = render_advice_within(&advice, &holdings, used, 2_000);
+        assert!(text.len() + used <= HELPER_MAX_BYTES);
+        assert!(count_lua_literals(&text) + 2_000 < HELPER_MAX_LITERALS);
+        assert!(
+            text.contains("[2] = \"1:40,2:3,w:200\""),
+            "items in most places stay"
+        );
+        assert!(
+            !text.contains("[2999] = \"1:1\""),
+            "items in one place go first"
+        );
         assert!(parse_saved_variables(&text).is_ok());
     }
 
@@ -1301,8 +1470,16 @@ mod tests {
         let get = crate::savedvars::table_get;
         let chars = get(values.get("UnboredSuggestions").unwrap(), "characters").unwrap();
         let list = crate::savedvars::array_items(get(chars, "Silvermoon-Mira").unwrap());
-        assert_eq!(list.len(), 4);
+        assert_eq!(list.len(), 6);
         assert_eq!(get(list[0], "kind").and_then(|v| v.as_str()), Some("event"));
+        let chain = list
+            .iter()
+            .find(|item| get(item, "kind").and_then(|v| v.as_str()) == Some("chain"))
+            .expect("the chain idea is written");
+        assert_eq!(
+            get(get(chain, "chain").unwrap(), "questLineID").and_then(|v| v.as_u64()),
+            Some(5678)
+        );
 
         let many: serde_json::Map<String, Value> = (0..200)
             .map(|n| {
@@ -1657,7 +1834,7 @@ mod tests {
         install_plan(&retail, &small_plan("gone")).unwrap();
         let status = CompanionStatus {
             pairing: "revoked".into(),
-            companion_version: "0.8.0".into(),
+            companion_version: "0.9.0".into(),
             seen_at: 1_000,
             ..Default::default()
         };

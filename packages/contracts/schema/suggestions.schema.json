@@ -7,15 +7,21 @@
   "additionalProperties": true,
   "required": ["v", "computedAt", "characters"],
   "properties": {
-    "v": { "const": 1 },
-    "computedAt": { "type": "integer" },
+    "v": {
+      "const": 1
+    },
+    "computedAt": {
+      "type": "integer"
+    },
     "characters": {
       "type": "object",
       "description": "Keyed by \"Realm-Name\".",
       "additionalProperties": {
         "type": "array",
-        "maxItems": 6,
-        "items": { "$ref": "#/$defs/suggestion" }
+        "maxItems": 10,
+        "items": {
+          "$ref": "#/$defs/suggestion"
+        }
       }
     }
   },
@@ -25,9 +31,19 @@
       "additionalProperties": true,
       "required": ["id", "kind", "title", "goal", "rewards", "request"],
       "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 120 },
-        "kind": { "enum": ["event", "achievement", "rare", "collection"] },
-        "title": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "kind": {
+          "enum": ["event", "achievement", "rare", "collection", "chain"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
         "titleToken": {
           "type": "string",
           "description": "The addon shows the game's own name of this token as the title."
@@ -45,22 +61,79 @@
           "type": "object",
           "required": ["kind"],
           "properties": {
-            "kind": { "enum": ["ends", "alts", "near"] },
-            "at": { "type": "integer" },
-            "count": { "type": "integer", "minimum": 2 },
-            "mapID": { "type": "integer", "minimum": 1 }
+            "kind": {
+              "enum": ["ends", "alts", "near", "starts", "stopped", "altDone"]
+            },
+            "at": {
+              "type": "integer"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "mapID": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 60,
+              "description": "altDone: the Character that finished the chain."
+            }
           }
         },
-        "rewards": { "type": "array", "items": { "type": "string" }, "maxItems": 3 },
-        "mapID": { "type": "integer", "minimum": 1 },
-        "expiresAt": { "type": "integer" },
+        "rewards": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3
+        },
+        "mapID": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expiresAt": {
+          "type": "integer"
+        },
+        "chain": {
+          "type": "object",
+          "description": "Set with kind chain (D135): ids from the client only.",
+          "required": ["questLineID", "done", "total"],
+          "properties": {
+            "questLineID": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "nextQuestID": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "done": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
         "request": {
           "type": "object",
           "required": ["topic", "suggestionId", "wish"],
           "properties": {
-            "topic": { "const": "suggestion" },
-            "suggestionId": { "type": "string", "minLength": 1 },
-            "wish": { "type": "string", "minLength": 1 }
+            "topic": {
+              "const": "suggestion"
+            },
+            "suggestionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "wish": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }

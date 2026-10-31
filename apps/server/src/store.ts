@@ -16,7 +16,7 @@ import {
   type ProgressPost,
 } from "./plan.ts";
 
-import { IdCache } from "./blizzard.ts";
+import { IdCache, NameCache } from "./blizzard.ts";
 import {
   DataStore,
   type DigestAlt,
@@ -24,6 +24,7 @@ import {
   type CleanSnapshot,
   type SnapshotResult,
 } from "./data.ts";
+import type { Holdings } from "./holdings.ts";
 import type { ProfileUpload } from "./profile.ts";
 import { SuggestionStore } from "./suggestions.ts";
 
@@ -80,6 +81,7 @@ export class Store {
   readonly data: DataStore;
   readonly suggestions: SuggestionStore;
   readonly gameIds: IdCache;
+  readonly creatureNames: NameCache;
 
   constructor(dataDir: string) {
     this.db = new DatabaseSync(sqlitePath(dataDir));
@@ -190,8 +192,9 @@ export class Store {
     ]);
     this.addColumns("devices", [["forget_revoked", "INTEGER NOT NULL DEFAULT 0"]]);
     this.data = new DataStore(this.db);
-    this.suggestions = new SuggestionStore(this.db, this.data);
     this.gameIds = new IdCache(this.db);
+    this.creatureNames = new NameCache(this.db);
+    this.suggestions = new SuggestionStore(this.db, this.data, this.creatureNames);
   }
 
   private addColumns(table: string, added: [string, string][]): void {
@@ -1193,6 +1196,19 @@ export class Store {
       .characters()
       .filter((row) => deviceId === "legacy" || row.deviceId === deviceId);
     return this.suggestions.body(rows);
+  }
+
+  /**
+   * The holdings index (ADR 0048) for the Account of this device's most
+   * recently seen Character; the addon shows it only on that Account.
+   */
+  holdingsForDevice(deviceId: string, now?: number): Holdings | null {
+    const row = this.data
+      .characters()
+      .find((other) => (deviceId === "legacy" || other.deviceId === deviceId) && other.accountId);
+    if (!row) return null;
+    const holdings = this.data.holdings(row, now);
+    return holdings.places.length ? holdings : null;
   }
 
   adviceForDevice(deviceId: string): DeviceAdvice[] {

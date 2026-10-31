@@ -67,6 +67,45 @@ export class IdCache {
   }
 }
 
+/** Creature names per locale (D154), in the same database as the id check. */
+export class NameCache {
+  private db: DatabaseSync;
+
+  constructor(db: DatabaseSync) {
+    this.db = db;
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS creature_names (
+        npc_id INTEGER NOT NULL,
+        locale TEXT NOT NULL,
+        name TEXT,
+        checked_at INTEGER NOT NULL,
+        PRIMARY KEY (npc_id, locale)
+      );
+    `);
+  }
+
+  /** The cached row, fresh or not; name is null for a creature Blizzard does not know. */
+  entry(npcID: number, locale: string): { name: string | null; checkedAt: number } | undefined {
+    const row = this.db
+      .prepare(`SELECT name, checked_at FROM creature_names WHERE npc_id = ? AND locale = ?`)
+      .get(npcID, locale) as { name: string | null; checked_at: number } | undefined;
+    return row ? { name: row.name, checkedAt: row.checked_at } : undefined;
+  }
+
+  get(npcID: number, locale: string): string | undefined {
+    return this.entry(npcID, locale)?.name ?? undefined;
+  }
+
+  put(npcID: number, locale: string, name: string | null, now: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO creature_names (npc_id, locale, name, checked_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (npc_id, locale) DO UPDATE SET name = excluded.name, checked_at = excluded.checked_at`,
+      )
+      .run(npcID, locale, name, now);
+  }
+}
+
 /**
  * Existence check for token ids against the Blizzard Game Data API (ADR 0034).
  * Off without credentials. Anything but a clear 404 counts as "exists", so an
@@ -128,6 +167,57 @@ export class BlizzardIds {
       }),
     );
     return out;
+  }
+
+  /**
+   * Fills `names` with each creature's name per locale (D154), at most once a
+   * month per name. Off without credentials; an error leaves the cache as it was.
+   */
+  async warmCreatureNames(names: NameCache, npcIDs: number[], locales: string[]): Promise<void> {
+    if (!this.config) return;
+    const now = this.now();
+    const ask: { npcID: number; locale: string }[] = [];
+    for (const npcID of new Set(npcIDs)) {
+      for (const locale of locales) {
+        const entry = names.entry(npcID, locale);
+        const ttl = entry?.name ? FOUND_TTL : MISSING_TTL;
+        if ((!entry || now - entry.checkedAt >= ttl) && ask.length < MAX_LOOKUPS) {
+          ask.push({ npcID, locale });
+        }
+      }
+    }
+    if (ask.length === 0) return;
+    const token = await this.accessToken();
+    if (!token) return;
+    await Promise.all(
+      ask.map(async ({ npcID, locale }) => {
+        const result = await this.creature(token, npcID, locale);
+        if (result !== undefined) names.put(npcID, locale, result, now);
+      }),
+    );
+  }
+
+  private async creature(
+    token: string,
+    npcID: number,
+    locale: string,
+  ): Promise<string | null | undefined> {
+    const region = this.config?.region ?? "us";
+    const url = `https://${region}.api.blizzard.com/data/wow/creature/${npcID}?namespace=static-${region}&locale=${locale}`;
+    try {
+      const response = await this.fetchImpl(url, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (response.status === 404) return null;
+      if (!response.ok) return undefined;
+      const body = (await response.json()) as { name?: unknown };
+      const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : "";
+      return name || undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private async accessToken(): Promise<string | null> {

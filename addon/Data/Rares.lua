@@ -27,11 +27,14 @@ local _, ns = ...
 -- "Tracking Quest - Daily - Huolon", which tells you to check
 -- C_QuestLog.IsQuestFlaggedCompleted(33311). uiMap 554 is Timeless Isle
 -- (warcraft.wiki.gg UiMapID). No pin: the spawn moves, and the only
--- coordinates in the writeup are player comments.
+-- coordinates in the writeup are player comments. npcID 73167 is the
+-- creature id the warcraft.wiki.gg page links to
+-- (https://warcraft.wiki.gg/wiki/Huolon , https://www.wowhead.com/npc=73167).
 ns.Data.Rares = {
   {
     id = "rare-huolon",
     fallbackTitle = "Huolon",
+    npcID = 73167,
     mapID = 554,
     estMinutes = 15,
     questID = 33311,

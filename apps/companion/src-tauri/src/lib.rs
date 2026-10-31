@@ -5,6 +5,7 @@ pub mod account;
 pub mod addon;
 pub mod device;
 pub mod endpoint;
+pub mod i18n;
 pub mod mood;
 pub mod plan;
 pub mod request;

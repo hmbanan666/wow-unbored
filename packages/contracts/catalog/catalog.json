@@ -256,7 +256,12 @@
   "holidays": [
     {
       "fallbackTitle": "Hallow's End",
-      "holidayID": 324,
+      "id": "hallows-end",
+      "match": {
+        "holidayIDs": [324],
+        "textures": [235460, 235461, 235462],
+        "titles": ["Hallow's End"]
+      },
       "tasks": [
         {
           "achievementIDs": [291],
@@ -283,12 +288,15 @@
           "fallbackTitle": "Hallowed Be Thy Name",
           "id": "hallows-meta"
         }
-      ],
-      "textures": [235460, 235461, 235462]
+      ]
     },
     {
       "fallbackTitle": "Brewfest",
-      "holidayID": 372,
+      "id": "brewfest",
+      "match": {
+        "holidayIDs": [372],
+        "titles": ["Brewfest"]
+      },
       "tasks": [
         {
           "achievementIDs": [2796],
@@ -331,7 +339,11 @@
     },
     {
       "fallbackTitle": "Midsummer Fire Festival",
-      "holidayID": 341,
+      "id": "midsummer",
+      "match": {
+        "holidayIDs": [341],
+        "titles": ["Midsummer Fire Festival"]
+      },
       "tasks": [
         {
           "achievementIDs": [271],
@@ -363,7 +375,11 @@
     },
     {
       "fallbackTitle": "Feast of Winter Veil",
-      "holidayID": 141,
+      "id": "winter-veil",
+      "match": {
+        "holidayIDs": [141],
+        "titles": ["Feast of Winter Veil"]
+      },
       "tasks": [
         {
           "achievementIDs": [273],
@@ -387,7 +403,11 @@
     },
     {
       "fallbackTitle": "Love is in the Air",
-      "holidayID": 423,
+      "id": "love-in-the-air",
+      "match": {
+        "holidayIDs": [423],
+        "titles": ["Love is in the Air"]
+      },
       "tasks": [
         {
           "achievementIDs": [1702],
@@ -424,7 +444,11 @@
     },
     {
       "fallbackTitle": "Lunar Festival",
-      "holidayID": 327,
+      "id": "lunar-festival",
+      "match": {
+        "holidayIDs": [327],
+        "titles": ["Lunar Festival"]
+      },
       "tasks": [
         {
           "achievementIDs": [626],
@@ -448,7 +472,11 @@
     },
     {
       "fallbackTitle": "Noblegarden",
-      "holidayID": 181,
+      "id": "noblegarden",
+      "match": {
+        "holidayIDs": [181],
+        "titles": ["Noblegarden"]
+      },
       "tasks": [
         {
           "achievementIDs": [2797, 2798],
@@ -466,7 +494,11 @@
     },
     {
       "fallbackTitle": "Pilgrim's Bounty",
-      "holidayID": 404,
+      "id": "pilgrims-bounty",
+      "match": {
+        "holidayIDs": [404],
+        "titles": ["Pilgrim's Bounty"]
+      },
       "tasks": [
         {
           "achievementIDs": [3559],
@@ -490,7 +522,11 @@
     },
     {
       "fallbackTitle": "Darkmoon Faire",
-      "holidayIDs": [374, 375, 376],
+      "id": "darkmoon-faire",
+      "match": {
+        "holidayIDs": [374, 375, 376],
+        "titles": ["Darkmoon Faire"]
+      },
       "tasks": [
         {
           "achievementIDs": [6019],
@@ -505,6 +541,120 @@
           "id": "dmf-cannon"
         }
       ]
+    },
+    {
+      "fallbackTitle": "Timewalking: The Burning Crusade",
+      "id": "tw-outland",
+      "match": {
+        "holidayIDs": [559]
+      },
+      "tasks": [
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Eclipse Dragonhawk",
+          "id": "tw-outland-mount",
+          "mountID": 778
+        },
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Infinite Timereaver",
+          "id": "tw-outland-timereaver",
+          "mountID": 781
+        }
+      ]
+    },
+    {
+      "fallbackTitle": "Timewalking: Wrath of the Lich King",
+      "id": "tw-northrend",
+      "match": {
+        "holidayIDs": [562]
+      },
+      "tasks": [
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Ironbound Wraithcharger",
+          "id": "tw-northrend-mount",
+          "mountID": 552
+        },
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Infinite Timereaver",
+          "id": "tw-northrend-timereaver",
+          "mountID": 781
+        }
+      ]
+    },
+    {
+      "fallbackTitle": "Timewalking: Cataclysm",
+      "id": "tw-cataclysm",
+      "match": {
+        "holidayIDs": [587]
+      },
+      "tasks": [
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Infinite Timereaver",
+          "id": "tw-cataclysm-timereaver",
+          "mountID": 781
+        }
+      ]
+    },
+    {
+      "fallbackTitle": "Timewalking: Mists of Pandaria",
+      "id": "tw-pandaria",
+      "match": {
+        "holidayIDs": [643]
+      },
+      "tasks": [
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Yu'lei, Daughter of Jade",
+          "id": "tw-pandaria-mount",
+          "mountID": 476
+        },
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Infinite Timereaver",
+          "id": "tw-pandaria-timereaver",
+          "mountID": 781
+        }
+      ]
+    },
+    {
+      "fallbackTitle": "Timewalking: Warlords of Draenor",
+      "id": "tw-draenor",
+      "match": {
+        "holidayIDs": [1056]
+      },
+      "tasks": [
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Infinite Timereaver",
+          "id": "tw-draenor-timereaver",
+          "mountID": 781
+        }
+      ]
+    },
+    {
+      "fallbackTitle": "Timewalking: Legion",
+      "id": "tw-legion",
+      "match": {
+        "holidayIDs": [1263]
+      },
+      "tasks": [
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Val'sharah Hippogryph",
+          "id": "tw-legion-mount",
+          "mountID": 1521
+        },
+        {
+          "estMinutes": 30,
+          "fallbackTitle": "Infinite Timereaver",
+          "id": "tw-legion-timereaver",
+          "mountID": 781
+        }
+      ]
     }
   ],
   "rares": [
@@ -514,6 +664,7 @@
       "id": "rare-huolon",
       "mapID": 554,
       "note": "Timeless Isle, by the bridge to the Blazing Way. Hidden after today's kill.",
+      "npcID": 73167,
       "questID": 33311
     }
   ],

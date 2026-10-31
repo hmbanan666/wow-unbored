@@ -42,6 +42,7 @@ local files = {
   "Core/Data/Inventory.lua",
   "Core/Data/Professions.lua",
   "Core/Data/Quests.lua",
+  "Core/Data/QuestLines.lua",
   "Core/Data/Reputation.lua",
   "Core/Data/Collections.lua",
   "Core/Data/Progress.lua",
@@ -208,6 +209,7 @@ for i = 1, 500 do
 end
 C_QuestLog = {
   GetAllCompletedQuestIDs = function() return completed end,
+  IsQuestFlaggedCompleted = function(id) return id > 50000 and id <= 51000 and id % 2 == 0 end,
   GetNumQuestLogEntries = function() return 2 end,
   GetInfo = function(i)
     if i == 1 then
@@ -327,10 +329,53 @@ C_Calendar = {
   GetNumDayEvents = function(_, day) return day == 31 and 2 or 0 end,
   GetDayEvent = function(_, _, index)
     if index == 1 then
-      return { eventID = 1, title = "Hallow's End", calendarType = "HOLIDAY",
+      return { eventID = 1, title = "Hallow's End", calendarType = "HOLIDAY", iconTexture = 235460,
+        sequenceType = "ONGOING", numSequenceDays = 14, inviteStatus = 2, invitedBy = "Bob",
         startTime = { year = 2026, month = 10, monthDay = 18, hour = 10, minute = 0 } }
     end
     return { eventID = 2, title = "Bob's raid night", calendarType = "PLAYER" }
+  end,
+  GetHolidayInfo = function(offset)
+    return offset <= 1 and { name = "Hallow's End", description = string.rep("Candy. ", 80) } or nil
+  end,
+}
+-- Quest chains (D132-D134): a campaign, a chain of a log quest, a map chain.
+local mapRequests = {}
+C_CampaignInfo = {
+  GetAvailableCampaigns = function() return { 7, 8 } end,
+  GetState = function(id) return id == 7 and 2 or 1 end,
+  GetCurrentChapterID = function(id) return id == 7 and 300 or 301 end,
+  GetCampaignChapterInfo = function() return { name = "Chapter Three" } end,
+  GetCampaignInfo = function() return { name = "The War Within" } end,
+}
+C_QuestLine = {
+  GetQuestLineInfo = function(questID)
+    if questID == 78713 then
+      return { questLineID = 400, questLineName = "Duty Calls", x = 0.412, y = 0.6, isLocalStory = true }
+    end
+    return nil
+  end,
+  GetQuestLineQuests = function(id)
+    if id == 300 then return { 50002, 50004, 79000, 79001 } end
+    if id == 400 then return { 50002, 78713 } end
+    if id == 500 then return { 79100, 79101, 79102 } end
+    if id == 501 then return { 79200 } end
+    if id == 502 then return { 50002 } end
+    if id == 505 then return { 79300, 79301 } end
+    return {}
+  end,
+  IsComplete = function(id) return id == 503 end,
+  RequestQuestLinesForMap = function(mapID) mapRequests[#mapRequests + 1] = mapID end,
+  GetAvailableQuestLines = function(mapID)
+    if mapID ~= 2339 then return {} end
+    return {
+      { questLineID = 500, questLineName = "Started Here", inProgress = true, x = 0.5, y = 0.5 },
+      { questLineID = 501, questLineName = "A Daily", inProgress = true, isDaily = true },
+      { questLineID = 502, questLineName = "Done Already", inProgress = true },
+      { questLineID = 503, questLineName = "Complete", inProgress = true },
+      { questLineID = 504, questLineName = "Not Started", isQuestStart = true },
+      { questLineID = 505, questLineName = "Important Start", isImportant = true, isQuestStart = true },
+    }
   end,
 }
 C_DateAndTime = {
@@ -401,6 +446,27 @@ check(body("talents") and body("talents").specs["63"].import ~= nil, "talents im
 check(#body("talents").specs["63"].loadouts == 2, "talent loadouts")
 check(body("calendar") and #body("calendar").events == 1, "calendar keeps game events only")
 check(body("calendar").events[1].title == "Hallow's End", "calendar holiday title")
+local hallows = body("calendar").events[1]
+check(hallows.texture == 235460 and hallows.sequenceType == "ONGOING" and hallows.numSequenceDays == 14,
+  "calendar v2 keeps the icon texture and the sequence")
+check(hallows.description and #hallows.description <= 300, "tomorrow's holiday has its description, capped")
+check(hallows.invitedBy == nil and hallows.inviteStatus == nil, "no invite fields are read")
+check(S.Get("calendar").v == 2, "calendar is v2")
+local lines = body("questLines") and body("questLines").lines or {}
+local byLine = {}
+for i = 1, #lines do
+  byLine[lines[i].questLineID] = lines[i]
+end
+check(byLine[300] and byLine[300].campaignID == 7 and byLine[300].chapter == "Chapter Three"
+  and byLine[300].done == 2 and byLine[300].total == 4 and byLine[300].nextQuestID == 79000
+  and byLine[300].flags == "c", "a campaign in progress is a chain with its chapter and progress")
+check(byLine[301] == nil, "a finished campaign is not")
+check(byLine[400] and byLine[400].name == "Duty Calls" and byLine[400].x == 0.412 and byLine[400].flags == "l"
+  and byLine[400].nextQuestID == 78713, "the chain of a quest in the log, with its pin")
+check(byLine[500] and byLine[500].mapID == 2339 and byLine[500].done == 0, "a chain started on this map")
+check(not byLine[501] and not byLine[502] and not byLine[503] and not byLine[504],
+  "dailies, finished and not started chains are left out")
+check(byLine[505] ~= nil, "an important chain that starts here counts")
 check(body("sessions") and body("sessions").list[1].start == 1, "sessions")
 check(body("addons") and body("addons").TomTom == true and body("addons").Bagnon == false, "helper addons")
 check(UnboredDB.data.sections.mounts ~= nil and UnboredCharDB.data.sections.mounts == nil, "mounts are per Account")
@@ -425,6 +491,7 @@ GetInventoryItemLink = realLink
 
 -- Combat: nothing is read, the Section waits for the end of combat.
 combat = true
+check(S.Read("questLines", "event") == false, "quest chains are not read in combat")
 local before = body("bags")
 setBags(5, 300000)
 check(S.Read("bags", "event") == false, "no reads in combat")

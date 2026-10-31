@@ -13,17 +13,36 @@
         },
         "rewards": ["{mount:219}", "{ach:291}"],
         "expiresAt": 1793530800,
-        "id": "event:324:1792317600",
+        "id": "event:hallows-end:1792317600",
         "kind": "event",
         "request": {
           "topic": "suggestion",
-          "suggestionId": "event:324:1792317600",
+          "suggestionId": "event:hallows-end:1792317600",
           "wish": "Hallow's End: Hallow's End is on: 4 things you have not done yet."
         }
       },
       {
+        "title": "The Forgotten Path",
+        "goal": "Continue: 3 of 8 done",
+        "mapID": 2248,
+        "chain": {
+          "questLineID": 5678,
+          "nextQuestID": 79100,
+          "done": 3,
+          "total": 8
+        },
+        "id": "chain:5678",
+        "kind": "chain",
+        "rewards": [],
+        "request": {
+          "topic": "suggestion",
+          "suggestionId": "chain:5678",
+          "wish": "The Forgotten Path: Continue: 3 of 8 done"
+        }
+      },
+      {
         "title": "Huolon",
-        "goal": "Hunt Huolon near where you play.",
+        "goal": "Hunt {npc:73167|Huolon} near where you play.",
         "reason": {
           "kind": "near",
           "mapID": 554
@@ -69,6 +88,25 @@
           "topic": "suggestion",
           "suggestionId": "mount:1217",
           "wish": "Battle of Dazar'alor: Run Battle of Dazar'alor for a mount."
+        },
+        "why": "None of your 2 characters has it yet",
+        "reason": {
+          "kind": "alts",
+          "count": 2
+        }
+      },
+      {
+        "title": "The Eternal Palace",
+        "titleToken": "{instance:2164}",
+        "goal": "Run {instance:2164|The Eternal Palace} for {mount:1219}.",
+        "rewards": ["{mount:1219}"],
+        "mapID": 1355,
+        "id": "mount:1219",
+        "kind": "collection",
+        "request": {
+          "topic": "suggestion",
+          "suggestionId": "mount:1219",
+          "wish": "The Eternal Palace: Run The Eternal Palace for a mount."
         },
         "why": "None of your 2 characters has it yet",
         "reason": {
