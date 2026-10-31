@@ -21,7 +21,7 @@ export const READY_MAX_CHAINS = 5;
 export const READY_ACH_RATIO = 0.7;
 const DAY = 86_400;
 
-/** D186. `vaultSlot` and `key` are not in the decision's table; see the 0.10 PR Friction. */
+/** D186. TODO: `vaultSlot` and `key` are not in the decision's table; the owner picks their scores. */
 export const READY_SCORE = {
   rewardWaiting: 100,
   event: 90,
