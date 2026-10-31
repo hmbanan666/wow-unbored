@@ -124,6 +124,7 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 | `recipes` | char | C_TradeSkillUI.GetAllRecipeIDs, GetRecipeInfo (packed) | while a profession window is open | 5 KB |
 | `questsDone` | char | C_QuestLog.GetAllCompletedQuestIDs (packed) | login, QUEST_TURNED_IN | 52 KB |
 | `questLog` | char | C_QuestLog, GetQuestObjectives | QUEST_LOG_UPDATE and quest events | 16 KB |
+| `questLines` (v1) | char | C_CampaignInfo (InProgress or Stalled campaigns), C_QuestLine.GetQuestLineInfo for each log quest, GetAvailableQuestLines for the current map and the 3 most played maps; GetQuestLineQuests against IsQuestFlaggedCompleted gives `done`/`total`/`nextQuestID`. Up to 40 rows `{ questLineID, name, campaignID?, chapter?, mapID, x?, y?, done, total, nextQuestID?, flags }`, names in the client language | 20 s after the login pass (map requests 10 s before it), QUEST_TURNED_IN | ~4 KB |
 | `reputation` | char | C_Reputation, C_MajorFactions, C_GossipInfo.GetFriendshipReputation | login, UPDATE_FACTION | 52 KB |
 | `achievements` | account | GetCategoryList, GetAchievementInfo (packed) | staged scan once a day, ACHIEVEMENT_EARNED | 12 KB |
 | `achievementsMine` | char | ACHIEVEMENT_EARNED | events | 6 KB |
@@ -134,7 +135,7 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 | `lockouts` | char | GetSavedInstanceInfo, GetSavedWorldBossInfo | UPDATE_INSTANCE_INFO, BOSS_KILL | |
 | `mplus` | char | C_PlayerInfo.GetPlayerMythicPlusRatingSummary, C_MythicPlus keystone | login, CHALLENGE_MODE_COMPLETED | |
 | `vault` | char | C_WeeklyRewards.GetActivities | login, WEEKLY_REWARDS_UPDATE | |
-| `calendar` | account | C_Calendar, today to +14 days | 15 s after entering the world, once per login | |
+| `calendar` (v2) | account | C_Calendar, today to +14 days; per event `texture` (iconTexture), `sequenceType`, `numSequenceDays`, and for today's and tomorrow's holidays `description` from GetHolidayInfo (300 bytes) | OpenCalendar again 5 s after entering the world, then the settled CALENDAR_UPDATE_EVENT_LIST, once per login | |
 | `sessions` | char | zones with mapID and minutes, deaths, level ups (last 20) | events | 24 KB |
 | `addons` | account | C_AddOns.IsAddOnLoaded for TomTom, Auctionator, TSM, Bagnon | login | |
 | `unresolvedIds` | char | Plan ids the game could not resolve, and items Bory had no tooltip advice for (`kind = "advice"`, was the 0.6 profile's `unmatchedItems`) | when a link fails, when an item has no line | |
@@ -143,13 +144,13 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 
 ## Tooltip Advice
 
-`Core/Advice.lua` adds at most one "Bory: ..." line to an item tooltip, and only when it is about this player ([ADR 0035](adr/0035-personal-only-advice.md)). The rules, first match wins: needed for the active Plan (names the Step), starts a quest this character has not completed, new for the Account's collection (a mount, toy, pet or look no character has), Personal advice from the Server (`UnboredAdvice` in `Unbored_Plan/Advice.lua`) or a planner answer about the item, and a reagent for a profession an Alt has and this character lacks, with the route (mail or warband bank, [ADR 0021](adr/0021-account-and-alt-routing.md)). No line is the default. It never says delete, never says sell for epic or bind-on-equip items, and never routes a soulbound item to an Alt. The menu toggle "Bory lines in tooltips" (on by default, `UnboredDB.tooltipLines`) turns them all off.
+`Core/Advice.lua` adds at most two Bory lines to an item tooltip, and only when they are about this player ([ADR 0035](adr/0035-personal-only-advice.md), [ADR 0048](adr/0048-account-holdings-in-tooltips.md)): one action line, then a muted Holdings line ("Also: Grubbyman 40, Warband bank 200") from `UnboredAdvice.holdings`, the Account holdings index the Server builds from every Character's `bags`, `bank`, `reagentBank` and the `warband` Section. Holdings never count this character's own place, leave out places not seen for 60 days, and stop at 3,000 items / 60 KB; with them `Advice.lua` stays under 260 KB and 20k literals (the Companion cuts holdings first, then advice). The rules, first match wins: needed for the active Plan (names the Step), starts a quest this character has not completed, new for the Account's collection (a mount, toy, pet or look no character has), Personal advice from the Server (`UnboredAdvice` in `Unbored_Plan/Advice.lua`) or a planner answer about the item, and a reagent for a profession an Alt has and this character lacks, with the route (mail or warband bank, [ADR 0021](adr/0021-account-and-alt-routing.md)). No line is the default. It never says delete, never says sell for epic or bind-on-equip items, and never routes a soulbound item to an Alt. The menu toggle "Bory lines in tooltips" (on by default, `UnboredDB.tooltipLines`) turns them all off.
 
 ## Slash commands and keybinds
 
 Players never need them. Keybinds (Esc → Options → Keybindings → AddOns → Unbored): pick a new plan, Done, Skip, point the arrow again, and Refresh (reloads the UI; a keypress counts as the click Blizzard requires).
 
-`/unbored` (the presets), `/unbored show|hide`, `/unbored ask [text]|nearby|item`, `/unbored list|lock|reset`, `/unbored build`, `/unbored roam|quests|events|fun|farm`, `/unbored 30|60|120`, `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the Companion file again), `/unbored where` (map id and 0–100 coordinates, for people adding data), and `/unbored errors` (caught Lua errors; the player only ever sees one friendly line).
+`/unbored` (the presets), `/unbored show|hide`, `/unbored item`, `/unbored lock|reset`, `/unbored build`, `/unbored roam|quests|events|fun|farm`, `/unbored import|export`, `/unbored tomtom|chat|minimap`, `/unbored companion` (apply the Companion file again), `/unbored where` (map id and 0–100 coordinates, for people adding data), and `/unbored errors` (caught Lua errors; the player only ever sees one friendly line).
 
 ## What the modes suggest
 
