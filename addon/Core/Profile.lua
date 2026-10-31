@@ -184,8 +184,7 @@ function ns.Profile.Flush(now)
 end
 
 -- An item Bory had no Advice for (docs/adr/0019): only the id, to grow the
--- rules. It goes with the unresolved Plan ids, marked "advice".
--- TODO: confirm with the owner that unresolvedIds is the right Section for these.
+-- rules. It goes with the unresolved Plan ids, marked "advice" (D160).
 function ns.Profile.NoteUnmatched(itemID)
   itemID = ns.AsNumber(itemID)
   if itemID and ns.Snapshot and ns.Snapshot.NoteUnresolved then

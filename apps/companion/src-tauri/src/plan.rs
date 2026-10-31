@@ -291,7 +291,7 @@ const EMPTY_SUGGESTIONS_LUA: &str = "-- Written by Unbored Companion. No ideas y
 /// D107: Suggestions.lua has its own small share of the D76 budget.
 pub const SUGGESTIONS_MAX_BYTES: usize = 20 * 1024;
 pub const SUGGESTIONS_MAX_LITERALS: usize = 2_000;
-const MAX_SUGGESTIONS: usize = 6;
+const MAX_SUGGESTIONS: usize = 10;
 const SUGGESTION_TEXT: [(&str, usize); 6] = [
     ("id", 120),
     ("kind", 20),
@@ -543,7 +543,21 @@ fn clean_suggestion(item: &Value) -> Option<Value> {
                 why.insert(field.into(), Value::from(number));
             }
         }
+        if let Some(name) = reason["name"].as_str().filter(|name| !name.trim().is_empty()) {
+            why.insert("name".into(), Value::String(clip(name, 60)));
+        }
         out.insert("reason".into(), Value::Object(why));
+    }
+    let chain = &item["chain"];
+    if let Some(line) = chain["questLineID"].as_u64().filter(|id| *id > 0) {
+        let mut info = serde_json::Map::new();
+        info.insert("questLineID".into(), Value::from(line));
+        for field in ["nextQuestID", "done", "total"] {
+            if let Some(number) = chain[field].as_u64() {
+                info.insert(field.into(), Value::from(number));
+            }
+        }
+        out.insert("chain".into(), Value::Object(info));
     }
     let request = &item["request"];
     if let Some(wish) = request["wish"].as_str() {
@@ -1301,8 +1315,16 @@ mod tests {
         let get = crate::savedvars::table_get;
         let chars = get(values.get("UnboredSuggestions").unwrap(), "characters").unwrap();
         let list = crate::savedvars::array_items(get(chars, "Silvermoon-Mira").unwrap());
-        assert_eq!(list.len(), 4);
+        assert_eq!(list.len(), 6);
         assert_eq!(get(list[0], "kind").and_then(|v| v.as_str()), Some("event"));
+        let chain = list
+            .iter()
+            .find(|item| get(item, "kind").and_then(|v| v.as_str()) == Some("chain"))
+            .expect("the chain idea is written");
+        assert_eq!(
+            get(get(chain, "chain").unwrap(), "questLineID").and_then(|v| v.as_u64()),
+            Some(5678)
+        );
 
         let many: serde_json::Map<String, Value> = (0..200)
             .map(|n| {
