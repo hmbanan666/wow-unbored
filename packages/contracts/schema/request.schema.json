@@ -23,6 +23,10 @@
     "topic": { "type": "string" },
     "lang": { "type": "string" },
     "account": { "type": "string" },
+    "accountLegacy": {
+      "type": "string",
+      "description": "Unhashed Account key, sent once so existing rows can be renamed (docs/adr/0044)."
+    },
     "item": {
       "type": "object",
       "required": ["itemID"],

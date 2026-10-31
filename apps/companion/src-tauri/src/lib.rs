@@ -1,6 +1,7 @@
 //! File bridge between an outside planner and the Unbored addon.
 //! No process memory, no injection, no attachment to Wow.exe.
 
+pub mod account;
 pub mod addon;
 pub mod device;
 pub mod endpoint;

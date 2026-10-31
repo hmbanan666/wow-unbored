@@ -188,6 +188,7 @@ export class Store {
       ["suggestion_id", "TEXT"],
       ["suggestion_json", "TEXT"],
     ]);
+    this.addColumns("devices", [["forget_revoked", "INTEGER NOT NULL DEFAULT 0"]]);
     this.data = new DataStore(this.db);
     this.suggestions = new SuggestionStore(this.db, this.data);
     this.gameIds = new IdCache(this.db);
@@ -253,6 +254,7 @@ export class Store {
 
   addProgress(raw: unknown, nowSeconds = Math.floor(Date.now() / 1000)): StoredProgress {
     const post: ProgressPost = cleanProgress(raw);
+    post.account = this.bindAccount(post.account, legacyOf(raw));
     const result = this.db
       .prepare(
         `INSERT INTO progress
@@ -367,7 +369,7 @@ export class Store {
   listDevices(): Device[] {
     const rows = this.db
       .prepare(
-        `SELECT id, name, secret_hash, status, created_at, last_seen_at
+        `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked
          FROM devices ORDER BY created_at DESC, id ASC`,
       )
       .all() as DeviceRow[];
@@ -382,9 +384,61 @@ export class Store {
     const current = this.deviceById(id);
     if (!current) return undefined;
     this.db
-      .prepare(`UPDATE devices SET status = ?, last_seen_at = ? WHERE id = ?`)
+      .prepare(`UPDATE devices SET status = ?, last_seen_at = ?, forget_revoked = 0 WHERE id = ?`)
       .run(status, nowSeconds, id);
     return this.deviceById(id);
+  }
+
+  /**
+   * Connect again after Forget my data (docs/adr/0045). The old device stays
+   * revoked. The new one is approved only when this PC proved the secret of a
+   * device it forgot while that device was approved. Same id and secret checks
+   * as a first registration; an owner revoke cannot use this.
+   */
+  reconnectForgotten(input: {
+    oldId: string;
+    id: string;
+    name: string;
+    secretHash: string;
+    nowSeconds: number;
+  }): ReconnectDeviceResult {
+    const old = this.deviceById(input.oldId);
+    if (!old || old.status !== "revoked" || !old.forgetRevoked) {
+      return {
+        ok: false,
+        status: 403,
+        error: "This PC can't connect again by itself. Ask the Unbored team to approve it.",
+      };
+    }
+    if (input.id === old.id) {
+      return { ok: false, status: 400, error: "Connect again needs a new device id." };
+    }
+    if (input.secretHash === old.secretHash) {
+      return { ok: false, status: 400, error: "Connect again needs a new device secret." };
+    }
+    if (this.deviceById(input.id)) {
+      return { ok: false, status: 409, error: "This device id is already registered." };
+    }
+    if (this.deviceByHash(input.secretHash)) {
+      return { ok: false, status: 409, error: "This device secret is already registered." };
+    }
+    this.db.exec("BEGIN");
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO devices (id, name, secret_hash, status, created_at, last_seen_at, forget_revoked)
+           VALUES (?, ?, ?, 'approved', ?, ?, 0)`,
+        )
+        .run(input.id, input.name, input.secretHash, input.nowSeconds, input.nowSeconds);
+      this.db.prepare(`UPDATE devices SET forget_revoked = 0 WHERE id = ?`).run(old.id);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    const device = this.deviceById(input.id);
+    if (!device) return { ok: false, status: 500, error: "Could not store the device." };
+    return { ok: true, device };
   }
 
   addRequest(input: {
@@ -402,6 +456,8 @@ export class Store {
     context?: PlayerContext | null;
     lang?: string | null;
     account?: string | null;
+    /** Old folder key, sent once so existing rows can be renamed (docs/adr/0044). */
+    accountLegacy?: unknown;
     suggestionId?: string | null;
     suggestion?: RequestSuggestion | null;
     nowSeconds: number;
@@ -409,7 +465,7 @@ export class Store {
     const existing = this.requestById(input.id);
     if (existing) return { created: false, request: existing };
     const account = input.account
-      ? accountKey(input.account)
+      ? this.bindAccount(input.account, input.accountLegacy)
       : (this.profileFor(input.character, input.realm || undefined)?.account ?? "");
     this.db
       .prepare(
@@ -827,8 +883,123 @@ export class Store {
           .run(profile.character_name, profile.realm);
       }
     }
-    this.setDeviceStatus(deviceId, "revoked", nowSeconds);
+    const current = this.deviceById(deviceId);
+    const reconnect = current?.status === "approved" ? 1 : 0;
+    this.db
+      .prepare(
+        `UPDATE devices SET status = 'revoked', last_seen_at = ?, forget_revoked = ? WHERE id = ?`,
+      )
+      .run(nowSeconds, reconnect, deviceId);
     return { ...totals, revoked: true };
+  }
+
+  /**
+   * Rename rows stored under a WTF folder key to the salted hash the Companion
+   * now sends (docs/adr/0044). No-op when nothing is stored under the old key.
+   * Returns the account string to store: the hash when that is what was sent,
+   * otherwise the value unchanged so an older Companion still works.
+   */
+  bindAccount(account: string, legacyRaw: unknown): string {
+    const presented = account.trim();
+    const legacy = legacyAccountKey(legacyRaw);
+    if (legacy && isAccountHash(presented)) this.migrateAccount(legacy, presented);
+    return accountKey(presented);
+  }
+
+  private migrateAccount(from: string, to: string): void {
+    if (!from || !to || from === to || !isAccountHash(to) || isAccountHash(from)) return;
+    const textHit = (table: string) =>
+      `SELECT 1 FROM ${table} WHERE account = ? OR substr(account, 1, length(?) + 1) = ? || '#'`;
+    const hit = this.db
+      .prepare(
+        `SELECT 1 AS n FROM accounts WHERE id = ?
+         UNION ALL SELECT 1 FROM characters WHERE account_id = ?
+         UNION ALL ${textHit("progress")}
+         UNION ALL ${textHit("requests")}
+         UNION ALL ${textHit("profiles")}
+         UNION ALL ${textHit("history")}
+         UNION ALL ${textHit("profile_snapshots")}
+         UNION ALL ${textHit("advice")}
+         UNION ALL SELECT 1 FROM suggestions WHERE owner_id = ?
+         UNION ALL SELECT 1 FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ?
+         UNION ALL SELECT 1 FROM section_history WHERE owner_kind = 'account' AND owner_id = ?
+         LIMIT 1`,
+      )
+      .get(
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+        from,
+      );
+    if (!hit) return;
+    const retarget = (table: string) => {
+      this.db
+        .prepare(
+          `UPDATE ${table} SET account = ?
+           WHERE account = ? OR substr(account, 1, length(?) + 1) = ? || '#'`,
+        )
+        .run(to, from, from, from);
+    };
+    this.db.exec("BEGIN");
+    try {
+      const dest = this.db.prepare(`SELECT id FROM accounts WHERE id = ?`).get(to) as
+        | { id: string }
+        | undefined;
+      if (dest) this.db.prepare(`DELETE FROM accounts WHERE id = ?`).run(from);
+      else this.db.prepare(`UPDATE accounts SET id = ?, label = ? WHERE id = ?`).run(to, to, from);
+      this.db.prepare(`UPDATE characters SET account_id = ? WHERE account_id = ?`).run(to, from);
+      for (const table of [
+        "progress",
+        "requests",
+        "profiles",
+        "history",
+        "profile_snapshots",
+        "advice",
+      ]) {
+        retarget(table);
+      }
+      this.db.prepare(`UPDATE suggestions SET owner_id = ? WHERE owner_id = ?`).run(to, from);
+      const clash = this.db
+        .prepare(
+          `SELECT section FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ?`,
+        )
+        .all(to) as { section: string }[];
+      for (const row of clash) {
+        this.db
+          .prepare(
+            `DELETE FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ? AND section = ?`,
+          )
+          .run(from, row.section);
+      }
+      for (const table of ["sections_latest", "section_history"]) {
+        this.db
+          .prepare(`UPDATE ${table} SET owner_id = ? WHERE owner_kind = 'account' AND owner_id = ?`)
+          .run(to, from);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   addHistory(entry: {
@@ -1088,10 +1259,11 @@ export class Store {
     }));
   }
 
-  private deviceById(id: string): Device | undefined {
+  deviceById(id: string): Device | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, name, secret_hash, status, created_at, last_seen_at FROM devices WHERE id = ?`,
+        `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked
+         FROM devices WHERE id = ?`,
       )
       .get(id) as DeviceRow | undefined;
     return row ? deviceFromRow(row) : undefined;
@@ -1100,7 +1272,8 @@ export class Store {
   private deviceByHash(secretHash: string): Device | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, name, secret_hash, status, created_at, last_seen_at FROM devices WHERE secret_hash = ?`,
+        `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked
+         FROM devices WHERE secret_hash = ?`,
       )
       .get(secretHash) as DeviceRow | undefined;
     return row ? deviceFromRow(row) : undefined;
@@ -1157,11 +1330,17 @@ export type Device = {
   status: DeviceStatus;
   createdAt: number;
   lastSeenAt: number | null;
+  /** This PC used Forget my data while approved, so Connect again is allowed once. */
+  forgetRevoked: boolean;
 };
 
 export type RegisterDeviceResult =
   | { ok: true; created: boolean; device: Device }
   | { ok: false; status: 409 | 429 | 500; error: string };
+
+export type ReconnectDeviceResult =
+  | { ok: true; device: Device }
+  | { ok: false; status: 400 | 403 | 409 | 500; error: string };
 
 type DeviceRow = {
   id: string;
@@ -1170,6 +1349,7 @@ type DeviceRow = {
   status: string;
   created_at: number;
   last_seen_at: number | null;
+  forget_revoked: number | null;
 };
 
 function deviceFromRow(row: DeviceRow): Device {
@@ -1182,6 +1362,7 @@ function deviceFromRow(row: DeviceRow): Device {
     status,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
+    forgetRevoked: row.forget_revoked === 1,
   };
 }
 
@@ -1420,12 +1601,35 @@ export type ItemAdvice = {
   to?: string;
 };
 
+const ACCOUNT_HASH = /^[a-f0-9]{64}$/;
+
+/** A salted Account key from the Companion (docs/adr/0044), not a folder name. */
+export function isAccountHash(value: string): boolean {
+  return ACCOUNT_HASH.test(value);
+}
+
 /**
  * The WoW account folder ("12345678#1") names one game license; the part before
  * "#" is the same for every license of one Battle.net account, so it is the key.
+ * A 64-character hex hash is already that key and is kept whole.
  */
 export function accountKey(account: string): string {
-  return account.trim().split("#")[0] ?? "";
+  const trimmed = account.trim();
+  if (isAccountHash(trimmed)) return trimmed;
+  return trimmed.split("#")[0] ?? "";
+}
+
+/** The old folder key, when an upload still carries it for the one-time rename. */
+export function legacyAccountKey(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const key = accountKey(value);
+  if (!key || isAccountHash(key)) return "";
+  return key;
+}
+
+export function legacyOf(body: unknown): unknown {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+  return (body as Record<string, unknown>).accountLegacy;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

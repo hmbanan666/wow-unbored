@@ -13,7 +13,13 @@ on:
       - ".github/scripts/collect-bundle.sh"
       - "docs/companion-api.md"
       - "docs/contract/**"
+  push:
+    branches:
+      - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -21,23 +27,37 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/companion/src-tauri -> target
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
       - name: Format, clippy, and library tests
-        run: |
-          cargo fmt --manifest-path apps/companion/src-tauri/Cargo.toml -- --check
-          cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features -- -D warnings
-          cargo test --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features
+        run: pnpm install --frozen-lockfile && pnpm run lint:companion && pnpm test:companion
 
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/companion/src-tauri -> target
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
+          cache: pnpm
       - name: Install the workspace
         shell: bash
-        run: corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Choose signing
         id: sign
         shell: bash
@@ -66,4 +86,4 @@ jobs:
       # After the build, so dist/ exists for the bin's generate_context (D118).
       - name: Clippy on every target and feature
         shell: bash
-        run: cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        run: pnpm run lint:companion:all

@@ -1,4 +1,3 @@
-// @ts-nocheck — the window was plain script; the import below is the shared contract.
 import type { Plan, PlayerProfile, RequestBody } from "@unbored/contracts";
 import boryHappy from "./img/bory-happy.png";
 import boryIdle from "./img/bory-idle.png";
@@ -8,7 +7,31 @@ import boryWaiting from "./img/bory-waiting.png";
 // The window does not build Requests. These names are the same contract the Server stores.
 export type { Plan, PlayerProfile, RequestBody };
 
-const invoke = (command: string, args?: Record<string, unknown>) => {
+type Step = { label: string; done?: boolean };
+type ProgressRow = {
+  character: string;
+  realm: string;
+  done: number;
+  skipped: number;
+  currentId?: string;
+};
+type UiState = {
+  phase?: string;
+  mascot?: string;
+  headline?: string;
+  hint?: string;
+  status?: string;
+  steps?: Step[];
+  settings: { endpointUrl?: string; wowPath?: string; pollMinutes?: number };
+  autostart?: boolean;
+  addonVersion?: string;
+  pairing?: string;
+  version?: string;
+  progress?: ProgressRow[];
+  canReconnect?: boolean;
+};
+
+const call = (command: string, args?: Record<string, unknown>): Promise<unknown> => {
   const tauri = window.__TAURI__;
   if (!tauri || !tauri.core) {
     return Promise.reject(new Error("Open this window from the Unbored Companion app."));
@@ -16,23 +39,37 @@ const invoke = (command: string, args?: Record<string, unknown>) => {
   return tauri.core.invoke(command, args);
 };
 
-const $ = (id) => document.getElementById(id);
-const mascot = $("mascot");
-const headline = $("headline");
-const hint = $("hint");
-const setup = $("setup");
-const status = $("status");
-const wow = $("wow");
-const plan = $("plan");
-const url = $("url");
-const poll = $("poll");
-const autostart = $("autostart");
-const progress = $("progress");
-const steps = $("steps");
+function asState(value: unknown): UiState {
+  if (typeof value === "object" && value !== null && "settings" in value) return value as UiState;
+  throw new Error("The Companion returned nothing to show.");
+}
+
+const invoke = (command: string, args?: Record<string, unknown>) =>
+  call(command, args).then(asState);
+
+function el<T extends HTMLElement>(id: string): T {
+  const node = document.getElementById(id);
+  if (!node) throw new Error(`Missing #${id}`);
+  return node as T;
+}
+
+const mascot = el<HTMLImageElement>("mascot");
+const headline = el("headline");
+const hint = el("hint");
+const setup = el("setup");
+const reconnect = el("reconnect");
+const status = el("status");
+const wow = el<HTMLInputElement>("wow");
+const plan = el<HTMLTextAreaElement>("plan");
+const url = el<HTMLInputElement>("url");
+const poll = el<HTMLInputElement>("poll");
+const autostart = el<HTMLInputElement>("autostart");
+const progress = el("progress");
+const steps = el("steps");
 
 // Imported so Vite fingerprints and ships them; a runtime "img/..." path is not in dist/.
 // Only Bory's layer changes; the ring (index.html) stays put.
-const PICTURES = {
+const PICTURES: Record<string, string> = {
   idle: boryIdle,
   setup: boryIdle,
   error: boryIdle,
@@ -42,7 +79,7 @@ const PICTURES = {
   pairing: boryWaiting,
 };
 
-function paint(state) {
+function paint(state: UiState) {
   const phase = state.phase || "idle";
   document.body.dataset.phase = phase;
   mascot.src = PICTURES[phase] || boryIdle;
@@ -57,16 +94,17 @@ function paint(state) {
     steps.appendChild(row);
   });
   setup.hidden = phase !== "setup";
+  reconnect.hidden = !state.canReconnect;
   document.title = state.mascot || "Unbored";
 
   if (document.activeElement !== url) url.value = state.settings.endpointUrl || "";
   if (document.activeElement !== wow) wow.value = state.settings.wowPath || "";
-  poll.value = state.settings.pollMinutes ?? 5;
+  poll.value = String(state.settings.pollMinutes ?? 5);
   autostart.checked = !!state.autostart;
   status.textContent = state.status || "";
-  $("addon").textContent =
+  el("addon").textContent =
     `Addon ${state.addonVersion || "not installed"}, this PC is ${state.pairing || "connecting"}`;
-  $("version").textContent = `Companion ${state.version || ""}`;
+  el("version").textContent = `Companion ${state.version || ""}`;
 
   progress.innerHTML = "";
   (state.progress || []).forEach((row) => {
@@ -78,11 +116,12 @@ function paint(state) {
 }
 
 // Details go under Advanced; the headline and hint stay in plain words.
-function showError(err) {
-  status.textContent = String(err && err.message ? err.message : err);
+function showError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  status.textContent = message;
 }
 
-async function run(action) {
+async function run(action: () => Promise<UiState>) {
   try {
     paint(await action());
   } catch (err) {
@@ -95,20 +134,20 @@ async function pickFolder() {
   const options = { directory: true, title: "Choose your World of Warcraft folder" };
   const picked = tauri.dialog
     ? await tauri.dialog.open(options)
-    : await invoke("plugin:dialog|open", { options });
-  if (!picked) return invoke("get_state");
+    : await call("plugin:dialog|open", { options });
+  if (!picked || Array.isArray(picked)) return invoke("get_state");
   return invoke("set_wow_path", { path: String(picked) });
 }
 
-$("pick").addEventListener("click", () => run(pickFolder));
-$("detect").addEventListener("click", () => run(() => invoke("detect_wow")));
-$("use-path").addEventListener("click", () =>
+el("pick").addEventListener("click", () => run(pickFolder));
+el("detect").addEventListener("click", () => run(() => invoke("detect_wow")));
+el("use-path").addEventListener("click", () =>
   run(() => invoke("set_wow_path", { path: wow.value })),
 );
-$("write").addEventListener("click", () =>
+el("write").addEventListener("click", () =>
   run(() => invoke("write_plan_text", { text: plan.value })),
 );
-$("save-endpoint").addEventListener("click", () =>
+el("save-endpoint").addEventListener("click", () =>
   run(() =>
     invoke("set_endpoint", {
       url: url.value,
@@ -116,9 +155,9 @@ $("save-endpoint").addEventListener("click", () =>
     }),
   ).then(armPoll),
 );
-$("privacy").addEventListener("click", (event) => {
+el("privacy").addEventListener("click", (event) => {
   event.preventDefault();
-  invoke("open_privacy").catch(showError);
+  call("open_privacy").catch(showError);
 });
 const FORGET = {
   title: "Forget my data?",
@@ -138,7 +177,7 @@ async function confirmForget() {
       cancelLabel: FORGET.cancel,
     });
   }
-  const picked = await invoke("plugin:dialog|message", {
+  const picked = await call("plugin:dialog|message", {
     message: FORGET.message,
     title: FORGET.title,
     kind: "warning",
@@ -147,22 +186,23 @@ async function confirmForget() {
   return picked === FORGET.ok;
 }
 
-$("forget").addEventListener("click", () =>
+el("connect-again").addEventListener("click", () => run(() => invoke("connect_again")));
+el("forget").addEventListener("click", () =>
   run(async () => {
     if (!(await confirmForget())) return invoke("get_state");
     return invoke("forget_my_data");
   }),
 );
-$("fetch").addEventListener("click", () => run(() => invoke("fetch_plan")));
-$("rescan").addEventListener("click", () => run(() => invoke("rescan_progress")));
+el("fetch").addEventListener("click", () => run(() => invoke("fetch_plan")));
+el("rescan").addEventListener("click", () => run(() => invoke("rescan_progress")));
 autostart.addEventListener("change", () =>
   run(async () => {
-    await invoke("set_autostart", { enabled: autostart.checked });
+    await call("set_autostart", { enabled: autostart.checked });
     return invoke("get_state");
   }),
 );
 
-let pollTimer = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 function armPoll() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;

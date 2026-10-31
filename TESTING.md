@@ -176,12 +176,12 @@
 
 ## Удаление данных
 
-Проверять последним: после этого ПК придётся одобрить заново.
+Проверять последним: после этого данные на сервере стёрты. Вернуться можно кнопкой **Connect again**, без `approve_device`. Отзыв через `revoke_device` эта кнопка не отменяет.
 
 - [ ] Ссылка «What he knows» под «Start with Windows» открывает браузер (раньше окно могло молча её не пропускать).
 - [ ] Companion → Advanced → «Forget my data». Появляется окно «Forget my data?» с кнопками «Forget it all» и «Keep it». «Keep it» ничего не меняет.
-- [ ] «Forget it all»: заголовок «Done. I forgot everything about you», под ним — что удалено и что делать, чтобы вернуться. В Advanced: «this PC is revoked».
+- [ ] «Forget it all»: заголовок «Done. I forgot everything about you», под ним — что удалено и кнопка **Connect again**. В Advanced: «this PC is revoked».
 - [ ] MCP `data_catalog` больше не показывает эту учётную запись; `list_requests` — её запросов; `list_devices` — ПК со статусом `revoked`.
 - [ ] `Unbored_Plan/Advice.lua` и `Suggestions.lua` пустые, в `Plan.lua` нет плана, только статус Companion. После входа в игру у Бори нет идей и строк из совета сервера; быстрые планы работают.
-- [ ] Перезапуск Companion: всё тот же заголовок «Done. I forgot everything about you».
-- [ ] Снова `approve_device`: через 30 с «Connected!», данные снова уходят на сервер.
+- [ ] Перезапуск Companion: всё тот же заголовок «Done. I forgot everything about you» и кнопка **Connect again**.
+- [ ] **Connect again** (не `approve_device`): через короткое время «Connected!», новый device id в `list_devices` со статусом `approved`, старый остаётся `revoked`, данные снова уходят на сервер.

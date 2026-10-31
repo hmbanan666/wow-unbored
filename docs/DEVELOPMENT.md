@@ -14,7 +14,7 @@ Read [`CONTEXT.md`](../CONTEXT.md) (the words we use) and [`docs/adr/`](adr/) (t
 
 ## Requirements
 
-- Retail client **12.1.5** (Interface **120105**) or **12.1.0** (Interface **120100**). The TOC lists both. `/dump select(4, GetBuildInfo())` should print one of them.
+- Retail client **12.1.5** (Interface **120105**) or **12.1.0** (Interface **120100**). The TOC also lists PTR interface **120107**. `/dump select(4, GetBuildInfo())` should print one of them.
 - No Classic, Mists, or Forever build.
 
 ## Layout
@@ -55,7 +55,7 @@ pnpm lint
 pnpm build
 ```
 
-`pnpm test` runs the addon checks (`cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/ui.lua`), JavaScript tests (`vp test`: Server and `packages/contracts`), and `cargo test --lib --no-default-features` for the Companion. `pnpm lint` is `vp check` (Oxfmt and Oxlint), luacheck, `cargo fmt --check`, and clippy. `pnpm dev` starts the Server. `pnpm build` typechecks the Server and builds the Companion window. The Windows installer is built by `.github/workflows/companion.yml` on every pull request that touches `apps/companion/`.
+`pnpm test` runs the addon checks (`cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/ui.lua`), JavaScript tests (`vp test`: Server and `packages/contracts`), and `cargo test --lib --no-default-features` for the Companion. `pnpm lint` is `pnpm typecheck`, `vp check` (Oxfmt and Oxlint), luacheck, `cargo fmt --check`, and clippy. `pnpm typecheck` covers the Server, its tests, `packages/contracts`, and the Companion window. `pnpm dev` starts the Server. `pnpm build` typechecks the Server and builds the Companion window. The Windows installer is built by `.github/workflows/companion.yml` on pull requests that touch the Companion and on every push to `main`. Node is 26.
 
 JavaScript uses Vite+ (`vp`, the `vite-plus` package). Lua stays on luacheck. Rust stays on cargo. See [ADR 0024](adr/0024-vite-plus-toolchain.md).
 
@@ -75,7 +75,26 @@ One tag is one release ([ADR 0026](adr/0026-one-release-tag.md)). The addon, Com
 git tag v0.7.0 && git push origin v0.7.0
 ```
 
-`.github/workflows/release.yml` builds `Unbored-v*.zip` with the [BigWigs packager](https://warcraft.wiki.gg/wiki/Using_the_BigWigs_Packager_with_GitHub_Actions) (it copies `addon/` to the checkout root for that job, because the packager only sees a TOC there), builds the Windows installer, attaches both to the tag, and writes `latest.json`. It then copies `latest.json` onto the existing `companion-updater` release, which is the URL already installed Companions read. The minisign public key in `tauri.conf.json` stays the same, so 0.5 and 0.6 can verify the new installer. If `TAURI_SIGNING_PRIVATE_KEY` is missing, the workflow builds the installer and leaves that feed alone. CurseForge and Wago ids are unset until those projects exist. To preview notes: `pipx install git-cliff==2.14.2` and `.github/scripts/release-notes.sh v0.8.0`.
+`.github/workflows/release.yml` builds `Unbored-v*.zip` with the [BigWigs packager](https://warcraft.wiki.gg/wiki/Using_the_BigWigs_Packager_with_GitHub_Actions) (it copies `addon/` to the checkout root for that job, because the packager only sees a TOC there), builds the Windows installer, attaches both to the tag, and writes `latest.json`. It then copies `latest.json` onto the existing `companion-updater` release, which is the URL already installed Companions read. If `TAURI_SIGNING_PRIVATE_KEY` is missing, the workflow builds the installer and leaves that feed alone. CurseForge and Wago ids are unset until those projects exist. To preview notes: `pipx install git-cliff==2.14.2` and `.github/scripts/release-notes.sh v0.8.0`.
+
+**Updater key cutover.** Tauri v2 `plugins.updater.pubkey` is one minisign public key, not a list ([tauri#7585](https://github.com/tauri-apps/tauri/issues/7585) is still open). The key embedded now is the new one:
+
+```
+dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJDNUVCNDQxN0E2NDlCMjMKUldRam0yUjZRYlJldkRLdHBIT09ycVJNdkxRZEF2MEt5MDNMQ25CZjNPa1pYNXRBZ09SOEozb2QK
+```
+
+Installed 0.8 Companions still verify with the previous public key:
+
+```
+dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3NjIzREE2MkJDODNGNEQKUldSTlA4Z3JwajFpOTNsTGZZaVZGSmt5Mzd1MjRSNzN3SDBxbWpMWUtqaVhFNnJYK0JFUWxLUkwK
+```
+
+1. Do not change the GitHub secret `TAURI_SIGNING_PRIVATE_KEY` before 0.9 is published. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` stays empty.
+2. Tag **0.9** signed with that current secret (the old private key). The 0.9 binary contains the new public key, so Companions on 0.8 accept 0.9 and then trust the new key.
+3. After those installs have moved to 0.9, replace `TAURI_SIGNING_PRIVATE_KEY` with the new private key. The password is empty. Do not commit the private key.
+4. Tag **0.9.1** and later with the new secret. The pubkey in `tauri.conf.json` stays the new one.
+
+A release dry run prints the embedded pubkey in the job summary (`scripts/print-updater-pubkey.sh`). Swapping the secret before 0.9 ships would make every installed Companion reject the update.
 
 **Dry run before every tag** (D117): Actions → Release → Run workflow, branch `main`, `dry_run` ticked (`gh workflow run release.yml --ref main -f dry_run=true`). It builds the zip and both installers, checks their names, the zip contents and `latest.json`, renders the notes since the last tag into the run summary and fails on lines that are not for players, and uploads `dry-run-addon`, `dry-run-companion` and `dry-run-notes` as artifacts. It publishes nothing and touches no release or the updater feed. It warns when the version in `tauri.conf.json` already has a tag: bump it before you tag.
 
@@ -84,6 +103,8 @@ Release notes are one Install / Download section (the setup.exe, then the zip fo
 ## Game data
 
 `Core/Data/` collects every own-player source the addon can read ([ADRs 0027 to 0031](adr/README.md), D47-D63 in [decisions-v0.7.md](decisions-v0.7.md)). Each Section lives in `UnboredCharDB.data.sections` (scope `char`) or `UnboredDB.data.sections` (scope `account`) as `{ v, at, src, body }`, under `schema = 2`. Logout only stamps `savedAt`; the Companion hashes each Section and uploads the changed ones to `POST /v1/snapshot`. Big id sets are packed ([packed ids](contract/README.md#packed-id-sets)).
+
+The Account key on the wire is not the WTF folder name ([ADR 0044](adr/0044-hashed-account-key.md)). The Companion stores a 32-byte salt, hex-encoded, next to the device secret (`accountSalt` in `device.json`). It never sends the salt. The key is the folder name with the license suffix removed (`12345678#1` and `12345678#2` are both `12345678`). The hash is lowercase hex SHA-256 of `salt_bytes || 0x00 || utf8(account_key)`. Until this PC has seen a successful upload for that key, the body also includes `accountLegacy` with the old key so the Server can rename rows. After that, only the hash is sent. An older Companion that still sends the folder name keeps working; a 64-character hex string is stored as-is and is not split on `#`.
 
 Reads happen at three moments, never in combat, and every value where `issecretvalue(v)` is true is dropped: the **login pass** (10 s after entering the world, staged over frames), **event deltas** (settled for 2 s), and **window reads** (only while the bank or profession window is open). Nothing about other players is read: no chat, mail senders, subjects or bodies, rosters or names.
 

@@ -9,6 +9,10 @@
     "character": { "type": "string", "minLength": 1 },
     "realm": { "type": "string" },
     "account": { "type": "string" },
+    "accountLegacy": {
+      "type": "string",
+      "description": "Unhashed Account key, sent once so existing rows can be renamed (docs/adr/0044)."
+    },
     "savedAt": { "type": ["integer", "null"] },
     "profile": { "type": "object" }
   }

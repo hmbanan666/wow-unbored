@@ -58,7 +58,7 @@ The desktop app. It pairs the Device, installs and updates the addon, sends Requ
 _Avoid_: client, launcher, agent, uploader.
 
 **Device**
-One paired Companion install. The owner approves it via MCP.
+One paired Companion install. The owner approves a new one via MCP. After Forget my data, that PC can connect again itself (ADR 0045).
 _Avoid_: account, user, token, key (in anything the player sees).
 
 **Planner**

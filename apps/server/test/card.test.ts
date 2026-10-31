@@ -26,10 +26,11 @@ test("the D94 good titles pass without a warning", () => {
 
 test("the D94 bad titles get warnings and stay usable", () => {
   const facts = titleOf("Warlords Timewalking: you have 3200 currency");
-  assert.ok(facts.title && [...facts.title].length <= 40, facts.title);
+  const title = facts.title ?? "";
+  assert.ok(title.length > 0 && [...title].length <= 40, title);
   assert.ok(facts.warnings.some((line) => line.includes("state facts go in details")));
   assert.ok(facts.warnings.some((line) => line.includes("cut at a word")));
-  assert.ok(!facts.title.endsWith("…") && !facts.title.endsWith("..."), "no ellipsis");
+  assert.ok(!title.endsWith("…") && !title.endsWith("..."), "no ellipsis");
 
   const technical = titleOf("Plan for request mode surprise");
   assert.equal(technical.title, "Plan for request mode surprise");

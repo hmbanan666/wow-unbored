@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",
-    "vite-plus": "1.4.0"
+    "@types/node": "^26.6.6",
+    "vite-plus": "catalog:"
   }
 }
