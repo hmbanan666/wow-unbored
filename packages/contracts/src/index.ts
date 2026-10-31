@@ -405,14 +405,28 @@ export const snapshotBodySchema = z
   })
   .passthrough();
 
-export const SUGGESTION_KINDS = ["event", "achievement", "rare", "collection"] as const;
+export const SUGGESTION_KINDS = ["event", "achievement", "rare", "collection", "chain"] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
 
 /** Why an idea fits, as data, so the addon can say it in the player's language. */
 export type SuggestionReason =
   | { kind: "ends"; at: number }
   | { kind: "alts"; count: number }
-  | { kind: "near"; mapID: number };
+  | { kind: "near"; mapID: number }
+  /** An event that has not started yet (D130). */
+  | { kind: "starts"; at: number; count?: number }
+  /** A chain with no progress since `at` (D137). */
+  | { kind: "stopped"; at: number }
+  /** Another Character on the Account finished this chain (D135). */
+  | { kind: "altDone"; name: string };
+
+/** A quest chain idea's ground truth (D135, D138): ids from the client only. */
+export type SuggestionChain = {
+  questLineID: number;
+  nextQuestID?: number;
+  done: number;
+  total: number;
+};
 
 /** One idea for the choice Bubble (D106). */
 export type Suggestion = {
@@ -431,6 +445,8 @@ export type Suggestion = {
   rewards: string[];
   mapID?: number;
   expiresAt?: number;
+  /** Set with kind "chain". */
+  chain?: SuggestionChain;
   request: { topic: "suggestion"; suggestionId: string; wish: string };
 };
 
@@ -460,11 +476,26 @@ const suggestionSchema = z
         z.object({ kind: z.literal("ends"), at: z.number().int() }),
         z.object({ kind: z.literal("alts"), count: z.number().int().min(2) }),
         z.object({ kind: z.literal("near"), mapID: z.number().int().positive() }),
+        z.object({
+          kind: z.literal("starts"),
+          at: z.number().int(),
+          count: z.number().int().positive().optional(),
+        }),
+        z.object({ kind: z.literal("stopped"), at: z.number().int() }),
+        z.object({ kind: z.literal("altDone"), name: z.string().min(1).max(60) }),
       ])
       .optional(),
     rewards: z.array(z.string()).max(3),
     mapID: z.number().int().positive().optional(),
     expiresAt: z.number().int().optional(),
+    chain: z
+      .object({
+        questLineID: z.number().int().positive(),
+        nextQuestID: z.number().int().positive().optional(),
+        done: z.number().int().min(0),
+        total: z.number().int().positive(),
+      })
+      .optional(),
     request: z.object({
       topic: z.literal("suggestion"),
       suggestionId: z.string().min(1),
@@ -477,7 +508,7 @@ export const suggestionsBodySchema = z
   .object({
     v: z.literal(1),
     computedAt: z.number().int(),
-    characters: z.record(z.string(), z.array(suggestionSchema).max(6)),
+    characters: z.record(z.string(), z.array(suggestionSchema).max(10)),
   })
   .passthrough();
 

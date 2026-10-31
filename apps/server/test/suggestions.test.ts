@@ -117,11 +117,11 @@ test("achievements and rares come from the zones the player has been in", () => 
   assert.equal(looted.filter((item) => item.kind !== "collection").length, 0);
 });
 
-test("mounts nobody owns are suggested, nearby ones first, at most two", () => {
+test("mounts nobody owns are suggested, nearby ones first, at most three", () => {
   const catalog = loadCatalog();
   const list = suggest(input({ sessions: played(109) }));
   const mounts = list.filter((item) => item.kind === "collection");
-  assert.equal(mounts.length, 2);
+  assert.equal(mounts.length, 3);
   assert.equal(mounts[0]?.id, "mount:183");
   assert.equal(mounts[0]?.mapID, 109);
   for (const item of mounts) {
@@ -148,18 +148,30 @@ test("the Account angle adds a why and lifts a rare no alt has looted", () => {
   assert.equal(lootedOnAlt.find((item) => item.kind === "rare")?.why, undefined);
 });
 
-test("the list is ranked, capped at six and two per rule, with limits on every field", () => {
+test("the list is ranked, capped at ten and three per rule, with limits on every field", () => {
   const list = suggest(
     input(
-      { calendar: hallowsEnd, sessions: played(125, 554, 109, 70) },
+      {
+        calendar: hallowsEnd,
+        sessions: played(125, 554, 109, 70),
+        questLines: {
+          lines: [1, 2, 3, 4, 5].map((n) => ({
+            questLineID: n,
+            name: `Chain ${n}`,
+            done: 1,
+            total: 4,
+            nextQuestID: 90000 + n,
+          })),
+        },
+      },
       { characters: 3, altQuests: [new Set()] },
     ),
   );
-  assert.ok(list.length <= 6);
+  assert.ok(list.length <= 10 && list.length > 6, String(list.length));
   assert.equal(list[0]?.kind, "event");
   const perKind = new Map<string, number>();
   for (const item of list) perKind.set(item.kind, (perKind.get(item.kind) ?? 0) + 1);
-  for (const [kind, count] of perKind) assert.ok(count <= 2, kind);
+  for (const [kind, count] of perKind) assert.ok(count <= 3, kind);
   const parsed = suggestionsBodySchema.safeParse({
     v: 1,
     computedAt: NOW,
@@ -172,7 +184,26 @@ test("the shared fixture is what the rules make for Mira", () => {
   const file = new URL("../../../packages/contracts/fixtures/suggestions.json", import.meta.url);
   const list = suggest(
     input(
-      { calendar: hallowsEnd, sessions: played(554, 109), char: { faction: "Horde" } },
+      {
+        calendar: hallowsEnd,
+        sessions: played(554, 109),
+        char: { faction: "Horde" },
+        questLines: {
+          lines: [
+            {
+              questLineID: 5678,
+              name: "The Forgotten Path",
+              mapID: 2248,
+              x: 0.41,
+              y: 0.6,
+              done: 3,
+              total: 8,
+              nextQuestID: 79100,
+              flags: "i",
+            },
+          ],
+        },
+      },
       { characters: 2, altQuests: [new Set()] },
     ),
   );
@@ -360,7 +391,7 @@ test("a Russian Character gets every idea in Russian, with game names from token
   assert.equal(ach!.goal, "Получи {ach:1956} рядом с местами, где ты играешь.");
   assert.equal(ach!.titleToken, "{ach:1956}", "the addon shows the game's own name");
   const rare = list.find((item) => item.kind === "rare");
-  assert.equal(rare!.goal, "Поохоться на Huolon рядом с местами, где ты играешь.");
+  assert.equal(rare!.goal, "Поохоться на {npc:73167|Huolon} рядом с местами, где ты играешь.");
   assert.equal(rare!.why, "Нет ни у одного из твоих 3 персонажей");
   const mount = list.find((item) => item.kind === "collection");
   assert.equal(mount!.titleToken, "{instance:249}");
@@ -459,4 +490,213 @@ test("the Server writes ideas in the char Section's language, else the last Requ
   } finally {
     close();
   }
+});
+
+const timewalking = (starts: string, ends: string) => ({
+  events: [{ eventID: 559, title: "Timewalking Dungeon Event", kind: "HOLIDAY", starts, ends }],
+});
+
+test("a Timewalking week offers only the mounts you lack, and nothing once you have them", () => {
+  const open = suggest(input({ calendar: timewalking("2026-10-28 09:00", "2026-11-04 08:00") }));
+  const event = open.find((item) => item.kind === "event");
+  assert.ok(event, JSON.stringify(open));
+  assert.equal(event.title, "Timewalking Dungeon Event");
+  assert.deepEqual(event.rewards, ["{mount:781}", "{mount:778}"]);
+  assert.match(event.goal, /2 things/);
+  const one = suggest(
+    input({
+      calendar: timewalking("2026-10-28 09:00", "2026-11-04 08:00"),
+      mounts: { ids: packIds([778]) },
+    }),
+  );
+  assert.deepEqual(one.find((item) => item.kind === "event")?.rewards, ["{mount:781}"]);
+  const owned = suggest(
+    input({
+      calendar: timewalking("2026-10-28 09:00", "2026-11-04 08:00"),
+      mounts: { ids: packIds([778, 781]) },
+    }),
+  );
+  assert.equal(
+    owned.find((item) => item.kind === "event"),
+    undefined,
+    "nothing left, no idea",
+  );
+  const unknown = suggest(
+    input({
+      calendar: {
+        events: [
+          {
+            eventID: 1,
+            title: "Timewalking Dungeon Event",
+            kind: "HOLIDAY",
+            starts: "2026-10-28 09:00",
+            ends: "2026-11-04 08:00",
+          },
+        ],
+      },
+    }),
+  );
+  assert.equal(
+    unknown.find((item) => item.kind === "event"),
+    undefined,
+    "the title alone is no match",
+  );
+});
+
+test("an event that starts within three days scores below one that is on, and says when", () => {
+  const list = suggest(input({ calendar: timewalking("2026-11-01 09:00", "2026-11-08 08:00") }));
+  const event = list.find((item) => item.kind === "event");
+  assert.ok(event);
+  assert.equal(event.why, "Starts in 2 days");
+  assert.deepEqual(event.reason, {
+    kind: "starts",
+    at: Date.UTC(2026, 10, 1, 9, 0) / 1000,
+    count: 2,
+  });
+  const ru = suggest(
+    input({ calendar: timewalking("2026-10-31 09:00", "2026-11-08 08:00") }, { lang: "ru" }),
+  );
+  assert.equal(ru.find((item) => item.kind === "event")?.why, "Начнётся завтра");
+  const far = suggest(input({ calendar: timewalking("2026-11-06 09:00", "2026-11-13 08:00") }));
+  assert.equal(
+    far.find((item) => item.kind === "event"),
+    undefined,
+  );
+});
+
+const chainLine = (extra: Record<string, unknown> = {}) => ({
+  lines: [
+    {
+      questLineID: 5678,
+      name: "The Forgotten Path of the Long-Lost Valley of Echoes",
+      mapID: 2248,
+      done: 3,
+      total: 8,
+      nextQuestID: 79100,
+      ...extra,
+    },
+  ],
+});
+
+test("an unfinished chain is an idea with its progress and ids, a campaign scores higher", () => {
+  const list = suggest(input({ questLines: chainLine() }));
+  const chain = list.find((item) => item.kind === "chain");
+  assert.ok(chain, JSON.stringify(list));
+  assert.equal(chain.goal, "Continue: 3 of 8 done");
+  assert.ok([...chain.title].length <= 40 && !chain.title.endsWith(" "));
+  assert.equal(chain.title, "The Forgotten Path of the Long-Lost");
+  assert.deepEqual(chain.chain, { questLineID: 5678, nextQuestID: 79100, done: 3, total: 8 });
+  assert.equal(chain.mapID, 2248);
+  const ru = suggest(input({ questLines: chainLine() }, { lang: "ru" }));
+  assert.equal(ru.find((item) => item.kind === "chain")?.goal, "Продолжи: сделано 3 из 8");
+  const done = suggest(input({ questLines: chainLine(), questsDone: { ids: packIds([79100]) } }));
+  assert.equal(
+    done.find((item) => item.kind === "chain"),
+    undefined,
+    "the next quest is done",
+  );
+  const campaign = suggest(input({ questLines: chainLine({ flags: "c" }), sessions: played(14) }));
+  const ach = campaign.find((item) => item.kind === "achievement");
+  const story = campaign.find((item) => item.kind === "chain");
+  assert.ok(story && (!ach || campaign.indexOf(story) < campaign.indexOf(ach)));
+});
+
+test("a chain an alt finished says so", () => {
+  const list = suggest(
+    input(
+      { questLines: chainLine({ flags: "i|a" }) },
+      {
+        characters: 2,
+        alts: [{ name: "Grubbyman", quests: new Set([79100]) }],
+        altQuests: [new Set([79100])],
+      },
+    ),
+  );
+  const chain = list.find((item) => item.kind === "chain");
+  assert.equal(chain?.why, "Your Grubbyman already finished it");
+  assert.deepEqual(chain?.reason, { kind: "altDone", name: "Grubbyman" });
+});
+
+test("a chain with no progress for two weeks reads as dropped", async () => {
+  const { app, store, close } = createApp({
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-chains-")),
+    log: () => {},
+  });
+  const upload = async (lines: Record<string, unknown>) => {
+    const next = structuredClone(snapshot);
+    next.sections.questLines = { scope: "char", v: 1, body: lines, hash: sectionHash(lines) };
+    const posted = await app.request("/v1/snapshot", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${companion}`,
+        "content-type": "application/json",
+        "content-encoding": "gzip",
+      },
+      body: gzipSync(Buffer.from(JSON.stringify(next))),
+    });
+    assert.equal(posted.status, 200, await posted.clone().text());
+    return ((await posted.json()) as { account: string }).account;
+  };
+  const chainAt = (account: string, now: number) => {
+    store.suggestions.computeAccount(account, now);
+    const row = store.data.characters(account)[0]!;
+    return store.suggestions.forCharacter(row, now)!.list.find((item) => item.kind === "chain");
+  };
+  try {
+    const account = await upload(chainLine());
+    assert.equal(chainAt(account, NOW)?.reason, undefined);
+    const later = NOW + 15 * 86_400;
+    const stale = chainAt(account, later);
+    assert.equal(stale?.why, "You stopped here 2 weeks ago");
+    assert.deepEqual(stale?.reason, { kind: "stopped", at: NOW });
+    await upload(chainLine({ done: 4 }));
+    assert.equal(chainAt(account, later + 60)?.reason, undefined, "progress restarts the clock");
+  } finally {
+    close();
+  }
+});
+
+test("rare names come from the Blizzard creature cache per language, English otherwise", async () => {
+  const asked: string[] = [];
+  const { store, close } = createApp({
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-names-")),
+    log: () => {},
+    companionToken: companion,
+    plannerToken: planner,
+    blizzard: { clientId: "id", clientSecret: "secret", region: "eu" },
+    blizzardFetch: async (url) => {
+      asked.push(url);
+      if (url.startsWith("https://oauth.battle.net/")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: "t", expires_in: 3600 }),
+        };
+      }
+      if (url.includes("locale=ru_RU")) {
+        return { ok: true, status: 200, json: async () => ({ name: "Хуолон" }) };
+      }
+      return { ok: false, status: 500, json: async () => ({}) };
+    },
+  });
+  await store.suggestions.names!.warm!([73167], ["en_US", "ru_RU"]);
+  assert.ok(
+    asked.some((url) => url.includes("/data/wow/creature/73167?namespace=static-eu&locale=ru_RU")),
+  );
+  assert.equal(store.creatureNames.get(73167, "ru_RU"), "Хуолон");
+  assert.equal(store.creatureNames.get(73167, "en_US"), undefined, "an error is not cached");
+  const lookup = (lang: "en" | "ru") => (npcID: number) =>
+    store.suggestions.names!.get(npcID, lang === "ru" ? "ru_RU" : "en_US");
+  const ru = suggest(input({ sessions: played(554) }, { lang: "ru", npcName: lookup("ru") }));
+  const rare = ru.find((item) => item.kind === "rare");
+  assert.equal(rare?.title, "Хуолон");
+  assert.equal(rare?.goal, "Поохоться на {npc:73167|Хуолон} рядом с местами, где ты играешь.");
+  const en = suggest(input({ sessions: played(554) }, { npcName: lookup("en") }));
+  assert.equal(en.find((item) => item.kind === "rare")?.title, "Huolon");
+  const calls = asked.length;
+  await store.suggestions.names!.warm!([73167], ["ru_RU"]);
+  assert.equal(asked.length, calls, "a cached name is not asked again");
+  close();
 });

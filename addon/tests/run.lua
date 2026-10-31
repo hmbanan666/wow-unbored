@@ -742,14 +742,16 @@ UnitName = function() return "Mira" end
 GetRealmName = function() return "Silvermoon" end
 ns.Now = function() return UnboredSuggestions.computedAt end
 local ideas = ns.Suggestions.Read()
-check(#ideas == 4 and ideas[1].kind == "event" and ideas[3].id == "mount:183", "the Companion's ideas are read")
-check(ideas[3].rewards[1] == "{mount:183}" and ideas[3].mapID == 109, "an idea keeps its reward and map")
+check(#ideas == 6 and ideas[1].kind == "event" and ideas[2].kind == "chain" and ideas[4].id == "mount:183",
+  "the Companion's ideas are read")
+check(ideas[2].chain.questLineID == 5678 and ideas[2].chain.nextQuestID == 79100, "a chain idea keeps its ids")
+check(ideas[4].rewards[1] == "{mount:183}" and ideas[4].mapID == 109, "an idea keeps its reward and map")
 check(ideas[1].wish ~= nil and ideas[1].quick == nil, "a Server idea has its wish and no Quick plan")
-check(ns.Suggestions.Line(ideas[1]) == "Ends soon" and ns.Suggestions.Line(ideas[3]) ==
+check(ns.Suggestions.Line(ideas[1]) == "Ends soon" and ns.Suggestions.Line(ideas[4]) ==
   "None of your 2 characters has it yet", "the line under a title comes from the reason")
-check(ns.Suggestions.Line(ideas[2]) == "Near where you play", "a rare near where you play")
+check(ns.Suggestions.Line(ideas[3]) == "Near where you play", "a rare near where you play")
 ns.Now = function() return UnboredSuggestions.computedAt + 3 * 86400 end
-check(#ns.Suggestions.Read() == 3, "an idea that ran out is not shown")
+check(#ns.Suggestions.Read() == 5, "an idea that ran out is not shown")
 ns.Now = function() return UnboredSuggestions.computedAt end
 GetRealmName = function() return "Elsewhere" end
 check(#ns.Suggestions.Read() == 0, "another character's ideas are not shown")
@@ -780,7 +782,7 @@ local localIdeas = {
 local merged = ns.Suggestions.Merge(ideas, localIdeas, 4)
 check(#merged == 4 and merged[1].id == ideas[1].id and merged[4].id == ideas[4].id,
   "Server ideas come first and only four are shown")
-merged = ns.Suggestions.Merge({ ideas[1], ideas[3] }, localIdeas, 4)
+merged = ns.Suggestions.Merge({ ideas[1], ideas[4] }, localIdeas, 4)
 check(#merged == 3 and merged[3].id == "rare:new", "the same holiday or reward is shown once")
 
 ns.Suggestions.cache = nil
@@ -945,7 +947,7 @@ ns.Suggestions.Invalidate()
 -- Picking a Server idea: straight to Confirm, then a Request with its copy and no time.
 local keepRequest, keepState = UnboredCharDB.request, ns.Session.state
 UnboredCharDB.request = nil
-ns.Session:BeginSuggestion(ideas[3])
+ns.Session:BeginSuggestion(ideas[4])
 local flow = ns.Session.Flow()
 check(ns.Session:FlowState() == "confirm" and flow.topic == "suggestion" and flow.mode == "farm",
   "a Server idea goes straight to Confirm with its mode")

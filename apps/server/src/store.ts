@@ -16,7 +16,7 @@ import {
   type ProgressPost,
 } from "./plan.ts";
 
-import { IdCache } from "./blizzard.ts";
+import { IdCache, NameCache } from "./blizzard.ts";
 import {
   DataStore,
   type DigestAlt,
@@ -80,6 +80,7 @@ export class Store {
   readonly data: DataStore;
   readonly suggestions: SuggestionStore;
   readonly gameIds: IdCache;
+  readonly creatureNames: NameCache;
 
   constructor(dataDir: string) {
     this.db = new DatabaseSync(sqlitePath(dataDir));
@@ -190,8 +191,9 @@ export class Store {
     ]);
     this.addColumns("devices", [["forget_revoked", "INTEGER NOT NULL DEFAULT 0"]]);
     this.data = new DataStore(this.db);
-    this.suggestions = new SuggestionStore(this.db, this.data);
     this.gameIds = new IdCache(this.db);
+    this.creatureNames = new NameCache(this.db);
+    this.suggestions = new SuggestionStore(this.db, this.data, this.creatureNames);
   }
 
   private addColumns(table: string, added: [string, string][]): void {

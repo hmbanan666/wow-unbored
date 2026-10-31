@@ -62,6 +62,11 @@ export function createApp(
     config.blizzardFetch,
   );
   log(gameIds.describe());
+  // Russian rare names for ideas come from the same Blizzard credentials (D154).
+  store.suggestions.names = {
+    get: (npcID, locale) => store.creatureNames.get(npcID, locale),
+    warm: (npcIDs, locales) => gameIds.warmCreatureNames(store.creatureNames, npcIDs, locales),
+  };
 
   // Method, path, status, and why a request was refused. Never headers or bodies.
   app.use("*", async (c, next) => {

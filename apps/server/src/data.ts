@@ -36,6 +36,7 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   recipes: { scope: "char", v: 1 },
   questsDone: { scope: "char", v: 1 },
   questLog: { scope: "char", v: 1 },
+  questLines: { scope: "char", v: 1 },
   reputation: { scope: "char", v: 1 },
   achievements: { scope: "account", v: 1 },
   achievementsMine: { scope: "char", v: 1 },
@@ -46,7 +47,7 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   lockouts: { scope: "char", v: 1 },
   mplus: { scope: "char", v: 1 },
   vault: { scope: "char", v: 1 },
-  calendar: { scope: "account", v: 1 },
+  calendar: { scope: "account", v: 2 },
   sessions: { scope: "char", v: 1 },
   addons: { scope: "account", v: 1 },
   unresolvedIds: { scope: "char", v: 1 },
@@ -1190,6 +1191,15 @@ export class DataStore {
     const counts: Raw = {};
     for (const [path, set] of packedSets(row.body)) counts[path] = unpackRows(set).length;
     const last = this.lastChange(row.ownerKind, row.ownerId, row.section);
+    // D160: ids Bory could not help with, counted per kind (quest, item, advice, ...).
+    let byKind: Record<string, number> | undefined;
+    if (row.section === "unresolvedIds" && Array.isArray(row.body.list)) {
+      byKind = {};
+      for (const entry of row.body.list as Raw[]) {
+        const kind = typeof entry?.kind === "string" ? entry.kind : "unknown";
+        byKind[kind] = (byKind[kind] ?? 0) + 1;
+      }
+    }
     return {
       name: row.section,
       v: row.v,
@@ -1200,6 +1210,7 @@ export class DataStore {
       unknown: row.unknown,
       ...(Object.keys(counts).length ? { counts } : {}),
       ...(typeof row.body.count === "number" ? { count: row.body.count } : {}),
+      ...(byKind ? { byKind } : {}),
       lastChange: last ? { at: last.at, ...changeSummary(last.kind, last.body) } : null,
     };
   }
