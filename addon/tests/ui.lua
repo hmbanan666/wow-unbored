@@ -176,6 +176,12 @@ local methods = {
   SetTexture = function(self, texture)
     self.texture = texture
   end,
+  SetRotation = function(self, radians)
+    self.rotation = radians
+  end,
+  SetTexCoord = function(self, ...)
+    self.texCoord = { ... }
+  end,
   Enable = function(self)
     self.disabled = false
   end,
@@ -727,6 +733,24 @@ for _, region in ipairs({ "pipRow", "goal", "details", "list", "where" }) do
   check(not mascot[region]:IsShown(), "closed: no " .. region)
 end
 check(mascot.cardToggle:IsShown() and textOf(mascot.cardToggle.label) == "Show more", "one Show more toggle")
+check(mascot.cardToggle.chevron.rotation == math.pi / 2, "closed: the chevron points down (D166)")
+check(mascot.collapse.icon.rotation == -math.pi / 2, "the collapse icon points up: fold it up (D166)")
+local function shownRegions()
+  local out = {}
+  for _, name in ipairs({ "meta", "header", "title", "condition", "message", "why", "sub", "where", "goal",
+    "details", "pipRow", "list", "rewardsHeader", "cardToggle" }) do
+    if mascot[name]:IsShown() then
+      out[#out + 1] = name
+    end
+  end
+  for i = 1, #mascot.rewardLines do
+    if mascot.rewardLines[i]:IsShown() then
+      out[#out + 1] = "reward" .. i
+    end
+  end
+  return table.concat(out, ",")
+end
+local closedRegions = shownRegions()
 check(C_Map.pin and C_Map.pin.uiMapID == 84, "the current step is pinned")
 check(shownButtons() == "done,skip", "a plain step: Done and Skip")
 rowFits("a step card")
@@ -759,6 +783,20 @@ check(mascot.view.all[3].detail == "second note", "a click on a later step shows
 mascot.cardToggle:Click()
 check(not ns.Mascot.CardOpen() and not mascot.list:IsShown() and mascot.bubble.height == closedHeight,
   "Show less closes it again")
+-- D165: the open card had a footer; closed, nothing of the open card is left on screen.
+for _, region in ipairs({ "where", "goal", "details", "list", "pipRow", "rewardsHeader" }) do
+  check(not mascot[region]:IsShown(), "closed after open: no " .. region)
+end
+check(textOf(mascot.where) == "", "closed: the footer time is emptied too")
+for i = 2, #mascot.rewardLines do
+  check(not mascot.rewardLines[i]:IsShown(), "closed after open: no reward line " .. i)
+end
+check(shownRegions() == closedRegions, "closed -> open -> closed shows only what the closed view lists: "
+  .. shownRegions() .. " vs " .. closedRegions)
+check(mascot.cardToggle.chevron.rotation == math.pi / 2, "closed again: the chevron points down")
+mascot.cardToggle:Click()
+check(mascot.cardToggle.chevron.rotation == -math.pi / 2, "open: the chevron points up")
+mascot.cardToggle:Click()
 
 -- Welcome back on login.
 ns.Session.welcomeBack = true

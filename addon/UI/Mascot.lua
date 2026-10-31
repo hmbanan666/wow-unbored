@@ -42,6 +42,10 @@ local LIST_MAX_HEIGHT = 260
 local LIST_ROW_GAP = 4
 -- The drop hint stops once the player has handed Bory this many items.
 local DROP_TEACH = 3
+-- Media/IconChevron.tga points left ("<"), and SetRotation turns it
+-- counter-clockwise: closed points down (more below), open points up (D166).
+local CHEVRON_DOWN = math.pi / 2
+local CHEVRON_UP = -math.pi / 2
 
 -- The portrait is layers (BRAND.md): a disc, Bory, and the gold ring on top.
 -- A mood swaps only Bory's layer.
@@ -535,13 +539,12 @@ local function textToggle(parent, onClick)
     end
     onClick()
   end)
-  -- TODO(verify-in-game): which way IconChevron points; it is turned for open and closed.
   button.SetOpen = function(self, text, open)
     self.label:SetText(text)
     local width = math.ceil(ns.AsNumber(self.label:GetStringWidth()) or 60)
     self:SetWidth(width + 16)
     if self.chevron.SetRotation then
-      self.chevron:SetRotation(open and math.pi / 2 or -math.pi / 2)
+      self.chevron:SetRotation(open and CHEVRON_UP or CHEVRON_DOWN)
     end
   end
   button:Hide()
@@ -1835,12 +1838,25 @@ local function clearBubble(mascot)
   mascot.moreIdeas:Hide()
   mascot.wishBox:Hide()
   mascot.minutesBox:Hide()
-  for _, region in ipairs({ mascot.title, mascot.pipRow, mascot.goal, mascot.condition, mascot.why,
-    mascot.cardToggle, mascot.details, mascot.list, mascot.rewardsHeader }) do
-    region:Hide()
-  end
+end
+
+-- Every text and region Layout may place (D165). All of them are hidden and
+-- emptied before a view is laid out, so a region a view skips (the footer of
+-- a closed card) can never stay on screen at an old anchor.
+local function resetRegions(mascot)
+  local texts = { mascot.meta, mascot.header, mascot.title, mascot.condition, mascot.message, mascot.why,
+    mascot.sub, mascot.where, mascot.goal, mascot.details, mascot.rewardsHeader }
   for i = 1, #mascot.rewardLines do
-    mascot.rewardLines[i]:Hide()
+    texts[#texts + 1] = mascot.rewardLines[i]
+  end
+  for i = 1, #texts do
+    texts[i]:SetText("")
+    texts[i]:ClearAllPoints()
+    texts[i]:Hide()
+  end
+  for _, region in ipairs({ mascot.pipRow, mascot.list, mascot.cardToggle }) do
+    region:ClearAllPoints()
+    region:Hide()
   end
 end
 
@@ -1933,13 +1949,11 @@ function ns.Mascot:Layout(view, right)
     bubble:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, 0)
   end
   bubble:Show()
-  if self.collapse.icon.SetTexCoord then
-    if right then
-      self.collapse.icon:SetTexCoord(1, 0, 0, 1)
-    else
-      self.collapse.icon:SetTexCoord(0, 1, 0, 1)
-    end
+  -- The bubble is open whenever the collapse icon shows, so it points up.
+  if self.collapse.icon.SetRotation then
+    self.collapse.icon:SetRotation(CHEVRON_UP)
   end
+  resetRegions(self)
 
   local y = -PAD + 2
   local function put(fs, value, gap, width)
@@ -1969,8 +1983,6 @@ function ns.Mascot:Layout(view, right)
   ns.Markup.UseNpcs(view.npcs)
   local topWidth = inner - (TOP_ICON + 4) * 2 - 4
   if view.card then
-    self.meta:SetText("")
-    self.meta:Hide()
     put(self.title, view.title, 8, topWidth)
     self:LayoutCard(view, inner, function(region, height, gap, x)
       region:ClearAllPoints()
