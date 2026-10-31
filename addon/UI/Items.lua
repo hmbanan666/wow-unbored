@@ -7,6 +7,7 @@ local _, ns = ...
 ns.Items = {}
 
 local ACCENT = ns.Hex(ns.PALETTE.gold)
+local MUTED = ns.Hex(ns.PALETTE.muted)
 local BAGS = 5
 
 local function num(value)
@@ -140,6 +141,10 @@ function ns.Items.Facts(itemID, link, where)
   if task then
     lines[#lines + 1] = ns.T("FACT_PLAN", ns.Markup.Plain(task.title or "", task.npcs))
   end
+  local held = ns.Advice.HoldingsLine(itemID)
+  if held then
+    lines[#lines + 1] = held
+  end
   if rule ~= "collection" then
     local collectible = mountFact or ns.Items.PetFact(itemID) or ns.Items.ToyFact(itemID)
       or ns.Items.LookFact(itemID, link)
@@ -179,7 +184,8 @@ local function tooltipSlot(data)
   return ns.Call(location.GetBagAndSlot, location)
 end
 
--- At most one accent line, and only when Bory has something personal to say.
+-- At most two lines (D144): Bory's accent line when there is something
+-- personal to say, then the muted holdings line.
 function ns.Items.OnTooltip(tooltip, data)
   if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then
     return
@@ -202,10 +208,13 @@ function ns.Items.OnTooltip(tooltip, data)
   local bag, slot = tooltipSlot(data)
   local where = { link = link, bag = num(bag), slot = num(slot), lines = tooltipLines(data) }
   local advice = ns.Advice.For(itemID, where)
-  if not advice or not advice.line then
-    return
+  if advice and advice.line then
+    tooltip:AddLine(ACCENT .. ns.MASCOT_NAME .. ":|r " .. advice.line, 1, 1, 1, true)
   end
-  tooltip:AddLine(ACCENT .. ns.MASCOT_NAME .. ":|r " .. advice.line, 1, 1, 1, true)
+  local held = ns.Advice.HoldingsLine(itemID)
+  if held then
+    tooltip:AddLine(MUTED .. held .. "|r", 1, 1, 1, true)
+  end
 end
 
 function ns.Items.FromLink(link)

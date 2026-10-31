@@ -1,5 +1,5 @@
--- Advice (docs/adr/0035, 0021): at most one "Bory: ..." line for an item, and
--- only when it is about this player: the active Plan, a quest this character
+-- Advice (docs/adr/0035, 0021, 0048): at most one "Bory: ..." line for an
+-- item, plus the muted holdings line, and only when it is about this player: the active Plan, a quest this character
 -- has not done, something new for the Account's collection, Personal advice
 -- from the Server, or an Alt who uses the reagent. First match wins.
 -- Never says "delete"; never says sell or vendor for an epic or a BoE item.
@@ -219,6 +219,86 @@ function ns.Advice.AltFor(skills)
   return bestAlt, bestRow
 end
 
+local function myKey()
+  return tostring(ns.Call(UnitName, "player") or "") .. "-" .. tostring(ns.Call(GetRealmName) or "")
+end
+
+-- Where else this item is on the Account (docs/adr/0048), from the Server's
+-- holdings index in Advice.lua: { key, name, count, warband } per place,
+-- largest first, never this character's own place. Nil without data, with
+-- sharing off (D147), or when the index is for another Account.
+function ns.Advice.Holdings(itemID)
+  itemID = num(itemID)
+  local data = type(UnboredAdvice) == "table" and UnboredAdvice.holdings or nil
+  if not itemID or type(data) ~= "table" or type(data.places) ~= "table" or type(data.items) ~= "table"
+    or (ns.DB and ns.DB.shareData == false) then
+    return nil
+  end
+  local value = data.items[itemID]
+  if type(value) ~= "string" then
+    return nil
+  end
+  local me, mine = myKey(), nil
+  for i = 1, #data.places do
+    if data.places[i] == me then
+      mine = i
+    end
+  end
+  if not mine then
+    return nil
+  end
+  local out = {}
+  for place, count in value:gmatch("([%dw]+):(%d+)") do
+    local index, warband = tonumber(place), place == "w"
+    local key = warband and "warband" or index and data.places[index]
+    count = tonumber(count)
+    if type(key) == "string" and index ~= mine and count and count > 0 then
+      out[#out + 1] = {
+        key = key,
+        name = warband and nil or key:match("^([^-]+)") or key,
+        count = count,
+        warband = warband,
+      }
+    end
+  end
+  table.sort(out, function(a, b)
+    return a.count > b.count
+  end)
+  return #out > 0 and out or nil
+end
+
+ns.Advice.HOLDINGS_SHOWN = 3
+
+-- "Also: Grubbyman 40, Warband bank 200, +2" (D142), or nil.
+function ns.Advice.HoldingsLine(itemID, lang)
+  local list = ns.Advice.Holdings(itemID)
+  if not list then
+    return nil
+  end
+  lang = lang or ns.LANG or "en"
+  local parts = {}
+  for i = 1, math.min(#list, ns.Advice.HOLDINGS_SHOWN) do
+    local place = list[i]
+    parts[#parts + 1] = (place.warband and ns.TL(lang, "HOLDINGS_WARBAND") or place.name) .. " " .. place.count
+  end
+  if #list > ns.Advice.HOLDINGS_SHOWN then
+    parts[#parts + 1] = ns.TL(lang, "HOLDINGS_MORE", #list - ns.Advice.HOLDINGS_SHOWN)
+  end
+  return ns.TL(lang, "HOLDINGS_ALSO", table.concat(parts, ", "))
+end
+
+-- How many of this item an Alt already has, from the holdings index.
+local function altHas(ctx, alt)
+  if ctx.held == nil then
+    ctx.held = {}
+    local list = ns.Advice.Holdings(ctx.itemID) or {}
+    for i = 1, #list do
+      ctx.held[list[i].key] = list[i].count
+    end
+  end
+  return ctx.held[tostring(alt.name) .. "-" .. tostring(alt.realm)]
+end
+
 -- Warband bank for warbound items or when mail cannot reach the Alt.
 local function route(ctx, alt)
   if ACCOUNT_BINDS[ctx.info.bindType] then
@@ -246,8 +326,23 @@ local function altRule(ctx)
   if not alt then
     return nil
   end
+  -- D145: an Alt who uses it and already has a stack goes first.
+  local alts = ns.Profile.Alts() or {}
+  local best = 0
+  for i = 1, #alts do
+    local has = altHas(ctx, alts[i]) or 0
+    local skill = professionFor(type(alts[i].professions) == "table" and alts[i].professions or {}, skills)
+    if skill and has > best then
+      alt, row, best = alts[i], skill, has
+    end
+  end
   local key = route(ctx, alt) == "mail" and "ADV_SEND_MAIL" or "ADV_SEND_BANK"
-  local out = result(T(ctx, key, alt.name, row.name or "", num(row.skill) or 0), "send", "alt")
+  local out
+  if best > 0 then
+    out = result(T(ctx, key .. "_HAS", alt.name, best), "send", "alt")
+  else
+    out = result(T(ctx, key, alt.name, row.name or "", num(row.skill) or 0), "send", "alt")
+  end
   out.to = alt.name
   return out
 end

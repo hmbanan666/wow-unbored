@@ -972,6 +972,46 @@ UnboredDB.alts = {
 check(tip(901):find("warband bank", 1, true), "what this PC saw wins over the digest: " .. tip(901))
 check(#ns.Profile.Alts() == 1, "the digest never adds an Alt twice")
 UnboredDB.alts = localAlts
+
+-- Holdings (docs/adr/0048): one muted line under Bory's, never this character's own place.
+ITEMS[905] = { name = "Linen", quality = 1, classID = 15 }
+UnboredAdvice.characters["Area 52-Hero"].alts = nil
+UnboredAdvice.holdings = {
+  places = { "Grubbyman-Area 52", "Hero-Area 52", "Alty-Area 52", "Brew-Area 52", "Zed-Area 52", "warband" },
+  items = {
+    [902] = "w:200,1:40,2:5",
+    [905] = "1:3,3:2,4:9,5:1,w:7",
+    [906] = "2:20",
+    [901] = "3:12",
+  },
+}
+local MUTED_HEX = "|cffb8a385"
+local first, second = tip(902)
+check(first:find("the Planner says", 1, true) and second == MUTED_HEX .. "Also: Warband bank 200, Grubbyman 40|r",
+  "Bory's line, then where else it is, without this character's own bags: " .. tostring(second))
+first, second = tip(905)
+check(first == MUTED_HEX .. "Also: Brew 9, Warband bank 7, Grubbyman 3, +2|r" and second == nil,
+  "holdings alone is fine, up to three places then +N: " .. first)
+ITEMS[906] = { name = "Own Thing", quality = 1, classID = 15 }
+check(tip(906) == "", "only this character has it: nothing")
+check(#ns.Items.Facts(905) >= 1 and ns.Items.Facts(905)[1]:find("Also:", 1, true), "the item bubble says it too")
+UnboredDB.alts = {
+  ["Area 52-Alty"] = { name = "Alty", realm = "Area 52", faction = "Alliance", seenAt = 1,
+    professions = { { skillLine = 171, name = "Alchemy", skill = 50 } } },
+  ["Area 52-Brew"] = { name = "Brew", realm = "Area 52", faction = "Alliance", seenAt = 1,
+    professions = { { skillLine = 171, name = "Alchemy", skill = 90 } } },
+}
+check(tip(901):find("Send to Alty (has 12): mail it", 1, true),
+  "routing prefers the Alt who already has a stack (D145): " .. tip(901))
+UnboredDB.alts = localAlts
+check(ns.Advice.HoldingsLine(902, "ru") == "Ещё: банк отряда 200, Grubbyman 40", "and in Russian")
+UnboredDB.shareData = false
+check(select(2, tip(902)) == nil, "data sharing off: no holdings line (D147)")
+UnboredDB.shareData = true
+UnboredAdvice.holdings.places[2] = "Hero-Other Realm"
+check(tip(905) == "", "an index for another Account says nothing")
+UnboredAdvice.holdings = nil
+check(tip(905) == "", "no index: nothing")
 UnboredAdvice = nil
 local toyStep = { id = "toy", title = "Get {item:1234|the toy}", complete = { kind = "toy", itemID = 1234 } }
 ns.Session:ApplyPlan({ tasks = { toyStep } }, "import", false)
