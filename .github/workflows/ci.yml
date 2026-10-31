@@ -20,10 +20,10 @@ jobs:
         with:
           workspaces: apps/companion/src-tauri -> target
 
-      - name: Install Lua 5.1 and luacheck
+      - name: Install Lua 5.1, luacheck and minisign
         run: |
           sudo apt-get update
-          sudo apt-get install -y lua5.1 lua-check
+          sudo apt-get install -y lua5.1 lua-check minisign
 
       - uses: pnpm/action-setup@v4
         with:
@@ -39,6 +39,11 @@ jobs:
           pnpm lint
           pnpm test
           pnpm check-version
+
+      - name: Release checks catch a wrong updater key and a cold Windows cache
+        run: |
+          bash .github/scripts/test-verify-updater-sigs.sh
+          bash .github/scripts/check-rust-cache.sh
 
       - name: Updater feed keeps the shape installed Companions read
         run: |
