@@ -133,7 +133,7 @@ const entitiesSchema = z
 export function createMcpServer(store: Store, dataDir: string, gameIds?: BlizzardIds): McpServer {
   const server = new McpServer({
     name: "unbored",
-    version: "0.9.0",
+    version: "0.9.1",
   });
 
   const taskSchema = z

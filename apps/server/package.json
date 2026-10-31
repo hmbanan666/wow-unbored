@@ -1,6 +1,6 @@
 {
   "name": "@unbored/server",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "description": "Plan store for Unbored Companion and the planner",
   "license": "MIT",

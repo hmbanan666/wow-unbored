@@ -1,6 +1,6 @@
 {
   "name": "@unbored/contracts",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "description": "Shared Request, Plan, Player profile, and Game data snapshot types for Unbored",
   "license": "MIT",
