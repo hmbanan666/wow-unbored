@@ -554,7 +554,9 @@ function cleanContains(
       const token = singleToken(value);
       const id = token ? `${token.type}:${token.id}` : "";
       if (!token || !CONTAINS_TYPES.has(token.type)) {
-        warn(`${key}: ${String(value).slice(0, 40)} must be one mount, toy, pet or item token; dropped`);
+        warn(
+          `${key}: ${String(value).slice(0, 40)} must be one mount, toy, pet or item token; dropped`,
+        );
         continue;
       }
       if (seen.has(id)) continue;
@@ -585,9 +587,7 @@ function warnLooseContents(
 ): void {
   const kinds = (rewards ?? []).map((token) => singleToken(token));
   const mounts = kinds.filter((token) => token?.type === "mount").length;
-  const loose = kinds.some(
-    (token) => token?.type === "item" && !contains?.[token.raw],
-  );
+  const loose = kinds.some((token) => token?.type === "item" && !contains?.[token.raw]);
   if (mounts >= 2 && loose) {
     check.warnings?.push(
       "Plan rewards: 2+ mounts and an item without contains. If the item is a cage, chest or bag that drops, it is the reward and the mounts go in contains",
@@ -610,7 +610,9 @@ function cleanGroups(tasks: Task[], check: MarkupCheck): Task[] {
   }
   for (const [group, count] of runs) {
     if (broken.has(group)) {
-      check.warnings?.push(`Step group ${group}: its steps must be next to each other; group dropped`);
+      check.warnings?.push(
+        `Step group ${group}: its steps must be next to each other; group dropped`,
+      );
     } else if (count < 2) {
       check.warnings?.push(`Step group ${group}: a group needs at least 2 steps; group dropped`);
     }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 import {
@@ -38,9 +39,12 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   questsDone: { scope: "char", v: 1 },
   questLog: { scope: "char", v: 1 },
   questLines: { scope: "char", v: 1 },
-  reputation: { scope: "char", v: 1 },
+  /** v2 adds renown `next` rewards and `max`, and `paragon` (D181); v1 bodies still read. */
+  reputation: { scope: "char", v: 2 },
   achievements: { scope: "account", v: 1 },
   achievementsMine: { scope: "char", v: 1 },
+  /** Incomplete achievements at least half done (D182). */
+  achProgress: { scope: "char", v: 1 },
   mounts: { scope: "account", v: 1 },
   pets: { scope: "account", v: 1 },
   toys: { scope: "account", v: 1 },
@@ -52,8 +56,66 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   sessions: { scope: "char", v: 1 },
   addons: { scope: "account", v: 1 },
   unresolvedIds: { scope: "char", v: 1 },
+  /** Where the addon broke (ADR 0051); only exists after something did. */
+  errors: { scope: "account", v: 1 },
   /** A 0.6 `POST /v1/profile` upload, kept whole. */
   profile: { scope: "char", v: 1 },
+};
+
+/** Sections a Character or Account should have; `errors` and the 0.6 `profile` are not expected (D171). */
+const NOT_EXPECTED = new Set(["errors", "profile"]);
+/** Read only while a window is open, with the hint the owner sees (D171). */
+const WINDOW_SECTIONS: Record<string, string> = {
+  bank: "open the bank",
+  reagentBank: "open the bank",
+  warband: "open the warband bank",
+  recipes: "open a profession",
+};
+/** Written even with data sharing off (addon `S.ESSENTIAL`). */
+const ESSENTIAL_SECTIONS = new Set(["char", "gear", "questLog", "sessions"]);
+
+export type MissingReason = "window" | "dropped" | "sharing" | "never";
+export type MissingSection = {
+  section: string;
+  scope: SectionScope;
+  reason: MissingReason;
+  hint?: string;
+};
+
+export function expectedSections(scope: SectionScope): string[] {
+  return Object.entries(KNOWN_SECTIONS)
+    .filter(([name, known]) => known.scope === scope && !NOT_EXPECTED.has(name))
+    .map(([name]) => name);
+}
+
+/** A stored Section's change, for wins (D196). */
+export type SectionChange = {
+  section: string;
+  scope: SectionScope;
+  ownerId: string;
+  at: number;
+  kind: "full" | "diff";
+  body: unknown;
+  /** True when the body version changed: never a win. */
+  versionChanged: boolean;
+};
+
+export const ERRORS_LIST_MAX = 200;
+
+export type AddonErrorRow = {
+  hash: string;
+  account: string;
+  deviceId: string | null;
+  character: string;
+  realm: string;
+  version: string;
+  where: string;
+  text: string;
+  stack: string;
+  count: number;
+  firstAt: number;
+  lastAt: number;
+  seenAt: number;
 };
 
 export type IdKind = "quest" | "achievement" | "mount" | "toy" | "pet" | "recipe";
@@ -543,6 +605,23 @@ export class DataStore {
       );
       CREATE INDEX IF NOT EXISTS section_history_owner ON section_history (owner_kind, owner_id, at);
       CREATE TABLE IF NOT EXISTS data_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS addon_errors (
+        hash TEXT NOT NULL,
+        account TEXT NOT NULL,
+        device_id TEXT,
+        character_name TEXT NOT NULL,
+        realm TEXT NOT NULL,
+        version TEXT NOT NULL,
+        "where" TEXT NOT NULL,
+        text TEXT NOT NULL,
+        stack TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        first_at INTEGER NOT NULL,
+        last_at INTEGER NOT NULL,
+        seen_at INTEGER NOT NULL,
+        PRIMARY KEY (account, hash)
+      );
+      CREATE INDEX IF NOT EXISTS addon_errors_last ON addon_errors (last_at);
     `);
     this.backfill();
   }
@@ -625,6 +704,7 @@ export class DataStore {
     bytes: number;
     unknown: boolean;
     now: number;
+    changes?: SectionChange[];
   }): "stored" | "unchanged" | "stale" {
     const previous = this.section(input.ownerKind, input.ownerId, input.name);
     if (previous && previous.hash === input.hash) return "unchanged";
@@ -672,13 +752,119 @@ export class DataStore {
         change.kind,
         JSON.stringify(change.body),
       );
+    input.changes?.push({
+      section: input.name,
+      scope: input.ownerKind,
+      ownerId: input.ownerId,
+      at: input.at ?? input.now,
+      kind: change.kind,
+      body: change.body,
+      versionChanged: Boolean(previous && previous.v !== input.v),
+    });
     return "stored";
+  }
+
+  /** Each `errors` row becomes one `addon_errors` row per Account and hash; count is the most seen (D178). */
+  private putErrors(input: {
+    account: string;
+    deviceId?: string;
+    character: string;
+    realm: string;
+    body: Raw;
+    now: number;
+  }): void {
+    const rows = Array.isArray(input.body.rows) ? input.body.rows : [];
+    const short = (value: unknown, max: number) =>
+      typeof value === "string" ? value.slice(0, max) : "";
+    const whole = (value: unknown) =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+    const upsert = this.db.prepare(
+      `INSERT INTO addon_errors
+         (hash, account, device_id, character_name, realm, version, "where", text, stack, count, first_at, last_at, seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (account, hash) DO UPDATE SET
+         device_id = COALESCE(excluded.device_id, device_id),
+         character_name = excluded.character_name, realm = excluded.realm,
+         stack = CASE WHEN excluded.stack <> '' THEN excluded.stack ELSE stack END,
+         count = MAX(count, excluded.count),
+         first_at = MIN(first_at, excluded.first_at),
+         last_at = MAX(last_at, excluded.last_at)`,
+    );
+    for (const row of rows.slice(0, 20)) {
+      if (!isObject(row)) continue;
+      const version = short(row.version, 20);
+      const where = short(row.where, 80);
+      const text = short(row.text, 300);
+      if (!where || !text) continue;
+      const hash = createHash("sha256").update(`${version}|${where}|${text}`).digest("hex");
+      const lastAt = whole(row.lastAt) || whole(row.at) || input.now;
+      upsert.run(
+        hash,
+        input.account,
+        input.deviceId ?? null,
+        input.character,
+        input.realm,
+        version,
+        where,
+        text,
+        short(row.stack, 800),
+        Math.max(1, whole(row.count)),
+        whole(row.at) || lastAt,
+        lastAt,
+        input.now,
+      );
+    }
+  }
+
+  /** Error reports, newest first (D178). `since` keeps rows seen again after it. */
+  errors(filter: {
+    account?: string;
+    since?: number;
+    version?: string;
+    limit: number;
+  }): AddonErrorRow[] {
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (filter.account) {
+      where.push("account = ?");
+      args.push(accountId(filter.account));
+    }
+    if (filter.since !== undefined) {
+      where.push("(last_at >= ? OR seen_at >= ?)");
+      args.push(filter.since, filter.since);
+    }
+    if (filter.version) {
+      where.push("version = ?");
+      args.push(filter.version);
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM addon_errors ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+         ORDER BY last_at DESC, seen_at DESC LIMIT ?`,
+      )
+      .all(...args, Math.min(filter.limit, ERRORS_LIST_MAX)) as Record<string, unknown>[];
+    return rows.map((row) => ({
+      hash: String(row.hash),
+      account: String(row.account),
+      deviceId: (row.device_id as string | null) ?? null,
+      character: String(row.character_name),
+      realm: String(row.realm),
+      version: String(row.version),
+      where: String(row.where),
+      text: String(row.text),
+      stack: String(row.stack),
+      count: Number(row.count),
+      firstAt: Number(row.first_at),
+      lastAt: Number(row.last_at),
+      seenAt: Number(row.seen_at),
+    }));
   }
 
   ingestSnapshot(
     snapshot: CleanSnapshot,
     deviceId?: string,
     now = Math.floor(Date.now() / 1000),
+    changes?: SectionChange[],
   ): SnapshotResult {
     return this.transaction(() => {
       const account = this.touchAccount(snapshot.account, now, snapshot.dropped.account);
@@ -716,7 +902,18 @@ export class DataStore {
           bytes: section.bytes,
           unknown: section.unknown,
           now,
+          changes,
         });
+        if (outcome === "stored" && section.name === "errors" && section.scope === "account") {
+          this.putErrors({
+            account,
+            deviceId,
+            character: snapshot.character,
+            realm: snapshot.realm,
+            body: section.body,
+            now,
+          });
+        }
         if (outcome === "stored") result.stored.push(section.name);
         else if (outcome === "unchanged") result.unchanged.push(section.name);
         else result.stale = true;
@@ -1142,6 +1339,43 @@ export class DataStore {
     };
   }
 
+  /** Sharing looks off when a Character has only the Sections written with sharing off. */
+  private sharingOff(row: CharacterRow): boolean {
+    const names = this.sections("char", row.id).map((s) => s.section);
+    return (
+      names.some((name) => ESSENTIAL_SECTIONS.has(name)) &&
+      !names.some((name) => !ESSENTIAL_SECTIONS.has(name) && KNOWN_SECTIONS[name])
+    );
+  }
+
+  /** Expected Sections an owner does not have, each with why (D171). */
+  missing(scope: SectionScope, ownerId: string, dropped: Raw | null, sharingOff: boolean) {
+    const present = new Set(this.sections(scope, ownerId).map((s) => s.section));
+    const out: MissingSection[] = [];
+    for (const name of expectedSections(scope)) {
+      if (present.has(name)) continue;
+      let reason: MissingReason = "never";
+      if (dropped && isObject(dropped) && dropped[name] !== undefined) reason = "dropped";
+      else if (sharingOff && !ESSENTIAL_SECTIONS.has(name)) reason = "sharing";
+      else if (WINDOW_SECTIONS[name]) reason = "window";
+      const entry: MissingSection = { section: name, scope, reason };
+      if (reason === "window") entry.hint = WINDOW_SECTIONS[name];
+      out.push(entry);
+    }
+    return out;
+  }
+
+  /** Missing Sections of a Character and of its Account. */
+  missingFor(row: CharacterRow): MissingSection[] {
+    const sharingOff = this.sharingOff(row);
+    const out = this.missing("char", row.id, row.dropped, sharingOff);
+    if (row.accountId) {
+      const account = this.account(row.accountId);
+      out.push(...this.missing("account", row.accountId, account?.dropped ?? null, sharingOff));
+    }
+    return out;
+  }
+
   /** One row per Character for get_account_overview (D59). */
   overview(row: CharacterRow) {
     const all = this.sectionsFor(row);
@@ -1167,6 +1401,7 @@ export class DataStore {
           { at: s.at, savedAt: s.savedAt, scope: s.ownerKind },
         ]),
       ),
+      missing: this.missingFor(row),
     };
   }
 
@@ -1280,6 +1515,8 @@ export class DataStore {
         dropped: row.dropped,
         bytes: sections.reduce((sum, s) => sum + s.bytes, 0),
         sections,
+        expected: expectedSections("char"),
+        missing: this.missing("char", row.id, row.dropped, this.sharingOff(row)),
       };
     };
     return {
@@ -1287,6 +1524,9 @@ export class DataStore {
       accounts: [
         ...accounts.map((row) => {
           const sections = this.sections("account", row.id).map((s) => this.sectionInfo(s));
+          const characters = this.characters(row.id);
+          const sharingOff =
+            characters.length > 0 && characters.every((other) => this.sharingOff(other));
           return {
             account: row.id,
             label: row.label,
@@ -1295,7 +1535,9 @@ export class DataStore {
             dropped: row.dropped,
             bytes: sections.reduce((sum, s) => sum + s.bytes, 0),
             sections,
-            characters: this.characters(row.id).map(character),
+            expected: expectedSections("account"),
+            missing: this.missing("account", row.id, row.dropped, sharingOff),
+            characters: characters.map(character),
           };
         }),
         ...(loose.length
@@ -1306,7 +1548,12 @@ export class DataStore {
   }
 
   /** Owner-only erasure: every Section, history row and Character of one Account (D62). */
-  deleteAccount(account: string): { characters: number; sections: number; history: number } {
+  deleteAccount(account: string): {
+    characters: number;
+    sections: number;
+    history: number;
+    errors: number;
+  } {
     const id = accountId(account);
     return this.transaction(() => {
       const characters = this.characters(id).map((row) => row.id);
@@ -1328,9 +1575,12 @@ export class DataStore {
             .run(kind, owner).changes,
         );
       }
+      const errors = Number(
+        this.db.prepare(`DELETE FROM addon_errors WHERE account = ?`).run(id).changes,
+      );
       this.db.prepare(`DELETE FROM characters WHERE account_id = ?`).run(id);
       this.db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
-      return { characters: characters.length, sections, history };
+      return { characters: characters.length, sections, history, errors };
     });
   }
 }

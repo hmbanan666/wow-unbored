@@ -9,6 +9,7 @@ import {
 } from "@unbored/contracts";
 
 import type { CharacterRow, DataStore, SectionRow } from "./data.ts";
+import { computeTaste, tasteMap } from "./taste.ts";
 
 export type { Suggestion, SuggestionKind, SuggestionsBody };
 
@@ -41,6 +42,7 @@ const SCORE = {
   chainCampaign: 10,
   chainStopped: 5,
   achievement: 60,
+  almostDone: 65,
   rare: 50,
   collection: 40,
   alts: 10,
@@ -153,6 +155,9 @@ const TEXT: Record<
     achievementGoal: (token: string) => string;
     rareGoal: (name: string) => string;
     farmGoal: (place: string, token: string) => string;
+    almostTitle: string;
+    almostGoal: (token: string) => string;
+    almostWhy: (done: number, total: number) => string;
   }
 > = {
   en: {
@@ -181,6 +186,9 @@ const TEXT: Record<
     achievementGoal: (token) => `Earn ${token} close to where you play.`,
     rareGoal: (name) => `Hunt ${name} near where you play.`,
     farmGoal: (place, token) => `Run ${place} for ${token}.`,
+    almostTitle: "Almost there",
+    almostGoal: (token) => `Finish ${token}: only a little is left.`,
+    almostWhy: (done, total) => `${done} of ${total} done`,
   },
   ru: {
     generic: {
@@ -208,6 +216,9 @@ const TEXT: Record<
     achievementGoal: (token) => `Получи ${token} рядом с местами, где ты играешь.`,
     rareGoal: (name) => `Поохоться на ${name} рядом с местами, где ты играешь.`,
     farmGoal: (place, token) => `Пройди ${place}: там падает ${token}.`,
+    almostTitle: "Почти готово",
+    almostGoal: (token) => `Заверши ${token}: осталось совсем немного.`,
+    almostWhy: (done, total) => `Сделано ${done} из ${total}`,
   },
 };
 
@@ -268,7 +279,12 @@ export type SuggestInput = {
   chainSince?: Map<number, number>;
   /** A creature's name in the idea's language, from the Blizzard cache (D154). */
   npcName?: (npcID: number) => string | undefined;
+  /** Taste bonus per idea kind (D191), -15 to 15. */
+  taste?: Map<string, number>;
 };
+
+/** An achievement this far along becomes an idea (D187). */
+export const ALMOST_DONE_RATIO = 0.8;
 
 type Candidate = Suggestion & { score: number; rule: SuggestionKind; key: string };
 
@@ -317,22 +333,30 @@ function holidayFor(catalog: Catalog, event: Record<string, unknown>) {
   });
 }
 
-/** The ranked Suggestions for one Character (D105). */
-export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): Suggestion[] {
-  const { now, sections } = input;
-  const lang = input.lang ?? "en";
-  const say = TEXT[lang];
+export type OpenEvent = {
+  holiday: CatalogHoliday;
+  name: string;
+  starts: number;
+  ends: number;
+  upcoming: boolean;
+  /** Catalog tasks this Character has not done. */
+  left: number;
+  rewards: string[];
+};
+
+/** Catalog events on now or starting within 3 days with something left (D129); Ready now reads the same (D185). */
+export function openEvents(
+  sections: Map<string, SectionRow>,
+  now: number,
+  catalog: Catalog = loadCatalog(),
+): OpenEvent[] {
   const achievements = ids(sections.get("achievements"));
   for (const id of ids(sections.get("achievementsMine"))) achievements.add(id);
   const mounts = ids(sections.get("mounts"));
   const toys = ids(sections.get("toys"));
   const questsDone = ids(sections.get("questsDone"));
   const faction = sections.get("char")?.body.faction;
-  const zones = recentMaps(sections.get("sessions"));
-  const near = new Set(zones);
-  const candidates: Candidate[] = [];
-
-  // 1. Events: a catalog event on now or within 3 days, with something left for you (D129, D130).
+  const out: OpenEvent[] = [];
   const events = sections.get("calendar")?.body.events;
   const seenEvents = new Set<string>();
   for (const event of Array.isArray(events) ? (events as Record<string, unknown>[]) : []) {
@@ -366,27 +390,33 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     const name =
       (typeof event.title === "string" && event.title.trim()) || holiday.fallbackTitle || "";
     if (!name) continue;
-    const upcoming = starts > now;
-    const days = Math.max(1, Math.ceil(((upcoming ? starts : ends) - now) / DAY));
-    const candidate = make(
-      lang,
-      "event",
-      `event:${holiday.id}:${starts}`,
-      upcoming ? SCORE.eventStartsSoon : SCORE.event,
-      {
-        title: name,
-        goal: say.eventGoal(name, left),
-        why: upcoming ? say.startsIn(days) : say.endsIn(days),
-        reason: upcoming ? { kind: "starts", at: starts, count: days } : { kind: "ends", at: ends },
-        rewards: [...new Set(rewards)],
-        expiresAt: ends,
-      },
-    );
-    if (!upcoming && ends - now <= SOON) candidate.score += SCORE.eventEndsSoon;
-    candidates.push(altBonus(candidate, input.characters, lang));
+    out.push({
+      holiday,
+      name,
+      starts,
+      ends,
+      upcoming: starts > now,
+      left,
+      rewards: [...new Set(rewards)],
+    });
   }
+  return out;
+}
 
-  // Unfinished quest chains of this Character (D135), and the ones it dropped (D137).
+export type OpenChain = {
+  questLineID: number;
+  done: number;
+  total: number;
+  title: string;
+  nextQuestID?: number;
+  mapID?: number;
+  flags: string[];
+};
+
+/** Unfinished quest chains of this Character (D135); Ready now reads the same (D185). */
+export function openChains(sections: Map<string, SectionRow>): OpenChain[] {
+  const questsDone = ids(sections.get("questsDone"));
+  const out: OpenChain[] = [];
   const lines = sections.get("questLines")?.body.lines;
   for (const line of Array.isArray(lines) ? (lines as Record<string, unknown>[]) : []) {
     const questLineID = Number(line.questLineID);
@@ -400,11 +430,81 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
       ? (line.nextQuestID as number)
       : undefined;
     if (nextQuestID !== undefined && questsDone.has(nextQuestID)) continue;
-    const flags = typeof line.flags === "string" ? line.flags.split("|") : [];
     const mapID =
       Number.isInteger(line.mapID) && (line.mapID as number) > 0
         ? (line.mapID as number)
         : undefined;
+    out.push({
+      questLineID,
+      done,
+      total,
+      title,
+      ...(nextQuestID !== undefined ? { nextQuestID } : {}),
+      ...(mapID !== undefined ? { mapID } : {}),
+      flags: typeof line.flags === "string" ? line.flags.split("|") : [],
+    });
+  }
+  return out;
+}
+
+export type AchievementProgress = { id: number; d: number; t: number; ratio: number };
+
+/** `achProgress` rows (D182), not yet earned, best first. */
+export function achievementProgress(sections: Map<string, SectionRow>): AchievementProgress[] {
+  const earned = ids(sections.get("achievements"));
+  for (const id of ids(sections.get("achievementsMine"))) earned.add(id);
+  const rows = sections.get("achProgress")?.body.rows;
+  const out: AchievementProgress[] = [];
+  for (const row of Array.isArray(rows) ? (rows as Record<string, unknown>[]) : []) {
+    const id = Number(row?.id);
+    const d = Number(row?.d);
+    const t = Number(row?.t);
+    if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(d) || !Number.isFinite(t)) continue;
+    if (t <= 0 || d < 0 || d >= t || earned.has(id)) continue;
+    out.push({ id, d, t, ratio: d / t });
+  }
+  return out.sort((a, b) => b.ratio - a.ratio || a.id - b.id);
+}
+
+/** The ranked Suggestions for one Character (D105). */
+export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): Suggestion[] {
+  const { now, sections } = input;
+  const lang = input.lang ?? "en";
+  const say = TEXT[lang];
+  const achievements = ids(sections.get("achievements"));
+  for (const id of ids(sections.get("achievementsMine"))) achievements.add(id);
+  const mounts = ids(sections.get("mounts"));
+  const questsDone = ids(sections.get("questsDone"));
+  const zones = recentMaps(sections.get("sessions"));
+  const near = new Set(zones);
+  const candidates: Candidate[] = [];
+
+  // 1. Events: a catalog event on now or within 3 days, with something left for you (D129, D130).
+  for (const event of openEvents(sections, now, catalog)) {
+    const { holiday, name, starts, ends, upcoming, left, rewards } = event;
+    const days = Math.max(1, Math.ceil(((upcoming ? starts : ends) - now) / DAY));
+    const candidate = make(
+      lang,
+      "event",
+      `event:${holiday.id}:${starts}`,
+      upcoming ? SCORE.eventStartsSoon : SCORE.event,
+      {
+        title: name,
+        goal: say.eventGoal(name, left),
+        why: upcoming ? say.startsIn(days) : say.endsIn(days),
+        reason: upcoming ? { kind: "starts", at: starts, count: days } : { kind: "ends", at: ends },
+        rewards,
+        expiresAt: ends,
+      },
+    );
+    if (!upcoming && ends - now <= SOON) candidate.score += SCORE.eventEndsSoon;
+    candidates.push(altBonus(candidate, input.characters, lang));
+  }
+
+  // Unfinished quest chains of this Character (D135), and the ones it dropped (D137).
+  for (const line of openChains(sections)) {
+    const { questLineID, done, total, title, nextQuestID, mapID } = line;
+    const flags = line.flags;
     let score = SCORE.chain + (flags.includes("c") ? SCORE.chainCampaign : 0);
     let reason: Suggestion["reason"];
     let why: string | undefined;
@@ -439,11 +539,36 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     );
   }
 
+  // Almost done achievements from achProgress (D187); they replace a catalog idea for the same id.
+  const catalogAchievements = new Map(
+    [...catalog.achievements, ...catalog.exploration].map((row) => [row.achievementID, row]),
+  );
+  const almost = new Set<number>();
+  for (const row of achievementProgress(sections)) {
+    if (row.ratio < ALMOST_DONE_RATIO) continue;
+    almost.add(row.id);
+    const token = `{ach:${row.id}}`;
+    const known = catalogAchievements.get(row.id);
+    candidates.push(
+      make(lang, "achievement", `ach:${row.id}`, SCORE.almostDone, {
+        title: known?.fallbackTitle ?? say.almostTitle,
+        titleToken: token,
+        goal: say.almostGoal(
+          lang === "en" && known ? `{ach:${row.id}|${known.fallbackTitle}}` : token,
+        ),
+        why: say.almostWhy(row.d, row.t),
+        rewards: [token],
+        ...(known?.mapID !== undefined ? { mapID: known.mapID } : {}),
+      }),
+    );
+  }
+
   // 2. Achievements tied to a zone the player has been playing in.
   for (const row of [...catalog.achievements, ...catalog.exploration]) {
     if (row.mapID === undefined || !near.has(row.mapID) || achievements.has(row.achievementID)) {
       continue;
     }
+    if (almost.has(row.achievementID)) continue;
     const token = `{ach:${row.achievementID}}`;
     candidates.push(
       altBonus(
@@ -516,6 +641,8 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     );
   }
 
+  // Taste (D191) nudges each kind by at most 15 before the per-rule cut.
+  for (const candidate of candidates) candidate.score += input.taste?.get(candidate.rule) ?? 0;
   candidates.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
   const perRule = new Map<SuggestionKind, number>();
   const seen = new Set<string>();
@@ -615,6 +742,7 @@ export class SuggestionStore {
        ON CONFLICT (character_id) DO UPDATE SET owner_id = excluded.owner_id,
          computed_at = excluded.computed_at, body_json = excluded.body_json`,
     );
+    const taste = this.taste(account, characters, now);
     for (const row of characters) {
       const sections = this.data.sectionsFor(row);
       const lang = ideaLang(sections.get("char")?.body.lang) ?? this.lastRequestLang(row) ?? "en";
@@ -628,6 +756,7 @@ export class SuggestionStore {
         characters: characters.length,
         chainSince: this.chainSince(row.id, sections.get("questLines")?.body.lines, now),
         npcName: (npcID) => this.names?.get(npcID, LOCALE_FOR[lang]),
+        taste,
       });
       save.run(row.accountId, row.id, now, JSON.stringify(list));
     }
@@ -662,6 +791,15 @@ export class SuggestionStore {
       }
     }
     return out;
+  }
+
+  /** Taste bonus per category (D191); none when the Request tables are not there. */
+  private taste(account: string, characters: CharacterRow[], now: number): Map<string, number> {
+    try {
+      return tasteMap(computeTaste(this.db, account, characters, now));
+    } catch {
+      return new Map();
+    }
   }
 
   /** The language of the Character's last Request, when the char Section does not say. */

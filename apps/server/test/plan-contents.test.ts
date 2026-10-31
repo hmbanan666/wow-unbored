@@ -145,7 +145,9 @@ test("a step group needs 2 steps next to each other; else it is dropped with a w
     [null, null, null, null, null],
   );
   assert.ok(split.warnings.some((line) => line.includes("Step group g: its steps must be next")));
-  assert.ok(split.warnings.some((line) => line.includes("Step group solo: a group needs at least 2")));
+  assert.ok(
+    split.warnings.some((line) => line.includes("Step group solo: a group needs at least 2")),
+  );
 
   const bad = clean({
     v: 1,
