@@ -13,7 +13,7 @@ pub const HELPER_TOC: &str = "\
 ## Title: Unbored Plan
 ## Notes: Plans, answers and item tips from Unbored Companion. Bory reads them when you log in or press Refresh.
 ## Author: Unbored contributors
-## Version: 0.8.0
+## Version: 0.9.0
 ## LoadOnDemand: 0
 
 Plan.lua
@@ -1834,7 +1834,7 @@ mod tests {
         install_plan(&retail, &small_plan("gone")).unwrap();
         let status = CompanionStatus {
             pairing: "revoked".into(),
-            companion_version: "0.8.0".into(),
+            companion_version: "0.9.0".into(),
             seen_at: 1_000,
             ..Default::default()
         };

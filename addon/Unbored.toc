@@ -1,8 +1,8 @@
 ## Interface: 120107, 120105, 120100
 ## Title: Unbored
-## Notes: Bory, a calm ginger cat who tells you what to do next and answers questions.
+## Notes: Bory, a calm ginger cat who tells you what to do next: events, quest chains and collections from your own characters.
 ## Author: Unbored contributors
-## Version: 0.8.0
+## Version: 0.9.0
 ## SavedVariables: UnboredDB
 ## SavedVariablesPerCharacter: UnboredCharDB
 ## OptionalDeps: TomTom, Unbored_Plan
