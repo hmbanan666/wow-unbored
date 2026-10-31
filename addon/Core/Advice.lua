@@ -1,4 +1,4 @@
--- Advice (docs/adr/0035, 0021): at most one "Wisp: ..." line for an item, and
+-- Advice (docs/adr/0035, 0021): at most one "Bory: ..." line for an item, and
 -- only when it is about this player: the active Plan, a quest this character
 -- has not done, something new for the Account's collection, Personal advice
 -- from the Server, or an Alt who uses the reagent. First match wins.

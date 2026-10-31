@@ -345,3 +345,118 @@ test("a Request from a picked idea keeps its id and a copy of it", async () => {
     close();
   }
 });
+
+test("a Russian Character gets every idea in Russian, with game names from tokens", () => {
+  const list = suggest(
+    input(
+      { calendar: hallowsEnd, sessions: played(125, 554, 70), char: { faction: "Horde" } },
+      { characters: 3, altQuests: [new Set()], lang: "ru" },
+    ),
+  );
+  const event = list.find((item) => item.kind === "event");
+  assert.match(event!.goal, /^Идёт «Hallow's End»: осталось \d+ (дело|дела|дел)\.$/);
+  assert.equal(event!.why, "Закончится через 2 дня");
+  const ach = list.find((item) => item.kind === "achievement");
+  assert.equal(ach!.goal, "Получи {ach:1956} рядом с местами, где ты играешь.");
+  assert.equal(ach!.titleToken, "{ach:1956}", "the addon shows the game's own name");
+  const rare = list.find((item) => item.kind === "rare");
+  assert.equal(rare!.goal, "Поохоться на Huolon рядом с местами, где ты играешь.");
+  assert.equal(rare!.why, "Нет ни у одного из твоих 3 персонажей");
+  const mount = list.find((item) => item.kind === "collection");
+  assert.equal(mount!.titleToken, "{instance:249}");
+  assert.match(mount!.goal, /^Пройди \{instance:249\|Onyxia's Lair\}: там падает \{mount:\d+\}\.$/);
+  for (const item of list) {
+    assert.ok(!/ you |None of|Ends in/.test(`${item.goal} ${item.why ?? ""}`), item.goal);
+    assert.ok(!item.request.wish.includes("{"), "the wish is plain words");
+  }
+  assert.ok(mount!.request.wish.includes("маунт") || mount!.request.wish.includes("Onyxia"));
+
+  const english = suggest(input({ sessions: played(70) }));
+  assert.match(
+    english.find((item) => item.kind === "collection")!.goal,
+    /^Run \{instance:249\|Onyxia's Lair\} for \{mount:\d+\}\.$/,
+  );
+});
+
+test("Russian counts agree with the number", () => {
+  const ends = (hours: number) =>
+    suggest(
+      input(
+        {
+          calendar: {
+            events: [
+              {
+                title: "Hallow's End",
+                starts: "2026-10-18 10:00",
+                ends: new Date((NOW + hours * 3600) * 1000)
+                  .toISOString()
+                  .slice(0, 16)
+                  .replace("T", " "),
+              },
+            ],
+          },
+        },
+        { lang: "ru" },
+      ),
+    ).find((item) => item.kind === "event")!.why;
+  assert.equal(ends(20), "Закончится через 1 день");
+  assert.equal(ends(24 * 4), "Закончится через 4 дня");
+  assert.equal(ends(24 * 5), "Закончится через 5 дней");
+  assert.equal(ends(24 * 11), "Закончится через 11 дней");
+  assert.equal(ends(24 * 21), "Закончится через 21 день");
+});
+
+test("the Server writes ideas in the char Section's language, else the last Request's", async () => {
+  const { app, store, close } = createApp({
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
+    log: () => {},
+  });
+  const upload = (lang?: string) => {
+    const next = withIdeas();
+    const char = next.sections.char!;
+    const body = { ...char.body, ...(lang ? { lang } : {}) };
+    if (!lang) delete (body as Record<string, unknown>).lang;
+    next.sections.char = { ...char, body, hash: sectionHash(body) };
+    return app.request("/v1/snapshot", {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+      body: JSON.stringify(next),
+    });
+  };
+  const rare = async () => {
+    const body = (await (
+      await app.request("/v1/suggestions", { headers: { authorization: `Bearer ${companion}` } })
+    ).json()) as { characters: Record<string, { id: string; goal: string }[]> };
+    return body.characters[`${snapshot.realm}-${snapshot.character}`]!.find(
+      (item) => item.id === "rare:rare-huolon",
+    )!.goal;
+  };
+  try {
+    const first = (await (await upload()).json()) as { account: string };
+    store.suggestions.computeAccount(first.account, NOW);
+    assert.match(await rare(), /^Hunt /, "English when nothing says otherwise");
+
+    await app.request("/v1/requests", {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "req-ru-1",
+        character: snapshot.character,
+        realm: snapshot.realm,
+        type: "question",
+        question: "что делать?",
+        lang: "ru",
+      }),
+    });
+    store.suggestions.computeAccount(first.account, NOW);
+    assert.match(await rare(), /^Поохоться /, "the last Request was Russian");
+
+    await upload("en");
+    store.suggestions.computeAccount(first.account, NOW);
+    assert.match(await rare(), /^Hunt /, "the char Section wins over the Request");
+  } finally {
+    close();
+  }
+});

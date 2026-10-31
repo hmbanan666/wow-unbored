@@ -40,6 +40,7 @@ Bory learns about **your own characters only**, so plans fit what you have and w
 - **What he never reads:** anything about other players. No chat or whispers, no mail senders, subjects or text, no group or guild lists, no other players' names, no combat log. No passwords and no Battle.net sign-in.
 - **What it's for:** your plans and tips, and the tips for your other characters (an alt you played on another PC can still get your reagents). It is kept per character, linked to your game account, and used only for Unbored.
 - **Turn it off:** right-click Bory, **Settings**, untick **Share game data to make Bory smarter**. Bory then keeps only what a plan needs: your character, gear, quest log and recent sessions.
+- **Delete it:** in the Companion, **Advanced**, **Forget my data**. What the server keeps and what that erases: [PRIVACY.md](PRIVACY.md).
 
 ## FAQ
 
@@ -94,6 +95,7 @@ Companion сам обновляет себя и Бори. Чтобы зараб�
 - **Что он никогда не читает:** ничего о других игроках. Ни чата и шёпота, ни отправителей, тем и текста писем, ни списков группы или гильдии, ни имён других игроков, ни журнала боя. Никаких паролей и входа в Battle.net.
 - **Зачем:** для твоих планов и подсказок, в том числе для других персонажей (альт, которым ты играл на другом ПК, всё равно получит твои реагенты). Данные хранятся по персонажам, связаны с игровой учётной записью и используются только для Unbored.
 - **Как выключить:** правый клик по Бори, **Настройки**, сними галочку **Делиться игровыми данными, чтобы Бори был умнее**. Тогда Бори хранит только то, что нужно для плана: персонажа, экипировку, журнал заданий и недавние сессии.
+- **Как удалить:** в Companion, **Advanced**, **Forget my data**. Что хранит сервер и что при этом удаляется: [PRIVACY.md](PRIVACY.md).
 
 ### Вопросы
 

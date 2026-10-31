@@ -67,5 +67,6 @@ jobs:
       - name: Release notes are for players (D116)
         run: |
           pipx install git-cliff==2.14.2
+          bash scripts/test-release-notes.sh v0.6.0
           bash scripts/test-release-notes.sh v0.7.0
           bash scripts/test-release-notes.sh v0.8.0

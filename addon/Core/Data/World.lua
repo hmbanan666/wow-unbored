@@ -1,4 +1,4 @@
--- Calendar holidays, play sessions, helper addons, and ids Wisp could not
+-- Calendar holidays, play sessions, helper addons, and ids Bory could not
 -- resolve in a Plan.
 
 local _, ns = ...

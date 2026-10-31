@@ -98,7 +98,7 @@ function cutWords(text: string, fits: (value: string) => boolean): string {
 export function cleanTitle(raw: unknown, check: MarkupCheck = {}): string | undefined {
   const warn = (line: string) => check.warnings?.push(`Plan title: ${line}`);
   if (raw === undefined || raw === null || (typeof raw === "string" && !raw.trim())) {
-    warn("add a short human title, like a quest name; Wisp shows the preset name meanwhile");
+    warn("add a short human title, like a quest name; Bory shows the preset name meanwhile");
     return undefined;
   }
   if (typeof raw !== "string") throw new PlanError("The plan title must be a string.");

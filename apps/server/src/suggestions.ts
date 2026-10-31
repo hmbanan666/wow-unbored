@@ -61,7 +61,13 @@ type CatalogAchievement = {
   mapID?: number;
 };
 type CatalogRare = { id: string; fallbackTitle: string; mapID?: number; questID?: number };
-type CatalogFarm = { id: string; fallbackTitle: string; mapID?: number; mounts?: number[] };
+type CatalogFarm = {
+  id: string;
+  fallbackTitle: string;
+  mapID?: number;
+  instanceID?: number;
+  mounts?: number[];
+};
 
 export type Catalog = {
   holidays: CatalogHoliday[];
@@ -98,20 +104,85 @@ function fit(text: string, max: number, measure: (value: string) => number): str
 
 const chars = (value: string) => [...value].length;
 
-const GENERIC: Record<string, string> = {
-  ach: "an achievement",
-  mount: "a mount",
-  item: "an item",
-  toy: "a toy",
-  pet: "a pet",
-  currency: "a currency",
+/** The languages the addon speaks; ideas are written in the Character's own. */
+export type IdeaLang = "en" | "ru";
+
+export function ideaLang(value: unknown): IdeaLang | undefined {
+  return value === "en" || value === "ru" ? value : undefined;
+}
+
+/** Russian counts: 1 день, 2 дня, 5 дней. */
+function ruCount(n: number, one: string, few: string, many: string): string {
+  const tens = n % 100;
+  const last = n % 10;
+  if (tens >= 11 && tens <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
+/** Every word an idea says, per language. Names come from the game or the catalog. */
+const TEXT: Record<
+  IdeaLang,
+  {
+    generic: Record<string, string>;
+    eventGoal: (name: string, left: number) => string;
+    startsSoon: string;
+    endsIn: (days: number) => string;
+    alts: (count: number) => string;
+    achievementGoal: (token: string) => string;
+    rareGoal: (name: string) => string;
+    farmGoal: (place: string, token: string) => string;
+  }
+> = {
+  en: {
+    generic: {
+      ach: "an achievement",
+      mount: "a mount",
+      item: "an item",
+      toy: "a toy",
+      pet: "a pet",
+      currency: "a currency",
+      instance: "a dungeon",
+      zone: "a zone",
+    },
+    eventGoal: (name, left) =>
+      `${name} is on: ${left} thing${left === 1 ? "" : "s"} you have not done yet.`,
+    startsSoon: "Starts soon",
+    endsIn: (days) => `Ends in ${days} day${days === 1 ? "" : "s"}`,
+    alts: (count) => `None of your ${count} characters has it yet`,
+    achievementGoal: (token) => `Earn ${token} close to where you play.`,
+    rareGoal: (name) => `Hunt ${name} near where you play.`,
+    farmGoal: (place, token) => `Run ${place} for ${token}.`,
+  },
+  ru: {
+    generic: {
+      ach: "достижение",
+      mount: "маунт",
+      item: "предмет",
+      toy: "игрушку",
+      pet: "питомца",
+      currency: "валюту",
+      instance: "подземелье",
+      zone: "зону",
+    },
+    eventGoal: (name, left) =>
+      `Идёт «${name}»: осталось ${left} ${ruCount(left, "дело", "дела", "дел")}.`,
+    startsSoon: "Скоро начнётся",
+    endsIn: (days) => `Закончится через ${days} ${ruCount(days, "день", "дня", "дней")}`,
+    alts: (count) => `Нет ни у одного из твоих ${count} персонажей`,
+    achievementGoal: (token) => `Получи ${token} рядом с местами, где ты играешь.`,
+    rareGoal: (name) => `Поохоться на ${name} рядом с местами, где ты играешь.`,
+    farmGoal: (place, token) => `Пройди ${place}: там падает ${token}.`,
+  },
 };
 
 /** The goal as plain words for the Request wish: labels, or a generic word. */
-function plainGoal(text: string): string {
+function plainGoal(text: string, lang: IdeaLang): string {
+  const generic = TEXT[lang].generic;
   return text
     .replace(/\{([a-z]+):[^{}|]*(?:\|([^{}]*))?\}/g, (_raw, kind: string, label?: string) =>
-      label?.trim() ? label.trim() : (GENERIC[kind] ?? ""),
+      label?.trim() ? label.trim() : (generic[kind] ?? ""),
     )
     .replace(/\s+/g, " ")
     .trim();
@@ -155,11 +226,14 @@ export type SuggestInput = {
   altQuests: Set<number>[];
   /** Characters on the Account, this one included. */
   characters: number;
+  /** The Character's language (its char Section, else its last Request); English by default. */
+  lang?: IdeaLang;
 };
 
 type Candidate = Suggestion & { score: number; rule: SuggestionKind; key: string };
 
 function make(
+  lang: IdeaLang,
   rule: SuggestionKind,
   id: string,
   score: number,
@@ -175,7 +249,7 @@ function make(
     title,
     goal,
     rewards,
-    request: { topic: "suggestion", suggestionId: id, wish: `${title}: ${plainGoal(goal)}` },
+    request: { topic: "suggestion", suggestionId: id, wish: `${title}: ${plainGoal(goal, lang)}` },
     score,
     rule,
     key: rewards[0] ?? id,
@@ -185,10 +259,10 @@ function make(
 }
 
 /** Adds the Account angle (rule 5): nobody on the Account has it yet. */
-function altBonus(candidate: Candidate, characters: number): Candidate {
+function altBonus(candidate: Candidate, characters: number, lang: IdeaLang): Candidate {
   if (characters < 2) return candidate;
   candidate.score += SCORE.alts;
-  candidate.why ??= `None of your ${characters} characters has it yet`;
+  candidate.why ??= fit(TEXT[lang].alts(characters), SUGGESTION_LIMITS.why, bytes);
   candidate.reason ??= { kind: "alts", count: characters };
   return candidate;
 }
@@ -206,6 +280,8 @@ function holidayFor(catalog: Catalog, event: { eventID?: unknown; title?: unknow
 /** The ranked Suggestions for one Character (D105). */
 export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): Suggestion[] {
   const { now, sections } = input;
+  const lang = input.lang ?? "en";
+  const say = TEXT[lang];
   const achievements = ids(sections.get("achievements"));
   for (const id of ids(sections.get("achievementsMine"))) achievements.add(id);
   const mounts = ids(sections.get("mounts"));
@@ -244,16 +320,16 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     if (!name) continue;
     const key = String(holiday.holidayID ?? holiday.holidayIDs?.[0] ?? name);
     const days = Math.max(1, Math.ceil((ends - now) / DAY));
-    const candidate = make("event", `event:${key}:${starts}`, SCORE.event, {
+    const candidate = make(lang, "event", `event:${key}:${starts}`, SCORE.event, {
       title: name,
-      goal: `${name} is on: ${left} thing${left === 1 ? "" : "s"} you have not done yet.`,
-      why: starts > now ? "Starts soon" : `Ends in ${days} day${days === 1 ? "" : "s"}`,
+      goal: say.eventGoal(name, left),
+      why: starts > now ? say.startsSoon : say.endsIn(days),
       reason: { kind: "ends", at: ends },
       rewards,
       expiresAt: ends,
     });
     if (ends - now <= SOON) candidate.score += SCORE.eventEndsSoon;
-    candidates.push(altBonus(candidate, input.characters));
+    candidates.push(altBonus(candidate, input.characters, lang));
   }
 
   // 2. Achievements tied to a zone the player has been playing in.
@@ -264,15 +340,19 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     const token = `{ach:${row.achievementID}}`;
     candidates.push(
       altBonus(
-        make("achievement", `ach:${row.achievementID}`, SCORE.achievement, {
+        make(lang, "achievement", `ach:${row.achievementID}`, SCORE.achievement, {
           title: row.fallbackTitle,
           titleToken: token,
-          goal: `Earn {ach:${row.achievementID}|${row.fallbackTitle}} close to where you play.`,
+          // The catalog name is English: a Russian goal lets the game name it.
+          goal: say.achievementGoal(
+            lang === "en" ? `{ach:${row.achievementID}|${row.fallbackTitle}}` : token,
+          ),
           reason: { kind: "near", mapID: row.mapID },
           rewards: [token],
           mapID: row.mapID,
         }),
         input.characters,
+        lang,
       ),
     );
   }
@@ -281,14 +361,15 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
   for (const row of catalog.rares) {
     if (row.questID === undefined || row.mapID === undefined || !near.has(row.mapID)) continue;
     if (questsDone.has(row.questID)) continue;
-    let candidate = make("rare", `rare:${row.id}`, SCORE.rare, {
+    // TODO: the catalog has no Russian rare names and no npc ids, so a Russian idea keeps the English name.
+    let candidate = make(lang, "rare", `rare:${row.id}`, SCORE.rare, {
       title: row.fallbackTitle,
-      goal: `Hunt ${row.fallbackTitle} near where you play.`,
+      goal: say.rareGoal(row.fallbackTitle),
       reason: { kind: "near", mapID: row.mapID },
       mapID: row.mapID,
     });
     if (input.altQuests.every((done) => !done.has(row.questID!))) {
-      candidate = altBonus(candidate, input.characters);
+      candidate = altBonus(candidate, input.characters, lang);
     }
     candidates.push(candidate);
   }
@@ -301,20 +382,27 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     const missing = (row.mounts ?? []).filter((id) => !mounts.has(id));
     if (missing.length === 0) continue;
     const token = `{mount:${missing[0]}}`;
+    const place =
+      row.instanceID === undefined
+        ? row.fallbackTitle
+        : `{instance:${row.instanceID}|${row.fallbackTitle}}`;
     candidates.push(
       altBonus(
         make(
+          lang,
           "collection",
           `mount:${missing[0]}`,
           SCORE.collection + (near.has(row.mapID ?? -1) ? 1 : 0),
           {
             title: row.fallbackTitle,
-            goal: `Run ${row.fallbackTitle} for ${token}.`,
+            ...(row.instanceID !== undefined ? { titleToken: `{instance:${row.instanceID}}` } : {}),
+            goal: say.farmGoal(place, token),
             rewards: missing.slice(0, SUGGESTION_LIMITS.rewards).map((id) => `{mount:${id}}`),
             ...(row.mapID !== undefined ? { mapID: row.mapID } : {}),
           },
         ),
         input.characters,
+        lang,
       ),
     );
   }
@@ -393,9 +481,11 @@ export class SuggestionStore {
          computed_at = excluded.computed_at, body_json = excluded.body_json`,
     );
     for (const row of characters) {
+      const sections = this.data.sectionsFor(row);
       const list = suggest({
         now,
-        sections: this.data.sectionsFor(row),
+        sections,
+        lang: ideaLang(sections.get("char")?.body.lang) ?? this.lastRequestLang(row),
         altQuests: characters
           .filter((other) => other.id !== row.id)
           .map((other) => quests.get(other.id)!),
@@ -404,6 +494,21 @@ export class SuggestionStore {
       save.run(row.accountId, row.id, now, JSON.stringify(list));
     }
     return characters.length;
+  }
+
+  /** The language of the Character's last Request, when the char Section does not say. */
+  private lastRequestLang(row: CharacterRow): IdeaLang | undefined {
+    try {
+      const found = this.db
+        .prepare(
+          `SELECT lang FROM requests WHERE character_name = ? AND realm = ? AND lang IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(row.name, row.realm) as { lang: string } | undefined;
+      return ideaLang(found?.lang);
+    } catch {
+      return undefined;
+    }
   }
 
   forCharacter(row: CharacterRow, now = Math.floor(Date.now() / 1000)) {

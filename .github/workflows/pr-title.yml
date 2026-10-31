@@ -1,7 +1,9 @@
 name: PR title
 
 # Release notes are built from Conventional Commits (docs/adr/0022), and a
-# squash merge uses the PR title as the commit subject.
+# squash merge uses the PR title as the commit subject. The preview renders
+# the next release notes as if this PR were squash-merged now and shows them
+# in the job summary; it fails on lines that are not for players (D116).
 
 on:
   pull_request:
@@ -22,6 +24,22 @@ jobs:
           if printf '%s' "$TITLE" | grep -Eq "$pattern"; then
             echo "OK: $TITLE"
           else
-            echo "::error::PR title must be a Conventional Commit, for example 'feat(addon): Wisp answers in Russian' or 'fix(companion): ...'. Types: feat, fix, perf, refactor, docs, chore, test, ci. Got: $TITLE"
+            echo "::error::PR title must be a Conventional Commit, for example 'feat(addon): Bory answers in Russian' or 'fix(companion): ...'. Types: feat, fix, perf, refactor, docs, chore, test, ci. Got: $TITLE"
             exit 1
           fi
+
+  notes-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Release notes if this PR is merged
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pipx install git-cliff==2.14.2
+          bash scripts/preview-release-notes.sh "$BASE" "$HEAD" "$TITLE" "$NUMBER"

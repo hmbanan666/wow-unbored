@@ -11,6 +11,7 @@
     "core:window:allow-set-focus",
     "notification:default",
     "dialog:allow-open",
+    "dialog:allow-message",
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
@@ -22,6 +23,8 @@
     "allow-set-autostart",
     "allow-write-plan-text",
     "allow-fetch-plan",
-    "allow-rescan-progress"
+    "allow-rescan-progress",
+    "allow-open-privacy",
+    "allow-forget-my-data"
   ]
 }

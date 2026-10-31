@@ -5,8 +5,8 @@ The words we use for Unbored. Use them in code, docs, UI copy, and talk with the
 Goal: a helper players want to use, that never annoys and genuinely helps.
 
 **Bory**
-The mascot: a calm ginger cat in a burgundy scarf, and the whole in-game companion UI (BRAND.md). Russian: Бори (not declined). Voice: warm, light humour, short, no cringe. He replaced Bory in 0.8; code may still say `wisp` inside.
-_Avoid_: Bory, Висп (in anything the player sees).
+The mascot: a calm ginger cat in a burgundy scarf, and the whole in-game companion UI (BRAND.md). Russian: Бори (not declined). Voice: warm, light humour, short, no cringe. He replaced Wisp in 0.8 (BRAND.md).
+_Avoid_: Wisp, Висп (in anything the player sees).
 _Avoid_: tracker, window, panel, helper, assistant.
 
 **Bubble**

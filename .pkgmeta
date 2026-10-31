@@ -20,6 +20,8 @@ ignore:
   - docs
   - scripts
   - AGENTS.md
+  - BRAND.md
+  - PRIVACY.md
   - CONTEXT.md
   - TESTING.md
   - cliff.toml

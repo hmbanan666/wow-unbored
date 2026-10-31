@@ -41,7 +41,8 @@
       },
       {
         "title": "Tempest Keep",
-        "goal": "Run Tempest Keep for {mount:183}.",
+        "titleToken": "{instance:550}",
+        "goal": "Run {instance:550|Tempest Keep} for {mount:183}.",
         "rewards": ["{mount:183}"],
         "mapID": 109,
         "id": "mount:183",
@@ -59,7 +60,8 @@
       },
       {
         "title": "Battle of Dazar'alor",
-        "goal": "Run Battle of Dazar'alor for {mount:1217}.",
+        "titleToken": "{instance:2070}",
+        "goal": "Run {instance:2070|Battle of Dazar'alor} for {mount:1217}.",
         "rewards": ["{mount:1217}"],
         "id": "mount:1217",
         "kind": "collection",

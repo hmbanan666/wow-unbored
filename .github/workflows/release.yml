@@ -107,6 +107,13 @@ jobs:
             echo "::error::the zip has no Unbored/Unbored.toc"
             exit 1
           }
+          # Only the addon, its readme, licence and changelog at the top.
+          extra="$(unzip -Z1 "dry-run/Unbored-v${VERSION}.zip" | grep -E '^Unbored/[^/]+$' |
+            grep -vE '^Unbored/(Unbored\.toc|Bindings\.xml|README\.md|LICENSE(\.txt)?|CHANGELOG\.md)$' || true)"
+          if [ -n "$extra" ]; then
+            echo "::error::files in the zip that are not part of the addon (add them to .pkgmeta ignore): ${extra//$'\n'/ }"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v7
         if: env.PUBLISH != 'true'
@@ -243,9 +250,22 @@ jobs:
           if [ "$PUBLISH" = "true" ]; then
             bash .github/scripts/release-notes.sh "$TAG" > notes.md
           else
+            if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+              echo "::warning::v${VERSION} is already released. Bump the version before you tag; these notes list what changed since then."
+            fi
             bash .github/scripts/release-notes.sh HEAD "$VERSION" > notes.md
           fi
           cat notes.md
+          {
+            echo "# Release notes (publish: ${PUBLISH})"
+            echo
+            cat notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          # A dry run stops on lines that are not for players; a tag push
+          # only warns, so the release still gets its notes.
+          if ! bash scripts/check-release-notes.sh notes.md; then
+            [ "$PUBLISH" = "true" ] || exit 1
+          fi
           if [ "$PUBLISH" = "true" ]; then
             gh release edit "$TAG" --notes-file notes.md
           fi

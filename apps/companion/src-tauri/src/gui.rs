@@ -19,7 +19,7 @@ use crate::device::{self, DeviceCredential};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::plan::{
-    decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file,
+    clear_helper, decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file,
     install_suggestions, pick_plan_file, plan_from_value, render_request_lua, write_status,
     CompanionStatus, Plan, PlanFile, PlannerState, RequestState,
 };
@@ -45,6 +45,9 @@ struct Settings {
     /// player's choice in the window stands.
     #[serde(default)]
     autostart_set: bool,
+    /// When the player used Forget my data. Cleared once this PC is approved again.
+    #[serde(default)]
+    forgotten_at: Option<u64>,
 }
 
 impl Default for Settings {
@@ -55,6 +58,7 @@ impl Default for Settings {
             endpoint_url: String::new(),
             poll_minutes: 5,
             autostart_set: false,
+            forgotten_at: None,
         }
     }
 }
@@ -106,6 +110,7 @@ impl Model {
             connected_at: self.connected_at,
             addon_updated_at: self.addon_updated_at,
             machine: self.machine.clone(),
+            forgotten: self.settings.forgotten_at.is_some(),
             now: now_secs(),
         })
     }
@@ -521,6 +526,69 @@ fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, String>
     Ok(snapshot(&app, &model))
 }
 
+/// Asks the planner to erase this PC's Accounts and revoke it (PRIVACY.md).
+/// Ok(false) when the planner does not know this PC, so it holds nothing from it.
+fn forget_on_planner(url: &str, secret: &str) -> Result<bool, String> {
+    let client = http_client(Duration::from_secs(30))?;
+    let response = client
+        .post(join_url(url, "v1/devices/me/forget"))
+        .bearer_auth(secret)
+        .json(&serde_json::json!({ "confirm": true }))
+        .send()
+        .map_err(|_| {
+            "I can't reach the planner, so nothing was erased yet. Try again in a minute."
+                .to_string()
+        })?;
+    match response.status().as_u16() {
+        200..=299 => Ok(true),
+        401 => Ok(false),
+        code => Err(format!(
+            "The planner could not erase it just now ({code}). Nothing changed; try again in a minute."
+        )),
+    }
+}
+
+#[tauri::command]
+fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
+    let (settings, secret) = {
+        let model = state.inner.lock().map_err(|err| err.to_string())?;
+        let device = state.device.lock().map_err(|err| err.to_string())?;
+        (model.settings.clone(), device.secret.clone())
+    };
+    let url = effective_url(&settings);
+    validate_endpoint(&url)?;
+    let erased = forget_on_planner(&url, &secret)?;
+    sent_sections()
+        .lock()
+        .map_err(|err| err.to_string())?
+        .clear();
+    posted_profiles()
+        .lock()
+        .map_err(|err| err.to_string())?
+        .clear();
+    if let Some(retail) = retail_path(&settings) {
+        clear_helper(&retail).map_err(|err| err.0)?;
+    }
+    let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.posted.clear();
+    model.ready = None;
+    model.request_pending = false;
+    model.connected_at = None;
+    model.pairing = "revoked".into();
+    model.approved = false;
+    model.settings.forgotten_at = Some(now_secs());
+    let _ = save_settings(&app, &model.settings);
+    model.status = if erased {
+        "The planner erased your game data, plans and answers, and stopped taking data from this PC."
+    } else {
+        "The planner had nothing from this PC. I cleared the plans and ideas on this PC too."
+    }
+    .into();
+    // TODO: re-pairing after Forget my data needs the owner's approve_device;
+    // a player-side "connect again" is not decided yet.
+    Ok(snapshot(&app, &model))
+}
+
 #[tauri::command]
 fn rescan_progress(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
@@ -811,12 +879,23 @@ struct Posted {
     waiting: Option<String>,
 }
 
+/// The Section hashes the planner already has, so only changes are sent.
+fn sent_sections() -> &'static Mutex<HashMap<String, String>> {
+    static SENT: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
+    SENT.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The profile save stamp the planner already has, per character.
+fn posted_profiles() -> &'static Mutex<HashMap<String, u64>> {
+    static POSTED: std::sync::OnceLock<Mutex<HashMap<String, u64>>> = std::sync::OnceLock::new();
+    POSTED.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 /// Uploads the Sections that changed for every character and its Account,
 /// gzip, on each SavedVariables write (docs/adr/0029). Characters whose addon
 /// has no snapshot yet (0.6) are left to `post_profiles`.
 fn post_snapshots(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
-    static SENT: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
-    let sent = SENT.get_or_init(|| Mutex::new(HashMap::new()));
+    let sent = sent_sections();
     let client = http_client(Duration::from_secs(30))?;
     let url = effective_url(settings);
     let mut accounts: HashMap<String, Option<DataFile>> = HashMap::new();
@@ -877,8 +956,7 @@ fn post_snapshots(settings: &Settings, retail: &Path, secret: &str) -> Result<()
 /// Uploads each character's profile once per save (docs/adr/0011). From 0.7
 /// only for characters whose addon has no Game data snapshot yet.
 fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
-    static POSTED: std::sync::OnceLock<Mutex<HashMap<String, u64>>> = std::sync::OnceLock::new();
-    let posted = POSTED.get_or_init(|| Mutex::new(HashMap::new()));
+    let posted = posted_profiles();
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
     for file in character_saved_variables(retail, None) {
@@ -1284,8 +1362,17 @@ fn sync_planner(
         if just_approved {
             model.connected_at = Some(now_secs());
         }
+        if model.approved && model.settings.forgotten_at.take().is_some() {
+            let _ = save_settings(app, &model.settings);
+        }
         (changed, just_approved)
     };
+    if status == "revoked" && settings.forgotten_at.is_some() {
+        // A sync that was already running may have written a plan after the erase.
+        if let Some(retail) = retail_path(settings) {
+            let _ = clear_helper(&retail);
+        }
+    }
     if just_approved {
         notify(
             app,
@@ -1492,7 +1579,8 @@ pub fn run() {
             write_plan_text,
             fetch_plan,
             rescan_progress,
-            open_privacy
+            open_privacy,
+            forget_my_data
         ])
         .run(tauri::generate_context!())
         .expect("Unbored Companion failed to start");

@@ -1,4 +1,4 @@
--- Drives Wisp (portrait, bubble, menu), tooltips, and the list view against a fake frame
+-- Drives Bory (portrait, bubble, menu), tooltips, and the list view against a fake frame
 -- API, so a layout error or a nil call shows up without the game client.
 
 local fails = 0
@@ -427,7 +427,7 @@ local mascot = ns.Mascot
 local INNER = 240
 local CARD_INNER = 280
 check(ns.Tracker == nil and _G.UnboredTracker == nil, "there is no separate steps window (D90)")
-check(ui.frame == nil and _G.UnboredFrame == nil, "there is no main window, only Wisp")
+check(ui.frame == nil and _G.UnboredFrame == nil, "there is no main window, only Bory")
 check(mascot.frame ~= nil and mascot.frame:IsShown(), "the mascot is on screen from the start")
 check(tooltipCalls[0] ~= nil, "item tooltips get a post call")
 check(next(hooks) == nil, "no secure hooks: bag buttons and item clicks are left alone")
@@ -527,7 +527,7 @@ mascot.menuButton:Click()
 check(ui.menu:IsShown(), "the menu icon in the bubble opens it too")
 ui.menu:Hide()
 
--- The game's menu: two sizes, Wisp and bubble apart.
+-- The game's menu: two sizes, Bory and bubble apart.
 local made = {}
 local function fakeRoot(list)
   return {
@@ -568,10 +568,10 @@ end
 check(table.concat(names, "|") == "Bory size|Bubble size|Lock position|Share game data to make Bory smarter"
   .. "|Bory lines in tooltips|Hide|Keybinds|More",
   "Settings: " .. table.concat(names, "|"))
-local wispSize = entry(settings.children, "Bory size")
+local borySize = entry(settings.children, "Bory size")
 local bubbleSize = entry(settings.children, "Bubble size")
-check(#wispSize.children == 4 and wispSize.children[2].isSelected(), "Bory size: 100% by default")
-entry(wispSize.children, "125%").setSelected()
+check(#borySize.children == 4 and borySize.children[2].isSelected(), "Bory size: 100% by default")
+entry(borySize.children, "125%").setSelected()
 check(mascot.frame.scale == 1.25 and UnboredDB.mascot.scale == 125, "Bory size scales the portrait")
 check(mascot.bubble.scale == 1, "and not the bubble")
 entry(bubbleSize.children, "150%").setSelected()
@@ -602,7 +602,7 @@ check(reloads == 0, "a preset click does not reload")
 check(ns.Session:PendingRequest() == nil and ns.Session:FlowState() == "quick", "nothing is sent yet")
 local quick = ns.Session.state
 check(quick and quick.quick and quick.topic == "mount", "a Quick plan is built here")
-check(mascot.view.kind == "step" and textOf(mascot.message) == ns.Session:Current().title, "Wisp shows the first step")
+check(mascot.view.kind == "step" and textOf(mascot.message) == ns.Session:Current().title, "Bory shows the first step")
 check(textOf(mascot.header) == "", "no Refresh talk over the Quick plan: " .. textOf(mascot.header))
 check(shownButtons() == "done,skip,proper", "Done, Skip and one proper-plan button: " .. shownButtons())
 check(textOf(mascot.buttons.proper.label) == "Want a proper plan?", "the button asks")
@@ -710,7 +710,7 @@ UnboredExternalPlan = {
 }
 check(ns.Session:AutoApplyExternal() == true, "the Full plan is taken on load")
 ns.Session:RefreshUI()
-check(mascot.view.kind == "offer" and textOf(mascot.message) == "Better plan's ready! Load it in?", "Wisp asks first")
+check(mascot.view.kind == "offer" and textOf(mascot.message) == "Better plan's ready! Load it in?", "Bory asks first")
 check(mascot.buttons.use:IsShown() and mascot.buttons.keep:IsShown(), "Switch or keep")
 rowFits("the plan offer")
 mascot.buttons.use:Click()
@@ -809,7 +809,7 @@ check(reloads == 3 and req.state == "sent", "Send now sends and reloads in the c
 check(req.budget == 45 and req.wish == "all of Hallowfall's exploration", "typed minutes go with the wish")
 check(UnboredCharDB.lastWish == "all of Hallowfall's exploration", "the wish is remembered")
 ns.Session:CancelRequest()
--- A Request a 0.7 client queued for logout: Wisp offers Send now.
+-- A Request a 0.7 client queued for logout: Bory offers Send now.
 UnboredCharDB.request = { id = "req-old", type = "plan", mode = "custom", wish = "old", state = "queued",
   createdAt = clock }
 ns.Session:RefreshUI()
@@ -818,7 +818,7 @@ check(shownButtons() == "sendnow" and textOf(mascot.message) == "Shall I send th
 ns.Session:CancelRequest()
 check(not ns.Session:Locked(), "Cancel unlocks")
 
--- Ask: the local answer at once; what Wisp can't answer may become a plan (D64).
+-- Ask: the local answer at once; what Bory can't answer may become a plan (D64).
 mascot.frame:Click("RightButton")
 menuRow("Ask something"):Click()
 check(mascot.view.kind == "ask" and mascot.wishBox:IsShown(), "Ask is one box in the bubble")
@@ -836,7 +836,7 @@ check(mascot.buttons.ok:IsShown() and not mascot.buttons.refresh:IsShown(), "no 
 mascot.buttons.ok:Click()
 check(mascot.view.kind ~= "answer", "Got it closes the answer")
 
--- A question Wisp cannot answer here: offer a plan through the Survey.
+-- A question Bory cannot answer here: offer a plan through the Survey.
 mascot:ShowAsk("ask", "Why is the sky blue?")
 mascot.buttons.send:Click()
 check(textOf(mascot.message) == "I can't answer that one here. Want a plan from it?", "unknown: a plan instead")
@@ -896,10 +896,10 @@ mascot:StartPick()
 cursor = { itemID = 6948, link = HEARTH }
 driver.scripts.OnEvent(driver, "CURSOR_CHANGED")
 check(cursor == nil and cleared == 1, "the picked item goes back to the bag")
-check(mascot.view.kind == "item" and mascot.item.itemID == 6948, "and Wisp shows it")
+check(mascot.view.kind == "item" and mascot.item.itemID == 6948, "and Bory shows it")
 check(mascot.item.bag == 0 and mascot.item.slot == 3 and mascot.item.count == 1, "the bag slot is found")
 check(textOf(mascot.header) == HEARTH, "the bubble shows the item link")
-check(textOf(mascot.message):find("inn", 1, true) ~= nil, "and what Wisp knows about it")
+check(textOf(mascot.message):find("inn", 1, true) ~= nil, "and what Bory knows about it")
 check(shownButtons() == "back", "items are answered here only (D64): " .. shownButtons())
 check(UnboredCharDB.request == nil, "no item Request")
 mascot.buttons.back:Click()
@@ -910,7 +910,7 @@ cursor = { itemID = 6948, link = HEARTH }
 driver.scripts.OnEvent(driver, "CURSOR_CHANGED")
 check(mascot.dropHint:IsShown() and textOf(mascot.dropHint) == "Drop it on me to ask", "the drop hint shows")
 mascot.frame.scripts.OnReceiveDrag(mascot.frame)
-check(mascot.view.kind == "item" and not mascot.dropHint:IsShown(), "dropping an item on Wisp shows it")
+check(mascot.view.kind == "item" and not mascot.dropHint:IsShown(), "dropping an item on Bory shows it")
 mascot.buttons.back:Click()
 UnboredDB.dropsTaught = 3
 cursor = { itemID = 6948, link = HEARTH }
@@ -920,7 +920,7 @@ mascot.bubble.scripts.OnMouseUp(mascot.bubble)
 check(mascot.view.kind == "item", "dropping on the bubble works too")
 mascot.buttons.back:Click()
 
--- An item Wisp knows nothing about: said plainly, nothing is sent.
+-- An item Bory knows nothing about: said plainly, nothing is sent.
 mascot:ShowItem({ itemID = 4242, link = "|Hitem:4242|h[Odd Thing]|h" })
 check(UnboredCharDB.request == nil and textOf(mascot.message) == "I don't know this one yet.", "unknown item")
 mascot.buttons.back:Click()
@@ -953,7 +953,7 @@ UnboredDB.alts = {
 check(tip(901):find("Send to Alty (Alchemy 50): mail it", 1, true), "a reagent for an Alt: " .. tip(901))
 UnboredDB.alts["Area 52-Alty"].realm = "Stormrage"
 check(tip(901):find("warband bank", 1, true), "another realm: the warband bank")
-check(tip(902) == "", "an item Wisp has nothing personal about: no line, no drop hint")
+check(tip(902) == "", "an item Bory has nothing personal about: no line, no drop hint")
 local logged = false
 for _, seen in ipairs((ns.Snapshot.Body("unresolvedIds") or {}).list or {}) do
   logged = logged or (seen.kind == "advice" and seen.id == 902)
@@ -1002,7 +1002,7 @@ UnboredDB.tooltipLines = false
 check(tip(1234) == "", "the menu toggle turns every line off")
 UnboredDB.tooltipLines = true
 
--- A failed Request: Wisp's words for each Reason code, never raw text.
+-- A failed Request: Bory's words for each Reason code, never raw text.
 local function waitingRequest(id, sentAt)
   return { id = id, type = "plan", mode = "farm", topic = "mount", wish = "a mount", state = "waiting",
     createdAt = sentAt, sentAt = sentAt, onDisk = true }
@@ -1104,7 +1104,7 @@ UnboredCompanionStatus.addonVersion = ns.VERSION
 mascot.updateLater = nil
 check(ns.VersionNewer("0.10.0", "0.9.9") and not ns.VersionNewer("0.6.0", "0.6.0"), "versions compare by number")
 
--- Combat: Wisp steps aside and ignores clicks.
+-- Combat: Bory steps aside and ignores clicks.
 local fighting = true
 InCombatLockdown = function()
   return fighting
@@ -1130,7 +1130,7 @@ check(UnboredCharDB.request == nil and mascot.view.kind ~= "waiting", "no Compan
 mascot:ShowAsk("ask", "Why is the sky blue?")
 mascot.buttons.send:Click()
 check(UnboredCharDB.request == nil and bubbleText():find("Unbored Companion", 1, true),
-  "no Companion: Wisp says the planner needs it")
+  "no Companion: Bory says the planner needs it")
 check(not mascot.buttons.refresh:IsShown() and not mascot.buttons.makeplan:IsShown(),
   "and offers no Refresh and no plan from it")
 mascot.buttons.ok:Click()

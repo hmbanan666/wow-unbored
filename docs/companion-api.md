@@ -213,14 +213,16 @@ Ideas for the choice Bubble ([ADR 0040](adr/0040-suggestions-from-data.md)), for
 
 ```json
 { "v": 1, "computedAt": 1793361600, "characters": { "Silvermoon-Mira": [
-  { "id": "mount:183", "kind": "collection", "title": "Tempest Keep", "goal": "Run Tempest Keep for {mount:183}.",
+  { "id": "mount:183", "kind": "collection", "title": "Tempest Keep", "goal": "Run {instance:550|Tempest Keep} for {mount:183}.", "titleToken": "{instance:550}",
     "why": "None of your 2 characters has it yet", "rewards": ["{mount:183}"], "mapID": 109,
     "reason": { "kind": "alts", "count": 2 },
     "request": { "topic": "suggestion", "suggestionId": "mount:183", "wish": "Tempest Keep: Run Tempest Keep for a mount." } }
 ] } }
 ```
 
-`kind` is `event`, `achievement`, `rare` or `collection`. `reason` lets the game write the line under the title in the player's language (`ends` with `at`, `alts` with `count`, `near` with `mapID`); `why` is the English fallback. An idea with `expiresAt` in the past is not shown.
+`kind` is `event`, `achievement`, `rare` or `collection`. `reason` lets the game write the line under the title in the player's language (`ends` with `at`, `alts` with `count`, `near` with `mapID`); `why` is the same line from the Server. An idea with `expiresAt` in the past is not shown.
+
+Ideas are written in the Character's language, English or Russian: `lang` in its `char` Section (the language the addon speaks), else the `lang` of its last Request, else English. The Catalog only has English names, so a Russian idea names achievements and dungeons by token (`{ach:1956}`, `{instance:249}`) and carries `titleToken`; the game shows its own localized name for them, and the English `title` when it cannot resolve the id. Rare names stay English.
 
 The Companion fetches it on every sync and writes `Unbored_Plan/Suggestions.lua` (`UnboredSuggestions = {...}`, the same shape) only when it changed, within 20 KB and 2,000 literals, dropping the last ideas of each character until it fits. The game reads it when the UI loads, shows up to 4 ideas with the Server's first, and adds up to 2 live ones of its own (an active holiday, a curated rare in this zone), one per id, reward or holiday. The MCP tool `get_suggestions` returns the same ideas to the Planner.
 
@@ -253,6 +255,10 @@ The 0.6 player profile (docs/adr/0011), kept for older addons. Addons 0.6 and 0.
 `GET {base}/v1/devices/me` with `Authorization: Bearer <device secret>` returns `{ "id", "name", "status", "createdAt", "lastSeenAt" }`. `status` is `pending`, `approved`, or `revoked`.
 
 An approved device can call `GET /v1/plan` and `POST /v1/progress` only. It cannot put a plan. Revoked and pending devices are rejected on those two calls.
+
+### Forget my data
+
+`POST {base}/v1/devices/me/forget` with `Authorization: Bearer <device secret>` and the body `{ "confirm": true }` ([PRIVACY.md](../PRIVACY.md)). Any status works, so a pending or revoked PC can still erase. The server erases every Account this device sent Characters, profiles or Requests for (the same set as the owner tool `delete_account_data`: Game data Sections and their history, Characters, 0.6 profiles, Player history, progress, advice, ideas, Requests and the plans made for them), then this device's remaining Requests, and revokes the device. It answers `{ "ok": true, "accounts", "characters", "sections", "requests", "plans", "revoked": true }`. No bearer or an unknown secret is `401`, the shared companion token is `403`, a missing `confirm` is `400`. The Companion then clears its upload caches and writes empty `Plan.lua` (keeping the status part), `Advice.lua` and `Suggestions.lua`.
 
 ## Server in this repo
 

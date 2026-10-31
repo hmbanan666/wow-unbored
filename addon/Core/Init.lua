@@ -200,7 +200,7 @@ function Unbored_Waypoint()
   end
 end
 
--- The Refresh key: the same as pressing Refresh or Load on Wisp.
+-- The Refresh key: the same as pressing Refresh or Load on Bory.
 function Unbored_LoadPlan()
   if ns.Mascot and ns.Mascot.OnLoad then
     ns.Mascot.OnLoad()

@@ -40,7 +40,7 @@ local PIPS = 12
 local PIP = 7
 local LIST_MAX_HEIGHT = 260
 local LIST_ROW_GAP = 4
--- The drop hint stops once the player has handed Wisp this many items.
+-- The drop hint stops once the player has handed Bory this many items.
 local DROP_TEACH = 3
 
 -- The portrait is layers (BRAND.md): a disc, Bory, and the gold ring on top.
@@ -208,7 +208,7 @@ local function ideaChip(parent, onClick)
     if not idea then
       return ""
     end
-    local lines = { idea.title, ns.Markup.Plain(idea.goal) }
+    local lines = { ns.Suggestions.Title(idea), ns.Markup.Plain(idea.goal) }
     for i = 1, #idea.rewards do
       lines[#lines + 1] = "- " .. (ns.Markup.Plain(idea.rewards[i]) or "")
     end
@@ -299,7 +299,7 @@ local function glow(region)
   return group
 end
 
--- Three dots that light up in turn while Wisp waits (D89).
+-- Three dots that light up in turn while Bory waits (D89).
 -- TODO(verify-in-game): Animation:SetTarget on a child font string.
 local DOT_ALPHA = 0.25
 local DOT_SECONDS = 0.4
@@ -884,7 +884,7 @@ function ns.Mascot:FinishMood()
   end
 end
 
--- Wisp is waiting on a Request: one short line instead of the new thing (D67).
+-- Bory is waiting on a Request: one short line instead of the new thing (D67).
 function ns.Mascot:Busy()
   self:Echo(ns.T("BUSY_ONE"))
   self:Reveal()
@@ -906,7 +906,7 @@ function ns.Mascot.RequestSummary(req)
   local idea = req.topic == "suggestion" and type(req.suggestion) == "table" and req.suggestion or nil
   local text
   if idea and type(idea.title) == "string" and idea.title ~= "" then
-    text = idea.title
+    text = ns.Suggestions.Title(idea)
     if type(req.extra) == "string" and req.extra ~= "" then
       text = text .. "\n\"" .. req.extra .. "\""
     end
@@ -1105,7 +1105,7 @@ local PROBLEMS = {
   offline = "COMPANION_OFFLINE",
 }
 
--- A Reason code from the Companion, in Wisp's words. The planner's own
+-- A Reason code from the Companion, in Bory's words. The planner's own
 -- reason (fail_request) is written for the player, so it is shown as is.
 local REASONS = {
   not_approved = "COMPANION_PAIRING",
@@ -1519,7 +1519,7 @@ function ns.Mascot:OnCursorChanged()
   end
 end
 
--- What Wisp knows about an item, from the game only (D64: no item Requests).
+-- What Bory knows about an item, from the game only (D64: no item Requests).
 function ns.Mascot:ShowItem(item)
   self:Reset()
   if self.dropHint then
@@ -1577,7 +1577,7 @@ function ns.Mascot:FocusWish()
   end
 end
 
--- "Make a plan" under an Answer Wisp could not give here.
+-- "Make a plan" under an Answer Bory could not give here.
 function ns.Mascot:PlanFromAnswer()
   local answer = ns.Session.UnreadAnswer()
   local wish = answer and answer.planWish
@@ -2011,7 +2011,7 @@ function ns.Mascot:Layout(view, right)
   end
   local function layoutIdea(button, idea)
     button.idea = idea
-    button.label:SetText(idea.title)
+    button.label:SetText(ns.Suggestions.Title(idea))
     local line = ns.Suggestions.Line(idea)
     button.sub:SetText(line or "")
     local icon = idea.rewards[1] and ns.Markup.RewardIcon(idea.rewards[1])
@@ -2260,7 +2260,7 @@ function ns.Mascot.IsHidden()
   return db().hidden == true
 end
 
--- The minimap button's left click: Wisp in or out of view.
+-- The minimap button's left click: Bory in or out of view.
 function ns.Mascot:ToggleShown()
   if self.IsHidden() or db().collapsed then
     self:Reveal()
@@ -2298,7 +2298,7 @@ end
 -- Settings stay basic: sizes, lock, hide, sharing, keybinds. The rest is under More.
 function ns.Mascot:SettingsTree()
   return {
-    { text = ns.T("MENU_WISP_SIZE"), children = sizeItems(self.Scale, function(p) self:SetScale(p) end) },
+    { text = ns.T("MENU_BORY_SIZE"), children = sizeItems(self.Scale, function(p) self:SetScale(p) end) },
     {
       text = ns.T("MENU_BUBBLE_SIZE"),
       children = sizeItems(self.BubbleScale, function(p) self:SetBubbleScale(p) end),

@@ -16,6 +16,8 @@ fn main() {
         "write_plan_text",
         "fetch_plan",
         "rescan_progress",
+        "open_privacy",
+        "forget_my_data",
     ]);
     if let Err(error) =
         tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
