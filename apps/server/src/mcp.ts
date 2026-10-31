@@ -43,6 +43,7 @@ The card (all optional, but a plan without a title gets a warning):
 - goal: one sentence, at most 160 bytes: what the player does and why it is worth it. May carry tokens.
 - details: at most 600 bytes of facts and state (currency counts, what Alts already did). May carry tokens.
 - rewards: up to 6 strings, each exactly one token of kind mount, ach, item, toy, currency or pet, e.g. ["{mount:183}", "{ach:964}"].
+- contains: optional reward contents, { "<item reward token>": ["<token>", ...] }. A container (cage, chest, bag) that drops is the reward; what it may hold goes in \`contains\`. Never list the possible contents as rewards themselves. The key is one {item:ID} that is also in rewards or a step's rewards; the list is 1 to 6 single tokens of kind mount, toy, pet or item; at most 2 containers; the contents count toward the 12 tokens of goal plus details. Bory shows "[cage] · may contain 1 of 3 mounts" and leaves out what the player already has.
 Bory shows a calm card: closed it is only the title, the step, its why and the first reward; everything else opens on "Show more". So keep every text short: a step title is one line of what to do, why is one short reason, and long text belongs in note or details. No walls of text.
 
 Each task:
@@ -57,6 +58,7 @@ Each task:
 - condition: optional { text, check }. text (at most 160 bytes) is shown before the step, e.g. "If you have 5,000 {currency:1166}". check = { kind: currency | item | level | quest | ach, id, atLeast? } is evaluated live in the game: met shows Ready; unmet shows the live count and Skip moves past without counting it as skipped. For level, id is the level. Never guess the player's numbers; let the check read them.
 - waypoints: optional, 1 to 10 points [{ mapID, x, y, label }] in route order. x and y are 0 to 1, label at most 80 bytes. The addon sets the native waypoint arrow (and TomTom when installed) on point 1 and moves to the next point when the player comes within about 30 yards. Use it for a multi-stop task. Without waypoints the task's own mapID, x, y is the single point.
 - complete: how the game finishes the task. Omit it and the player presses Done.
+- group: optional, 1 to 24 characters a-z, 0-9 and hyphen. Steps that can be done in any order (several rares, treasures, dailies in one zone) share a \`group\`. Give each grouped step a \`complete\` the game can check (quest or vignette for rares); a manual step in a group works but needs Done. Grouped steps must be next to each other, at least 2; the player flips between them with arrows and they tick off in any order.
 
 ${MARKUP}
 
@@ -133,7 +135,7 @@ const entitiesSchema = z
 export function createMcpServer(store: Store, dataDir: string, gameIds?: BlizzardIds): McpServer {
   const server = new McpServer({
     name: "unbored",
-    version: "0.9.1",
+    version: "0.10.0",
   });
 
   const taskSchema = z
@@ -168,6 +170,10 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         .optional()
         .describe("Route points in order. Coordinates are 0 to 1."),
       complete: z.unknown().optional(),
+      group: z
+        .string()
+        .optional()
+        .describe("Step group: consecutive steps done in any order, 1-24 of a-z, 0-9, hyphen"),
     })
     .strict();
   const planSchema = z
@@ -185,6 +191,12 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         .max(6)
         .optional()
         .describe('Up to 6 single link tokens, like "{mount:183}"'),
+      contains: z
+        .record(z.string(), z.array(z.string()).max(6))
+        .optional()
+        .describe(
+          "Reward contents: a container {item:ID} reward to the 1-6 mount, toy, pet or item tokens it may hold",
+        ),
       generatedAt: z.number().optional(),
       tasks: z.array(taskSchema).min(1).max(40),
       entities: entitiesSchema

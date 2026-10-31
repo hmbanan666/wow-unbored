@@ -49,6 +49,9 @@ pub struct Plan {
     pub details: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rewards: Option<Vec<String>>,
+    /// Reward contents (ADR 0055): a container reward token to what it may hold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contains: Option<Value>,
     pub tasks: Vec<Task>,
     /// Npc names and places for `{npc:ID}` tokens (packages/contracts/markup.md).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -85,6 +88,9 @@ pub struct Task {
     /// `{ text, check = { kind, id, atLeast } }`, checked live by the addon.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition: Option<Value>,
+    /// Step group (ADR 0056): consecutive steps done in any order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1043,6 +1049,9 @@ fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
     if let Some(rewards) = &plan.rewards {
         push_pair(&mut out, 1, "rewards", &Value::from(rewards.clone()));
     }
+    if let Some(contains) = plan.contains.as_ref().filter(|value| value.is_object()) {
+        push_pair(&mut out, 1, "contains", contains);
+    }
     if let Some(request_id) = &plan.request_id {
         push_pair(&mut out, 1, "requestId", &Value::String(request_id.clone()));
     }
@@ -1091,6 +1100,9 @@ fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
         }
         if let Some(rewards) = &task.rewards {
             push_pair(&mut out, 3, "rewards", &Value::from(rewards.clone()));
+        }
+        if let Some(group) = &task.group {
+            push_pair(&mut out, 3, "group", &Value::String(group.clone()));
         }
         if let Some(condition) = task.condition.as_ref().filter(|value| value.is_object()) {
             push_pair(&mut out, 3, "condition", condition);
@@ -1555,6 +1567,46 @@ mod tests {
         const OLD: &str = include_str!("../../../../packages/contracts/fixtures/plan.json");
         let old = render_plan_lua(&plan_from_value(serde_json::from_str(OLD).unwrap()).unwrap());
         assert!(!old.contains("\n  [\"title\"]") && !old.contains("[\"rewards\"]"));
+    }
+
+    #[test]
+    fn writes_reward_contents_and_step_groups() {
+        const GROUP: &str = include_str!("../../../../packages/contracts/fixtures/plan-group.json");
+        const GROUP_LUA: &str =
+            include_str!("../../../../packages/contracts/fixtures/plan-group.lua");
+        let plan = plan_from_value(serde_json::from_str(GROUP).unwrap()).unwrap();
+        let lua = render_plan_lua(&plan);
+        if std::env::var_os("UNBORED_WRITE_FIXTURES").is_some() {
+            fs::write(
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../packages/contracts/fixtures/plan-group.lua"
+                ),
+                &lua,
+            )
+            .unwrap();
+            return;
+        }
+        assert_eq!(
+            lua, GROUP_LUA,
+            "plan-group.lua is what the Companion writes"
+        );
+        let values = parse_saved_variables(&lua).unwrap();
+        let root = values.get("UnboredExternalPlan").unwrap();
+        let get = crate::savedvars::table_get;
+        let contains = get(root, "contains").unwrap();
+        let cage = get(contains, "{item:128025|Rattling Iron Cage}").unwrap();
+        assert_eq!(crate::savedvars::array_items(cage).len(), 3);
+        let tasks = crate::savedvars::array_items(get(root, "tasks").unwrap());
+        assert!(get(tasks[0], "group").is_none());
+        assert_eq!(
+            get(tasks[1], "group").and_then(|v| v.as_str()),
+            Some("rares")
+        );
+        assert_eq!(
+            get(tasks[3], "group").and_then(|v| v.as_str()),
+            Some("rares")
+        );
     }
 
     fn small_plan(id: &str) -> Plan {

@@ -1277,6 +1277,13 @@ check(card.title == "Ashes in one evening" and card.goal and card.details and #c
 check(card.tasks[1].why and #card.tasks[1].rewards == 1, "and a Step's why and rewards")
 check(card.tasks[2].condition and card.tasks[2].condition.check.kind == "level"
   and card.tasks[2].condition.check.id == 70, "and its condition")
+assert(loadfile("../packages/contracts/fixtures/plan-group.lua"))()
+local caged = assert(ns.ValidatePlan(UnboredExternalPlan, false))
+UnboredExternalPlan = savedPlan
+local cageContents = caged.contains and caged.contains["{item:128025}"]
+check(cageContents and #cageContents == 3, "plan-group.lua keeps the cage contents")
+check(not caged.tasks[1].group and caged.tasks[2].group == "rares" and caged.tasks[4].group == "rares"
+  and not caged.tasks[5].group, "and the step group")
 local reEncoded = ns.DecodeImport(ns.EncodePlan(card))
 check(reEncoded.title == card.title and reEncoded.tasks[2].condition.text == card.tasks[2].condition.text,
   "the card fields survive an export")

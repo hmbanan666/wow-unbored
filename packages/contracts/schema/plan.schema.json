@@ -45,6 +45,23 @@
         "description": "One link token of kind mount, ach, item, toy, currency or pet."
       }
     },
+    "contains": {
+      "type": "object",
+      "maxProperties": 2,
+      "description": "Reward contents (ADR 0055): a container reward {item:ID} (in rewards or a step's rewards) to what it may hold. The container is the reward; never list its contents as rewards.",
+      "propertyNames": {
+        "pattern": "^\\{item:[0-9]+(\\|[^{}]*)?\\}$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "pattern": "^\\{(mount|toy|pet|item):[^{}]+\\}$"
+        }
+      }
+    },
     "generatedAt": {
       "type": "integer"
     },
@@ -91,6 +108,11 @@
               "type": "string",
               "pattern": "^\\{[a-z]+:[^{}]+\\}$"
             }
+          },
+          "group": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,24}$",
+            "description": "Step group (ADR 0056): consecutive steps (at least 2) with the same group are done in any order."
           },
           "condition": {
             "type": "object",
