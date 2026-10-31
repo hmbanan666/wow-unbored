@@ -1171,7 +1171,7 @@ fn sync_advice(settings: &Settings, retail: &Path, secret: &str) -> Result<bool,
     let Some(body) = get_json(&client, &url, secret)? else {
         return Ok(false);
     };
-    install_advice(retail, &body["characters"]).map_err(|err| err.0)
+    install_advice(retail, &body["characters"], &body["holdings"]).map_err(|err| err.0)
 }
 
 /// Bory's ideas for this PC's characters, into Suggestions.lua (D107).
