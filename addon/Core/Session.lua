@@ -89,11 +89,15 @@ function ns.Session.Note(text)
   end
 end
 
-function ns.Session:Finish(bucket)
-  local task = self:Current()
-  if not task or not self.state then
+-- index: the step to finish, 1 (the shown one) by default. A grouped step
+-- the game ticked off-screen (docs/adr/0056) leaves the card where it is.
+function ns.Session:Finish(bucket, index)
+  index = index or 1
+  local task = self.state and type(self.state.tasks) == "table" and self.state.tasks[index] or nil
+  if not task then
     return
   end
+  local shown = index == 1
   local list = bucket == "skipped" and self.state.skipped or self.state.done
   if ns.Profile then
     ns.Profile.NoteStep(task, bucket == "skipped" and "skipped" or "done")
@@ -101,21 +105,25 @@ function ns.Session:Finish(bucket)
   if ns.Mascot and ns.Mascot.Echo then
     local title = ns.Markup.Plain(task.title or "", task.npcs)
     ns.Mascot:Echo(ns.T(bucket == "skipped" and "ECHO_SKIPPED" or "ECHO_DONE", title))
-    ns.Mascot:Lead(bucket == "skipped" and "OK_NEXT" or "NICE")
+    if shown then
+      ns.Mascot:Lead(bucket == "skipped" and "OK_NEXT" or "NICE")
+    end
     if bucket ~= "skipped" and ns.Mascot.StepDone then
       ns.Mascot:StepDone()
     end
   end
   -- The title is kept so the inline list can show what was finished.
   list[#list + 1] = { id = task.id, at = ns.Now(), title = ns.SafeString(ns.Markup.Plain(task.title, task.npcs), 120) }
-  table.remove(self.state.tasks, 1)
-  if ns.Waypoint and ns.Waypoint.ClearOwned then
+  table.remove(self.state.tasks, index)
+  if shown and ns.Waypoint and ns.Waypoint.ClearOwned then
     ns.Waypoint:ClearOwned()
   end
   self:Save()
   local nxt = self:Current()
-  if nxt then
+  if nxt and shown then
     self.Note(ns.T("NEXT_UP", ns.Markup.Plain(nxt.title, nxt.npcs)))
+    ns.ClickSound()
+  elseif nxt then
     ns.ClickSound()
   else
     self.Note(ns.T("PLAN_DONE_CHAT"))
@@ -124,18 +132,105 @@ function ns.Session:Finish(bucket)
   self:RefreshUI()
 end
 
+-- Step groups (docs/adr/0056): the open steps of the shown step's group are
+-- the head of the queue. The number of them, or nil outside a group of 2+.
+function ns.Session:GroupBlock()
+  local tasks = self.state and self.state.tasks
+  local first = type(tasks) == "table" and tasks[1] or nil
+  if not first or not first.group then
+    return nil
+  end
+  local count = 1
+  while tasks[count + 1] and tasks[count + 1].group == first.group do
+    count = count + 1
+  end
+  return count >= 2 and count or nil
+end
+
+local function byOrder(tasks, count)
+  local sorted = {}
+  for i = 1, count do
+    sorted[i] = tasks[i]
+  end
+  table.sort(sorted, function(a, b)
+    return (tonumber(a.order) or 0) < (tonumber(b.order) or 0)
+  end)
+  return sorted
+end
+
+-- { index, count }: "2 of 4" among the open steps of the group, plan order.
+function ns.Session:GroupInfo()
+  local count = self:GroupBlock()
+  if not count then
+    return nil
+  end
+  local sorted = byOrder(self.state.tasks, count)
+  for i = 1, count do
+    if sorted[i] == self.state.tasks[1] then
+      return { index = i, count = count, group = sorted[i].group }
+    end
+  end
+  return { index = 1, count = count, group = self.state.tasks[1].group }
+end
+
+-- The arrows: show the next (+1) or previous (-1) open step of the group.
+-- Only the group's head block turns; nothing is skipped or counted.
+function ns.Session:Flip(step)
+  local count = self:GroupBlock()
+  if not count then
+    return false
+  end
+  local tasks = self.state.tasks
+  local sorted = byOrder(tasks, count)
+  local rank = 1
+  for i = 1, count do
+    if sorted[i] == tasks[1] then
+      rank = i
+    end
+  end
+  local start = (rank - 1 + (step or 1)) % count
+  for i = 1, count do
+    tasks[i] = sorted[(start + i - 1) % count + 1]
+  end
+  if ns.Waypoint and ns.Waypoint.ClearOwned then
+    ns.Waypoint:ClearOwned()
+  end
+  self:Save()
+  self:RefreshUI()
+  return true
+end
+
+-- A grouped step the game says is done while another one is shown. Only
+-- game truth counts here: no zone, no proximity, no "standing on the pin".
+function ns.Session:GroupDoneOffscreen()
+  local count = self:GroupBlock()
+  if not count then
+    return nil
+  end
+  for i = 2, count do
+    if ns.SpecComplete(self.state.tasks[i].complete, true) then
+      return i
+    end
+  end
+  return nil
+end
+
 function ns.Session:CheckCurrent()
   if self.checking or not self.state then
     return
   end
   self.checking = true
   local guard = 0
-  while self:Current() and ns.IsTaskComplete(self:Current()) do
-    self:Finish("done")
-    guard = guard + 1
-    if guard >= 40 then
+  while guard < 40 do
+    local offscreen = self:GroupDoneOffscreen()
+    if offscreen then
+      self:Finish("done", offscreen)
+    elseif self:Current() and ns.IsTaskComplete(self:Current()) then
+      self:Finish("done")
+    else
       break
     end
+    guard = guard + 1
   end
   self.checking = false
 end
@@ -151,6 +246,12 @@ end
 function ns.Session:Skip()
   local task = self:Current()
   if not task or not self.state or type(self.state.tasks) ~= "table" then
+    return
+  end
+  -- In a Step group the arrows cover "later", so Skip means "won't do".
+  if self:GroupBlock() then
+    self:Finish("skipped")
+    self:CheckCurrent()
     return
   end
   -- A Step that is "not yet" (D95) moves on without counting as skipped.
@@ -234,6 +335,7 @@ function ns.Session:ApplyPlan(plan, source, reveal)
     local task = ns.NormalizeTask(plan.tasks[i])
     if task then
       task.source = source or "import"
+      task.order = #tasks + 1
       tasks[#tasks + 1] = task
     end
   end
@@ -244,6 +346,8 @@ function ns.Session:ApplyPlan(plan, source, reveal)
   self.state.goal = plan.goal
   self.state.details = plan.details
   self.state.rewards = plan.rewards and ns.DeepCopy(plan.rewards, 0) or nil
+  self.state.contains = plan.contains and ns.DeepCopy(plan.contains) or nil
+  self.state.generatedAt = tonumber(plan.generatedAt)
   self.state.npcs = plan.npcs and ns.DeepCopy(plan.npcs) or nil
   self.state.savedAt = ns.Now()
   if ns.DB then
@@ -1315,6 +1419,7 @@ function ns.Session:ProgressTable()
     skipped = skipped,
     remaining = remaining,
     source = state.source,
+    generatedAt = state.generatedAt,
   }
 end
 
@@ -1351,6 +1456,8 @@ function ns.Session:OnEvent(event, ...)
     return
   end
   if self:Current() and ns.EventCompletes(self:Current(), event, ...) then
+    self:CheckCurrent()
+  elseif self:GroupDoneOffscreen() then
     self:CheckCurrent()
   elseif event == "ZONE_CHANGED_NEW_AREA" or event == "ZONE_CHANGED" then
     self:CheckCurrent()

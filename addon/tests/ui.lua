@@ -1487,9 +1487,9 @@ Unbored_Toggle()
 check(mascot.view.kind == "choice", "the toggle key offers the presets")
 -- The paste window is gone (D214): import and export only print the help.
 for _, command in ipairs({ "import UNB1:abc", "export" }) do
-  local before = #printed
+  local printedBefore = #printed
   SlashCmdList.UNBORED(command)
-  check(#printed == before + 1 and printed[#printed]:find(ns.T("SLASH_HELP"), 1, true) ~= nil
+  check(#printed == printedBefore + 1 and printed[#printed]:find(ns.T("SLASH_HELP"), 1, true) ~= nil
     and not printed[#printed]:find("import", 1, true), "/unbored " .. command .. " only prints the help")
 end
 check(ns.ShowImport == nil and ns.ShowExport == nil and ns.L.IMPORT_TITLE == nil and ns.L.ERR_KIND_PROGRESS == nil,
@@ -1554,6 +1554,71 @@ mascot:ShowChoice()
 check(mascot.view.mood == "idle", "one that has not started: idle")
 UnboredSuggestions = nil
 ns.Suggestions.cache = nil
+
+-- Reward contents (docs/adr/0055) and a Step group (docs/adr/0056) on the card.
+do
+  local savedMount = C_MountJournal.GetMountInfoByID
+  C_MountJournal.GetMountInfoByID = function(mountID)
+    local cageMounts = { [611] = "Felsteel Annihilator", [612] = "Bristling Hellboar", [613] = "Coalfist Gronnling" }
+    if cageMounts[mountID] then
+      return cageMounts[mountID], 1, 1, false, true, 0, false, false, 0, false, mountID == 612
+    end
+    return savedMount(mountID)
+  end
+  local cage = {
+    title = "Cage Hunt in Tanaan",
+    rewards = { "{item:128025|Rattling Iron Cage}" },
+    contains = { ["{item:128025}"] = { "{mount:611|Felsteel Annihilator}", "{mount:612|Bristling Hellboar}",
+      "{mount:613|Coalfist Gronnling}" } },
+    tasks = {
+      { id = "r1", title = "Rare 1", group = "rares", complete = { kind = "quest", questID = 39001 } },
+      { id = "r2", title = "Rare 2", group = "rares", complete = { kind = "quest", questID = 39002 } },
+      { id = "r3", title = "Rare 3", group = "rares", complete = { kind = "quest", questID = 39003 } },
+      { id = "r4", title = "Rare 4", group = "rares", complete = { kind = "quest", questID = 39004 } },
+      { id = "open", title = "Open the cage" },
+    },
+  }
+  UnboredDB.mascot.cardOpen = false
+  ns.Session:ApplyPlan(assert(ns.ValidatePlan(cage, true)), "companion", true)
+  ns.Session:RefreshUI()
+  local line = textOf(mascot.rewardLines[1])
+  check(line:find("may contain 1 of 2 mounts", 1, true) and not line:find("\n", 1, true),
+    "closed: the cage says what it may hold on one line, owned mounts left out: " .. line)
+  check(mascot.groupRow:IsShown() and textOf(mascot.groupRow.text) == "1 of 4 · any order",
+    "a group step shows where it is in the group: " .. textOf(mascot.groupRow.text))
+  check(mascot.groupRow.next.icon.rotation == math.pi and mascot.groupRow.prev.icon.rotation == nil,
+    "the right arrow is the chevron turned around")
+  check(shownButtons() == "done,skip", "a group step has no new action buttons")
+  mascot.buttons.skip.scripts.OnEnter(mascot.buttons.skip)
+  check(textOf(GameTooltip) == ns.T("TIP_SKIP_GROUP"), "Skip in a group says it drops the step")
+  mascot.groupRow.next:Click()
+  check(ns.Session:Current().id == "r2" and textOf(mascot.groupRow.text) == "2 of 4 · any order",
+    "the right arrow shows the next rare")
+  mascot.cardToggle:Click()
+  local open = textOf(mascot.rewardLines[1])
+  local _, links = open:gsub("|Hspell:", "")
+  check(open:find("\n", 1, true) and links == 2, "open: a muted line links the two mounts the cage may hold: " .. open)
+  mascot.cardToggle:Click()
+  C_MountJournal.GetMountInfoByID = function(mountID)
+    if mountID >= 611 and mountID <= 613 then
+      return "Mount", 1, 1, false, true, 0, false, false, 0, false, true
+    end
+    return savedMount(mountID)
+  end
+  ns.Session:RefreshUI()
+  check(textOf(mascot.rewardLines[1]):find("you have all of them", 1, true), "all owned: you have all of them")
+  C_MountJournal.GetMountInfoByID = savedMount
+
+  -- A plain plan looks as in 0.9.
+  ns.Session:ApplyPlan(assert(ns.ValidatePlan({ tasks = { { id = "a", title = "A" }, { id = "b", title = "B" } } },
+    true)), "companion", true)
+  ns.Session:RefreshUI()
+  check(not mascot.groupRow:IsShown(), "a sequential plan has no arrows")
+  mascot.buttons.skip.scripts.OnEnter(mascot.buttons.skip)
+  check(textOf(GameTooltip) == ns.T("TIP_SKIP"), "Skip outside a group is unchanged")
+  ns.Session.state = nil
+  ns.Session:RefreshUI()
+end
 
 -- A caught error: one friendly line, the details kept.
 local lines = #printed

@@ -57,6 +57,8 @@ function ns.NormalizeTask(task)
     rewards = type(task.rewards) == "table" and ns.DeepCopy(task.rewards, 0) or nil,
     condition = type(task.condition) == "table" and ns.DeepCopy(task.condition) or nil,
     holiday = type(task.holiday) == "string" and task.holiday or nil,
+    group = type(task.group) == "string" and task.group or nil,
+    order = tonumber(task.order),
   }
 end
 

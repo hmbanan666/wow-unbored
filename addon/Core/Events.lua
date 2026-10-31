@@ -43,7 +43,7 @@ function ns.Events.Pulse()
   if not task then
     return
   end
-  if ns.IsTaskComplete(task) then
+  if ns.IsTaskComplete(task) or ns.Session:GroupDoneOffscreen() then
     ns.Session:CheckCurrent()
     return
   end

@@ -236,6 +236,22 @@ local en = {
   HOLDINGS_ALSO = "Also: %s",
   HOLDINGS_WARBAND = "Warband bank",
   HOLDINGS_MORE = "+%d",
+  -- v0.10: Step groups and reward contents (docs/adr/0055, 0056)
+  GROUP_OF = "%d of %d · any order",
+  TIP_GROUP_PREV = "Show the previous one",
+  TIP_GROUP_NEXT = "Show the next one",
+  TIP_SKIP_GROUP = "Won't do this one. It leaves the plan.",
+  CONTAINS_MANY_mount = "· may contain 1 of %d mounts",
+  CONTAINS_MANY_toy = "· may contain 1 of %d toys",
+  CONTAINS_MANY_pet = "· may contain 1 of %d pets",
+  CONTAINS_MANY_item = "· may contain 1 of %d items",
+  CONTAINS_MANY_mixed = "· may contain 1 of %d things",
+  CONTAINS_ONE_mount = "· may contain a mount you don't have",
+  CONTAINS_ONE_toy = "· may contain a toy you don't have",
+  CONTAINS_ONE_pet = "· may contain a pet you don't have",
+  CONTAINS_ONE_item = "· may contain an item",
+  CONTAINS_ONE_mixed = "· may contain something you don't have",
+  CONTAINS_ALL = "· you have all of them",
 }
 
 local ru = {
@@ -468,6 +484,22 @@ local ru = {
   HOLDINGS_ALSO = "Ещё: %s",
   HOLDINGS_WARBAND = "банк отряда",
   HOLDINGS_MORE = "+%d",
+  -- v0.10: Step groups and reward contents (docs/adr/0055, 0056)
+  GROUP_OF = "%d из %d · в любом порядке",
+  TIP_GROUP_PREV = "Показать предыдущий",
+  TIP_GROUP_NEXT = "Показать следующий",
+  TIP_SKIP_GROUP = "Не буду. Шаг уйдёт из плана.",
+  CONTAINS_MANY_mount = "· может выпасть: 1 из %d маунтов",
+  CONTAINS_MANY_toy = "· может выпасть: 1 из %d игрушек",
+  CONTAINS_MANY_pet = "· может выпасть: 1 из %d питомцев",
+  CONTAINS_MANY_item = "· может выпасть: 1 из %d предметов",
+  CONTAINS_MANY_mixed = "· может выпасть: 1 из %d вещей",
+  CONTAINS_ONE_mount = "· может выпасть маунт, которого у вас нет",
+  CONTAINS_ONE_toy = "· может выпасть игрушка, которой у вас нет",
+  CONTAINS_ONE_pet = "· может выпасть питомец, которого у вас нет",
+  CONTAINS_ONE_item = "· может выпасть предмет",
+  CONTAINS_ONE_mixed = "· может выпасть то, чего у вас нет",
+  CONTAINS_ALL = "· у вас уже есть всё",
 }
 
 ns.Locales = { en = en, ru = ru }

@@ -89,7 +89,14 @@ local PORTRAIT_RING = "BoryFrame128"
 -- label when a glyph alone would not be clear.
 local ACTIONS = {
   done = { icon = "IconDone", tip = "TIP_DONE" },
-  skip = { icon = "IconSkip", tip = "TIP_SKIP" },
+  skip = {
+    icon = "IconSkip",
+    tip = "TIP_SKIP",
+    -- In a Step group Skip drops the step at once (docs/adr/0056).
+    tipFor = function()
+      return ns.T(ns.Session and ns.Session:GroupInfo() and "TIP_SKIP_GROUP" or "TIP_SKIP")
+    end,
+  },
   back = { icon = "IconBack", tip = "BACK" },
   ok = { icon = "IconDone", tip = "GOT_IT" },
   cancel = { icon = "IconClose", tip = "CANCEL_REQUEST" },
@@ -196,7 +203,7 @@ local function actionButton(parent, spec, onClick)
     clicked()
     onClick(self, mouseButton)
   end)
-  tooltip(button, ns.T(spec.tip or spec.label))
+  tooltip(button, spec.tipFor or ns.T(spec.tip or spec.label))
   button:Hide()
   return button
 end
@@ -734,6 +741,25 @@ function ns.Mascot:CreateBubble()
   for i = 1, ns.PLAN_LIMITS.rewards do
     self.rewardLines[i] = font(bubble, "GameFontHighlightSmall")
   end
+  -- A Step group (docs/adr/0056): "‹  2 of 4 · any order  ›".
+  local groupRow = CreateFrame("Frame", nil, bubble)
+  groupRow:SetSize(CARD_INNER, TOP_ICON + 4)
+  groupRow.prev = iconButton(groupRow, "IconChevron", ns.T("TIP_GROUP_PREV"), function()
+    ns.Session:Flip(-1)
+  end)
+  groupRow.prev:SetPoint("LEFT", groupRow, "LEFT", 0, 0)
+  groupRow.text = font(groupRow, "GameFontHighlightSmall")
+  groupRow.text:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  groupRow.text:SetPoint("LEFT", groupRow.prev, "RIGHT", 4, 0)
+  groupRow.next = iconButton(groupRow, "IconChevron", ns.T("TIP_GROUP_NEXT"), function()
+    ns.Session:Flip(1)
+  end)
+  if groupRow.next.icon.SetRotation then
+    groupRow.next.icon:SetRotation(math.pi)
+  end
+  groupRow.next:SetPoint("LEFT", groupRow.text, "RIGHT", 4, 0)
+  groupRow:Hide()
+  self.groupRow = groupRow
 
   self.collapse = iconButton(bubble, "IconChevron", ns.T("TIP_COLLAPSE"), function()
     self:Collapse()
@@ -1044,8 +1070,48 @@ local function merged(a, b)
   return out
 end
 
--- Plan Rewards first, then the Step's own, at most 6 (D91).
-local function rewardLines(state, task)
+local CONTAINS_OWNED = {
+  mount = function(id)
+    local state = ns.MountState(id)
+    return state and state.collected or false
+  end,
+  toy = ns.ToyOwned,
+  pet = ns.PetOwned,
+}
+
+-- What a container reward may hold (docs/adr/0055), without what the Account
+-- already has: the tail of its one line, and the links for the open card.
+function ns.Mascot.ContainsText(contains, token)
+  local key = ns.RewardKey(token)
+  local list = key and type(contains) == "table" and contains[key] or nil
+  if type(list) ~= "table" or #list == 0 then
+    return nil
+  end
+  local left, kinds, kind = {}, {}, nil
+  for i = 1, #list do
+    local _, valueKind = ns.RewardKey(list[i])
+    local id = tostring(list[i]):match("^{%l+:(%d+)")
+    local owned = valueKind and CONTAINS_OWNED[valueKind] and CONTAINS_OWNED[valueKind](tonumber(id))
+    if valueKind and not owned then
+      left[#left + 1] = list[i]
+      if not kinds[valueKind] then
+        kinds[valueKind] = true
+        kind = kind and "mixed" or valueKind
+      end
+    end
+  end
+  if #left == 0 then
+    return ns.T("CONTAINS_ALL"), nil
+  end
+  if #left == 1 then
+    return ns.T("CONTAINS_ONE_" .. kind), left
+  end
+  return ns.T("CONTAINS_MANY_" .. kind, #left), left
+end
+
+-- Plan Rewards first, then the Step's own, at most 6 (D91). A container gets
+-- its contents on the same line; open adds a muted line of their links.
+local function rewardLines(state, task, open)
   local out, seen = {}, {}
   for _, list in ipairs({ state.rewards or {}, task.rewards or {} }) do
     for i = 1, #(type(list) == "table" and list or {}) do
@@ -1054,6 +1120,17 @@ local function rewardLines(state, task)
         seen[token] = true
         local line = ns.Markup.RenderReward(token, relink)
         if line then
+          local tail, links = ns.Mascot.ContainsText(state.contains, token)
+          if tail then
+            line = line .. " " .. ns.Hex(MUTED) .. tail .. "|r"
+          end
+          if open and links then
+            local shown = {}
+            for j = 1, #links do
+              shown[#shown + 1] = ns.Markup.Render(links[j], nil, relink)
+            end
+            line = line .. "\n" .. ns.Hex(MUTED) .. table.concat(shown, ns.Hex(MUTED) .. ", ") .. "|r"
+          end
           out[#out + 1] = line
         end
       end
@@ -1125,7 +1202,8 @@ local function stepView(mascot, session, task)
   details[#details + 1] = render(task.note, task.npcs)
   details[#details + 1] = render(state.details, state.npcs)
   local goal = render(state.goal, state.npcs)
-  local rewards = rewardLines(state, task)
+  local rewards = rewardLines(state, task, open)
+  local closedReward = rewardLines(state, task, false)[1]
   local where = ns.Steps.Footer(task)
   local many = progress.steps > 1
   local tip = ns.T("STEP_OF", progress.step, progress.steps)
@@ -1144,7 +1222,8 @@ local function stepView(mascot, session, task)
     notYet = check ~= nil and not check.met,
     message = ns.Markup.Render(task.title or "", task.npcs, relink),
     why = render(task.why, task.npcs),
-    reward = rewards[1],
+    reward = closedReward,
+    group = session:GroupInfo(),
     -- Everything below sits behind the one toggle.
     expandable = many or goal ~= nil or #details > 0 or #rewards > 1 or where ~= nil,
     open = open,
@@ -1770,7 +1849,7 @@ local function resetRegions(mascot)
     texts[i]:ClearAllPoints()
     texts[i]:Hide()
   end
-  for _, region in ipairs({ mascot.pipRow, mascot.list, mascot.cardToggle }) do
+  for _, region in ipairs({ mascot.pipRow, mascot.list, mascot.cardToggle, mascot.groupRow }) do
     region:ClearAllPoints()
     region:Hide()
   end
@@ -2035,6 +2114,12 @@ end
 -- step, why, and the main reward. "Show more" opens the rest in place.
 -- place(region, height, gap, x) puts a region at the cursor; put(fs, text, gap) a string.
 function ns.Mascot:LayoutCard(view, inner, place, put)
+  if view.group then
+    local row = self.groupRow
+    row.text:SetText(ns.T("GROUP_OF", view.group.index, view.group.count))
+    row.text:Show()
+    place(row, TOP_ICON + 4, 4)
+  end
   put(self.header, view.header, 6)
   put(self.condition, view.condition, 3)
   put(self.message, view.message, 4)
