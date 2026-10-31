@@ -62,6 +62,15 @@ mod tests {
     use crate::savedvars::Stamp;
     use std::path::PathBuf;
 
+    /// D151: the updater trusts the committed new public key, never a revert.
+    #[test]
+    fn embeds_the_new_updater_pubkey() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let embedded = conf["plugins"]["updater"]["pubkey"].as_str().unwrap();
+        assert_eq!(embedded, include_str!("../updater-pubkey-v2.pub").trim());
+    }
+
     #[test]
     fn https_only_except_localhost() {
         assert!(validate_endpoint("").is_ok());

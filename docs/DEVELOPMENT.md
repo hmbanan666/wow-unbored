@@ -94,7 +94,7 @@ dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3NjIzREE2MkJDODNGNEQKUldS
 3. After those installs have moved to 0.9, replace `TAURI_SIGNING_PRIVATE_KEY` with the new private key. The password is empty. Do not commit the private key.
 4. Tag **0.9.1** and later with the new secret. The pubkey in `tauri.conf.json` stays the new one.
 
-A release dry run prints the embedded pubkey in the job summary (`scripts/print-updater-pubkey.sh`). Swapping the secret before 0.9 ships would make every installed Companion reject the update.
+A release dry run prints the embedded pubkey in the job summary (`scripts/print-updater-pubkey.sh`) and fails when it is not the committed public half, `apps/companion/src-tauri/updater-pubkey-v2.pub` (`scripts/check-updater-pubkey.sh`, D151); `cargo test` checks the same. Swapping the secret before 0.9 ships would make every installed Companion reject the update.
 
 **Dry run before every tag** (D117): Actions → Release → Run workflow, branch `main`, `dry_run` ticked (`gh workflow run release.yml --ref main -f dry_run=true`). It builds the zip and both installers, checks their names, the zip contents and `latest.json`, renders the notes since the last tag into the run summary and fails on lines that are not for players, and uploads `dry-run-addon`, `dry-run-companion` and `dry-run-notes` as artifacts. It publishes nothing and touches no release or the updater feed. It warns when the version in `tauri.conf.json` already has a tag: bump it before you tag.
 
