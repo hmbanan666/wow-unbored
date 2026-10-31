@@ -6,9 +6,7 @@ Unbored for World of Warcraft puts Bory, a calm ginger cat, on your screen. Pick
 
 [По-русски ниже](#по-русски)
 
-![Bory's plan card, and his tip in an item tooltip](docs/img/bory-preview.png)
-
-<sub>A preview drawn from Bory's own art and layout. In-game screenshots are coming.</sub>
+![Bory's plan card in Tanaan Jungle: a cage hunt for three missing mounts](Screenshots/plan-card.jpg)
 
 ## Install
 
