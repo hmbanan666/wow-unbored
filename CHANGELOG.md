@@ -2,10 +2,19 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
-## 0.9.1
+## 0.10.0
 
+- Bory knows what you can do right now: renown and paragon rewards you are close to, achievements you have almost finished, lockouts and Great Vault slots still open, currencies near their cap, events that are on. Ideas and plans start from there.
+- New idea: "Almost there", for an achievement you have mostly done ("8 of 10 done").
+- Ideas lean towards what you actually finish: kinds you play through come up a little earlier, kinds you keep skipping a little later. Nothing is hidden.
+- A reward that is a cage, a chest or a bag says what it may hold ("may hold: 1 of 3 mounts"), and leaves out what you already own.
+- Steps you can do in any order (four rares, say) get two small arrows to flip between them, and finish in whatever order you kill them. Skip in such a group drops that step at once.
+- When Bory trips over something, he keeps one short note about where it broke (code location and addon version only, nothing about you) so it can be fixed. Nothing is sent with data sharing off, and Forget my data erases the notes too.
+- The Companion speaks Russian everywhere now, error messages included.
+- Removed: the paste window behind `/unbored import` and `/unbored export`. Plans come through the Companion.
 - Fixed: long reads of quests, professions and collections finish again, so Bory keeps them.
 - Исправлено: длинные чтения квестов, профессий и коллекций снова доходят до конца, и Бори их сохраняет.
+- From 0.10 on, Companion updates are signed with a new key. A Companion older than 0.9 can't update itself to 0.10: download the installer from the newest release and run it again.
 
 ## 0.9.0
 

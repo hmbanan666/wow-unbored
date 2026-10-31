@@ -52,7 +52,8 @@ Content-Type: application/json
     "v": 1,
     "kind": "progress",
     "mode": "custom",
-    "source": "import",
+    "source": "companion",
+    "generatedAt": 1761718000,
     "currentId": "mentor:ashes",
     "done": [{ "id": "mentor:fall", "at": 1761719000 }],
     "skipped": [],
@@ -61,7 +62,7 @@ Content-Type: application/json
 }
 ```
 
-`savedAt` and each `at` are unix seconds from the game's `time()`, or null if that field was missing. `currentId` is the first remaining task.
+`savedAt` and each `at` are unix seconds from the game's `time()`, or null if that field was missing. `currentId` is the first remaining task. `generatedAt` (optional, added in 0.10) is the `generatedAt` of the plan the progress belongs to; the Server joins it to the stored plan for taste ([ADR 0053](adr/0053-player-taste.md)). The Companion sends it only when the session has one; a 0.9 post without it is still accepted.
 
 One POST per character file that contains `UnboredCharDB.session`. A non-2xx response is shown once in the window; the local plan file is not deleted.
 

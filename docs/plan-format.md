@@ -1,8 +1,8 @@
 # Plan strings
 
-An outside planner (a script, a website, an AI mentor) can hand Unbored a session without a reload. The player copies one line into `/unbored import`. Unbored can hand progress back as another line.
+The Planner hands Unbored a plan through the Companion, which writes it as an `UNB1:` string into the `Unbored_Plan` addon (see [Companion file](#companion-file)). There is no paste window: `/unbored import` and `/unbored export` were removed in 0.10 ([ADR 0046](adr/0046-choices-only.md)). The addon hands progress back through its SavedVariables, and the Companion posts it.
 
-This is the primary path. The SavedVariables / `Companion/Plan.lua` seam is still read on login, for a tool that would rather write a file while the game is closed.
+The SavedVariables / `Companion/Plan.lua` seam is still read on login, for a tool that would rather write a file while the game is closed.
 
 ## Wire format
 
@@ -14,11 +14,11 @@ UNB1P:<base64>
 1. Build a JSON object, UTF-8, no comments.
 2. Base64-encode the raw JSON bytes. Standard alphabet (`+` `/`), with `=` padding. URL-safe `-` `_` is accepted on import.
 3. Prefix a plan with `UNB1:` and a progress export with `UNB1P:`.
-4. Whitespace inside the string is ignored, so a wrapped paste still works.
+4. Whitespace inside the string is ignored.
 
-Version is the JSON field `v`, currently `1`. Unknown versions are rejected. There is no `loadstring`. A bad string shows an error in the import window and does not touch the current list.
+Version is the JSON field `v`, currently `1`. Unknown versions are rejected. There is no `loadstring`. A bad string is ignored and does not touch the current list.
 
-Limits: 40 tasks, step titles up to 240 bytes, notes up to 400 bytes, the whole paste under 20,000 characters. The card fields have their own limits, below.
+Limits: 40 tasks, step titles up to 240 bytes, notes up to 400 bytes, the whole string under 20,000 characters. The card fields have their own limits, below.
 
 ## Plan
 
@@ -69,9 +69,33 @@ All optional and added in 0.8; a plan without them works as before ([ADR 0038](a
 | `details` | plan | facts and state, at most 600 bytes, may carry tokens |
 | `rewards` | plan, task | up to 6 (plan) or 3 (task) strings, each one token of kind `mount`, `ach`, `item`, `toy`, `currency` or `pet` |
 | `why` | task | one short reason, at most 120 bytes, may carry tokens |
+| `contains` | plan | added in 0.10: `{ "{item:ID}": ["{mount:ID}", ...] }`, what a container reward (cage, chest, bag) may hold. The key is one `{item:ID}` token that is in plan or step `rewards`; 1 to 6 values, each one token of kind `mount`, `toy`, `pet` or `item`; at most 2 containers; the values count toward the 12-token limit of `goal` plus `details`. A bad key or value is dropped with a warning ([ADR 0055](adr/0055-reward-contents.md)). |
+| `group` | task | added in 0.10: 1 to 24 characters `[a-z0-9-]`. Consecutive tasks with the same `group` are a Step group, done in any order. A group needs at least 2 tasks; a single-task group or a repeat that is not next to its group is dropped with a warning ([ADR 0056](adr/0056-step-groups.md)). |
 | `condition` | task | `{ "text": "If you have 5,000 {currency:1166}", "check": { "kind": "currency", "id": 1166, "atLeast": 5000 } }`; `kind` is `currency`, `item`, `level` (id is the level), `quest` or `ach`. The game checks it live: met shows Ready, unmet shows the count and Skip moves past it without counting it as skipped. |
 
 The card is calm by default: closed it shows the title, the step with its `why`, the first reward, and Done and Skip. Show more opens the progress pips, `goal`, `details` (with the step `note`), the full step list, every reward and the footer.
+
+**Reward contents.** A container is the reward; what it may hold goes in `contains`, never into `rewards` itself. The reward line reads `[Rattling Iron Cage] · may contain 1 of 3 mounts` on one line, and the open card adds one muted line with the content links. Contents the Account already has are left out (live from the game); when all are owned it says "you have all of them". The Server warns when a plan lists 2 or more mounts and an item as rewards without `contains`.
+
+**Step groups.** When the current step is in a group with 2 or more open steps, the meta line shows `‹  2 of 4 · any order  ›`; the arrows flip between the open steps of the group without skipping or counting anything, and the waypoint follows the shown step. Skip in a group means "won't do": the step leaves the plan at once. Every open step of the group is checked for game-truth completions (quest, vignette, mount, toy, pet, achievement, criteria, currency, item), so a rare killed off-screen still ticks; `proximity` and `zone` count only for the shown step. Give each grouped step a `complete` the game can check. Sequential plans look as before.
+
+```json
+{
+  "v": 1,
+  "kind": "plan",
+  "title": "Cage run",
+  "rewards": ["{item:128025}"],
+  "contains": { "{item:128025}": ["{mount:900002}", "{mount:900003}"] },
+  "tasks": [
+    { "id": "fly", "title": "Fly to the zone" },
+    { "id": "r1", "title": "Rare one", "group": "rares", "complete": { "kind": "quest", "questID": 900011 } },
+    { "id": "r2", "title": "Rare two", "group": "rares", "complete": { "kind": "quest", "questID": 900012 } },
+    { "id": "open", "title": "Open {item:128025}" }
+  ]
+}
+```
+
+The ids above other than the cage are placeholders; [`packages/contracts/fixtures/plan-group.json`](../packages/contracts/fixtures/plan-group.json) is the tested example.
 
 ### Waypoint routes
 
@@ -121,9 +145,9 @@ UNB1:eyJ2IjoxLCJraW5kIjoicGxhbiIsIm1vZGUiOiJjdXN0b20iLCJidWRnZXQiOjYwLCJub3RlIjo
 
 Account-wide achievement completion counts as done (`GetAchievementInfo`'s `completed` flag). Say if this should be per-character only.
 
-## Progress export
+## Progress
 
-`/unbored export`, or Export progress in the same window, selects a string:
+The addon keeps the session's progress in its SavedVariables; the Companion reads it and posts it to the Planner ([companion-api.md](companion-api.md)):
 
 ```json
 {
@@ -135,17 +159,12 @@ Account-wide achievement completion counts as done (`GetAchievementInfo`'s `comp
   "done": [{ "id": "mentor:fall", "at": 1761719000 }],
   "skipped": [],
   "remaining": ["mentor:ashes"],
-  "source": "import"
+  "source": "companion",
+  "generatedAt": 1761718000
 }
 ```
 
-`at` and `exportedAt` are WoW's `time()` (unix seconds on the game server). `source` is `provider`, `import`, or `companion`.
-
-```
-UNB1P:eyJ2IjoxLCJraW5kIjoicHJvZ3Jlc3MiLCJtb2RlIjoiY3VzdG9tIiwiYnVkZ2V0Ijo2MCwiZXhwb3J0ZWRBdCI6MTc2MTcyMDAwMCwiY3VycmVudElkIjoibWVudG9yOmFzaGVzIiwiZG9uZSI6W3siaWQiOiJtZW50b3I6ZmFsbCIsImF0IjoxNzYxNzE5MDAwfV0sInNraXBwZWQiOltdLCJyZW1haW5pbmciOlsibWVudG9yOmFzaGVzIl19
-```
-
-Pasting a progress string into Import is an error. It does not replace the list.
+`at` and `exportedAt` are WoW's `time()` (unix seconds on the game server). `source` is `provider` (a Quick plan), `chain`, `companion`, `answer`, or `import` (older plans). `generatedAt` (optional, 0.10) is the `generatedAt` of the plan this progress belongs to, so the Planner can join them; a local Quick plan has none.
 
 ## Companion file
 
