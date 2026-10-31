@@ -10,6 +10,7 @@ import {
   type SectionScope,
 } from "@unbored/contracts";
 
+import { buildHoldings, WARBAND_PLACE, type Holdings, type HoldingsPlace } from "./holdings.ts";
 import { PlanError } from "./plan.ts";
 
 // docs/adr/0029: the Companion posts only the Sections that changed; the
@@ -489,6 +490,7 @@ export function mergeProfile(old: Raw, fresh: Raw): Raw {
 
 export class DataStore {
   private db: DatabaseSync;
+  private holdingsCache = new Map<string, { key: string; value: Holdings }>();
 
   constructor(db: DatabaseSync) {
     this.db = db;
@@ -1009,6 +1011,51 @@ export class DataStore {
         if (typeof char.faction === "string") alt.faction = char.faction.slice(0, 20);
         return alt;
       });
+  }
+
+  /**
+   * The Account holdings index (ADR 0048) from every Character's bags, bank
+   * and reagent bank and the Warband bank. Kept until one of those changes.
+   */
+  holdings(row: CharacterRow, now = Math.floor(Date.now() / 1000)): Holdings {
+    if (!row.accountId) return { places: [], items: {} };
+    const characters = this.characters(row.accountId);
+    const owners = [row.accountId, ...characters.map((other) => other.id)];
+    const stamp = this.db
+      .prepare(
+        `SELECT COALESCE(MAX(updated_at), 0) AS at, COUNT(*) AS n FROM sections_latest
+         WHERE section IN ('bags', 'bank', 'reagentBank', 'warband')
+           AND owner_id IN (${owners.map(() => "?").join(",")})`,
+      )
+      .get(...owners) as { at: number; n: number };
+    const key = `${owners.join(",")}|${stamp.at}|${stamp.n}|${Math.floor(now / 86400)}`;
+    const cached = this.holdingsCache.get(row.accountId);
+    if (cached?.key === key) return cached.value;
+    const items = (section: SectionRow | undefined) =>
+      section && isPackedIdSet(section.body.items)
+        ? unpackRows(section.body.items).map((item) => ({
+            id: item.id,
+            count: item.values[0] ?? 1,
+          }))
+        : [];
+    const places: HoldingsPlace[] = characters.map((other) => {
+      const sections = this.sections("char", other.id, ["bags", "bank", "reagentBank"]);
+      return {
+        key: `${other.name}-${other.realm}`,
+        seenAt: other.lastSeen,
+        items: sections.flatMap(items),
+      };
+    });
+    const warband = this.section("account", row.accountId, "warband");
+    if (warband)
+      places.push({
+        key: WARBAND_PLACE,
+        seenAt: warband.at ?? warband.updatedAt,
+        items: items(warband),
+      });
+    const value = buildHoldings(places, now);
+    this.holdingsCache.set(row.accountId, { key, value });
+    return value;
   }
 
   /**

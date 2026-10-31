@@ -180,13 +180,19 @@ Personal advice for the characters whose profiles this device uploaded (docs/adr
         { "name": "Mira", "realm": "Area 52", "faction": "Horde", "seenAt": 1761710000, "professions": [{ "skillLine": 171, "name": "Alchemy", "skill": 75 }] }
       ]
     }
-  ]
+  ],
+  "holdings": {
+    "places": ["Grubbyman-Area 52", "Hero-Area 52", "warband"],
+    "items": { "2447": "1:40,w:200" }
+  }
 }
 ```
 
+`holdings` is the Account holdings index ([ADR 0048](adr/0048-account-holdings-in-tooltips.md)) for the Account of this device's most recently seen Character: where else each item is, from every Character's `bags`, `bank` and `reagentBank` and the Account's `warband` Section. `places` lists Characters as `Name-Realm` (most recently seen first, at most 50) and `warband` last; each item is one string of `place:count` pairs, the place as a 1-based index into `places` or `w` for the Warband bank, largest count first. Places last seen over 60 days ago are left out. At most 3,000 items and about 60 KB; over that, items held in the fewest places are cut first. It is left out when the Account has no fresh places.
+
 `alts` is the Account digest (D76): the other Characters on the same Account (at most 50), with faction and up to 6 professions, so the game can route items to Alts this PC has never seen. Every character this device uploaded is listed, even with no items.
 
-The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character, plus the `alts`. Advice.lua and Plan.lua together stay within 200 KB and 20,000 literals (D76): when they would not, the Companion keeps fewer items per character, then fewer Alts:
+The Companion fetches it on every sync and writes `Unbored_Plan/Advice.lua` when it changed, keeping only `action`, `line`, `lineRu` and `to` and at most 500 items per character, plus the `alts` and the `holdings`. Advice.lua, Plan.lua and Suggestions.lua together stay within 260 KB and 20,000 literals (D76, D143): when they would not, the Companion keeps fewer holdings items, then fewer items per character, then fewer Alts:
 
 ```lua
 UnboredAdvice = {
@@ -202,8 +208,14 @@ UnboredAdvice = {
       },
     },
   },
+  ["holdings"] = {
+    ["places"] = { "Grubbyman-Area 52", "Hero-Area 52", "warband", },
+    ["items"] = { [2447] = "1:40,w:200", },
+  },
 }
 ```
+
+The game shows the holdings as one muted line under Bory's line ("Also: Grubbyman 40, Warband bank 200", up to 3 places, then "+N"), only when the current Character is in `places`, and never counts that Character's own place.
 
 The addon checks every line again: it drops lines that say delete, never shows sell for epic or bind-on-equip items, and never shows send for soulbound items. Live game rules (quest items, uncollected mounts, toys, pets and looks, upgrades) still come first. A failed fetch never holds back plans and answers.
 

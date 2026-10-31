@@ -274,11 +274,16 @@ export function createApp(
     return c.json(requestWithPlan(request));
   });
 
-  // Personal advice for this device's characters (docs/adr/0019).
+  // Personal advice for this device's characters (docs/adr/0019) and the
+  // Account holdings index (docs/adr/0048).
   app.get("/v1/advice", (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
-    return c.json({ characters: store.adviceForDevice(access.deviceId) });
+    const holdings = store.holdingsForDevice(access.deviceId);
+    return c.json({
+      characters: store.adviceForDevice(access.deviceId),
+      ...(holdings ? { holdings } : {}),
+    });
   });
 
   // Ideas from the player's data for the choice Bubble (docs/adr/0040).

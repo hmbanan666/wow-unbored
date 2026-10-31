@@ -318,6 +318,36 @@ test("check_ids, the overview, the Data explorer and /owner/data read the stored
   }
 });
 
+test("GET /v1/advice carries the Account holdings index", async () => {
+  const { app, close } = build();
+  try {
+    await post(app, fixture);
+    const alt = withSection(
+      "bags",
+      { slots: 20, count: 1, items: ["idv1", "5d0:14"] },
+      fixture.savedAt,
+    );
+    alt.character = "Grubbyman";
+    await post(app, alt);
+    const response = await app.request("/v1/advice", {
+      headers: { authorization: `Bearer ${companion}` },
+    });
+    assert.equal(response.status, 200);
+    const holdings = (await json(response)).holdings as {
+      places: string[];
+      items: Record<string, string>;
+    };
+    assert.deepEqual(
+      holdings.places,
+      ["Grubbyman-Silvermoon", "Mira-Silvermoon"],
+      "the fixture's Warband bank was read over 60 days ago, so it is left out",
+    );
+    assert.equal(holdings.items["6948"], "1:40,2:1", "both bags, largest first");
+  } finally {
+    close();
+  }
+});
+
 test("the 0.6 profile view is built from Sections", async () => {
   const { app, close } = build();
   try {
