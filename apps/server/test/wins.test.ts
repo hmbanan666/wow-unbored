@@ -9,7 +9,7 @@ import { ACCOUNT, makeStore, NOW, packCounts, snapshot } from "./helpers.ts";
 
 const DAY = 86_400;
 
-function plan(fields: Partial<Plan> = {}): Plan {
+function plan(fields: Record<string, unknown> = {}): Plan {
   return {
     v: 1,
     kind: "plan",
@@ -17,7 +17,7 @@ function plan(fields: Partial<Plan> = {}): Plan {
     generatedAt: NOW,
     tasks: [{ id: "a", title: "A" }],
     ...fields,
-  } as Plan;
+  } as unknown as Plan;
 }
 
 test("a plan promises its rewards, step rewards, container contents and last-step complete", () => {
@@ -29,7 +29,7 @@ test("a plan promises its rewards, step rewards, container contents and last-ste
         { id: "a", title: "A", rewards: ["{ach:900004}", "50 gold"] },
         { id: "b", title: "B", complete: { kind: "mount", mountIDs: [900005, 900006] } },
       ],
-    } as Partial<Plan>),
+    }),
   );
   assert.deepEqual(
     targets.map((target) => target.token).sort(),
@@ -47,7 +47,7 @@ test("a plan promises its rewards, step rewards, container contents and last-ste
     planTargets(
       plan({
         tasks: [{ id: "q", title: "Q", complete: { kind: "quest", questID: 900007 } }],
-      } as Partial<Plan>),
+      }),
     ),
     [{ kind: "quest", id: 900007, token: "{quest:900007}" }],
   );
@@ -131,7 +131,7 @@ test("a promised mount newly learned after the plan is one win, attributed to th
     ask(
       store,
       "r1",
-      plan({ rewards: ["{mount:900002}", "{mount:900010}", "{ach:900011}"] } as Partial<Plan>),
+      plan({ rewards: ["{mount:900002}", "{mount:900010}", "{ach:900011}"] }),
       NOW + 10,
     );
     upload(
@@ -190,12 +190,7 @@ test("a change older than the plan, or a plan older than 30 days, gives no win",
       pendingCap: 10,
     });
     upload(store, { toys: { at: NOW, body: { ids: packIds([1]) } } }, NOW);
-    ask(
-      store,
-      "r1",
-      plan({ rewards: ["{toy:900020}", "{toy:900021}"] } as Partial<Plan>),
-      NOW + 100,
-    );
+    ask(store, "r1", plan({ rewards: ["{toy:900020}", "{toy:900021}"] }), NOW + 100);
     // Read before the plan was made, uploaded after.
     upload(store, { toys: { at: NOW + 50, body: { ids: packIds([1, 900020]) } } }, NOW + 200);
     upload(
@@ -231,7 +226,7 @@ test("an item moved from the bank to bags, or held by an alt, is not a win", () 
     ask(
       store,
       "r1",
-      plan({ rewards: ["{item:900030}", "{item:900031}", "{item:900032}"] } as Partial<Plan>),
+      plan({ rewards: ["{item:900030}", "{item:900031}", "{item:900032}"] }),
       NOW + 10,
     );
     upload(
