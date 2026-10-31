@@ -260,6 +260,14 @@ An approved device can call `GET /v1/plan` and `POST /v1/progress` only. It cann
 
 `POST {base}/v1/devices/me/forget` with `Authorization: Bearer <device secret>` and the body `{ "confirm": true }` ([PRIVACY.md](../PRIVACY.md)). Any status works, so a pending or revoked PC can still erase. The server erases every Account this device sent Characters, profiles or Requests for (the same set as the owner tool `delete_account_data`: Game data Sections and their history, Characters, 0.6 profiles, Player history, progress, advice, ideas, Requests and the plans made for them), then this device's remaining Requests, and revokes the device. It answers `{ "ok": true, "accounts", "characters", "sections", "requests", "plans", "revoked": true }`. No bearer or an unknown secret is `401`, the shared companion token is `403`, a missing `confirm` is `400`. The Companion then clears its upload caches and writes empty `Plan.lua` (keeping the status part), `Advice.lua` and `Suggestions.lua`.
 
+### Connect again
+
+`POST {base}/v1/devices/me/reconnect` with `Authorization: Bearer <old device secret>` and the same JSON as register (`deviceId`, `name`, `secret` or `secretHash`) ([ADR 0045](adr/0045-connect-again.md)). It works only when this device was **approved** and then revoked by Forget my data. The old row stays revoked and cannot connect again a second time. The new device is `approved` immediately: same id format, secret stored only as a hash, and the same rate limit as register. It still cannot call planner or MCP routes. An owner `revoke_device`, or a device that was never approved, gets `403`. A repeated id or secret is `409`. The shared companion token is `403`.
+
+### Account key
+
+Uploads may send `account` as a 64-character hex hash instead of the WTF folder name ([ADR 0044](adr/0044-hashed-account-key.md)). The scheme is in [DEVELOPMENT.md](DEVELOPMENT.md). `accountLegacy`, when present, is the old key; the Server renames rows from that key to the hash and does not keep the folder name. A body with only the old folder name is still stored, so a Companion from before this change keeps working.
+
 ## Server in this repo
 
 `apps/server/` implements the two calls above. The companion sends `Authorization: Bearer <UNBORED_COMPANION_TOKEN>`. Putting a plan, reading progress, and the MCP endpoint `/mcp` use a different bearer, `UNBORED_PLANNER_TOKEN`. Setup, the volume mount, and the planner routes are in `apps/server/README.md`.

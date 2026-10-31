@@ -34,6 +34,20 @@ jobs:
       tag: ${{ steps.pick.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
+      - name: Updater pubkey embedded in this build
+        run: |
+          pubkey="$(bash scripts/print-updater-pubkey.sh)"
+          echo "Embedded updater pubkey:"
+          echo "$pubkey"
+          {
+            echo "### Embedded updater pubkey"
+            echo
+            echo '```'
+            echo "$pubkey"
+            echo '```'
+            echo
+            echo "0.9 is signed with the previous private key. Swap the GitHub secret at 0.9.1. See docs/DEVELOPMENT.md."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: The version this run releases
         id: pick
         run: |
@@ -128,12 +142,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/companion/src-tauri -> target
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
+          cache: pnpm
       - name: Install the workspace
         shell: bash
-        run: corepack enable && corepack prepare pnpm@10.33.4 --activate && pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Choose signing
         id: sign
         shell: bash

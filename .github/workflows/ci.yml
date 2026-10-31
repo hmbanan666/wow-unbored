@@ -2,7 +2,12 @@ name: Lint
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   addon:
@@ -10,29 +15,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/companion/src-tauri -> target
+
       - name: Install Lua 5.1 and luacheck
         run: |
           sudo apt-get update
           sudo apt-get install -y lua5.1 lua-check
 
-      - name: Addon checks
-        run: |
-          cd addon
-          luacheck .
-          lua5.1 tests/run.lua
-          lua5.1 tests/ui.lua
-          lua5.1 tests/data.lua
-
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
+          cache: pnpm
 
-      - name: Shared version and updater endpoint
+      - name: Install, lint, and test
         run: |
-          corepack enable
-          corepack prepare pnpm@10.33.4 --activate
-          node -e "require('./package.json')"
-          bash scripts/check-version.sh
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm test
+          pnpm check-version
 
       - name: Updater feed keeps the shape installed Companions read
         run: |

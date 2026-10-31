@@ -14,8 +14,9 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::account::{self, AccountSeal};
 use crate::addon::{install_addon_zip, installed_version, select_addon_zip, should_update};
-use crate::device::{self, DeviceCredential};
+use crate::device::{self, registration_json, DeviceCredential};
 use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::plan::{
@@ -45,9 +46,12 @@ struct Settings {
     /// player's choice in the window stands.
     #[serde(default)]
     autostart_set: bool,
-    /// When the player used Forget my data. Cleared once this PC is approved again.
+    /// When the player used Forget my data. Cleared by Connect again.
     #[serde(default)]
     forgotten_at: Option<u64>,
+    /// Account keys this PC has already asked the Server to rename (docs/adr/0044).
+    #[serde(default)]
+    migrated_accounts: Vec<String>,
 }
 
 impl Default for Settings {
@@ -59,6 +63,7 @@ impl Default for Settings {
             poll_minutes: 5,
             autostart_set: false,
             forgotten_at: None,
+            migrated_accounts: Vec::new(),
         }
     }
 }
@@ -199,11 +204,29 @@ fn effective_url(settings: &Settings) -> String {
     }
 }
 
+fn account_seal(device: &DeviceCredential, settings: &Settings) -> AccountSeal {
+    AccountSeal::new(&device.account_salt, &settings.migrated_accounts)
+}
+
+fn remember_migrations(app: &AppHandle, settings: &Settings, seal: &AccountSeal) {
+    let migrated = seal.migrated_accounts();
+    if settings.migrated_accounts == migrated {
+        return;
+    }
+    let state = app.state::<AppState>();
+    let Ok(mut model) = state.inner.lock() else {
+        return;
+    };
+    model.settings.migrated_accounts = migrated;
+    let _ = save_settings(app, &model.settings);
+}
+
 fn post_progress(
     settings: &Settings,
     files: &[CharacterFile],
     posted: &mut HashMap<String, String>,
     bearer: &str,
+    seal: &mut AccountSeal,
 ) -> Result<usize, String> {
     let url = effective_url(settings);
     validate_endpoint(&url)?;
@@ -213,7 +236,11 @@ fn post_progress(
         let Some(progress) = read_progress(file)? else {
             continue;
         };
-        let body = progress_payload(file, &progress);
+        let (account, legacy) = seal.publish(&file.account)?;
+        let mut named = file.clone();
+        named.account = account;
+        let mut body = progress_payload(&named, &progress);
+        account::attach_legacy(&mut body, legacy.as_deref());
         let key = file.path.display().to_string();
         let fingerprint = serde_json::to_string(&body).unwrap_or_default();
         if posted.get(&key).is_some_and(|have| have == &fingerprint) {
@@ -233,6 +260,7 @@ fn post_progress(
             ));
         }
         posted.insert(key, fingerprint);
+        seal.note_migrated(legacy.as_deref());
         sent += 1;
     }
     Ok(sent)
@@ -246,7 +274,11 @@ fn http_client(timeout: Duration) -> Result<reqwest::blocking::Client, String> {
         .map_err(|err| err.to_string())
 }
 
-fn run_scan(model: &mut Model, bearer: Option<&str>) -> Result<usize, String> {
+fn run_scan(
+    model: &mut Model,
+    bearer: Option<&str>,
+    seal: Option<&mut AccountSeal>,
+) -> Result<usize, String> {
     let settings = model.settings.clone();
     let account = if settings.account.is_empty() {
         None
@@ -257,8 +289,8 @@ fn run_scan(model: &mut Model, bearer: Option<&str>) -> Result<usize, String> {
         .map(|retail| character_saved_variables(&retail, account))
         .unwrap_or_default();
     model.progress = scan_progress(&settings);
-    if let Some(bearer) = bearer {
-        post_progress(&settings, &files, &mut model.posted, bearer)
+    if let (Some(bearer), Some(seal)) = (bearer, seal) {
+        post_progress(&settings, &files, &mut model.posted, bearer, seal)
     } else {
         Ok(0)
     }
@@ -309,6 +341,7 @@ struct UiState {
     steps: Vec<SetupStep>,
     mascot: String,
     version: String,
+    can_reconnect: bool,
 }
 
 #[derive(Serialize)]
@@ -365,6 +398,7 @@ fn snapshot(app: &AppHandle, model: &Model) -> UiState {
         steps: setup_steps(model),
         mascot: MASCOT_NAME.to_string(),
         version: app.package_info().version.to_string(),
+        can_reconnect: model.settings.forgotten_at.is_some() && !model.approved,
     }
 }
 
@@ -506,21 +540,19 @@ fn write_plan_text(
 
 #[tauri::command]
 fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
-    let (settings, secret, approved) = {
+    let (settings, device, approved) = {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
         let device = state.device.lock().map_err(|err| err.to_string())?;
-        (
-            model.settings.clone(),
-            device.secret.clone(),
-            model.approved,
-        )
+        (model.settings.clone(), device.clone(), model.approved)
     };
     if !approved {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
         return Ok(snapshot(&app, &model));
     }
     let mut notified = std::collections::HashSet::new();
-    let message = sync_plans(&app, &settings, &secret, &mut notified)?;
+    let mut seal = account_seal(&device, &settings);
+    let message = sync_plans(&app, &settings, &device.secret, &mut notified, &mut seal)?;
+    remember_migrations(&app, &settings, &seal);
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     model.status = message.unwrap_or_else(|| "No plan on the planner yet.".into());
     Ok(snapshot(&app, &model))
@@ -584,8 +616,81 @@ fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Str
         "The planner had nothing from this PC. I cleared the plans and ideas on this PC too."
     }
     .into();
-    // TODO: re-pairing after Forget my data needs the owner's approve_device;
-    // a player-side "connect again" is not decided yet.
+    Ok(snapshot(&app, &model))
+}
+
+/// A new device id and secret, like a fresh install, approved because this PC
+/// still holds the secret it used for Forget my data (docs/adr/0045).
+fn reconnect_on_planner(
+    url: &str,
+    old_secret: &str,
+    device: &DeviceCredential,
+) -> Result<String, String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let response = client
+        .post(join_url(url, "v1/devices/me/reconnect"))
+        .bearer_auth(old_secret)
+        .json(&registration_json(device, &machine_name()))
+        .send()
+        .map_err(|_| {
+            "I can't reach the planner right now. Nothing changed; try Connect again in a minute."
+                .to_string()
+        })?;
+    let status_code = response.status();
+    let body: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
+    if !status_code.is_success() {
+        let why = body
+            .get("error")
+            .and_then(|value| value.as_str())
+            .unwrap_or("I couldn't connect again just now. Try in a minute.");
+        return Err(why.to_string());
+    }
+    Ok(body
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("approved")
+        .to_string())
+}
+
+#[tauri::command]
+fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, String> {
+    let (settings, old) = {
+        let model = state.inner.lock().map_err(|err| err.to_string())?;
+        let device = state.device.lock().map_err(|err| err.to_string())?;
+        if model.settings.forgotten_at.is_none() {
+            return Err("Connect again is here after Forget my data.".into());
+        }
+        (model.settings.clone(), device.clone())
+    };
+    let url = effective_url(&settings);
+    validate_endpoint(&url)?;
+    let fresh = old.rotate_keeping_salt()?;
+    let status = reconnect_on_planner(&url, &old.secret, &fresh)?;
+    let path = settings_path(&app)?.with_file_name("device.json");
+    device::save(&path, &fresh)?;
+    {
+        let mut device = state.device.lock().map_err(|err| err.to_string())?;
+        *device = fresh;
+    }
+    let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.pairing = status.clone();
+    model.approved = status == "approved";
+    model.settings.forgotten_at = None;
+    if model.approved {
+        model.connected_at = Some(now_secs());
+    }
+    let _ = save_settings(&app, &model.settings);
+    model.status = if model.approved {
+        "You're connected again.".into()
+    } else {
+        pairing_message(&status, model.needs_wow_path)
+    };
+    if model.approved {
+        notify(
+            &app,
+            "You're connected! Start World of Warcraft and click Bory to pick a plan.",
+        );
+    }
     Ok(snapshot(&app, &model))
 }
 
@@ -597,8 +702,23 @@ fn rescan_progress(app: AppHandle, state: State<AppState>) -> Result<UiState, St
     } else {
         None
     };
+    let mut seal = if model.approved {
+        state
+            .device
+            .lock()
+            .ok()
+            .map(|device| account_seal(&device, &model.settings))
+    } else {
+        None
+    };
     let posting = bearer.is_some();
-    let result = run_scan(&mut model, bearer.as_deref());
+    let result = run_scan(&mut model, bearer.as_deref(), seal.as_mut());
+    if let Some(seal) = &seal {
+        if model.settings.migrated_accounts != seal.migrated_accounts() {
+            model.settings.migrated_accounts = seal.migrated_accounts();
+            let _ = save_settings(&app, &model.settings);
+        }
+    }
     model.status = scan_status(posting, model.progress.len(), result);
     let _ = app.emit("progress", &model.progress);
     Ok(snapshot(&app, &model))
@@ -637,7 +757,22 @@ fn note_saved_variables(app: &AppHandle) {
     } else {
         None
     };
-    let result = run_scan(&mut model, bearer.as_deref());
+    let mut seal = if model.approved {
+        state
+            .device
+            .lock()
+            .ok()
+            .map(|device| account_seal(&device, &model.settings))
+    } else {
+        None
+    };
+    let result = run_scan(&mut model, bearer.as_deref(), seal.as_mut());
+    if let Some(seal) = &seal {
+        if model.settings.migrated_accounts != seal.migrated_accounts() {
+            model.settings.migrated_accounts = seal.migrated_accounts();
+            let _ = save_settings(app, &model.settings);
+        }
+    }
     match &result {
         Err(err) => model.status = err.clone(),
         Ok(sent) if *sent > 0 => {
@@ -822,7 +957,12 @@ fn planner_state(
 /// refused outright (a 4xx other than 401), so the game can be told, and the
 /// Server's reason for the Companion's own status line. Also returns the id
 /// of the Request the game waits for.
-fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Posted, String> {
+fn post_requests(
+    settings: &Settings,
+    retail: &Path,
+    secret: &str,
+    seal: &mut AccountSeal,
+) -> Result<Posted, String> {
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
     let mut rejected = Vec::new();
@@ -835,10 +975,13 @@ fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Pos
             continue;
         };
         saved.push(request.clone());
+        let (account, legacy) = seal.publish(&file.account)?;
+        let mut body = request_body(&request, Some(&account));
+        account::attach_legacy(&mut body, legacy.as_deref());
         let response = client
             .post(join_url(&url, "v1/requests"))
             .bearer_auth(secret)
-            .json(&request_body(&request, Some(&file.account)))
+            .json(&body)
             .send()
             .map_err(|err| err.to_string())?;
         let code = response.status();
@@ -867,6 +1010,7 @@ fn post_requests(settings: &Settings, retail: &Path, secret: &str) -> Result<Pos
         if !code.is_success() {
             return Err(format!("Planner returned {code}."));
         }
+        seal.note_migrated(legacy.as_deref());
     }
     Ok(Posted {
         waiting: waited_request(&saved).map(str::to_string),
@@ -894,7 +1038,12 @@ fn posted_profiles() -> &'static Mutex<HashMap<String, u64>> {
 /// Uploads the Sections that changed for every character and its Account,
 /// gzip, on each SavedVariables write (docs/adr/0029). Characters whose addon
 /// has no snapshot yet (0.6) are left to `post_profiles`.
-fn post_snapshots(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
+fn post_snapshots(
+    settings: &Settings,
+    retail: &Path,
+    secret: &str,
+    seal: &mut AccountSeal,
+) -> Result<(), String> {
     let sent = sent_sections();
     let client = http_client(Duration::from_secs(30))?;
     let url = effective_url(settings);
@@ -916,8 +1065,9 @@ fn post_snapshots(settings: &Settings, retail: &Path, secret: &str) -> Result<()
             .clone();
         let (character, realm) = character_identity(Some(&char_file), &file.realm, &file.character);
         let known = sent.lock().map_err(|err| err.to_string())?.clone();
-        let Some((body, remember)) = build_upload(
-            &file.account,
+        let (account, legacy) = seal.publish(&file.account)?;
+        let Some((mut body, remember)) = build_upload(
+            &account,
             &character,
             &realm,
             Some(&char_file),
@@ -926,6 +1076,7 @@ fn post_snapshots(settings: &Settings, retail: &Path, secret: &str) -> Result<()
         ) else {
             continue;
         };
+        account::attach_legacy(&mut body, legacy.as_deref());
         let bytes = gzip(body.to_string().as_bytes())?;
         if bytes.len() > MAX_COMPRESSED_BYTES {
             return Err("The game data is too big to send.".into());
@@ -949,13 +1100,19 @@ fn post_snapshots(settings: &Settings, retail: &Path, secret: &str) -> Result<()
             ));
         }
         sent.lock().map_err(|err| err.to_string())?.extend(remember);
+        seal.note_migrated(legacy.as_deref());
     }
     Ok(())
 }
 
 /// Uploads each character's profile once per save (docs/adr/0011). From 0.7
 /// only for characters whose addon has no Game data snapshot yet.
-fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(), String> {
+fn post_profiles(
+    settings: &Settings,
+    retail: &Path,
+    secret: &str,
+    seal: &mut AccountSeal,
+) -> Result<(), String> {
     let posted = posted_profiles();
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
@@ -977,16 +1134,19 @@ fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
         if posted.lock().map_err(|err| err.to_string())?.get(&key) == Some(&stamp) {
             continue;
         }
+        let (account, legacy) = seal.publish(&file.account)?;
+        let mut body = serde_json::json!({
+            "character": profile.character,
+            "realm": profile.realm,
+            "account": account,
+            "savedAt": profile.saved_at,
+            "profile": profile.profile,
+        });
+        account::attach_legacy(&mut body, legacy.as_deref());
         let response = client
             .post(join_url(&url, "v1/profile"))
             .bearer_auth(secret)
-            .json(&serde_json::json!({
-                "character": profile.character,
-                "realm": profile.realm,
-                "account": file.account,
-                "savedAt": profile.saved_at,
-                "profile": profile.profile,
-            }))
+            .json(&body)
             .send()
             .map_err(|err| err.to_string())?;
         if !response.status().is_success() {
@@ -999,6 +1159,7 @@ fn post_profiles(settings: &Settings, retail: &Path, secret: &str) -> Result<(),
             .lock()
             .map_err(|err| err.to_string())?
             .insert(key, stamp);
+        seal.note_migrated(legacy.as_deref());
     }
     Ok(())
 }
@@ -1030,15 +1191,16 @@ fn sync_plans(
     settings: &Settings,
     secret: &str,
     notified: &mut std::collections::HashSet<String>,
+    seal: &mut AccountSeal,
 ) -> Result<Option<String>, String> {
     let Some(retail) = retail_path(settings) else {
         return Ok(Some("Approved. Choose the Retail folder.".into()));
     };
     ensure_helper(&retail).map_err(|err| err.0)?;
-    let Posted { rejected, waiting } = post_requests(settings, &retail, secret)?;
+    let Posted { rejected, waiting } = post_requests(settings, &retail, secret, seal)?;
     // Game data, a profile or advice that fails must not hold back plans and answers.
-    let _ = post_snapshots(settings, &retail, secret);
-    let _ = post_profiles(settings, &retail, secret);
+    let _ = post_snapshots(settings, &retail, secret, seal);
+    let _ = post_profiles(settings, &retail, secret, seal);
     let _ = sync_suggestions(settings, &retail, secret);
     let _ = sync_advice(settings, &retail, secret);
     if let Some((request, why)) = rejected.first() {
@@ -1383,12 +1545,14 @@ fn sync_planner(
         publish_status(app, &pairing_message(&status, needs_path));
     }
     if status == "approved" && !needs_path {
+        let mut seal = account_seal(device, settings);
         let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-        let _ = run_scan(&mut model, Some(&secret));
+        let _ = run_scan(&mut model, Some(&secret), Some(&mut seal));
         drop(model);
-        if let Some(message) = sync_plans(app, settings, &secret, notified)? {
+        if let Some(message) = sync_plans(app, settings, &secret, notified, &mut seal)? {
             publish_status(app, &message);
         }
+        remember_migrations(app, settings, &seal);
     }
     Ok(())
 }
@@ -1580,7 +1744,8 @@ pub fn run() {
             fetch_plan,
             rescan_progress,
             open_privacy,
-            forget_my_data
+            forget_my_data,
+            connect_again
         ])
         .run(tauri::generate_context!())
         .expect("Unbored Companion failed to start");

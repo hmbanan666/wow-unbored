@@ -7,15 +7,21 @@
     "test": "pnpm test:addon && pnpm exec vp test && pnpm test:companion",
     "test:addon": "cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/data.lua && lua5.1 tests/ui.lua",
     "test:companion": "cargo test --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features",
-    "lint": "pnpm exec vp check && (cd addon && luacheck .) && cargo fmt --manifest-path apps/companion/src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features -- -D warnings",
+    "test:js": "pnpm exec vp test",
+    "lint:js": "pnpm exec vp check",
+    "lint:companion": "cargo fmt --manifest-path apps/companion/src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features -- -D warnings",
+    "lint:companion:all": "cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
+    "typecheck": "pnpm exec tsc -p apps/server/tsconfig.json --noEmit && pnpm exec tsc -p apps/server/tsconfig.tests.json --noEmit && pnpm exec tsc -p packages/contracts/tsconfig.json --noEmit && pnpm exec tsc -p apps/companion/ui/tsconfig.json --noEmit",
+    "lint": "pnpm run typecheck && pnpm run lint:js && (cd addon && luacheck .) && pnpm run lint:companion",
     "build": "pnpm --filter @unbored/server build && pnpm --filter @unbored/companion build",
     "check-version": "bash scripts/check-version.sh"
   },
   "devDependencies": {
-    "vite-plus": "1.4.0"
+    "typescript": "^7.0.2",
+    "vite-plus": "catalog:"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "packageManager": "pnpm@10.33.4"
 }

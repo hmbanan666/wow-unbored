@@ -14,7 +14,13 @@ Only what the Companion on your PC sends, linked to your game account (the WoW a
 - **Personal advice and ideas** made for your characters.
 - **This PC:** its name, when it was last seen, and whether it is approved. The PC's key is kept only as a hash.
 
-It never gets anything about other players, no passwords and no Battle.net sign-in. It is used only for Unbored.
+It never gets anything about other players, no passwords and no Battle.net sign-in. It is used only for Unbored. The game account is stored as a salted hash of the account folder name, not the folder name itself.
+
+## Server logs and backups
+
+There are no scheduled backups of the database or the data volume.
+
+Container logs use Docker's json-file driver. They do not include game data or requests: a line is written at startup, and each request is logged as method, path and status only. Logs rotate at 10 MB, keeping 3 files.
 
 ## How to delete it
 
@@ -25,7 +31,7 @@ In the Companion window open **Advanced** and click **Forget my data**, then con
 - Requests, and the plans and answers made for them,
 - personal advice and ideas.
 
-Then it stops taking data from this PC. The Companion also clears the plans, advice and ideas it put into the game. This can't be undone. To use the planner again, ask the Unbored team to approve the PC.
+Then it stops taking data from this PC. The Companion also clears the plans, advice and ideas it put into the game. This can't be undone. To use the planner again, click **Connect again** in the Companion window. This PC gets a new key, the same kind as a first install, and can send again. A disconnect made by the Unbored team is not undone by that button.
 
 Two things stay on your PC, because they never left it in this form: the addon's own files in `World of Warcraft/_retail_/WTF/Account/…/SavedVariables/Unbored.lua` (delete them, or remove the addon, to clear them) and the Companion's settings.
 
@@ -47,7 +53,13 @@ Questions: [open an issue](https://github.com/hmbanan666/wow-unbored/issues).
 - **Личные подсказки и идеи** для твоих персонажей.
 - **Этот ПК:** его имя, когда он был на связи и одобрен ли он. Ключ ПК хранится только в виде хеша.
 
-О других игроках сервер не получает ничего, паролей и входа в Battle.net тоже. Данные используются только для Unbored.
+О других игроках сервер не получает ничего, паролей и входа в Battle.net тоже. Данные используются только для Unbored. Игровая учётная запись хранится как хеш с солью от имени папки, а не само имя.
+
+### Журналы и резервные копии сервера
+
+Плановых резервных копий базы и тома с данными нет.
+
+Журналы контейнера пишет драйвер Docker json-file. В них нет игровых данных и запросов: строка пишется при старте, а каждый запрос — только как метод, путь и статус. Журналы крутятся по 10 МБ, хранятся 3 файла.
 
 ### Как всё удалить
 
@@ -58,7 +70,7 @@ Questions: [open an issue](https://github.com/hmbanan666/wow-unbored/issues).
 - запросы, планы и ответы на них,
 - личные подсказки и идеи.
 
-После этого сервер перестаёт принимать данные с этого ПК. Companion также очищает планы, подсказки и идеи, которые он положил в игру. Отменить это нельзя. Чтобы снова пользоваться планировщиком, попроси команду Unbored одобрить ПК.
+После этого сервер перестаёт принимать данные с этого ПК. Companion также очищает планы, подсказки и идеи, которые он положил в игру. Отменить это нельзя. Чтобы снова пользоваться планировщиком, нажми **Connect again** в окне Companion. У этого ПК будет новый ключ, как при первой установке, и он снова сможет отправлять данные. Если команда Unbored сама отключила ПК, эта кнопка его не вернёт.
 
 На твоём ПК остаётся то, что никуда в таком виде не уходило: файлы самого аддона в `World of Warcraft/_retail_/WTF/Account/…/SavedVariables/Unbored.lua` (удали их или сам аддон, чтобы очистить) и настройки Companion.
 

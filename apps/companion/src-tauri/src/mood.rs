@@ -82,7 +82,7 @@ pub fn current(input: &MoodInput) -> Mood {
             return mood(
                 "idle",
                 "Done. I forgot everything about you",
-                "Your game data, plans and answers are gone from the planner, and this PC stopped sending. To use the planner again, ask the Unbored team to approve this PC. Quick plans in the game still work.",
+                "Your game data, plans and answers are gone from the planner, and this PC stopped sending. Click Connect again when you want the planner back. Quick plans in the game still work.",
             )
         }
         "revoked" => {
@@ -188,7 +188,7 @@ mod tests {
             current(&input).headline,
             "Done. I forgot everything about you"
         );
-        assert!(current(&input).hint.contains("approve this PC"));
+        assert!(current(&input).hint.contains("Connect again"));
         input.forgotten = false;
         input.pairing = "pending".into();
         input.error = true;

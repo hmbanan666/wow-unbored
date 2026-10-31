@@ -18,6 +18,7 @@ fn main() {
         "rescan_progress",
         "open_privacy",
         "forget_my_data",
+        "connect_again",
     ]);
     if let Err(error) =
         tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))

@@ -1,5 +1,8 @@
 name: Server
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
@@ -35,17 +38,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
-      - name: Install pnpm
-        run: corepack enable && corepack prepare pnpm@10.33.4 --activate
+          node-version: 26
+          cache: pnpm
       - name: Lua decoder used by the plan roundtrip
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Install, check, and test
-        run: pnpm install --frozen-lockfile && pnpm exec vp check && pnpm exec vp test
-      - name: Typecheck (erasableSyntaxOnly matches Node strip-types)
-        run: pnpm --filter @unbored/server build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run lint:js
+          pnpm test:js
+          pnpm typecheck
       - name: Start like the Dockerfile and answer /health
         run: scripts/server-smoke.sh
       - name: Docker image

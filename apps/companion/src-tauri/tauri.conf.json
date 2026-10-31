@@ -42,7 +42,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3NjIzREE2MkJDODNGNEQKUldSTlA4Z3JwajFpOTNsTGZZaVZGSmt5Mzd1MjRSNzN3SDBxbWpMWUtqaVhFNnJYK0JFUWxLUkwK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJDNUVCNDQxN0E2NDlCMjMKUldRam0yUjZRYlJldkRLdHBIT09ycVJNdkxRZEF2MEt5MDNMQ25CZjNPa1pYNXRBZ09SOEozb2QK",
       "endpoints": [
         "https://github.com/hmbanan666/wow-unbored/releases/download/companion-updater/latest.json"
       ],

@@ -295,9 +295,10 @@ test("mcp lists the planner tools", async () => {
     assert.ok(put?.description.includes("achievementID"));
     const requests = tools.find((tool) => tool.name === "list_requests");
     for (const tool of [put, requests]) {
-      assert.ok(tool?.description.includes("Plan the whole goal"), tool?.name);
-      assert.ok(tool?.description.includes("never cut to fit a time"), tool?.name);
-      assert.ok(!tool?.description.includes("3 to 7 steps;"), tool?.name);
+      assert.ok(tool, "put_plan and list_requests are listed");
+      assert.ok(tool.description.includes("Plan the whole goal"), tool.name);
+      assert.ok(tool.description.includes("never cut to fit a time"), tool.name);
+      assert.ok(!tool.description.includes("3 to 7 steps;"), tool.name);
     }
 
     const called = await app.request("/mcp", {

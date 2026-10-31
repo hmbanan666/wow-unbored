@@ -16,7 +16,14 @@ import {
 import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError, planMarkupIds } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";
-import { publicDevice, publicRequest, sessionSummary, Store, type PlanRequest } from "./store.ts";
+import {
+  legacyOf,
+  publicDevice,
+  publicRequest,
+  sessionSummary,
+  Store,
+  type PlanRequest,
+} from "./store.ts";
 import { PlannerWebhook, webhookFromEnv, type FetchLike, type WebhookConfig } from "./webhook.ts";
 
 function limitOf(value: string | undefined, fallback: number): number {
@@ -130,6 +137,42 @@ export function createApp(
     return c.json(publicDevice(result.device), result.created ? 201 : 200);
   });
 
+  // After Forget my data the player connects again from this PC (docs/adr/0045).
+  // Same registration checks as a first install; the old secret is the proof.
+  app.post("/v1/devices/me/reconnect", async (c) => {
+    const presented = presentedBearer(c.req.header("authorization"));
+    if (!presented) return c.json({ error: "Unauthorized" }, 401);
+    if (tokenMatches(presented, tokens.companion)) {
+      return c.json(
+        { error: "Connect again needs the Companion on this PC, not the shared token." },
+        403,
+      );
+    }
+    const ip = clientIp(c.req.header("x-forwarded-for"), c.req.header("x-real-ip"));
+    if (!registerLimiter.allow(ip)) {
+      return c.json({ error: "Too many registration attempts." }, 429);
+    }
+    const device = store.findDeviceBySecretHash(sha256Hex(presented));
+    if (!device) return c.json({ error: "Unauthorized" }, 401);
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Registration must be JSON." }, 400);
+    }
+    const cleaned = cleanRegistration(body);
+    if ("error" in cleaned) return c.json({ error: cleaned.error }, 400);
+    const result = store.reconnectForgotten({
+      oldId: device.id,
+      id: cleaned.id,
+      name: cleaned.name,
+      secretHash: cleaned.secretHash,
+      nowSeconds: Math.floor(Date.now() / 1000),
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(publicDevice(result.device), 201);
+  });
+
   app.get("/v1/devices/me", (c) => {
     const presented = presentedBearer(c.req.header("authorization"));
     if (!presented) return c.json({ error: "Unauthorized" }, 401);
@@ -191,6 +234,7 @@ export function createApp(
         context: cleaned.context,
         lang: cleaned.lang,
         account: cleaned.account,
+        accountLegacy: legacyOf(body),
         suggestionId: cleaned.suggestionId,
         suggestion: cleaned.suggestion,
         nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
@@ -275,7 +319,9 @@ export function createApp(
       return c.json({ error: "The profile must be JSON." }, 400);
     }
     try {
-      const saved = store.putProfile({ ...cleanProfile(body), deviceId: access.deviceId });
+      const cleaned = cleanProfile(body);
+      cleaned.account = store.bindAccount(cleaned.account, legacyOf(body));
+      const saved = store.putProfile({ ...cleaned, deviceId: access.deviceId });
       return c.json({ ok: true, updated: saved.updated, updatedAt: saved.profile.updatedAt });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
@@ -304,7 +350,9 @@ export function createApp(
       return c.json({ error: "The game data must be JSON, optionally gzip." }, 400);
     }
     try {
-      const result = store.putSnapshot(cleanSnapshot(body), access.deviceId);
+      const cleaned = cleanSnapshot(body);
+      cleaned.account = store.bindAccount(cleaned.account, legacyOf(body));
+      const result = store.putSnapshot(cleaned, access.deviceId);
       return c.json({ ok: true, ...result });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);

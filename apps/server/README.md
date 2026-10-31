@@ -94,7 +94,7 @@ Point an MCP client at `https://unbored.example/mcp` and send the planner token 
 6. Put the public HTTPS URL in the Companion, with the companion token.
 7. If the app watches paths, watch `apps/server/**`, `packages/contracts/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and `package.json`.
 
-The image is Node 24. It uses the built-in `node:sqlite` module (`--experimental-sqlite`). No extra database process. The context is the repository root because the image installs from the pnpm workspace.
+The image is Node 26. Node 26 does not ship corepack, so the image installs corepack and then pnpm. It uses the built-in `node:sqlite` module (`--experimental-sqlite`). No extra database process. The context is the repository root because the image installs from the pnpm workspace. The container starts as root only long enough to `chown` `/data` (a Dokploy volume is often root-owned) and then drops to the `node` user. The image `HEALTHCHECK` fetches `/health` with `node`, because the slim image has no curl.
 
 ## Tests
 

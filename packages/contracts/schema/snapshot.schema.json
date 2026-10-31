@@ -9,6 +9,10 @@
   "properties": {
     "schema": { "const": 2 },
     "account": { "type": "string", "minLength": 1 },
+    "accountLegacy": {
+      "type": "string",
+      "description": "Unhashed Account key, sent once so existing rows can be renamed (docs/adr/0044). Not stored."
+    },
     "character": { "type": "string", "minLength": 1 },
     "realm": { "type": "string" },
     "savedAt": { "type": ["integer", "null"] },

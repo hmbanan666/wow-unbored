@@ -189,6 +189,7 @@ export const requestBodySchema = z
     topic: z.string().optional(),
     lang: z.string().optional(),
     account: z.string().optional(),
+    accountLegacy: z.string().optional(),
     item: requestItemSchema.optional(),
     context: z.object({}).passthrough().optional(),
     suggestionId: z.string().min(1).optional(),
@@ -263,6 +264,7 @@ export const playerProfileSchema = z
     character: z.string().min(1),
     realm: z.string().optional(),
     account: z.string().optional(),
+    accountLegacy: z.string().optional(),
     savedAt: z.number().int().nullable().optional(),
     profile: z.object({}).passthrough(),
   })
@@ -393,6 +395,8 @@ export const snapshotBodySchema = z
   .object({
     schema: z.literal(2),
     account: z.string().min(1),
+    /** Old folder key, once, so the Server can rename rows (docs/adr/0044). */
+    accountLegacy: z.string().optional(),
     character: z.string().min(1),
     realm: z.string().optional(),
     savedAt: z.number().int().nullable().optional(),

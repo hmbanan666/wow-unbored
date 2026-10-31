@@ -121,7 +121,7 @@ test("webhook: a failing planner is retried with backoff, then given up", async 
     assert.equal(app.hits.length, 1);
     for (const delay of RETRY_DELAYS) {
       await app.webhook.tick();
-      const before = app.hits.length;
+      const before: number = app.hits.length;
       app.advance(delay - 1);
       await app.webhook.tick();
       assert.equal(app.hits.length, before, `waits ${delay}s`);
