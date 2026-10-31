@@ -13,7 +13,7 @@ pub const HELPER_TOC: &str = "\
 ## Title: Unbored Plan
 ## Notes: Plans, answers and item tips from Unbored Companion. Bory reads them when you log in or press Refresh.
 ## Author: Unbored contributors
-## Version: 0.9.1
+## Version: 0.10.0
 ## LoadOnDemand: 0
 
 Plan.lua
