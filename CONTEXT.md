@@ -14,7 +14,7 @@ One chat-style message from Bory, to the right of its portrait. The newest one i
 _Avoid_: popup, tooltip, frame, toast (the toast is the Companion's Windows notification).
 
 **Preset**
-A one-click Plan starter chip in the Bubble, such as "Get a mount" or "Surprise me". Starts a Quick plan and sends a Request.
+A one-click Plan starter chip in the Bubble, such as "Get a mount" or "Surprise me". Starts a Quick plan; "Want a proper plan?" then sends a Request. In 0.9 the Presets sit under More ideas, after the Ideas.
 _Avoid_: wizard, mode card, option, filter.
 
 **Plan**
@@ -34,11 +34,11 @@ A detailed Plan from the Planner. Replaces the Quick plan only when the player a
 _Avoid_: server plan, AI plan, real plan.
 
 **Request**
-What the player asks for from the Planner: a Full plan, after a short Survey. Saved in SavedVariables, which the game writes at Send now, a Refresh or logout; the Companion then sends it to the Server. Items and questions are answered locally (ADR 0032).
+What the player asks for from the Planner: a Full plan, after a short Survey. Saved in SavedVariables, which the game writes at Send now, a Refresh or logout; the Companion then sends it to the Server. Items are answered locally (ADR 0032); the player never types one (ADR 0046).
 _Avoid_: ticket, job, query, call.
 
 **Survey**
-The short question Bory asks before a Request: an optional one-line wish, never how much time (ADR 0037). Then a summary with [Send now].
+Before 0.9, the short optional line Bory asked for before a Request. From 0.9 there is no typed input (ADR 0046): "Want a proper plan?" goes straight to the summary with [Send now].
 _Avoid_: form, questionnaire, wizard.
 
 **ETA**
@@ -70,7 +70,7 @@ The click that reloads the UI after an addon update: "Press Load to finish the u
 _Avoid_: sync, reload button, apply (in anything the player sees).
 
 **Refresh offer**
-The one Bubble that may reload the UI on the player's click: "New stuff is ready. Refresh now?" or, after an Ask, "I'll have a fuller answer after a refresh", with [Refresh] and [Later]. Later means the next login. Never shown per message.
+The one Bubble that may reload the UI on the player's click: "New stuff is ready. Refresh now?", with [Refresh] and [Later]. Later means the next login. Never shown per message.
 _Avoid_: reload prompt, sync, update (that word is for addon updates).
 
 **Prefetch**
@@ -158,8 +158,24 @@ An optional "If ..." on a Step that the addon checks live from the game (a curre
 _Avoid_: requirement, prerequisite, gate, rule.
 
 **Suggestion**
-A ready idea for this Character, computed by the Server from the Game data snapshot and the Catalog (or by the addon from what it sees live), shown as a chip in the choice Bubble. Picking one sends a Request.
+A ready idea for this Character, computed by the Server from the Game data snapshot and the Catalog (or by the addon from what it sees live), shown as a chip in the choice Bubble. Picking one starts a Quick plan or the Confirm for a Request. Code and contract word; the player sees Idea.
 _Avoid_: recommendation, quest, offer (that word is the Refresh offer), AI idea.
+
+**Idea**
+The player word for a Suggestion: one chip in the choice Bubble ("What shall we do?"), built from the player's own data: an event that is on, an unfinished Chain, an achievement, a rare, a collectible. The player only picks; he never types (ADR 0046, 0047).
+_Avoid_: Ask, chat, wish, question box, recommendation.
+
+**Chain**
+A quest line the player has started or is offered (a campaign, a line of a quest in the log, or a started line on a map he plays), with done of total and the next quest from the game. Picking a Chain idea starts a local Quick plan of its quests (D132-D136).
+_Avoid_: storyline (in UI copy), questline id, quest tree.
+
+**Holdings**
+Where else on the Account an item is: other Characters' bags, bank and reagent bank and the Warband bank, from the Server's Account holdings index. Shown as one muted "Also: ..." line in the tooltip, never this character's own bags (ADR 0048).
+_Avoid_: inventory dump, stock, storage, mule.
+
+**Mood**
+The picture of Bory for what is going on: idle, thinking, waiting (a yawn) or happy. A Mood swaps only the Bory layer; nothing new moves (D148-D150).
+_Avoid_: emotion, animation, state (in UI copy), avatar.
 
 **Catalog**
 The vetted ids from the Knowledge base (`addon/Data/*.lua`), exported to `packages/contracts/catalog/catalog.json` for the Server. Every row has a primary source URL.
@@ -169,4 +185,4 @@ _Avoid_: database, game DB, wiki dump.
 The small tables bundled with the addon (`Data/*.lua`) that let Bory answer locally.
 _Avoid_: database, wiki, cache.
 
-**Avoid in anything user-facing**: tracker, All steps (window), wizard, token, URL, server address, API key, registration, login, delete (Advice never says it).
+**Avoid in anything user-facing**: tracker, All steps (window), wizard, token, URL, server address, API key, registration, login, delete (Advice never says it), Ask, chat, wish.

@@ -15,7 +15,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0011. Server-side player profile](0011-server-side-player-profile.md)
 - [0012. Reload-free: local first, background prefetch, one Refresh offer](0012-reload-free-background-refresh.md)
 - [0013. Request contract and Reason codes](0013-request-contract-and-reason-codes.md)
-- [0014. Ask is a core feature](0014-ask-is-core.md)
+- [0014. Ask is a core feature](0014-ask-is-core.md) (superseded by 0046)
 - [0015. Item input: drop on Wisp, tooltip line, pick mode](0015-item-input.md)
 - [0016. Bubble layout](0016-bubble-layout.md)
 - [0017. Minimap button](0017-minimap-button.md)
@@ -47,5 +47,10 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0043. Forget my data](0043-forget-my-data.md) (amends D62)
 - [0044. Hashed Account key](0044-hashed-account-key.md) (amends 0029, D58)
 - [0045. Connect again after Forget my data](0045-connect-again.md) (amends 0043)
+- [0046. Choices only, no free text](0046-choices-only.md) (supersedes the Ask parts of 0004 and 0014, amends 0037)
+- [0047. Events and quest chains as ideas](0047-events-and-chains-as-ideas.md) (amends 0040)
+- [0048. Account holdings in tooltips](0048-account-holdings-in-tooltips.md) (amends 0035, 0036)
+- [0049. Companion language](0049-companion-language.md)
+- [0050. Updater key rotation](0050-updater-key-rotation.md)
 
-The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md), and v0.8 (D83-D121) in [`docs/decisions-v0.8.md`](../decisions-v0.8.md).
+The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md), v0.8 (D83-D121) in [`docs/decisions-v0.8.md`](../decisions-v0.8.md), and v0.9 (D122-D167) in [`docs/decisions-v0.9.md`](../decisions-v0.9.md).
