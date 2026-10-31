@@ -180,6 +180,30 @@ function S.Write(name, body, src)
   return true
 end
 
+-- Lua 5.1 cannot yield across pcall, and WoW runs Lua 5.1. Inside the staged
+-- worker, a reader that calls S.Yield() once the frame budget is spent would
+-- fail the whole Section. Run that read in its own coroutine: when it yields,
+-- yield the worker so the next frame resumes the same read.
+local function readInWorker(def, name, previous, src)
+  local reader = coroutine.create(function()
+    return def.read(previous)
+  end)
+  S.readCo = reader
+  while true do
+    local ok, body = coroutine.resume(reader)
+    if not ok then
+      S.readCo = nil
+      ns.ReportError(body)
+      return false
+    end
+    if coroutine.status(reader) == "dead" then
+      S.readCo = nil
+      return S.Write(name, body, src)
+    end
+    coroutine.yield()
+  end
+end
+
 function S.Read(name, src)
   local def = S.defs[name]
   if not def or not S.Allowed(name) then
@@ -190,6 +214,9 @@ function S.Read(name, src)
     return false
   end
   local previous = S.Body(name)
+  if coroutine.running() == S.co then
+    return readInWorker(def, name, previous, src)
+  end
   local ok, body = pcall(def.read, previous)
   if not ok then
     ns.ReportError(body)
@@ -199,9 +226,11 @@ function S.Read(name, src)
 end
 
 -- Inside a staged read: hands the frame back once the budget is spent.
+-- The reader runs in S.readCo, nested under the worker, so the yield hits
+-- that coroutine rather than crossing a pcall.
 function S.Yield()
   local co = coroutine.running()
-  if not co or co ~= S.co then
+  if not co or (co ~= S.co and co ~= S.readCo) then
     return
   end
   if S.Elapsed() >= S.BUDGET_MS or ns.IsCombat() then
@@ -259,11 +288,13 @@ function S.Step(unbounded)
   if not ok then
     ns.ReportError(err)
     S.co = nil
+    S.readCo = nil
     S.queue = {}
     return false
   end
   if coroutine.status(S.co) == "dead" then
     S.co = nil
+    S.readCo = nil
     if #S.queue == 0 then
       S.Enforce()
       return false

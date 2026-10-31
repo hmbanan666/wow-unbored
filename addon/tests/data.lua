@@ -556,6 +556,136 @@ check(steps >= 2, "staged reads spread over frames")
 check(#S.queue == 0, "the staged queue drains")
 S.BUDGET_MS = 4
 
+-- Lua 5.1 cannot yield across pcall. Stepping the worker (not Drain, which
+-- never yields) must finish a reader that calls S.Yield() once the frame
+-- budget is spent, and an error after that yield must not stop the queue.
+local function dropProbe(name)
+  S.defs[name] = nil
+  for i = #S.order, 1, -1 do
+    if S.order[i] == name then
+      table.remove(S.order, i)
+    end
+  end
+  if UnboredCharDB.data and UnboredCharDB.data.sections then
+    UnboredCharDB.data.sections[name] = nil
+  end
+end
+
+S.BUDGET_MS = 0
+clock = 1000
+UnboredDB.errors = {}
+local yieldPhase = "before"
+local yieldOver = false
+S.Register({
+  name = "yieldProbe",
+  login = false,
+  read = function()
+    yieldPhase = "paused"
+    clock = clock + 1000
+    yieldOver = S.Elapsed() >= S.BUDGET_MS
+    S.Yield()
+    yieldPhase = "done"
+    return { ok = true }
+  end,
+})
+S.Queue("yieldProbe", "login")
+local yieldSteps = 0
+local yieldPaused = false
+while S.Step() do
+  yieldSteps = yieldSteps + 1
+  if yieldSteps == 1 then
+    yieldPaused = yieldPhase == "paused" and S.Body("yieldProbe") == nil
+  end
+  if yieldSteps > 20 then
+    break
+  end
+end
+check(yieldOver and yieldPaused and yieldSteps < 20, "a yielding read pauses once the frame budget is spent")
+check(yieldPhase == "done" and S.Body("yieldProbe") and S.Body("yieldProbe").ok == true,
+  "a yielding read writes its Section")
+check(type(UnboredDB.errors) ~= "table" or #UnboredDB.errors == 0, "a yielding read leaves no errors")
+dropProbe("yieldProbe")
+
+UnboredDB.errors = {}
+local combatPhase = "before"
+S.Register({
+  name = "yieldCombat",
+  login = false,
+  read = function()
+    combatPhase = "paused"
+    combat = true
+    S.Yield()
+    combatPhase = "done"
+    return { done = true }
+  end,
+})
+S.Queue("yieldCombat", "login")
+local combatSteps = 0
+local combatPaused = false
+while S.Step() do
+  combatSteps = combatSteps + 1
+  if combatSteps == 1 then
+    combatPaused = combat == true and combatPhase == "paused" and S.Body("yieldCombat") == nil
+    combat = false
+  end
+  if combatSteps > 20 then
+    break
+  end
+end
+check(combatPaused, "combat pauses a yielding read")
+check(combatPhase == "done" and S.Body("yieldCombat") and S.Body("yieldCombat").done == true,
+  "a yielding read finishes after combat")
+check(#(UnboredDB.errors or {}) == 0, "pausing for combat leaves no errors")
+dropProbe("yieldCombat")
+combat = false
+
+UnboredDB.errors = {}
+local errorWasShown = ns.errorShown
+ns.errorShown = true
+S.Register({
+  name = "yieldBoom",
+  login = false,
+  read = function()
+    clock = clock + 1000
+    S.Yield()
+    error("after yield")
+  end,
+})
+S.Register({
+  name = "yieldNext",
+  login = false,
+  read = function()
+    return { kept = true }
+  end,
+})
+S.Queue("yieldBoom", "login")
+S.Queue("yieldNext", "login")
+local boomSteps = 0
+local boomPausedClean = false
+while S.Step() do
+  boomSteps = boomSteps + 1
+  if boomSteps == 1 then
+    boomPausedClean = #UnboredDB.errors == 0 and S.Body("yieldNext") == nil
+  end
+  if boomSteps > 20 then
+    break
+  end
+end
+local boomText = UnboredDB.errors and UnboredDB.errors[1] and UnboredDB.errors[1].text or ""
+check(boomPausedClean, "a yield itself is not an error")
+check(#(UnboredDB.errors or {}) == 1 and boomText:find("after yield", 1, true) ~= nil,
+  "an error after a yield is reported once")
+check(S.Body("yieldNext") and S.Body("yieldNext").kept == true,
+  "the next queued read still runs after a yield error")
+ns.errorShown = errorWasShown
+dropProbe("yieldBoom")
+dropProbe("yieldNext")
+UnboredDB.errors = {}
+S.co = nil
+S.readCo = nil
+S.queue = {}
+S.BUDGET_MS = 4
+
 -- Daily achievement scan: skipped within 24 h.
 local achievementsDef = S.defs.achievements
 check(achievementsDef.every == 86400, "achievements scan once a day")

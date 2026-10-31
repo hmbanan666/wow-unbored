@@ -2,6 +2,11 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## 0.9.1
+
+- Fixed: long reads of quests, professions and collections finish again, so Bory keeps them.
+- Исправлено: длинные чтения квестов, профессий и коллекций снова доходят до конца, и Бори их сохраняет.
+
 ## 0.9.0
 
 - Only choices now: Bory no longer has an Ask box, a "Something else" chip or a wish field. Pick an idea, Surprise me, or More ideas.
