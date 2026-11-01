@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 
 import { packIds, sectionHash, suggestionsBodySchema } from "@unbored/contracts";
 
@@ -304,18 +304,39 @@ test("an upload schedules ideas; the Companion and the Planner read them", async
     assert.equal(store.suggestions.pending(account), true, "debounced, not run inline");
     assert.equal(store.suggestions.computeAccount(account, NOW), 1);
 
-    const body = await (await get()).json();
-    const parsed = suggestionsBodySchema.safeParse(body);
-    assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
-    const list = parsed.data!.characters[`${snapshot.realm}-${snapshot.character}`];
-    assert.ok(list?.some((item) => item.id === "rare:rare-huolon"));
-    assert.ok(list?.some((item) => item.kind === "event"));
+    // Computation and both readers must agree on the fixture's clock. Real
+    // time would eventually expire this holiday while leaving the rare idea.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(NOW * 1000);
+    try {
+      const body = await (await get()).json();
+      const parsed = suggestionsBodySchema.safeParse(body);
+      assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+      const list = parsed.data!.characters[`${snapshot.realm}-${snapshot.character}`];
+      assert.ok(list?.some((item) => item.id === "rare:rare-huolon"));
+      assert.ok(list?.some((item) => item.kind === "event"));
 
-    const tool = await mcp(app, "get_suggestions", { account });
-    assert.equal(tool.isError, false, tool.text);
-    const read = JSON.parse(tool.text) as { characters: { character: string; list: unknown[] }[] };
-    assert.equal(read.characters[0]?.character, snapshot.character);
-    assert.equal(read.characters[0]?.list.length, list?.length);
+      const tool = await mcp(app, "get_suggestions", { account });
+      assert.equal(tool.isError, false, tool.text);
+      const read = JSON.parse(tool.text) as {
+        characters: { character: string; list: unknown[] }[];
+      };
+      assert.equal(read.characters[0]?.character, snapshot.character);
+      assert.equal(read.characters[0]?.list.length, list?.length);
+
+      clock.mockReturnValue(Date.UTC(2026, 10, 1, 11, 0) /* holiday ends */);
+      const expired = suggestionsBodySchema.parse(await (await get()).json());
+      const remaining = expired.characters[`${snapshot.realm}-${snapshot.character}`];
+      assert.ok(remaining?.some((item) => item.id === "rare:rare-huolon"));
+      assert.ok(!remaining?.some((item) => item.kind === "event"));
+      const expiredTool = await mcp(app, "get_suggestions", { account });
+      assert.equal(expiredTool.isError, false, expiredTool.text);
+      const afterExpiry = JSON.parse(expiredTool.text) as {
+        characters: { list: { kind: string }[] }[];
+      };
+      assert.ok(!afterExpiry.characters[0]?.list.some((item) => item.kind === "event"));
+    } finally {
+      clock.mockRestore();
+    }
   } finally {
     close();
   }
