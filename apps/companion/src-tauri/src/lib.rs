@@ -10,6 +10,8 @@ pub mod mood;
 pub mod plan;
 pub mod request;
 pub mod savedvars;
+#[cfg(any(feature = "gui", test))]
+mod settings;
 pub mod snapshot;
 #[cfg(any(feature = "gui", test))]
 mod sync_state;
