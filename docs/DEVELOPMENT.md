@@ -46,6 +46,21 @@ Every UI string is in `Core/Locale.lua`, English and Russian. The name is one st
 
 ## Checks
 
+With nvm installed, select the project's Node 26 before running commands:
+
+```sh
+nvm install
+nvm use
+npm install --global pnpm@12.16.1
+pnpm install --frozen-lockfile
+```
+
+`.nvmrc` selects Node 26 without changing nvm's default for other projects. pnpm is installed for that Node version. In a new terminal, run `nvm use` from the repository root again.
+
+Non-interactive agent shells may not load nvm from `.zshrc`. With nvm installed through Homebrew, run `source "$(brew --prefix nvm)/nvm.sh"` before `nvm use` in that shell.
+
+On macOS, install `luacheck`, `minisign`, and `git-cliff` with Homebrew. The release-note checks use git-cliff 2.14.2. Lua must be **5.1**, available on `PATH` as **`lua5.1`**; Homebrew's current `lua` is a different version. If Lua 5.1 is unavailable from the package manager, build [Lua 5.1.5](https://www.lua.org/ftp/) with `make macosx`, verify the archive's SHA-256 against the download page, and install it under a separate user prefix. Keep the existing `lua` executable for other projects. Rust needs the `rustfmt` and `clippy` components, and macOS needs Xcode Command Line Tools.
+
 From the repository root, with pnpm, Lua 5.1, luacheck, and Rust:
 
 ```
