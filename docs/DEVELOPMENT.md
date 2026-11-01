@@ -86,8 +86,18 @@ model, not process-global caches. Saving an endpoint clears its upload caches;
 concurrent migration acknowledgements are merged rather than replacing a list
 from an older settings snapshot.
 
-Generation invalidation discards results; it does not cancel blocking HTTP or
-order concurrent results within the same generation. Reconnect recovery after
+Manual Plan fetch and background Planner work share a Prefetch lock owned by
+their generation. Acquire it before reading upload acknowledgements or calling
+the Server, and hold it through files, migrations, notifications, final status
+and heartbeat. Recheck the generation after waiting. The order is Prefetch,
+then progress (when needed), then model; never acquire Prefetch while holding
+the model. Forget/settings need no Prefetch lock, and a new generation has an
+independent one, so a delayed old HTTP response cannot hold up new Prefetch.
+Addon update checks run outside this lock. The lock serializes complete passes;
+it does not promise FIFO ordering of waiting callers or a Server-wide snapshot.
+
+Generation invalidation discards results; it does not cancel blocking HTTP.
+Reconnect recovery after
 a lost response/local credential save and per-scope snapshot freshness still
 need the protocol work described in the audit reports.
 
