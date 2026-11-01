@@ -650,8 +650,17 @@ fn write_plan_text(app: AppHandle, state: State<AppState>, text: String) -> Resu
 }
 
 #[tauri::command]
-fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
-    let session = SyncSession::capture(&state)?;
+async fn fetch_plan(app: AppHandle) -> Result<UiState, Shown> {
+    let session = SyncSession::capture(&app.state::<AppState>())?;
+    // A background pass can need the GUI thread for tray updates. Waiting for
+    // its guard (and blocking HTTP) must happen on neither GUI nor async workers.
+    tauri::async_runtime::spawn_blocking(move || fetch_plan_blocking(app, session))
+        .await
+        .map_err(|_| i18n::code("ERR_UNEXPECTED", &[]))?
+}
+
+fn fetch_plan_blocking(app: AppHandle, session: SyncSession) -> Result<UiState, Shown> {
+    let state = app.state::<AppState>();
     let _prefetch = session.generation.prefetch()?;
     let seal = session
         .apply(&app, |model| {

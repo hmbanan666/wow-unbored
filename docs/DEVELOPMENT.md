@@ -92,8 +92,13 @@ the Server, and hold it through files, migrations, notifications, final status
 and heartbeat. Recheck the generation after waiting. The order is Prefetch,
 then progress (when needed), then model; never acquire Prefetch while holding
 the model. Forget/settings need no Prefetch lock, and a new generation has an
-independent one, so a delayed old HTTP response cannot hold up new Prefetch.
-Addon update checks run outside this lock. The lock serializes complete passes;
+independent one, so a separately started pass of the new generation does not
+wait on the old Prefetch lock. The single background loop still waits for its
+in-flight HTTP to return, and the progress lock remains shared across generations.
+The manual fetch command is async and runs its blocking body via `spawn_blocking`:
+neither HTTP nor waiting for Prefetch may occupy the GUI thread (background tray
+updates can need it). Addon update checks run outside the Prefetch lock.
+The lock serializes complete passes;
 it does not promise FIFO ordering of waiting callers or a Server-wide snapshot.
 
 Generation invalidation discards results; it does not cancel blocking HTTP.
