@@ -13,6 +13,7 @@ COPY packages/contracts/package.json packages/contracts/package.json
 RUN pnpm install --frozen-lockfile --filter @unbored/server... --prod
 
 COPY apps/server/src apps/server/src
+COPY apps/server/migrations apps/server/migrations
 COPY apps/server/docker-entrypoint.sh /usr/local/bin/unbored-entrypoint
 COPY packages/contracts packages/contracts
 

@@ -6,6 +6,9 @@ export type Config = {
   plannerToken: string;
   dataDir: string;
   port: number;
+  /** PostgreSQL (ADR 0057). Unset: the Server stays on SQLite. */
+  databaseUrl?: string;
+  databasePoolMax: number;
 };
 
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
@@ -22,7 +25,15 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error("PORT must be a whole number from 1 to 65535.");
   }
-  return { companionToken, plannerToken, dataDir, port };
+  const databaseUrl = env.DATABASE_URL?.trim() || undefined;
+  if (databaseUrl && !/^postgres(ql)?:\/\//.test(databaseUrl)) {
+    throw new Error("DATABASE_URL must start with postgres:// or postgresql://.");
+  }
+  const databasePoolMax = Number(env.DATABASE_POOL_MAX?.trim() || "10");
+  if (!Number.isInteger(databasePoolMax) || databasePoolMax < 1 || databasePoolMax > 100) {
+    throw new Error("DATABASE_POOL_MAX must be a whole number from 1 to 100.");
+  }
+  return { companionToken, plannerToken, dataDir, port, databaseUrl, databasePoolMax };
 }
 
 export function sqlitePath(dataDir: string): string {
