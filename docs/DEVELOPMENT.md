@@ -46,6 +46,13 @@ Every UI string is in `Core/Locale.lua`, English and Russian. The name is one st
 
 ## Checks
 
+Companion upload routes authenticate before reading the body and recheck the
+Device immediately before synchronous writes. Body reads yield to other requests:
+Forget or owner revoke may have finished meanwhile. Account migration must also
+stay after the final check; any future await before persistence needs another
+authorization check. Streaming-body tests cover snapshot, profile, Request and
+progress uploads interrupted by either revocation path.
+
 Helper-file writes are serialized inside `plan.rs`, including the complete
 read/modify/replace operation for Plan and Companion status. All helper files
 are replaced through a staging file. A missing file may be initialized; other

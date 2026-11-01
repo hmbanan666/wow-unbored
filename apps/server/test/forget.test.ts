@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
 
@@ -95,6 +96,110 @@ async function fill(
     items: [{ itemID: 6948, action: "keep", line: "Your way home." }],
   });
   built.store.suggestions.computeAccount(who.account.split("#")[0]!, NOW);
+}
+
+for (const endpoint of ["snapshot", "profile", "requests", "progress"]) {
+  for (const action of ["forget", "revoke"]) {
+    test(`${endpoint} cannot write after ${action} while its body is still arriving`, async () => {
+      const built = setup();
+      let markReading!: () => void;
+      let resume!: () => void;
+      const reading = new Promise<void>((resolve) => {
+        markReading = resolve;
+      });
+      const resumed = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      let pending: Promise<Response> | undefined;
+      try {
+        const secret = "late-upload-device-secret";
+        await pair(built, "late-upload-device", secret);
+        await fill(built, secret, {
+          account: fixture.account,
+          character: fixture.character,
+          request: "seed",
+        });
+        const identity = {
+          account: fixture.account,
+          character: fixture.character,
+          realm: fixture.realm,
+        };
+        const bodies: Record<string, unknown> = {
+          snapshot: fixture,
+          profile: { ...identity, savedAt: fixture.savedAt, profile: { context: { level: 80 } } },
+          requests: { ...identity, id: "late-request", mode: "farm" },
+          progress: {
+            ...identity,
+            savedAt: fixture.savedAt,
+            progress: { v: 1, mode: "farm", done: [], remaining: [] },
+          },
+        };
+        const bytes = Buffer.from(JSON.stringify(bodies[endpoint]));
+        const encoded = endpoint === "snapshot" ? gzipSync(bytes) : bytes;
+        const stream = new ReadableStream<Uint8Array>(
+          {
+            async pull(controller) {
+              // highWaterMark 0: this happens only when the route reads the body,
+              // after its initial authentication, not during stream construction.
+              markReading();
+              await resumed;
+              controller.enqueue(encoded);
+              controller.close();
+            },
+          },
+          { highWaterMark: 0 },
+        );
+        const init: RequestInit & { duplex: "half" } = {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${secret}`,
+            "content-type": "application/json",
+            ...(endpoint === "snapshot" ? { "content-encoding": "gzip" } : {}),
+          },
+          body: stream,
+          duplex: "half",
+        };
+        pending = Promise.resolve(
+          built.app.request(new Request(`http://localhost/v1/${endpoint}`, init)),
+        );
+        await reading;
+        if (action === "forget") {
+          assert.equal(
+            (await call(built, "/v1/devices/me/forget", secret, { confirm: true })).status,
+            200,
+          );
+        } else {
+          built.store.setDeviceStatus("late-upload-device", "revoked");
+        }
+        const tables = [
+          "accounts",
+          "characters",
+          "sections_latest",
+          "section_history",
+          "profiles",
+          "profile_snapshots",
+          "requests",
+          "plans",
+          "progress",
+          "history",
+          "suggestions",
+        ];
+        const before = tables.map((table) => built.rows(table));
+        resume();
+        assert.equal((await pending).status, 401, "authorization must still hold at the write");
+        assert.deepEqual(
+          tables.map((table) => built.rows(table)),
+          before,
+          "no data or migration side effects",
+        );
+        assert.equal(built.store.deviceById("late-upload-device")?.status, "revoked");
+      } finally {
+        resume();
+        await pending;
+        built.close();
+      }
+    });
+  }
 }
 
 test("Forget my data needs the device's own secret and an explicit confirm", async () => {
