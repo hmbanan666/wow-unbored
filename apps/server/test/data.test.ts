@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { mkdtempSync, readFileSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { gzipSync } from "node:zlib";
 import { test } from "vite-plus/test";
+import { serve } from "@hono/node-server";
 
 import { packIds, sectionHash, unpackIds, unpackRows } from "@unbored/contracts";
 
@@ -436,6 +439,44 @@ test("snapshot accepts exactly the byte cap and fragmented gzip", async () => {
       200,
     );
   } finally {
+    close();
+  }
+});
+
+test("the HTTP adapter returns 413 before a chunked snapshot upload ends", async () => {
+  const { app, store, close } = build();
+  const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 });
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const request = httpRequest({
+    hostname: "127.0.0.1",
+    port: address.port,
+    path: "/v1/snapshot",
+    method: "POST",
+    headers: { authorization: `Bearer ${companion}` },
+  });
+  try {
+    const status = await new Promise<number>((resolve, reject) => {
+      request.once("error", reject);
+      request.once("response", (response) => {
+        response.resume();
+        resolve(response.statusCode ?? 0);
+      });
+      request.setTimeout(3000, () =>
+        request.destroy(new Error("snapshot waited for end of upload")),
+      );
+      request.write(Buffer.alloc(SNAPSHOT_MAX_COMPRESSED + 1));
+      // Deliberately no request.end(): the handler must reject without EOF.
+    });
+    assert.equal(status, 413);
+    assert.equal(request.writableEnded, false);
+    assert.deepEqual(store.data.catalog().accounts, []);
+  } finally {
+    request.destroy();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
     close();
   }
 });
