@@ -220,19 +220,23 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     },
     async ({ plan, requestId }) => {
       try {
-        const asked = requestId ? store.requestById(requestId) : undefined;
+        const asked = requestId ? await store.requestById(requestId) : undefined;
         if (requestId && !asked) {
           return failure(new Error("No request with that id."));
         }
         const warnings: string[] = [];
         const missing = gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
-        const stored = store.putPlan(
-          plan,
-          undefined,
-          { missing, warnings, wish: asked?.wish },
-          requestId,
-        );
-        const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
+        // One transaction: Forget my data cannot erase the Request between the two.
+        const { stored, request } = await store.tx(async () => {
+          const stored = await store.putPlan(
+            plan,
+            undefined,
+            { missing, warnings, wish: asked?.wish },
+            requestId,
+          );
+          const request = requestId ? await store.fulfillRequest(requestId, stored.id) : undefined;
+          return { stored, request };
+        });
         return text({
           id: stored.id,
           createdAt: stored.createdAt,
@@ -256,7 +260,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         "Return the latest stored plan as JSON and as the UNB1: string the companion writes into the game. Empty when nothing has been stored yet.",
     },
     async () => {
-      const stored = store.latestPlan();
+      const stored = await store.latestPlan();
       if (!stored) return text({ plan: null });
       return text({
         id: stored.id,
@@ -286,8 +290,8 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         character: args.character,
       };
       return text({
-        latest: store.latestProgress(filter) ?? null,
-        characters: store.latestPerCharacter().filter((row) => {
+        latest: (await store.latestProgress(filter)) ?? null,
+        characters: (await store.latestPerCharacter()).filter((row) => {
           if (filter.account && row.account !== filter.account) return false;
           if (filter.realm && row.realm !== filter.realm) return false;
           if (filter.character && row.character !== filter.character) return false;
@@ -314,7 +318,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ limit }) => {
-      const sessions = store.listPlans(limit ?? 20).map(sessionSummary);
+      const sessions = (await store.listPlans(limit ?? 20)).map(sessionSummary);
       return text({ sessions });
     },
   );
@@ -326,7 +330,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       description:
         "List devices that asked to pair. status is pending, approved, or revoked. The device secret is not included. Approve a pending device so that companion can read the plan and post progress.",
     },
-    async () => text({ devices: store.listDevices().map(publicDevice) }),
+    async () => text({ devices: (await store.listDevices()).map(publicDevice) }),
   );
 
   server.registerTool(
@@ -340,7 +344,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ deviceId }) => {
-      const device = store.setDeviceStatus(deviceId, "approved");
+      const device = await store.setDeviceStatus(deviceId, "approved");
       if (!device) return failure(new Error("No device with that id."));
       return text({ device: publicDevice(device) });
     },
@@ -357,7 +361,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ deviceId }) => {
-      const device = store.setDeviceStatus(deviceId, "revoked");
+      const device = await store.setDeviceStatus(deviceId, "revoked");
       if (!device) return failure(new Error("No device with that id."));
       return text({ device: publicDevice(device) });
     },
@@ -375,23 +379,24 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
           .describe("Which requests to list. Defaults to pending."),
       },
     },
-    async ({ status }) =>
-      text({
-        expired: store.expireRequests(),
-        requests: store.listRequests(status ?? "pending").map((request) => {
-          const delivery = store.webhookDelivery(request.id);
-          return {
-            ...publicRequest(request),
-            webhook: delivery
-              ? {
-                  attempts: delivery.attempts,
-                  deliveredAt: delivery.deliveredAt,
-                  lastError: delivery.lastError,
-                }
-              : null,
-          };
-        }),
-      }),
+    async ({ status }) => {
+      const expired = await store.expireRequests();
+      const requests = [];
+      for (const request of await store.listRequests(status ?? "pending")) {
+        const delivery = await store.webhookDelivery(request.id);
+        requests.push({
+          ...publicRequest(request),
+          webhook: delivery
+            ? {
+                attempts: delivery.attempts,
+                deliveredAt: delivery.deliveredAt,
+                lastError: delivery.lastError,
+              }
+            : null,
+        });
+      }
+      return text({ expired, requests });
+    },
   );
 
   server.registerTool(
@@ -414,17 +419,21 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     },
     async ({ character, realm, account }) => {
       if (account) {
-        const characters = store.profilesForAccount(account);
+        const characters = await store.profilesForAccount(account);
         if (characters.length === 0)
           return failure(new Error("No characters on that account yet."));
         return text({ account: characters[0]!.account, characters });
       }
-      const profile = store.profileFor(character || undefined, realm || undefined);
+      const profile = await store.profileFor(character || undefined, realm || undefined);
       if (!profile)
         return failure(
           new Error("No profile yet. The companion uploads one after the next reload."),
         );
-      return text({ profile, characters: store.listProfiles(), accounts: store.listAccounts() });
+      return text({
+        profile,
+        characters: await store.listProfiles(),
+        accounts: await store.listAccounts(),
+      });
     },
   );
 
@@ -457,7 +466,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         realm: realm || undefined,
         account: account || undefined,
       };
-      const entries = store.history({
+      const entries = await store.history({
         ...filter,
         kinds: kinds as Parameters<Store["history"]>[0]["kinds"],
         since,
@@ -465,14 +474,22 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       });
       return text({
         entries,
-        snapshots: includeSnapshots ? store.profileSnapshots({ ...filter, limit: 10 }) : undefined,
+        snapshots: includeSnapshots
+          ? await store.profileSnapshots({ ...filter, limit: 10 })
+          : undefined,
       });
     },
   );
 
   const data = store.data;
-  const pickCharacters = (input: { account?: string; character?: string; realm?: string }) => {
-    let rows: CharacterRow[] = input.account ? data.characters(input.account) : data.characters();
+  const pickCharacters = async (input: {
+    account?: string;
+    character?: string;
+    realm?: string;
+  }) => {
+    let rows: CharacterRow[] = input.account
+      ? await data.characters(input.account)
+      : await data.characters();
     if (input.character) rows = rows.filter((row) => row.name === input.character);
     if (input.realm) rows = rows.filter((row) => row.realm === input.realm);
     if (!input.account && !input.character) rows = rows.slice(0, 1);
@@ -493,18 +510,27 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       inputSchema: { account: whoSchema.account },
     },
     async ({ account }) => {
-      const accounts = account ? [data.account(account)].filter(Boolean) : data.accounts();
+      const accounts = account
+        ? [await data.account(account)].filter((row) => row !== undefined)
+        : await data.accounts();
       if (accounts.length === 0) return failure(new Error("No game data for that Account yet."));
-      return text({
-        accounts: accounts.map((row) => ({
-          account: row!.id,
-          lastSeen: row!.lastSeen,
-          sections: data
-            .sections("account", row!.id)
-            .map((s) => ({ name: s.section, at: s.at, savedAt: s.savedAt })),
-          characters: data.characters(row!.id).map((char) => data.overview(char)),
-        })),
-      });
+      const out = [];
+      for (const row of accounts) {
+        const characters = [];
+        for (const char of await data.characters(row.id))
+          characters.push(await data.overview(char));
+        out.push({
+          account: row.id,
+          lastSeen: row.lastSeen,
+          sections: (await data.sections("account", row.id)).map((s) => ({
+            name: s.section,
+            at: s.at,
+            savedAt: s.savedAt,
+          })),
+          characters,
+        });
+      }
+      return text({ accounts: out });
     },
   );
 
@@ -517,7 +543,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       inputSchema: whoSchema,
     },
     async (who) => {
-      const ready = store.readyNow(who);
+      const ready = await store.readyNow(who);
       if (!ready) return failure(new Error("No game data for that Character yet."));
       return text(ready);
     },
@@ -537,7 +563,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ account, since, version, limit }) =>
-      text({ errors: store.listErrors({ account, since, version, limit: limit ?? 50 }) }),
+      text({ errors: await store.listErrors({ account, since, version, limit: limit ?? 50 }) }),
   );
 
   server.registerTool(
@@ -554,7 +580,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ account, character, since, limit }) =>
-      text(store.listWins({ account, character, since, limit: limit ?? 100 })),
+      text(await store.listWins({ account, character, since, limit: limit ?? 100 })),
   );
 
   server.registerTool(
@@ -566,7 +592,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       inputSchema: whoSchema,
     },
     async (who) => {
-      const rows = pickCharacters(who);
+      const rows = await pickCharacters(who);
       if (rows.length === 0) return failure(new Error("No game data for that Character yet."));
       const characters = (
         await Promise.all(rows.map((row) => store.suggestions.forCharacter(row)))
@@ -592,9 +618,9 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ account, character, realm, sections, expand }) => {
-      const row = pickCharacters({ account, character, realm })[0];
+      const row = (await pickCharacters({ account, character, realm }))[0];
       if (!row) return failure(new Error("No game data for that character yet."));
-      const all = data.sectionsFor(row);
+      const all = await data.sectionsFor(row);
       const out: Record<string, unknown> = {};
       for (const [name, section] of all) {
         if (sections?.length && !sections.includes(name)) continue;
@@ -630,11 +656,11 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ kind, ids, account, character, realm }) => {
-      const rows = pickCharacters({ account, character, realm });
+      const rows = await pickCharacters({ account, character, realm });
       if (rows.length === 0) return failure(new Error("No game data for that player yet."));
       const first = rows[0]!;
-      const targets = character || !first.accountId ? rows : data.characters(first.accountId);
-      return text(data.checkIds(kind, ids, targets));
+      const targets = character || !first.accountId ? rows : await data.characters(first.accountId);
+      return text(await data.checkIds(kind, ids, targets));
     },
   );
 
@@ -652,7 +678,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ account, character, realm, since, sections, limit }) => {
-      const rows = pickCharacters({ account, character, realm });
+      const rows = await pickCharacters({ account, character, realm });
       if (rows.length === 0) return failure(new Error("No game data for that player yet."));
       const owners = [
         ...rows.map((row) => ({ kind: "char" as const, id: row.id })),
@@ -662,7 +688,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         })),
       ];
       const byId = new Map(rows.map((row) => [row.id, row]));
-      let entries = data.history({ owners, sections, since, limit: limit ?? 50 });
+      let entries = await data.history({ owners, sections, since, limit: limit ?? 50 });
       if (since === undefined && entries.length > 0) {
         const last = Math.max(...entries.map((entry) => entry.savedAt ?? 0));
         entries = entries.filter((entry) => (entry.savedAt ?? 0) === last);
@@ -689,7 +715,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         "The Data explorer: every Account and Character with each Game data Section (version, read time, savedAt, size in bytes, id and item counts, the last change), Sections the addon dropped to stay small, unknown Sections a newer addon sent, and for unresolvedIds the count per kind (quest, item, advice: ids Bory could not resolve or had no advice for). Each Account and Character also has expected (every Section it should have; errors and the 0.6 profile are not expected) and missing (each with reason window, dropped, sharing or never, and a hint for window). Use it to see whether everything arrived; read bodies with get_game_data.",
       inputSchema: { account: whoSchema.account },
     },
-    async ({ account }) => text(data.catalog({ account })),
+    async ({ account }) => text(await data.catalog({ account })),
   );
 
   server.registerTool(
@@ -749,7 +775,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
           return failure(new Error(`Advice for item ${item.itemID} must not say delete.`));
         }
       }
-      const count = store.putItemAdvice({ character, realm, account, items, replace });
+      const count = await store.putItemAdvice({ character, realm, account, items, replace });
       return text({ stored: count, character, realm });
     },
   );
@@ -775,17 +801,21 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     },
     async ({ requestId, message, waypoints, plan, entities }) => {
       try {
-        const asked = store.requestById(requestId);
+        const asked = await store.requestById(requestId);
         if (!asked) return failure(new Error("No request with that id."));
         const warnings: string[] = [];
         const ids = [...markupIds(message), ...(plan ? planMarkupIds(plan) : [])];
         const missing = gameIds ? await gameIds.missing(ids) : undefined;
         const now = Math.floor(Date.now() / 1000);
         const answer = cleanAnswer(message, waypoints, now, entities, { missing, warnings });
-        const stored = plan
-          ? store.putPlan(plan, now, { missing, warnings, wish: asked.wish }, requestId)
-          : undefined;
-        const request = store.answerRequest(requestId, answer, stored?.id ?? null);
+        // One transaction: Forget my data cannot erase the Request between the two.
+        const { stored, request } = await store.tx(async () => {
+          const stored = plan
+            ? await store.putPlan(plan, now, { missing, warnings, wish: asked.wish }, requestId)
+            : undefined;
+          const request = await store.answerRequest(requestId, answer, stored?.id ?? null);
+          return { stored, request };
+        });
         return text({
           request: request ? publicRequest(request) : null,
           plan: stored ? { id: stored.id, plan: stored.unb1 } : null,
@@ -809,7 +839,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ requestId, reason }) => {
-      const request = store.failRequest(requestId, reason.slice(0, 400));
+      const request = await store.failRequest(requestId, reason.slice(0, 400));
       if (!request) return failure(new Error("No request with that id."));
       return text({ request: publicRequest(request) });
     },

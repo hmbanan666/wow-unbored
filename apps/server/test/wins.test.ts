@@ -20,7 +20,7 @@ function plan(fields: Record<string, unknown> = {}): Plan {
   } as unknown as Plan;
 }
 
-test("a plan promises its rewards, step rewards, container contents and last-step complete", () => {
+test("a plan promises its rewards, step rewards, container contents and last-step complete", async () => {
   const targets = planTargets(
     plan({
       rewards: ["{item:128025}", "{toy:900001}"],
@@ -53,7 +53,7 @@ test("a plan promises its rewards, step rewards, container contents and last-ste
   );
 });
 
-test("only a diff gives added ids: never the first upload or a body version change", () => {
+test("only a diff gives added ids: never the first upload or a body version change", async () => {
   const base = { section: "mounts", scope: "account" as const, ownerId: "111111", at: NOW };
   assert.deepEqual(
     addedIds({
@@ -88,8 +88,8 @@ test("only a diff gives added ids: never the first upload or a body version chan
   );
 });
 
-function ask(store: Store, id: string, body: Plan, at: number, kind = "rare") {
-  store.addRequest({
+async function ask(store: Store, id: string, body: Plan, at: number, kind = "rare") {
+  await store.addRequest({
     id,
     deviceId: "pc-1",
     character: "Mira",
@@ -103,23 +103,23 @@ function ask(store: Store, id: string, body: Plan, at: number, kind = "rare") {
     suggestion: { id: `${kind}:${id}`, kind, title: "T", goal: "G", rewards: [] },
     nowSeconds: at,
   });
-  const stored = store.putPlan(body, at);
-  store.fulfillRequest(id, stored.id, at);
+  const stored = await store.putPlan(body, at);
+  await store.fulfillRequest(id, stored.id, at);
 }
 
-function upload(
+async function upload(
   store: Store,
   sections: Parameters<typeof snapshot>[0],
   at: number,
   character = "Mira",
 ) {
-  store.putSnapshot(snapshot(sections, { savedAt: at, character }), "pc-1", at);
+  await store.putSnapshot(snapshot(sections, { savedAt: at, character }), "pc-1", at);
 }
 
-test("a promised mount newly learned after the plan is one win, attributed to the plan", () => {
+test("a promised mount newly learned after the plan is one win, attributed to the plan", async () => {
   const store = makeStore();
   try {
-    store.registerDevice({
+    await store.registerDevice({
       id: "pc-1",
       name: "Desk PC",
       secretHash: "h1",
@@ -127,37 +127,37 @@ test("a promised mount newly learned after the plan is one win, attributed to th
       pendingCap: 10,
     });
     // Already owned before the first upload: the initial upload never counts.
-    upload(store, { mounts: { at: NOW, body: { ids: packIds([900002]) } } }, NOW);
-    ask(
+    await upload(store, { mounts: { at: NOW, body: { ids: packIds([900002]) } } }, NOW);
+    await ask(
       store,
       "r1",
       plan({ rewards: ["{mount:900002}", "{mount:900010}", "{ach:900011}"] }),
       NOW + 10,
     );
-    upload(
+    await upload(
       store,
       { mounts: { at: NOW + 100, body: { ids: packIds([900002, 900010]) } } },
       NOW + 100,
     );
     // Seen again in a later upload (relearned or re-read): still one win.
-    upload(store, { mounts: { at: NOW + 200, body: { ids: packIds([900003]) } } }, NOW + 200);
-    upload(
+    await upload(store, { mounts: { at: NOW + 200, body: { ids: packIds([900003]) } } }, NOW + 200);
+    await upload(
       store,
       { mounts: { at: NOW + 300, body: { ids: packIds([900003, 900010]) } } },
       NOW + 300,
     );
-    upload(
+    await upload(
       store,
       { achievementsMine: { at: NOW + 400, body: { ids: packIds([900011]) } } },
       NOW + 400,
     );
-    upload(
+    await upload(
       store,
       { achievementsMine: { at: NOW + 500, body: { ids: packIds([900011, 900012]) } } },
       NOW + 500,
     );
 
-    const listed = store.listWins({ limit: 100 });
+    const listed = await store.listWins({ limit: 100 });
     assert.deepEqual(
       listed.wins.map((win) => win.token),
       ["{mount:900010}"],
@@ -171,7 +171,7 @@ test("a promised mount newly learned after the plan is one win, attributed to th
     assert.equal(listed.totals.mount, 1);
     assert.equal(listed.days[0]!.day, new Date((NOW + 100) * 1000).toISOString().slice(0, 10));
 
-    const history = store.history({ kinds: ["win"], limit: 10 });
+    const history = await store.history({ kinds: ["win"], limit: 10 });
     assert.equal(history.length, 1);
     assert.equal(history[0]!.ref, "mount:900010");
   } finally {
@@ -179,42 +179,42 @@ test("a promised mount newly learned after the plan is one win, attributed to th
   }
 });
 
-test("a change older than the plan, or a plan older than 30 days, gives no win", () => {
+test("a change older than the plan, or a plan older than 30 days, gives no win", async () => {
   const store = makeStore();
   try {
-    store.registerDevice({
+    await store.registerDevice({
       id: "pc-1",
       name: "Desk PC",
       secretHash: "h1",
       nowSeconds: NOW,
       pendingCap: 10,
     });
-    upload(store, { toys: { at: NOW, body: { ids: packIds([1]) } } }, NOW);
-    ask(store, "r1", plan({ rewards: ["{toy:900020}", "{toy:900021}"] }), NOW + 100);
+    await upload(store, { toys: { at: NOW, body: { ids: packIds([1]) } } }, NOW);
+    await ask(store, "r1", plan({ rewards: ["{toy:900020}", "{toy:900021}"] }), NOW + 100);
     // Read before the plan was made, uploaded after.
-    upload(store, { toys: { at: NOW + 50, body: { ids: packIds([1, 900020]) } } }, NOW + 200);
-    upload(
+    await upload(store, { toys: { at: NOW + 50, body: { ids: packIds([1, 900020]) } } }, NOW + 200);
+    await upload(
       store,
       { toys: { at: NOW + 31 * DAY, body: { ids: packIds([1, 900020, 900021]) } } },
       NOW + 31 * DAY,
     );
-    assert.equal(store.listWins({ limit: 100 }).wins.length, 0);
+    assert.equal((await store.listWins({ limit: 100 })).wins.length, 0);
   } finally {
     store.close();
   }
 });
 
-test("an item moved from the bank to bags, or held by an alt, is not a win", () => {
+test("an item moved from the bank to bags, or held by an alt, is not a win", async () => {
   const store = makeStore();
   try {
-    store.registerDevice({
+    await store.registerDevice({
       id: "pc-1",
       name: "Desk PC",
       secretHash: "h1",
       nowSeconds: NOW,
       pendingCap: 10,
     });
-    upload(
+    await upload(
       store,
       {
         bags: { body: { items: packCounts({ 1: 1 }) } },
@@ -222,14 +222,14 @@ test("an item moved from the bank to bags, or held by an alt, is not a win", () 
       },
       NOW,
     );
-    upload(store, { bags: { body: { items: packCounts({ 900031: 1 }) } } }, NOW, "Alt");
-    ask(
+    await upload(store, { bags: { body: { items: packCounts({ 900031: 1 }) } } }, NOW, "Alt");
+    await ask(
       store,
       "r1",
       plan({ rewards: ["{item:900030}", "{item:900031}", "{item:900032}"] }),
       NOW + 10,
     );
-    upload(
+    await upload(
       store,
       {
         bags: {
@@ -241,7 +241,7 @@ test("an item moved from the bank to bags, or held by an alt, is not a win", () 
       NOW + 100,
     );
     assert.deepEqual(
-      store.listWins({ limit: 100 }).wins.map((win) => win.token),
+      (await store.listWins({ limit: 100 })).wins.map((win) => win.token),
       ["{item:900032}"],
     );
   } finally {
@@ -249,7 +249,7 @@ test("an item moved from the bank to bags, or held by an alt, is not a win", () 
   }
 });
 
-test("list_wins totals every kind and groups by UTC day, newest first", () => {
+test("list_wins totals every kind and groups by UTC day, newest first", async () => {
   const entry = (at: number, kind: WinEntry["kind"], id: number): WinEntry => ({
     at,
     account: "111111",

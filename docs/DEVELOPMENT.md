@@ -168,11 +168,12 @@ JavaScript uses Vite+ (`vp`, the `vite-plus` package). Lua stays on luacheck. Ru
 
 On Ubuntu the luacheck package is `lua-check`.
 
-The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md)). The PostgreSQL schema is the numbered SQL files in `apps/server/migrations/`; the Server applies the missing ones at startup under an advisory lock and records them in `schema_migrations`. `DATABASE_POOL_MAX` sets the pool size (default 10). With `DATABASE_URL` set, the Blizzard id and creature name caches and the Suggestions (`game_ids`, `creature_names`, `suggestions`, `chain_progress`) are read and written in Postgres; every other table stays in SQLite until rollout step 3. Tests that cover both run once per backend (`BACKENDS` in `apps/server/test/postgres-db.ts`). The Postgres tests run when `UNBORED_TEST_DATABASE_URL` points at a server where that user may create databases; each test file gets its own database copied from a migrated template. In CI they run against a `postgres:18` service container in `server.yml`, which sets `UNBORED_REQUIRE_POSTGRES=1` so they cannot silently skip. Locally:
+The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md)). The PostgreSQL schema is the numbered SQL files in `apps/server/migrations/`; the Server applies the missing ones at startup under an advisory lock and records them in `schema_migrations`. `DATABASE_POOL_MAX` sets the pool size (default 10). With `DATABASE_URL` set, every table is read and written in Postgres and the SQLite file is not opened; without it the Server runs on SQLite as before. Both go through one async layer (`apps/server/src/db.ts`); Forget and the Account migration run in one transaction on either. Tests that compare the backends run once per each (`BACKENDS` in `apps/server/test/postgres-db.ts`), and `UNBORED_TEST_BACKEND=postgres` runs the whole Server suite on Postgres (`apps/server/test/backend.ts`; CI does both). The Postgres tests run when `UNBORED_TEST_DATABASE_URL` points at a server where that user may create databases; each test file gets its own database copied from a migrated template. In CI they run against a `postgres:18` service container in `server.yml`, which sets `UNBORED_REQUIRE_POSTGRES=1` so they cannot silently skip. Locally:
 
 ```
 docker compose -f apps/server/compose.yaml up -d
 UNBORED_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm test:js
+UNBORED_TEST_BACKEND=postgres UNBORED_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm exec vp test apps/server
 ```
 
 ## Commits and releases

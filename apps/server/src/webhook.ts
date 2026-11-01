@@ -140,7 +140,7 @@ export class PlannerWebhook {
   async tick(): Promise<void> {
     if (!this.enabled) return;
     const now = this.now();
-    const due = this.store.webhookDue({
+    const due = await this.store.webhookDue({
       nowSeconds: now,
       sinceSeconds: now - RETRY_WINDOW_SECONDS,
       maxAttempts: MAX_ATTEMPTS,
@@ -194,10 +194,10 @@ export class PlannerWebhook {
       error = errorCode(caught);
     }
     const ok = error === null;
-    const attempts = (this.store.webhookDelivery(request.id)?.attempts ?? 0) + 1;
+    const attempts = ((await this.store.webhookDelivery(request.id))?.attempts ?? 0) + 1;
     const delay = ok ? null : (RETRY_DELAYS[attempts - 1] ?? null);
     const now = this.now();
-    this.store.recordWebhookAttempt(
+    await this.store.recordWebhookAttempt(
       request.id,
       { ok, status, error, nextAt: delay === null ? null : now + delay },
       now,

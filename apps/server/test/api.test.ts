@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 
 import { createApp } from "../src/app.ts";
 import { lookupCriteria } from "../src/criteria.ts";
+import { database, onPostgres } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -42,7 +43,13 @@ const sample = {
 
 function build() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-server-"));
-  return createApp({ companionToken: companion, plannerToken: planner, dataDir, log: () => {} });
+  return createApp({
+    database: database(),
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir,
+    log: () => {},
+  });
 }
 
 async function json(response: Response) {
@@ -557,6 +564,7 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
   let clock = Math.floor(Date.now() / 1000);
   const lines: string[] = [];
   const { app, webhook, store, close } = createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-hook-")),
@@ -622,7 +630,7 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
     });
     assert.equal(posted.status, 201);
     assert.equal(hits.length, 1);
-    assert.equal(store.webhookDelivery("req-100")?.deliveredAt, null);
+    assert.equal((await store.webhookDelivery("req-100"))?.deliveredAt, null);
     assert.ok(
       lines.some((line) =>
         line.includes("webhook req=req-100 type=plan attempt=1 failed status 500"),
@@ -633,8 +641,8 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
     clock += 31;
     await webhook.tick();
     assert.equal(hits.length, 2);
-    assert.equal(store.webhookDelivery("req-100")?.attempts, 2);
-    assert.ok(store.webhookDelivery("req-100")?.deliveredAt);
+    assert.equal((await store.webhookDelivery("req-100"))?.attempts, 2);
+    assert.ok((await store.webhookDelivery("req-100"))?.deliveredAt);
     assert.ok(
       lines.some((line) => line.includes("webhook req=req-100 type=plan attempt=2 ok status=204")),
     );
@@ -707,6 +715,7 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
 
 test("failing an old request never hides the answer to the newer one (D82)", async () => {
   const { app, store, close } = createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-d82-")),
@@ -723,7 +732,7 @@ test("failing an old request never hides the answer to the newer one (D82)", asy
         body: JSON.stringify({ deviceId, name: "PC", secret }),
       });
       assert.equal(registered.status, 201);
-      store.setDeviceStatus(deviceId, "approved");
+      await store.setDeviceStatus(deviceId, "approved");
     }
     const ask = (id: string, nowSeconds: number) =>
       store.addRequest({
@@ -736,12 +745,12 @@ test("failing an old request never hides the answer to the newer one (D82)", asy
         wish: null,
         nowSeconds,
       });
-    ask("req-old", 1000);
-    ask("req-stale", 1500);
-    ask("req-new", 2000);
-    const plan = store.putPlan({ ...sample, requestId: "req-new" }, 2100);
-    store.fulfillRequest("req-new", plan.id, 2100);
-    store.failRequest("req-old", "timed out", 5000);
+    await ask("req-old", 1000);
+    await ask("req-stale", 1500);
+    await ask("req-new", 2000);
+    const plan = await store.putPlan({ ...sample, requestId: "req-new" }, 2100);
+    await store.fulfillRequest("req-new", plan.id, 2100);
+    await store.failRequest("req-old", "timed out", 5000);
 
     const get = async (url: string, secret = "d82-device-secret-long") => {
       const response = await app.request(url, { headers: { authorization: `Bearer ${secret}` } });
@@ -776,7 +785,7 @@ test("failing an old request never hides the answer to the newer one (D82)", asy
   }
 });
 
-test("criteria tree ids map to criteriaID and index", () => {
+test("criteria tree ids map to criteriaID and index", async () => {
   const tree = [
     "ID,Description_lang,Parent,Amount,Operator,CriteriaID,OrderIndex,Flags",
     "100,root,0,0,4,0,0,0",
@@ -873,6 +882,7 @@ test("a request keeps the player context for the webhook and list_requests", asy
   const address = hook.address();
   if (!address || typeof address === "string") throw new Error("no port");
   const { app, close } = createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ctx-")),
@@ -1001,7 +1011,8 @@ test("plans accept a waypoint route and reject bad points", async () => {
   }
 });
 
-test("an older database gains the context column", async () => {
+// SQLite file migrations; Postgres starts from migrations/0001.
+test.skipIf(onPostgres)("an older database gains the context column", async () => {
   const { DatabaseSync } = await import("node:sqlite");
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-migrate-"));
   const old = new DatabaseSync(path.join(dataDir, "unbored.sqlite"));
@@ -1013,10 +1024,15 @@ test("an older database gains the context column", async () => {
     `INSERT INTO requests VALUES ('req-old', 'legacy', 'Hero', '', 'farm', 60, NULL, 'pending', NULL, NULL, 1, 1)`,
   );
   old.close();
-  const { store, close } = createApp({ companionToken: companion, plannerToken: planner, dataDir });
+  const { store, close } = createApp({
+    database: database(),
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir,
+  });
   try {
-    assert.equal(store.requestById("req-old")?.context, null);
-    const saved = store.addRequest({
+    assert.equal((await store.requestById("req-old"))?.context, null);
+    const saved = await store.addRequest({
       id: "req-new",
       deviceId: "legacy",
       character: "Hero",
@@ -1048,6 +1064,7 @@ test("item and question requests are typed, webhooked, and answered", async () =
   const address = hook.address();
   if (!address || typeof address === "string") throw new Error("no port");
   const { app, close } = createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ask-")),
@@ -1268,11 +1285,11 @@ test("the companion uploads a player profile the planner reads over MCP", async 
   }
 });
 
-test("the ETA is the p50 of recent plan answers, clamped", () => {
+test("the ETA is the p50 of recent plan answers, clamped", async () => {
   const { store, close } = build();
   try {
-    const answer = (id: string, took: number) => {
-      store.addRequest({
+    const answer = async (id: string, took: number) => {
+      await store.addRequest({
         id,
         deviceId: "legacy",
         character: "Hero",
@@ -1282,18 +1299,18 @@ test("the ETA is the p50 of recent plan answers, clamped", () => {
         wish: null,
         nowSeconds: 10_000,
       });
-      const plan = store.putPlan({ ...sample, requestId: id }, 10_000 + took);
-      store.fulfillRequest(id, plan.id, 10_000 + took);
+      const plan = await store.putPlan({ ...sample, requestId: id }, 10_000 + took);
+      await store.fulfillRequest(id, plan.id, 10_000 + took);
     };
-    answer("eta-1", 100);
-    answer("eta-2", 300);
-    assert.equal(store.planEta(), 180, "two answers are not enough");
-    answer("eta-3", 400);
-    assert.equal(store.planEta(), 300);
-    answer("eta-4", 5000);
-    answer("eta-5", 5000);
-    answer("eta-6", 5000);
-    assert.equal(store.planEta(), 900, "clamped to 15 minutes");
+    await answer("eta-1", 100);
+    await answer("eta-2", 300);
+    assert.equal(await store.planEta(), 180, "two answers are not enough");
+    await answer("eta-3", 400);
+    assert.equal(await store.planEta(), 300);
+    await answer("eta-4", 5000);
+    await answer("eta-5", 5000);
+    await answer("eta-6", 5000);
+    assert.equal(await store.planEta(), 900, "clamped to 15 minutes");
   } finally {
     close();
   }

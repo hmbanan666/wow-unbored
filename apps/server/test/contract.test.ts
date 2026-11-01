@@ -5,6 +5,7 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
+import { database } from "./backend.ts";
 
 // docs/adr/0013: the Companion and the Server read the same fixtures.
 const root = path.join(import.meta.dirname, "..", "..", "..", "packages", "contracts", "fixtures");
@@ -18,6 +19,7 @@ const planner = "planner-contract-token";
 function build(lines: string[] = []) {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-contract-"));
   return createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,
@@ -40,7 +42,7 @@ for (const { name, body } of requests.cases) {
     try {
       const response = await post(app, body);
       assert.equal(response.status, 201, await response.clone().text());
-      const stored = store.requestById(body.id as string)!;
+      const stored = (await store.requestById(body.id as string))!;
       assert.equal(stored.type, body.type);
       assert.equal(stored.character, body.character);
       assert.equal(stored.lang, body.lang ?? null);

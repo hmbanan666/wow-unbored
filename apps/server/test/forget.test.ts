@@ -3,11 +3,10 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
-import { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
-import { sqlitePath } from "../src/config.ts";
+import { database, onPostgres } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -34,22 +33,17 @@ type Built = ReturnType<typeof createApp>;
 function setup() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-forget-"));
   const built = createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,
     log: () => {},
   });
-  const db = new DatabaseSync(sqlitePath(dataDir), { readOnly: true });
-  const rows = (sql: string, ...args: string[]) =>
-    Number((db.prepare(`SELECT COUNT(*) AS n FROM ${sql}`).get(...args) as { n: number }).n);
-  return {
-    ...built,
-    rows,
-    close: () => {
-      db.close();
-      built.close();
-    },
-  };
+  const rows = async (sql: string, ...args: string[]) =>
+    Number(
+      (await built.store.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM ${sql}`, ...args))?.n,
+    );
+  return { ...built, rows };
 }
 
 async function pair(built: Built, deviceId: string, secret: string) {
@@ -59,7 +53,7 @@ async function pair(built: Built, deviceId: string, secret: string) {
     body: JSON.stringify({ deviceId, name: "PC", secret }),
   });
   assert.equal(registered.status, 201);
-  built.store.setDeviceStatus(deviceId, "approved");
+  await built.store.setDeviceStatus(deviceId, "approved");
 }
 
 function call(built: Built, url: string, secret: string, body?: unknown) {
@@ -87,9 +81,9 @@ async function fill(
     wish: "mount",
   });
   assert.equal(posted.status, 201);
-  const stored = built.store.putPlan({ ...plan, requestId: who.request }, NOW);
-  built.store.fulfillRequest(who.request, stored.id, NOW);
-  built.store.putItemAdvice({
+  const stored = await built.store.putPlan({ ...plan, requestId: who.request }, NOW);
+  await built.store.fulfillRequest(who.request, stored.id, NOW);
+  await built.store.putItemAdvice({
     character: who.character,
     realm: fixture.realm,
     account: who.account,
@@ -169,30 +163,29 @@ for (const endpoint of ["snapshot", "profile", "requests", "progress"]) {
             200,
           );
         } else {
-          built.store.setDeviceStatus("late-upload-device", "revoked");
+          await built.store.setDeviceStatus("late-upload-device", "revoked");
         }
         const tables = [
           "accounts",
           "characters",
           "sections_latest",
           "section_history",
-          "profiles",
-          "profile_snapshots",
+          ...(onPostgres ? [] : ["profiles", "profile_snapshots"]),
           "requests",
           "plans",
           "progress",
           "history",
           "suggestions",
         ];
-        const before = tables.map((table) => built.rows(table));
+        const before = await Promise.all(tables.map((table) => built.rows(table)));
         resume();
         assert.equal((await pending).status, 401, "authorization must still hold at the write");
         assert.deepEqual(
-          tables.map((table) => built.rows(table)),
+          await Promise.all(tables.map((table) => built.rows(table))),
           before,
           "no data or migration side effects",
         );
-        assert.equal(built.store.deviceById("late-upload-device")?.status, "revoked");
+        assert.equal((await built.store.deviceById("late-upload-device"))?.status, "revoked");
       } finally {
         resume();
         await pending;
@@ -221,7 +214,11 @@ test("Forget my data needs the device's own secret and an explicit confirm", asy
       (await call(built, url, "forget-device-secret-a", { confirm: "yes" })).status,
       400,
     );
-    assert.equal(built.store.deviceById("forget-a")?.status, "approved", "nothing happened yet");
+    assert.equal(
+      (await built.store.deviceById("forget-a"))?.status,
+      "approved",
+      "nothing happened yet",
+    );
   } finally {
     built.close();
   }
@@ -247,14 +244,14 @@ test("Forget my data erases this device's Accounts and revokes it, leaving other
       ["111111", "Mira"],
       ["222222", "Brew"],
     ] as const) {
-      assert.equal(rows("characters WHERE account_id = ?", account), 1, account);
-      assert.equal(rows("advice WHERE character_name = ?", name), 1, name);
-      assert.equal(rows("requests WHERE character_name = ?", name), 1, name);
+      assert.equal(await rows("characters WHERE account_id = ?", account), 1, account);
+      assert.equal(await rows("advice WHERE character_name = ?", name), 1, name);
+      assert.equal(await rows("requests WHERE character_name = ?", name), 1, name);
     }
-    assert.equal(rows("plans"), 2);
-    assert.ok(rows("sections_latest WHERE owner_id LIKE ?", "%Mira%") > 0);
-    assert.ok(rows("suggestions WHERE owner_id = ?", "111111") > 0);
-    assert.ok(rows("suggestions WHERE owner_id = ?", "222222") > 0);
+    assert.equal(await rows("plans"), 2);
+    assert.ok((await rows("sections_latest WHERE owner_id LIKE ?", "%Mira%")) > 0);
+    assert.ok((await rows("suggestions WHERE owner_id = ?", "111111")) > 0);
+    assert.ok((await rows("suggestions WHERE owner_id = ?", "222222")) > 0);
 
     const forgot = await call(built, "/v1/devices/me/forget", "forget-device-secret-a", {
       confirm: true,
@@ -267,21 +264,21 @@ test("Forget my data erases this device's Accounts and revokes it, leaving other
     assert.equal(body.requests, 1);
     assert.equal(body.plans, 1);
 
-    assert.equal(rows("characters WHERE account_id = ?", "111111"), 0);
-    assert.equal(rows("sections_latest WHERE owner_id LIKE ?", "%Mira%"), 0);
-    assert.equal(rows("section_history WHERE owner_id LIKE ?", "%Mira%"), 0);
-    assert.equal(rows("advice WHERE character_name = ?", "Mira"), 0);
-    assert.equal(rows("requests WHERE character_name = ?", "Mira"), 0);
-    assert.equal(rows("suggestions WHERE owner_id = ?", "111111"), 0);
-    assert.equal(rows("plans"), 1);
+    assert.equal(await rows("characters WHERE account_id = ?", "111111"), 0);
+    assert.equal(await rows("sections_latest WHERE owner_id LIKE ?", "%Mira%"), 0);
+    assert.equal(await rows("section_history WHERE owner_id LIKE ?", "%Mira%"), 0);
+    assert.equal(await rows("advice WHERE character_name = ?", "Mira"), 0);
+    assert.equal(await rows("requests WHERE character_name = ?", "Mira"), 0);
+    assert.equal(await rows("suggestions WHERE owner_id = ?", "111111"), 0);
+    assert.equal(await rows("plans"), 1);
 
-    assert.equal(rows("characters WHERE account_id = ?", "222222"), 1, "B keeps its Account");
-    assert.equal(rows("advice WHERE character_name = ?", "Brew"), 1);
-    assert.equal(rows("requests WHERE character_name = ?", "Brew"), 1);
-    assert.ok(rows("suggestions WHERE owner_id = ?", "222222") > 0);
+    assert.equal(await rows("characters WHERE account_id = ?", "222222"), 1, "B keeps its Account");
+    assert.equal(await rows("advice WHERE character_name = ?", "Brew"), 1);
+    assert.equal(await rows("requests WHERE character_name = ?", "Brew"), 1);
+    assert.ok((await rows("suggestions WHERE owner_id = ?", "222222")) > 0);
 
-    assert.equal(built.store.deviceById("forget-a")?.status, "revoked");
-    assert.equal(built.store.deviceById("forget-b")?.status, "approved");
+    assert.equal((await built.store.deviceById("forget-a"))?.status, "revoked");
+    assert.equal((await built.store.deviceById("forget-b"))?.status, "approved");
     assert.equal((await call(built, "/v1/requests/latest", "forget-device-secret-a")).status, 401);
     assert.equal((await call(built, "/v1/requests/latest", "forget-device-secret-b")).status, 200);
 
@@ -311,22 +308,22 @@ test("delete_account_data erases Requests and plans unless told to keep them", a
       nowSeconds: NOW,
     });
   try {
-    request("req-keep");
-    store.fulfillRequest(
+    await request("req-keep");
+    await store.fulfillRequest(
       "req-keep",
-      store.putPlan({ ...plan, requestId: "req-keep" }, NOW).id,
+      (await store.putPlan({ ...plan, requestId: "req-keep" }, NOW)).id,
       NOW,
     );
     const kept = await store.deleteAccountData("111111#1", { requests: false });
     assert.equal(kept.requests, 0);
-    assert.equal(rows("requests"), 1);
-    assert.equal(rows("plans"), 1);
+    assert.equal(await rows("requests"), 1);
+    assert.equal(await rows("plans"), 1);
 
     const erased = await store.deleteAccountData("111111#1");
     assert.equal(erased.requests, 1);
     assert.equal(erased.plans, 1);
-    assert.equal(rows("requests"), 0);
-    assert.equal(rows("plans"), 0);
+    assert.equal(await rows("requests"), 0);
+    assert.equal(await rows("plans"), 0);
     await assert.rejects(store.deleteAccountData("  "), /Name the Account/);
   } finally {
     built.close();

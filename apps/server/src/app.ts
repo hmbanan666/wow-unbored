@@ -123,19 +123,21 @@ export function createApp(
     log(`${c.req.method} ${c.req.path} ${c.res.status}${reason}`);
   });
 
-  const allowCompanion = (c: Parameters<typeof requireRole>[0]) => {
+  const allowCompanion = async (c: Parameters<typeof requireRole>[0]) => {
     const presented = presentedBearer(c.req.header("authorization"));
     if (!presented) return c.json({ error: "Unauthorized" }, 401);
     if (tokenMatches(presented, tokens.companion)) return { deviceId: "legacy" };
-    const device = store.findDeviceBySecretHash(sha256Hex(presented));
+    const device = await store.findDeviceBySecretHash(sha256Hex(presented));
     if (!device || device.status !== "approved") return c.json({ error: "Unauthorized" }, 401);
-    store.touchDevice(device.id);
+    await store.touchDevice(device.id);
     return { deviceId: device.id };
   };
+  const unauthorized = (c: Parameters<typeof requireRole>[0]) =>
+    c.json({ error: "Unauthorized" }, 401);
 
-  const requestWithPlan = (request: PlanRequest) => {
-    const plan = request.planId ? store.planById(request.planId) : undefined;
-    return { ...publicRequest(request), plan: plan?.unb1 ?? null, eta: store.planEta() };
+  const requestWithPlan = async (request: PlanRequest) => {
+    const plan = request.planId ? await store.planById(request.planId) : undefined;
+    return { ...publicRequest(request), plan: plan?.unb1 ?? null, eta: await store.planEta() };
   };
 
   app.use(
@@ -169,7 +171,7 @@ export function createApp(
     }
     const cleaned = cleanRegistration(body);
     if ("error" in cleaned) return c.json({ error: cleaned.error }, 400);
-    const result = store.registerDevice({
+    const result = await store.registerDevice({
       id: cleaned.id,
       name: cleaned.name,
       secretHash: cleaned.secretHash,
@@ -195,7 +197,7 @@ export function createApp(
     if (!registerLimiter.allow(ip)) {
       return c.json({ error: "Too many registration attempts." }, 429);
     }
-    const device = store.findDeviceBySecretHash(sha256Hex(presented));
+    const device = await store.findDeviceBySecretHash(sha256Hex(presented));
     if (!device) return c.json({ error: "Unauthorized" }, 401);
     let body: unknown;
     try {
@@ -205,7 +207,7 @@ export function createApp(
     }
     const cleaned = cleanRegistration(body);
     if ("error" in cleaned) return c.json({ error: cleaned.error }, 400);
-    const result = store.reconnectForgotten({
+    const result = await store.reconnectForgotten({
       oldId: device.id,
       id: cleaned.id,
       name: cleaned.name,
@@ -216,13 +218,13 @@ export function createApp(
     return c.json(publicDevice(result.device), 201);
   });
 
-  app.get("/v1/devices/me", (c) => {
+  app.get("/v1/devices/me", async (c) => {
     const presented = presentedBearer(c.req.header("authorization"));
     if (!presented) return c.json({ error: "Unauthorized" }, 401);
-    const device = store.findDeviceBySecretHash(sha256Hex(presented));
+    const device = await store.findDeviceBySecretHash(sha256Hex(presented));
     if (!device) return c.json({ error: "Unauthorized" }, 401);
-    store.touchDevice(device.id);
-    const fresh = store.findDeviceBySecretHash(sha256Hex(presented)) ?? device;
+    await store.touchDevice(device.id);
+    const fresh = (await store.findDeviceBySecretHash(sha256Hex(presented))) ?? device;
     return c.json(publicDevice(fresh));
   });
 
@@ -237,7 +239,7 @@ export function createApp(
         403,
       );
     }
-    const device = store.findDeviceBySecretHash(sha256Hex(presented));
+    const device = await store.findDeviceBySecretHash(sha256Hex(presented));
     if (!device) return c.json({ error: "Unauthorized" }, 401);
     let body: unknown;
     try {
@@ -252,7 +254,7 @@ export function createApp(
   });
 
   app.post("/v1/requests", async (c) => {
-    const admitted = allowCompanion(c);
+    const admitted = await allowCompanion(c);
     if (admitted instanceof Response) return admitted;
     let body: unknown;
     try {
@@ -261,31 +263,34 @@ export function createApp(
       return c.json({ error: "The request must be JSON." }, 400);
     }
     // Reading the body yielded: Forget or owner revoke may have completed.
-    // Keep this check adjacent to the synchronous writes (including Account migration).
-    const access = allowCompanion(c);
+    // Checked again inside the write transaction (asDevice), Account migration included.
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
     try {
       const cleaned = cleanPlanRequest(body);
-      const saved = store.addRequest({
-        id: cleaned.id,
-        deviceId: access.deviceId,
-        character: cleaned.character,
-        realm: cleaned.realm,
-        mode: cleaned.mode,
-        budget: cleaned.budget,
-        wish: cleaned.wish,
-        type: cleaned.type,
-        question: cleaned.question,
-        topic: cleaned.topic,
-        item: cleaned.item,
-        context: cleaned.context,
-        lang: cleaned.lang,
-        account: cleaned.account,
-        accountLegacy: legacyOf(body),
-        suggestionId: cleaned.suggestionId,
-        suggestion: cleaned.suggestion,
-        nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
-      });
+      const saved = await store.asDevice(access.deviceId, () =>
+        store.addRequest({
+          id: cleaned.id,
+          deviceId: access.deviceId,
+          character: cleaned.character,
+          realm: cleaned.realm,
+          mode: cleaned.mode,
+          budget: cleaned.budget,
+          wish: cleaned.wish,
+          type: cleaned.type,
+          question: cleaned.question,
+          topic: cleaned.topic,
+          item: cleaned.item,
+          context: cleaned.context,
+          lang: cleaned.lang,
+          account: cleaned.account,
+          accountLegacy: legacyOf(body),
+          suggestionId: cleaned.suggestionId,
+          suggestion: cleaned.suggestion,
+          nowSeconds: cleaned.createdAt ?? Math.floor(Date.now() / 1000),
+        }),
+      );
+      if (!saved) return unauthorized(c);
       if (saved.created) {
         await webhook.notify(saved.request);
       }
@@ -296,55 +301,55 @@ export function createApp(
     }
   });
 
-  app.get("/v1/requests/latest", (c) => {
-    const access = allowCompanion(c);
+  app.get("/v1/requests/latest", async (c) => {
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
-    store.expireRequests();
-    const request = store.latestRequestForDevice(access.deviceId);
+    await store.expireRequests();
+    const request = await store.latestRequestForDevice(access.deviceId);
     if (!request) return c.json({ error: "No request yet." }, 404);
-    return c.json(requestWithPlan(request));
+    return c.json(await requestWithPlan(request));
   });
 
   // The exact Request the game waits for (D82); another device's id is 404.
-  app.get("/v1/requests/:id", (c) => {
-    const access = allowCompanion(c);
+  app.get("/v1/requests/:id", async (c) => {
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
-    store.expireRequests();
-    const request = store.requestById(c.req.param("id"));
+    await store.expireRequests();
+    const request = await store.requestById(c.req.param("id"));
     if (!request || request.deviceId !== access.deviceId)
       return c.json({ error: "No such request." }, 404);
-    return c.json(requestWithPlan(request));
+    return c.json(await requestWithPlan(request));
   });
 
   // Personal advice for this device's characters (docs/adr/0019) and the
   // Account holdings index (docs/adr/0048).
-  app.get("/v1/advice", (c) => {
-    const access = allowCompanion(c);
+  app.get("/v1/advice", async (c) => {
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
-    const holdings = store.holdingsForDevice(access.deviceId);
+    const holdings = await store.holdingsForDevice(access.deviceId);
     return c.json({
-      characters: store.adviceForDevice(access.deviceId),
+      characters: await store.adviceForDevice(access.deviceId),
       ...(holdings ? { holdings } : {}),
     });
   });
 
   // Ideas from the player's data for the choice Bubble (docs/adr/0040).
   app.get("/v1/suggestions", async (c) => {
-    const access = allowCompanion(c);
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
     return c.json(await store.suggestionsForDevice(access.deviceId));
   });
 
-  app.get("/v1/plan", (c) => {
-    const access = allowCompanion(c);
+  app.get("/v1/plan", async (c) => {
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
-    const stored = store.latestPlanForDevice(access.deviceId);
+    const stored = await store.latestPlanForDevice(access.deviceId);
     if (!stored) return c.json({ error: "No plan yet." }, 404);
     return c.json({ id: stored.id, createdAt: stored.createdAt, plan: stored.unb1 });
   });
 
   app.post("/v1/progress", async (c) => {
-    const admitted = allowCompanion(c);
+    const admitted = await allowCompanion(c);
     if (admitted instanceof Response) return admitted;
     let body: unknown;
     try {
@@ -353,11 +358,12 @@ export function createApp(
       return c.json({ error: "Progress must be JSON." }, 400);
     }
     // Reading the body yielded: Forget or owner revoke may have completed.
-    // Keep this check adjacent to the synchronous writes (including Account migration).
-    const access = allowCompanion(c);
+    // Checked again inside the write transaction (asDevice), Account migration included.
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
     try {
-      const stored = store.addProgress(body);
+      const stored = await store.asDevice(access.deviceId, () => store.addProgress(body));
+      if (!stored) return unauthorized(c);
       return c.json({ ok: true, id: stored.id });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
@@ -366,7 +372,7 @@ export function createApp(
   });
 
   app.post("/v1/profile", async (c) => {
-    const admitted = allowCompanion(c);
+    const admitted = await allowCompanion(c);
     if (admitted instanceof Response) return admitted;
     let body: unknown;
     try {
@@ -375,13 +381,16 @@ export function createApp(
       return c.json({ error: "The profile must be JSON." }, 400);
     }
     // Reading the body yielded: Forget or owner revoke may have completed.
-    // Keep this check adjacent to the synchronous writes (including Account migration).
-    const access = allowCompanion(c);
+    // Checked again inside the write transaction (asDevice), Account migration included.
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
     try {
       const cleaned = cleanProfile(body);
-      cleaned.account = store.bindAccount(cleaned.account, legacyOf(body));
-      const saved = store.putProfile({ ...cleaned, deviceId: access.deviceId });
+      const saved = await store.asDevice(access.deviceId, async () => {
+        cleaned.account = await store.bindAccount(cleaned.account, legacyOf(body));
+        return store.putProfile({ ...cleaned, deviceId: access.deviceId });
+      });
+      if (!saved) return unauthorized(c);
       return c.json({ ok: true, updated: saved.updated, updatedAt: saved.profile.updatedAt });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
@@ -391,7 +400,7 @@ export function createApp(
 
   // Game data Sections that changed, gzip JSON (docs/adr/0029).
   app.post("/v1/snapshot", async (c) => {
-    const admitted = allowCompanion(c);
+    const admitted = await allowCompanion(c);
     if (admitted instanceof Response) return admitted;
     const declared = Number(c.req.header("content-length") ?? 0);
     if (declared > SNAPSHOT_MAX_COMPRESSED) {
@@ -408,13 +417,16 @@ export function createApp(
       return c.json({ error: "The game data must be JSON, optionally gzip." }, 400);
     }
     // Reading the body yielded: Forget or owner revoke may have completed.
-    // Keep this check adjacent to the synchronous writes (including Account migration).
-    const access = allowCompanion(c);
+    // Checked again inside the write transaction (asDevice), Account migration included.
+    const access = await allowCompanion(c);
     if (access instanceof Response) return access;
     try {
       const cleaned = cleanSnapshot(body);
-      cleaned.account = store.bindAccount(cleaned.account, legacyOf(body));
-      const result = store.putSnapshot(cleaned, access.deviceId);
+      const result = await store.asDevice(access.deviceId, async () => {
+        cleaned.account = await store.bindAccount(cleaned.account, legacyOf(body));
+        return store.putSnapshot(cleaned, access.deviceId);
+      });
+      if (!result) return unauthorized(c);
       return c.json({ ok: true, ...result });
     } catch (error) {
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
@@ -423,10 +435,10 @@ export function createApp(
   });
 
   // The Data explorer as JSON, for quick checks with the owner bearer (docs/adr/0030).
-  app.get("/owner/data", (c) => {
+  app.get("/owner/data", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
-    return c.json(store.data.catalog({ account: c.req.query("account") || undefined }));
+    return c.json(await store.data.catalog({ account: c.req.query("account") || undefined }));
   });
 
   app.put("/v1/plan", async (c) => {
@@ -440,14 +452,18 @@ export function createApp(
     }
     try {
       const requestId = requestIdOf(body);
-      if (requestId && !store.requestById(requestId)) {
+      if (requestId && !(await store.requestById(requestId))) {
         return c.json({ error: "No request with that id." }, 404);
       }
       const plan = stripRequestId(body);
       const warnings: string[] = [];
       const missing = await gameIds.missing(planMarkupIds(plan));
-      const stored = store.putPlan(plan, undefined, { missing, warnings }, requestId);
-      const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
+      // One transaction: Forget my data cannot erase the Request between the two.
+      const { stored, request } = await store.tx(async () => {
+        const stored = await store.putPlan(plan, undefined, { missing, warnings }, requestId);
+        const request = requestId ? await store.fulfillRequest(requestId, stored.id) : undefined;
+        return { stored, request };
+      });
       return c.json({
         id: stored.id,
         createdAt: stored.createdAt,
@@ -462,28 +478,28 @@ export function createApp(
     }
   });
 
-  app.get("/v1/progress", (c) => {
+  app.get("/v1/progress", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
     return c.json({
-      latest: store.latestProgress() ?? null,
-      characters: store.latestPerCharacter(),
+      latest: (await store.latestProgress()) ?? null,
+      characters: await store.latestPerCharacter(),
     });
   });
 
-  app.get("/v1/progress/history", (c) => {
+  app.get("/v1/progress/history", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
     return c.json({
-      progress: store.progressHistory(limitOf(c.req.query("limit"), 50)),
+      progress: await store.progressHistory(limitOf(c.req.query("limit"), 50)),
     });
   });
 
-  app.get("/v1/sessions", (c) => {
+  app.get("/v1/sessions", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
     return c.json({
-      sessions: store.listPlans(limitOf(c.req.query("limit"), 20)).map(sessionSummary),
+      sessions: (await store.listPlans(limitOf(c.req.query("limit"), 20))).map(sessionSummary),
     });
   });
 

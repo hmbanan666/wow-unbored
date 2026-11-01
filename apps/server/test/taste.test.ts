@@ -13,6 +13,7 @@ import { Store } from "../src/store.ts";
 import { suggest } from "../src/suggestions.ts";
 import { requestCategory, tasteBonus } from "../src/taste.ts";
 import { ACCOUNT, makeStore, NOW } from "./helpers.ts";
+import { database, onPostgres } from "./backend.ts";
 
 const rowBase = {
   ownerKind: "char" as const,
@@ -36,7 +37,7 @@ const counts = (picked: number, finished: number, wins = 0, doneSteps = 1, skipp
   skippedSteps,
 });
 
-test("taste math: (finished + wins + 1) / (tracked + 2), ±15, and a skip-heavy category at most -5", () => {
+test("taste math: (finished + wins + 1) / (tracked + 2), ±15, and a skip-heavy category at most -5", async () => {
   assert.deepEqual(tasteBonus(counts(2, 2)), { bonus: 0 }, "fewer than 3 picks: no nudge");
   assert.deepEqual(
     tasteBonus({ ...counts(10, 0), tracked: 2 }),
@@ -54,7 +55,7 @@ test("taste math: (finished + wins + 1) / (tracked + 2), ±15, and a skip-heavy 
   assert.equal(Object.is(tasteBonus(counts(4, 1)).bonus, -0), false, "no negative zero");
 });
 
-test("a Request's category is its idea kind, surprise, or preset:<topic>", () => {
+test("a Request's category is its idea kind, surprise, or preset:<topic>", async () => {
   assert.equal(
     requestCategory({ topic: "suggestion", mode: "fun", suggestionKind: "rare" }),
     "rare",
@@ -64,12 +65,12 @@ test("a Request's category is its idea kind, surprise, or preset:<topic>", () =>
   assert.equal(requestCategory({ topic: null, mode: "roam" }), "preset:roam");
 });
 
-function pick(
+async function pick(
   store: Store,
   id: string,
   options: { topic?: string; kind?: string; generatedAt: number; at: number; tasks?: string[] },
 ) {
-  store.addRequest({
+  await store.addRequest({
     id,
     deviceId: "pc-1",
     character: "Mira",
@@ -93,7 +94,7 @@ function pick(
       : {}),
     nowSeconds: options.at,
   });
-  const plan = store.putPlan(
+  const plan = await store.putPlan(
     {
       v: 1,
       kind: "plan",
@@ -103,10 +104,10 @@ function pick(
     },
     options.at,
   );
-  store.fulfillRequest(id, plan.id, options.at);
+  await store.fulfillRequest(id, plan.id, options.at);
 }
 
-function progress(
+async function progress(
   store: Store,
   body: {
     generatedAt?: number;
@@ -118,7 +119,7 @@ function progress(
   },
   at: number,
 ) {
-  store.addProgress(
+  await store.addProgress(
     {
       account: ACCOUNT,
       realm: "Realm",
@@ -138,7 +139,7 @@ function progress(
   );
 }
 
-test("progress joins its plan by generatedAt and Character; finished, steps and picks per category", () => {
+test("progress joins its plan by generatedAt and Character; finished, steps and picks per category", async () => {
   const store = makeStore();
   try {
     for (const [n, finished] of [
@@ -147,8 +148,8 @@ test("progress joins its plan by generatedAt and Character; finished, steps and 
       [3, true],
       [4, false],
     ] as const) {
-      pick(store, `r${n}`, { kind: "rare", generatedAt: NOW + n, at: NOW + n });
-      progress(
+      await pick(store, `r${n}`, { kind: "rare", generatedAt: NOW + n, at: NOW + n });
+      await progress(
         store,
         finished
           ? { generatedAt: NOW + n, done: ["a"], remaining: ["b"] }
@@ -156,21 +157,25 @@ test("progress joins its plan by generatedAt and Character; finished, steps and 
         NOW + 10 + n,
       );
       if (finished)
-        progress(store, { generatedAt: NOW + n, done: ["a", "b"], remaining: [] }, NOW + 20 + n);
+        await progress(
+          store,
+          { generatedAt: NOW + n, done: ["a", "b"], remaining: [] },
+          NOW + 20 + n,
+        );
     }
-    pick(store, "s1", {
+    await pick(store, "s1", {
       topic: "surprise",
       generatedAt: NOW + 50,
       at: NOW + 50,
       tasks: ["s", "t"],
     });
     // A 0.9 progress post without generatedAt and with other step ids joins no plan.
-    progress(store, { done: ["x", "y"], remaining: [] }, NOW + 60);
+    await progress(store, { done: ["x", "y"], remaining: [] }, NOW + 60);
     // A chain Quick plan has no Request: its source names it.
-    progress(store, { done: ["q1"], remaining: [], source: "chain" }, NOW + 70);
+    await progress(store, { done: ["q1"], remaining: [], source: "chain" }, NOW + 70);
 
     const taste = Object.fromEntries(
-      store.taste(ACCOUNT, NOW + 100).map((row) => [row.category, row]),
+      (await store.taste(ACCOUNT, NOW + 100)).map((row) => [row.category, row]),
     );
     assert.deepEqual(taste.rare, {
       category: "rare",
@@ -191,18 +196,18 @@ test("progress joins its plan by generatedAt and Character; finished, steps and 
     assert.equal(taste.chain?.finished, 1);
 
     // Older than 60 days is left out.
-    assert.equal(store.taste(ACCOUNT, NOW + 61 * 86_400).length, 0);
+    assert.equal((await store.taste(ACCOUNT, NOW + 61 * 86_400)).length, 0);
   } finally {
     store.close();
   }
 });
 
-test("progress without generatedAt joins its plan by step ids; picks never played are not a penalty", () => {
+test("progress without generatedAt joins its plan by step ids; picks never played are not a penalty", async () => {
   const store = makeStore();
   try {
     // Four Surprise picks under 0.9: the game never sent progress for three of them.
     for (const n of [1, 2, 3, 4]) {
-      pick(store, `s${n}`, {
+      await pick(store, `s${n}`, {
         topic: "surprise",
         generatedAt: NOW + n,
         at: NOW + n,
@@ -210,14 +215,19 @@ test("progress without generatedAt joins its plan by step ids; picks never playe
       });
     }
     // The fourth was played to the end; its posts have no generatedAt (session applied under 0.9).
-    progress(store, { done: ["p4:a"], remaining: ["p4:b"] }, NOW + 10);
-    progress(store, { done: ["p4:a", "p4:b"], remaining: [] }, NOW + 11);
+    await progress(store, { done: ["p4:a"], remaining: ["p4:b"] }, NOW + 10);
+    await progress(store, { done: ["p4:a", "p4:b"], remaining: [] }, NOW + 11);
     // Same step ids, but posted before the plan existed: not this plan's.
-    pick(store, "late", { topic: "mount", generatedAt: NOW + 30, at: NOW + 30, tasks: ["m:a"] });
-    progress(store, { done: ["m:a"], remaining: [] }, NOW + 20);
+    await pick(store, "late", {
+      topic: "mount",
+      generatedAt: NOW + 30,
+      at: NOW + 30,
+      tasks: ["m:a"],
+    });
+    await progress(store, { done: ["m:a"], remaining: [] }, NOW + 20);
 
     const taste = Object.fromEntries(
-      store.taste(ACCOUNT, NOW + 100).map((row) => [row.category, row]),
+      (await store.taste(ACCOUNT, NOW + 100)).map((row) => [row.category, row]),
     );
     assert.equal(taste.surprise?.picked, 4);
     assert.equal(taste.surprise?.tracked, 1);
@@ -230,13 +240,25 @@ test("progress without generatedAt joins its plan by step ids; picks never playe
   }
 });
 
-test("a repeated plan's progress counts once, for its newest delivery", () => {
+test("a repeated plan's progress counts once, for its newest delivery", async () => {
   const store = makeStore();
   try {
-    pick(store, "first", { topic: "nearby", generatedAt: NOW + 1, at: NOW + 1, tasks: ["x", "y"] });
-    pick(store, "again", { topic: "nearby", generatedAt: NOW + 2, at: NOW + 2, tasks: ["x", "y"] });
-    progress(store, { done: ["x"], remaining: ["y"] }, NOW + 3);
-    const row = store.taste(ACCOUNT, NOW + 10).find((item) => item.category === "preset:nearby");
+    await pick(store, "first", {
+      topic: "nearby",
+      generatedAt: NOW + 1,
+      at: NOW + 1,
+      tasks: ["x", "y"],
+    });
+    await pick(store, "again", {
+      topic: "nearby",
+      generatedAt: NOW + 2,
+      at: NOW + 2,
+      tasks: ["x", "y"],
+    });
+    await progress(store, { done: ["x"], remaining: ["y"] }, NOW + 3);
+    const row = (await store.taste(ACCOUNT, NOW + 10)).find(
+      (item) => item.category === "preset:nearby",
+    );
     assert.equal(row?.picked, 2);
     assert.equal(row?.tracked, 1);
     assert.equal(row?.doneSteps, 1);
@@ -245,7 +267,8 @@ test("a repeated plan's progress counts once, for its newest delivery", () => {
   }
 });
 
-test("plans stored before 0.10 get generated_at from their body", () => {
+// SQLite file migrations; Postgres starts from migrations/0001.
+test.skipIf(onPostgres)("plans stored before 0.10 get generated_at from their body", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "unbored-backfill-"));
   const db = new DatabaseSync(sqlitePath(dir));
   db.exec(`CREATE TABLE plans (id INTEGER PRIMARY KEY, player_key TEXT NOT NULL, created_at INTEGER NOT NULL,
@@ -254,9 +277,9 @@ test("plans stored before 0.10 get generated_at from their body", () => {
     `INSERT INTO plans (player_key, created_at, body_json, unb1) VALUES ('self', ?, ?, '')`,
   ).run(NOW, JSON.stringify({ v: 1, kind: "plan", generatedAt: NOW - 5, tasks: [] }));
   db.close();
-  const store = new Store(dir);
+  const store = new Store(dir, { postgres: database() });
   try {
-    store.addRequest({
+    await store.addRequest({
       id: "old",
       deviceId: "pc-1",
       character: "Mira",
@@ -268,16 +291,18 @@ test("plans stored before 0.10 get generated_at from their body", () => {
       account: ACCOUNT,
       nowSeconds: NOW,
     });
-    store.fulfillRequest("old", 1, NOW);
-    progress(store, { generatedAt: NOW - 5, done: ["a"], remaining: [] }, NOW + 1);
-    const row = store.taste(ACCOUNT, NOW + 2).find((item) => item.category === "preset:mount");
+    await store.fulfillRequest("old", 1, NOW);
+    await progress(store, { generatedAt: NOW - 5, done: ["a"], remaining: [] }, NOW + 1);
+    const row = (await store.taste(ACCOUNT, NOW + 2)).find(
+      (item) => item.category === "preset:mount",
+    );
     assert.equal(row?.finished, 1);
   } finally {
     store.close();
   }
 });
 
-test("taste nudges an idea kind before the per-rule cut", () => {
+test("taste nudges an idea kind before the per-rule cut", async () => {
   const achProgress = {
     ownerKind: "char" as const,
     ownerId: "Realm/Mira",
@@ -326,7 +351,7 @@ test("taste nudges an idea kind before the per-rule cut", () => {
   );
 });
 
-test("an achievement 80% done or more becomes an Almost there idea; earned or below 80% does not", () => {
+test("an achievement 80% done or more becomes an Almost there idea; earned or below 80% does not", async () => {
   const sections = (rows: object[], earned: number[] = []) =>
     new Map<string, SectionRow>([
       ["achProgress", { ...rowBase, section: "achProgress", body: { rows } }],

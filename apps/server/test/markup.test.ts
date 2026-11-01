@@ -7,6 +7,7 @@ import { test } from "vite-plus/test";
 import type { GameDataFetch } from "../src/blizzard.ts";
 import { createApp } from "../src/app.ts";
 import { cleanPlan } from "../src/plan.ts";
+import { database } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -21,6 +22,7 @@ type Built = ReturnType<typeof createApp>;
 
 function build(options: { blizzardFetch?: GameDataFetch } = {}): Built {
   return createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-markup-")),
@@ -104,7 +106,7 @@ test("put_plan keeps good links and the npcs they use, and warns about the rest"
   }
 });
 
-test("a title made only of bad tokens is refused, and a clean plan has no warnings", () => {
+test("a title made only of bad tokens is refused, and a clean plan has no warnings", async () => {
   assert.throws(
     () => cleanPlan({ tasks: [{ id: "a", title: "{item:0}" }] }, 1),
     /Task 1 needs a title/,
@@ -117,7 +119,7 @@ test("a title made only of bad tokens is refused, and a clean plan has no warnin
 test("answer_request cleans the message and keeps its npc entities", async () => {
   const { app, store, close } = build();
   try {
-    store.addRequest({
+    await store.addRequest({
       id: "req-m",
       deviceId: "legacy",
       character: "Hero",
@@ -134,7 +136,7 @@ test("answer_request cleans the message and keeps its npc entities", async () =>
     });
     assert.equal(isError, false, JSON.stringify(value));
     assert.equal((value.warnings as string[]).length, 1);
-    const answer = store.requestById("req-m")?.answer as {
+    const answer = (await store.requestById("req-m"))?.answer as {
       message: string;
       entities?: unknown;
     };

@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import { fromJson, type Db } from "./db.ts";
 
 /**
  * Taste (docs/adr/0053): per Account, what the player picked, finished and won
@@ -67,20 +67,16 @@ type ProgressBody = {
   remaining?: string[];
 };
 
-function parse<T>(text: string): T | undefined {
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return undefined;
-  }
+function parse<T>(value: unknown): T | undefined {
+  return fromJson<T>(value) ?? undefined;
 }
 
-export function computeTaste(
-  db: DatabaseSync,
+export async function computeTaste(
+  db: Db,
   account: string,
   characters: { name: string; realm: string }[],
   now = Math.floor(Date.now() / 1000),
-): TasteRow[] {
+): Promise<TasteRow[]> {
   const since = now - TASTE_DAYS * 86_400;
   const own = new Set(characters.map((row) => `${row.name}\0${row.realm}`));
   const mine = (row: { account: string | null; name: string; realm: string }) =>
@@ -99,18 +95,17 @@ export function computeTaste(
   const latest = new Map<string, ProgressBody>();
   /** Progress without generatedAt from a delivered plan, by Character and step ids: key, newest post time. */
   const byIds = new Map<string, { key: string; at: number }>();
-  const progress = db
-    .prepare(
-      `SELECT account, realm, character, body_json, created_at FROM progress
-       WHERE created_at >= ? ORDER BY id DESC`,
-    )
-    .all(since) as {
+  const progress = await db.all<{
     account: string;
     realm: string;
     character: string;
-    body_json: string;
+    body_json: unknown;
     created_at: number;
-  }[];
+  }>(
+    `SELECT account, realm, character, ${db.body} AS body_json, created_at FROM progress
+     WHERE created_at >= ? ORDER BY id DESC`,
+    since,
+  );
   for (const row of progress) {
     if (!mine({ account: row.account, name: row.character, realm: row.realm })) continue;
     const body = parse<ProgressBody>(row.body_json);
@@ -133,25 +128,25 @@ export function computeTaste(
   }
 
   const used = new Set<string>();
-  const requests = db
-    .prepare(
-      `SELECT r.account, r.character_name, r.realm, r.topic, r.mode, r.suggestion_json,
-              p.generated_at, p.created_at AS plan_at, p.body_json AS plan_json
-       FROM requests r LEFT JOIN plans p ON p.id = r.plan_id
-       WHERE r.type = 'plan' AND r.created_at >= ?
-       ORDER BY r.created_at DESC, r.rowid DESC`,
-    )
-    .all(since) as {
+  // Postgres has no rowid: the Request id breaks a tie within one second there.
+  const requests = await db.all<{
     account: string | null;
     character_name: string;
     realm: string;
     topic: string | null;
     mode: string | null;
-    suggestion_json: string | null;
+    suggestion_json: unknown;
     generated_at: number | null;
     plan_at: number | null;
-    plan_json: string | null;
-  }[];
+    plan_json: unknown;
+  }>(
+    `SELECT r.account, r.character_name, r.realm, r.topic, r.mode, r.suggestion_json,
+            p.generated_at, p.created_at AS plan_at, p.${db.body} AS plan_json
+     FROM requests r LEFT JOIN plans p ON p.id = r.plan_id
+     WHERE r.type = 'plan' AND r.created_at >= ?
+     ORDER BY r.created_at DESC, ${db.pg ? "r.id" : "r.rowid"} DESC`,
+    since,
+  );
   for (const request of requests) {
     if (!mine({ account: request.account, name: request.character_name, realm: request.realm }))
       continue;
@@ -193,11 +188,15 @@ export function computeTaste(
     count(row, body);
   }
 
-  const wins = db
-    .prepare(
-      `SELECT account, character_name, realm, body_json FROM history WHERE kind = 'win' AND at >= ?`,
-    )
-    .all(since) as { account: string; character_name: string; realm: string; body_json: string }[];
+  const wins = await db.all<{
+    account: string;
+    character_name: string;
+    realm: string;
+    body_json: unknown;
+  }>(
+    `SELECT account, character_name, realm, ${db.body} AS body_json FROM history WHERE kind = 'win' AND at >= ?`,
+    since,
+  );
   for (const win of wins) {
     if (!mine({ account: win.account, name: win.character_name, realm: win.realm })) continue;
     const category = parse<{ category?: string }>(win.body_json)?.category;
@@ -219,7 +218,7 @@ function stepIds(body: ProgressBody): string {
 }
 
 /** A stored plan's step ids, sorted and joined like `stepIds`; empty when unreadable. */
-function planStepIds(planJson: string): string {
+function planStepIds(planJson: unknown): string {
   const plan = parse<{ tasks?: { id?: unknown }[] }>(planJson);
   const tasks = Array.isArray(plan?.tasks) ? plan.tasks : [];
   return tasks

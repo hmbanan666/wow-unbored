@@ -11,7 +11,7 @@ import {
 
 const NOW = 1_793_361_600;
 
-test("places are Characters by last seen, then the Warband bank as w", () => {
+test("places are Characters by last seen, then the Warband bank as w", async () => {
   const holdings = buildHoldings(
     [
       { key: WARBAND_PLACE, seenAt: NOW, items: [{ id: 2447, count: 200 }] },
@@ -31,7 +31,7 @@ test("places are Characters by last seen, then the Warband bank as w", () => {
   assert.equal(holdings.items["2447"], "w:200,1:40,2:2", "stacks add up, largest first");
 });
 
-test("places last seen over 60 days ago are left out", () => {
+test("places last seen over 60 days ago are left out", async () => {
   const holdings = buildHoldings(
     [
       { key: "Old-Realm", seenAt: NOW - HOLDINGS_STALE_SECONDS - 1, items: [{ id: 1, count: 5 }] },
@@ -43,7 +43,7 @@ test("places last seen over 60 days ago are left out", () => {
   assert.deepEqual(holdings.items, { "2": "1:5" });
 });
 
-test("over the cap, items in the fewest places are cut first", () => {
+test("over the cap, items in the fewest places are cut first", async () => {
   const many = Array.from({ length: HOLDINGS_MAX_ITEMS + 500 }, (_, i) => ({
     id: 100_000 + i,
     count: 1,
@@ -65,7 +65,7 @@ test("over the cap, items in the fewest places are cut first", () => {
   assert.ok(bytes <= HOLDINGS_MAX_BYTES, `within 60 KB: ${bytes}`);
 });
 
-test("empty and bad stacks are skipped", () => {
+test("empty and bad stacks are skipped", async () => {
   const holdings = buildHoldings(
     [
       {

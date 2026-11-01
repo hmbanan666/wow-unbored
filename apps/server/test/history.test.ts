@@ -6,6 +6,7 @@ import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
 import { accountKey, mergeProfile } from "../src/store.ts";
+import { database } from "./backend.ts";
 
 const companion = "companion-history-token";
 const planner = "planner-history-token";
@@ -13,6 +14,7 @@ const planner = "planner-history-token";
 function build() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-history-"));
   return createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,
@@ -70,7 +72,7 @@ async function mcp(app: App, name: string, args: Record<string, unknown>) {
   };
 }
 
-test("an empty logout snapshot never overwrites good profile fields", () => {
+test("an empty logout snapshot never overwrites good profile fields", async () => {
   const good = {
     v: 1,
     context: { level: 80, gold: 1234567, ilvl: 610, specID: 64, zone: "Dornogal" },
@@ -94,7 +96,7 @@ test("an empty logout snapshot never overwrites good profile fields", () => {
   assert.deepEqual(fresh.bags, [{ itemID: 1, count: 2 }], "a non-empty list replaces the old one");
 });
 
-test("account keys join the licenses of one Battle.net account", () => {
+test("account keys join the licenses of one Battle.net account", async () => {
   assert.equal(accountKey("12345678#1"), "12345678");
   assert.equal(accountKey("12345678#2"), "12345678");
   assert.equal(accountKey("WOWACCOUNT"), "WOWACCOUNT");

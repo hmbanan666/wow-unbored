@@ -69,6 +69,8 @@ jobs:
           pnpm run lint:js
           pnpm test:js
           pnpm typecheck
+      - name: Every server test again with Postgres storage (ADR 0057)
+        run: UNBORED_TEST_BACKEND=postgres pnpm exec vp test apps/server
       - name: Start like the Dockerfile and answer /health
         run: scripts/server-smoke.sh
       - name: Start with DATABASE_URL, migrate, and answer /health
