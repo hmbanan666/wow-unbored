@@ -6,7 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
 
 import { configFromEnv } from "../src/config.ts";
-import { ensurePartitions, migrate, migrationFiles } from "../src/postgres.ts";
+import { migrate, migrationFiles } from "../src/postgres.ts";
+import { ensurePartitions } from "../src/retention.ts";
 import { Store } from "../src/store.ts";
 import { hasPostgres, testDatabase } from "./postgres-db.ts";
 
@@ -135,7 +136,11 @@ pg("history tables are partitioned by UTC month of at", async () => {
         VALUES (${far}, 'Mira', 'Realm', 'win', '{}')`,
       /no partition/,
     );
-    assert.equal(await ensurePartitions(db.sql, far), 4, "this month and the next, both tables");
+    assert.equal(
+      await ensurePartitions(db.sql, far),
+      6,
+      "this month and the next two, both tables",
+    );
     assert.equal(await ensurePartitions(db.sql, far), 0);
     await db.sql`INSERT INTO history (at, character_name, realm, kind, body)
       VALUES (${far}, 'Mira', 'Realm', 'win', '{}')`;
