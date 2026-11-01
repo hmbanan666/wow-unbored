@@ -258,6 +258,15 @@ Vault activity types are named from `Enum.WeeklyRewardChestThresholdType` (comme
 
 The Server's Character catalog derives class and level from the accepted `char` Section, or from the legacy `profile` Section only when `char` is absent. Snapshot freshness is checked per Section: a newer bags upload does not block a valid char update. A stale upload can advance last contact time, but cannot roll back the Character's Account, Device, save time or dropped-Section metadata. Re-posting an unchanged char Section repairs previously inconsistent catalog facts without adding history; missing facts do not erase good ones.
 
+## Calendar reads
+
+The calendar collector validates dates and month lengths before arithmetic and
+accepts only plain whitelisted event kinds before reading event details. It
+deduplicates events using sanitized ids/titles and dates. If a required month
+is unavailable, it keeps the last complete Section instead of saving a partial
+calendar. Its tests use a secret sentinel that throws on indexing, conversion
+and arithmetic; this does not emulate every restriction of live WoW values.
+
 ## Add a data row
 
 Tables live in `Data/`. Keep them plain Lua. An English `fallbackTitle` is only used when the game API does not know the id; the live name is localized.

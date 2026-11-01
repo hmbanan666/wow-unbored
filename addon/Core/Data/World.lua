@@ -10,8 +10,19 @@ local CALENDAR_DAYS = 14
 -- Game events only: player, guild and community events carry other people.
 local CALENDAR_TYPES = { HOLIDAY = true, SYSTEM = true, RAID_RESET = true, RAID_LOCKOUT = true }
 
+local function plainTable(value)
+  if type(issecretvalue) == "function" then
+    local ok, secret = pcall(issecretvalue, value)
+    if not ok or secret then
+      return nil
+    end
+  end
+  return type(value) == "table" and value or nil
+end
+
 local function stamp(t)
-  if type(t) ~= "table" then
+  t = plainTable(t)
+  if not t then
     return nil
   end
   local year, month, day = num(t.year), num(t.month), num(t.monthDay)
@@ -28,8 +39,14 @@ local function holidayDescription(api, monthOffset, day, index)
   if not api.GetHolidayInfo or monthOffset < 0 or monthOffset > 1 then
     return nil
   end
-  local info = call(api.GetHolidayInfo, monthOffset, day, index)
-  return type(info) == "table" and str(info.description, DESCRIPTION_BYTES) or nil
+  local info = plainTable(call(api.GetHolidayInfo, monthOffset, day, index))
+  return info and str(info.description, DESCRIPTION_BYTES) or nil
+end
+
+local function monthLength(api, offset)
+  local info = plainTable(call(api.GetMonthInfo, offset))
+  local days = info and num(info.numDays)
+  return days and days >= 1 and days <= 31 and days == math.floor(days) and days or nil
 end
 
 -- The month the player is looking at is never changed: days are read by
@@ -40,34 +57,45 @@ function S.ReadCalendar()
   if not api or not api.GetMonthInfo or not api.GetNumDayEvents or not api.GetDayEvent then
     return nil
   end
-  local today = C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime and call(C_DateAndTime.GetCurrentCalendarTime)
-  local view = call(api.GetMonthInfo, 0)
-  if type(today) ~= "table" or type(view) ~= "table" or not num(view.month) or not num(today.month) then
+  local today = plainTable(C_DateAndTime and call(C_DateAndTime.GetCurrentCalendarTime))
+  local view = plainTable(call(api.GetMonthInfo, 0))
+  if not today or not view then
     return nil
   end
-  local offset = (today.year - view.year) * 12 + (today.month - view.month)
-  local monthInfo = call(api.GetMonthInfo, offset)
-  local daysInMonth = type(monthInfo) == "table" and num(monthInfo.numDays) or 31
+  local year, month, day = num(today.year), num(today.month), num(today.monthDay)
+  local viewYear, viewMonth = num(view.year), num(view.month)
+  if not year or not month or not day or not viewYear or not viewMonth then
+    return nil
+  end
+  local offset = (year - viewYear) * 12 + (month - viewMonth)
+  local daysInMonth = monthLength(api, offset)
+  if not daysInMonth or day < 1 or day > daysInMonth or day ~= math.floor(day) then
+    return nil
+  end
   local events, seen = {}, {}
-  local day, monthOffset = today.monthDay, offset
+  local monthOffset = offset
   for ahead = 0, CALENDAR_DAYS do
     if day > daysInMonth then
       day, monthOffset = 1, monthOffset + 1
-      local nextInfo = call(api.GetMonthInfo, monthOffset)
-      daysInMonth = type(nextInfo) == "table" and num(nextInfo.numDays) or 31
+      daysInMonth = monthLength(api, monthOffset)
+      if not daysInMonth then
+        return nil
+      end
     end
     for index = 1, math.min(num(call(api.GetNumDayEvents, monthOffset, day)) or 0, 20) do
-      local e = call(api.GetDayEvent, monthOffset, day, index)
-      if type(e) == "table" and CALENDAR_TYPES[e.calendarType] then
-        local key = tostring(e.eventID or e.title) .. "@" .. tostring(stamp(e.startTime))
-        if not seen[key] then
+      local e = plainTable(call(api.GetDayEvent, monthOffset, day, index))
+      local kind = e and str(e.calendarType, 20)
+      if kind and CALENDAR_TYPES[kind] then
+        local id, title, starts = num(e.eventID), str(e.title, 80), stamp(e.startTime)
+        local key = (id or title) and tostring(id or title) .. "@" .. tostring(starts)
+        if key and not seen[key] then
           seen[key] = true
-          local holiday = e.calendarType == "HOLIDAY"
+          local holiday = kind == "HOLIDAY"
           events[#events + 1] = {
-            eventID = num(e.eventID),
-            title = str(e.title, 80),
-            kind = str(e.calendarType, 20),
-            starts = stamp(e.startTime),
+            eventID = id,
+            title = title,
+            kind = kind,
+            starts = starts,
             ends = stamp(e.endTime),
             texture = num(e.iconTexture),
             sequenceType = str(e.sequenceType, 10),
