@@ -145,6 +145,13 @@ Release notes are one Install / Download section (the setup.exe, then the zip fo
 
 ## Game data
 
+Snapshot HTTP reads enforce ADR 0029's 4 MB compressed cap while consuming the
+body, even without a reliable Content-Length. An oversized stream is cancelled
+at the first chunk that crosses the cap; producer cleanup cannot delay the 413.
+The accumulation buffer is bounded independently of chunk count. Interrupted
+reads return the same clean 400 as malformed JSON/gzip; no partial snapshot is
+stored. The separate 32 MB inflation limit and final Device check still apply.
+
 `Core/Data/` collects every own-player source the addon can read ([ADRs 0027 to 0031](adr/README.md), D47-D63 in [decisions-v0.7.md](decisions-v0.7.md)). Each Section lives in `UnboredCharDB.data.sections` (scope `char`) or `UnboredDB.data.sections` (scope `account`) as `{ v, at, src, body }`, under `schema = 2`. Logout only stamps `savedAt`; the Companion hashes each Section and uploads the changed ones to `POST /v1/snapshot`. Big id sets are packed ([packed ids](contract/README.md#packed-id-sets)).
 
 The Account key on the wire is not the WTF folder name ([ADR 0044](adr/0044-hashed-account-key.md)). The Companion stores a 32-byte salt, hex-encoded, next to the device secret (`accountSalt` in `device.json`). It never sends the salt. The key is the folder name with the license suffix removed (`12345678#1` and `12345678#2` are both `12345678`). The hash is lowercase hex SHA-256 of `salt_bytes || 0x00 || utf8(account_key)`. Until this PC has seen a successful upload for that key, the body also includes `accountLegacy` with the old key so the Server can rename rows. After that, only the hash is sent. An older Companion that still sends the folder name keeps working; a 64-character hex string is stored as-is and is not split on `#`.

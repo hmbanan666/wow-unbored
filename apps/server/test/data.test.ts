@@ -10,6 +10,7 @@ import { packIds, sectionHash, unpackIds, unpackRows } from "@unbored/contracts"
 
 import { createApp } from "../src/app.ts";
 import { sqlitePath } from "../src/config.ts";
+import { SNAPSHOT_MAX_COMPRESSED } from "../src/data.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -325,6 +326,139 @@ test("bad bodies are refused with a reason, and an oversized one with 413", asyn
       body: Buffer.alloc(4 * 1024 * 1024 + 1),
     });
     assert.equal(huge.status, 413);
+  } finally {
+    close();
+  }
+});
+
+for (const declared of [undefined, "1"]) {
+  for (const cleanup of ["done", "failed", "pending"]) {
+    test(`snapshot stops consuming an oversized stream (content-length ${declared ?? "absent"}, cleanup ${cleanup})`, async () => {
+      const { app, store, close } = build();
+      let pulled = 0;
+      let cancelled = false;
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            pulled++;
+            // The first two chunks cross the cap. The remaining chunks must never be read.
+            controller.enqueue(Buffer.alloc(SNAPSHOT_MAX_COMPRESSED / 2 + 1));
+            if (pulled === 4) controller.close();
+          },
+          cancel() {
+            cancelled = true;
+            if (cleanup === "failed") return Promise.reject(new Error("cleanup failed"));
+            if (cleanup === "pending") return new Promise<void>(() => {});
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const headers: Record<string, string> = { authorization: `Bearer ${companion}` };
+      if (declared) headers["content-length"] = declared;
+      const init: RequestInit & { duplex: "half" } = {
+        method: "POST",
+        headers,
+        body: stream,
+        duplex: "half",
+      };
+      try {
+        const response = await app.request(new Request("http://localhost/v1/snapshot", init));
+        assert.equal(response.status, 413);
+        assert.equal(pulled, 2);
+        assert.equal(cancelled, true);
+        assert.deepEqual(store.data.catalog().accounts, []);
+      } finally {
+        close();
+      }
+    });
+  }
+}
+
+test("snapshot rejects unauthorized and declared oversized bodies before reading", async () => {
+  const { app, close } = build();
+  try {
+    for (const [bearer, length, expected] of [
+      ["wrong", "1", 401],
+      [companion, String(SNAPSHOT_MAX_COMPRESSED + 1), 413],
+    ] as const) {
+      let pulled = false;
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            pulled = true;
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const init: RequestInit & { duplex: "half" } = {
+        method: "POST",
+        headers: { authorization: `Bearer ${bearer}`, "content-length": length },
+        body,
+        duplex: "half",
+      };
+      assert.equal(
+        (await app.request(new Request("http://localhost/v1/snapshot", init))).status,
+        expected,
+      );
+      assert.equal(pulled, false);
+      await body.cancel();
+    }
+  } finally {
+    close();
+  }
+});
+
+test("snapshot accepts exactly the byte cap and fragmented gzip", async () => {
+  const { app, close } = build();
+  try {
+    const raw = JSON.stringify(fixture);
+    const exact = raw + " ".repeat(SNAPSHOT_MAX_COMPRESSED - Buffer.byteLength(raw));
+    assert.equal((await post(app, exact, { gzip: false })).status, 200);
+    const gzip = gzipSync(raw);
+    let offset = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset === gzip.length) return controller.close();
+        const end = Math.min(offset + 7, gzip.length);
+        controller.enqueue(gzip.subarray(offset, end));
+        offset = end;
+      },
+    });
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-encoding": "gzip" },
+      body,
+      duplex: "half",
+    };
+    assert.equal(
+      (await app.request(new Request("http://localhost/v1/snapshot", init))).status,
+      200,
+    );
+  } finally {
+    close();
+  }
+});
+
+test("an interrupted snapshot stream returns a clean error without storing data", async () => {
+  const { app, store, close } = build();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(Buffer.from('{"account":'));
+      controller.error(new Error("private transport details"));
+    },
+  });
+  const init: RequestInit & { duplex: "half" } = {
+    method: "POST",
+    headers: { authorization: `Bearer ${companion}` },
+    body,
+    duplex: "half",
+  };
+  try {
+    const response = await app.request(new Request("http://localhost/v1/snapshot", init));
+    assert.equal(response.status, 400);
+    assert.equal((await json(response)).error, "The game data must be JSON, optionally gzip.");
+    assert.deepEqual(store.data.catalog().accounts, []);
   } finally {
     close();
   }
