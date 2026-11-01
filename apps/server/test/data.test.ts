@@ -173,6 +173,130 @@ test("an unchanged newer save prevents an older changed Section from replacing i
   }
 });
 
+test("a stale char Section cannot roll back the Character catalog or upload metadata", async () => {
+  const { app, store, close } = build();
+  try {
+    const fresh = withSection(
+      "char",
+      { name: "Mira", class: "Mage", level: 80 },
+      fixture.savedAt + 200,
+    );
+    fresh.sections = { char: fresh.sections.char };
+    assert.equal((await post(app, fresh)).status, 200);
+    const before = store.data.character("Mira", fixture.realm)!;
+    const stale = {
+      ...withSection("char", { name: "Mira", class: "Warrior", level: 70 }, fixture.savedAt + 100),
+      account: "old-account",
+      dropped: { char: { bags: { at: fixture.savedAt, bytes: 100 } } },
+    };
+    stale.sections = { char: stale.sections.char };
+    assert.equal((await json(await post(app, stale))).stale, true);
+    const after = store.data.character("Mira", fixture.realm)!;
+    assert.equal(after.level, 80);
+    assert.equal(after.class, "Mage");
+    assert.equal(after.accountId, before.accountId);
+    assert.equal(after.savedAt, before.savedAt);
+    assert.deepEqual(after.dropped, before.dropped);
+    assert.deepEqual(store.data.section("char", after.id, "char")!.body, fresh.sections.char.body);
+  } finally {
+    close();
+  }
+});
+
+test("Character facts follow the accepted char Section, not the latest unrelated Section", async () => {
+  const { app, store, close } = build();
+  try {
+    const first = withSection("char", { name: "Mira", class: "Mage", level: 70 }, fixture.savedAt);
+    first.sections = { char: first.sections.char };
+    assert.equal((await post(app, first)).status, 200);
+    const bags = {
+      ...fixture,
+      savedAt: fixture.savedAt + 300,
+      sections: { bags: fixture.sections.bags },
+    };
+    assert.equal((await post(app, bags)).status, 200);
+    const next = withSection(
+      "char",
+      { name: "Mira", class: "Mage", level: 80 },
+      fixture.savedAt + 200,
+    );
+    next.sections = { char: next.sections.char };
+    assert.deepEqual((await json(await post(app, next))).stored, ["char"]);
+    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
+    assert.equal(store.data.character("Mira", fixture.realm)!.savedAt, bags.savedAt);
+
+    const old = withSection(
+      "char",
+      { name: "Mira", class: "Mage", level: 75 },
+      fixture.savedAt + 100,
+    );
+    old.sections = { char: old.sections.char };
+    assert.equal((await json(await post(app, old))).stale, true);
+    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
+  } finally {
+    close();
+  }
+});
+
+test("legacy profiles cannot replace Character facts supplied by a char Section", async () => {
+  const { app, store, close } = build();
+  try {
+    const current = withSection(
+      "char",
+      { name: "Mira", class: "Mage", level: 80 },
+      fixture.savedAt,
+    );
+    current.sections = { char: current.sections.char };
+    assert.equal((await post(app, current)).status, 200);
+    const profile = await app.request("/v1/profile", {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        character: fixture.character,
+        realm: fixture.realm,
+        account: fixture.account,
+        savedAt: fixture.savedAt + 100,
+        profile: { v: 1, context: { level: 70, class: "Warrior" } },
+      }),
+    });
+    assert.equal(profile.status, 200);
+    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
+    assert.equal(store.data.character("Mira", fixture.realm)!.class, "Mage");
+  } finally {
+    close();
+  }
+});
+
+test("an unchanged char upload repairs catalog facts and an empty field preserves a good value", async () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-catalog-repair-"));
+  const { app, store, close } = build(dataDir);
+  try {
+    const current = withSection(
+      "char",
+      { name: "Mira", class: "Mage", level: 80 },
+      fixture.savedAt,
+    );
+    current.sections = { char: current.sections.char };
+    assert.equal((await post(app, current)).status, 200);
+    const db = new DatabaseSync(sqlitePath(dataDir));
+    try {
+      db.prepare(`UPDATE characters SET class = 'Warrior', level = 70 WHERE name = ?`).run("Mira");
+    } finally {
+      db.close();
+    }
+    assert.deepEqual((await json(await post(app, current))).stored, []);
+    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
+    assert.equal(store.data.character("Mira", fixture.realm)!.class, "Mage");
+    const partial = withSection("char", { name: "Mira", class: "" }, fixture.savedAt + 100);
+    partial.sections = { char: partial.sections.char };
+    assert.equal((await post(app, partial)).status, 200);
+    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
+    assert.equal(store.data.character("Mira", fixture.realm)!.class, "Mage");
+  } finally {
+    close();
+  }
+});
+
 test("bad bodies are refused with a reason, and an oversized one with 413", async () => {
   const { app, close } = build();
   try {

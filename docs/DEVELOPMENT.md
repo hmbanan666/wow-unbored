@@ -239,6 +239,10 @@ Vault activity types are named from `Enum.WeeklyRewardChestThresholdType` (comme
 
 **Wins** (`wins.ts`, [ADR 0054](adr/0054-wins-from-game-data.md)): a plan's targets are its reward tokens, its steps' rewards, the contents of a container (`contains`; the container itself is not a target) and the last step's `complete` (quest, mount, toy, pet, achievement). When a snapshot diff adds one of those ids to `mounts`, `toys`, `pets`, `achievements`, `achievementsMine`, `questsDone` or a bag/bank Section, after a plan of the same Account made in the last 30 days, the Server writes one history row of kind `win` per Account and id. A first upload (`initial`), a whole-body Section, a version change, an item that only moved between bags and banks, or one another character already holds never count. MCP `list_wins` gives totals per kind and UTC days; `get_player_history` shows them. Players do not see wins in 0.10.
 
+## Character catalog freshness
+
+The Server's Character catalog derives class and level from the accepted `char` Section, or from the legacy `profile` Section only when `char` is absent. Snapshot freshness is checked per Section: a newer bags upload does not block a valid char update. A stale upload can advance last contact time, but cannot roll back the Character's Account, Device, save time or dropped-Section metadata. Re-posting an unchanged char Section repairs previously inconsistent catalog facts without adding history; missing facts do not erase good ones.
+
 ## Add a data row
 
 Tables live in `Data/`. Keep them plain Lua. An English `fallbackTitle` is only used when the game API does not know the id; the live name is localized.
