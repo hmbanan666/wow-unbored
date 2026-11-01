@@ -17,7 +17,14 @@ import {
   type ProgressPost,
 } from "./plan.ts";
 
-import { IdCache, NameCache } from "./blizzard.ts";
+import {
+  PostgresIdCache,
+  PostgresNameCache,
+  SqliteIdCache,
+  SqliteNameCache,
+  type IdCache,
+  type NameCache,
+} from "./blizzard.ts";
 import {
   DataStore,
   type DigestAlt,
@@ -28,7 +35,8 @@ import {
 } from "./data.ts";
 import type { Holdings } from "./holdings.ts";
 import type { ProfileUpload } from "./profile.ts";
-import { SuggestionStore } from "./suggestions.ts";
+import type { Sql } from "./postgres.ts";
+import { PostgresSuggestionTables, SuggestionStore } from "./suggestions.ts";
 import { readyNow, type ReadyNow } from "./ready.ts";
 import { computeTaste, requestCategory, type TasteRow } from "./taste.ts";
 import {
@@ -99,7 +107,12 @@ export class Store {
   readonly gameIds: IdCache;
   readonly creatureNames: NameCache;
 
-  constructor(dataDir: string) {
+  /**
+   * `postgres` (DATABASE_URL, ADR 0057) holds the game id and creature name
+   * caches and the Suggestions; everything else stays in SQLite until rollout
+   * step 3. Without it the Server is SQLite only. The caller owns the pool.
+   */
+  constructor(dataDir: string, options: { postgres?: Sql } = {}) {
     this.db = new DatabaseSync(sqlitePath(dataDir));
     this.db.exec(`
       PRAGMA journal_mode = WAL;
@@ -216,9 +229,15 @@ export class Store {
     );
     this.db.exec(`CREATE INDEX IF NOT EXISTS plans_generated ON plans (generated_at)`);
     this.data = new DataStore(this.db);
-    this.gameIds = new IdCache(this.db);
-    this.creatureNames = new NameCache(this.db);
-    this.suggestions = new SuggestionStore(this.db, this.data, this.creatureNames);
+    const pg = options.postgres;
+    this.gameIds = pg ? new PostgresIdCache(pg) : new SqliteIdCache(this.db);
+    this.creatureNames = pg ? new PostgresNameCache(pg) : new SqliteNameCache(this.db);
+    this.suggestions = new SuggestionStore(
+      this.db,
+      this.data,
+      this.creatureNames,
+      pg ? new PostgresSuggestionTables(pg) : undefined,
+    );
   }
 
   /** Preserve provenance even when a Request gets a replacement Plan. */
@@ -1066,7 +1085,16 @@ export class Store {
    * ideas, and by default its Requests and the plans made for them. Used by the
    * owner (delete_account_data) and by the player (Forget my data).
    */
-  deleteAccountData(account: string, options: { requests?: boolean } = {}) {
+  async deleteAccountData(account: string, options: { requests?: boolean } = {}) {
+    const erased = this.eraseAccount(account, options);
+    if (!this.suggestions.tables.local) {
+      erased.suggestions = await this.suggestions.tables.deleteOwner(erased.account);
+    }
+    return erased;
+  }
+
+  /** The SQLite part of deleteAccountData, in one synchronous run. */
+  private eraseAccount(account: string, options: { requests?: boolean } = {}) {
     const key = accountKey(account);
     if (!key) throw new Error("Name the Account to erase.");
     const names = this.data.characters(key).map((row) => [row.name, row.realm] as const);
@@ -1089,9 +1117,9 @@ export class Store {
         );
       }
     }
-    const suggestions = Number(
-      this.db.prepare(`DELETE FROM suggestions WHERE owner_id = ?`).run(key).changes,
-    );
+    const suggestions = this.suggestions.tables.local
+      ? Number(this.db.prepare(`DELETE FROM suggestions WHERE owner_id = ?`).run(key).changes)
+      : 0;
     let erased = { requests: 0, plans: 0 };
     if (options.requests !== false) {
       const ids = new Set<string>();
@@ -1135,7 +1163,16 @@ export class Store {
    * Requests for, and this device's own Requests, then the device is revoked
    * so nothing more is stored from it.
    */
-  forgetDevice(deviceId: string, nowSeconds = Math.floor(Date.now() / 1000)) {
+  async forgetDevice(deviceId: string, nowSeconds = Math.floor(Date.now() / 1000)) {
+    const { totals, accounts } = this.forgetDeviceNow(deviceId, nowSeconds);
+    if (!this.suggestions.tables.local) {
+      for (const account of accounts) await this.suggestions.tables.deleteOwner(account);
+    }
+    return totals;
+  }
+
+  /** The SQLite part of forgetDevice, in one synchronous run; the device ends revoked. */
+  private forgetDeviceNow(deviceId: string, nowSeconds: number) {
     const accounts = new Set<string>();
     for (const row of this.data.characters()) {
       if (row.deviceId === deviceId && row.accountId) accounts.add(row.accountId);
@@ -1147,8 +1184,10 @@ export class Store {
       for (const row of rows) if (row.account) accounts.add(accountKey(row.account));
     }
     const totals = { accounts: 0, characters: 0, sections: 0, requests: 0, plans: 0 };
+    const keys: string[] = [];
     for (const account of accounts) {
-      const removed = this.deleteAccountData(account);
+      const removed = this.eraseAccount(account);
+      keys.push(removed.account);
       totals.accounts += 1;
       totals.characters += removed.characters;
       totals.sections += removed.sections;
@@ -1178,7 +1217,7 @@ export class Store {
         `UPDATE devices SET status = 'revoked', last_seen_at = ?, forget_revoked = ? WHERE id = ?`,
       )
       .run(nowSeconds, reconnect, deviceId);
-    return { ...totals, revoked: true };
+    return { totals: { ...totals, revoked: true }, accounts: keys };
   }
 
   /**
@@ -1198,9 +1237,12 @@ export class Store {
     if (!from || !to || from === to || !isAccountHash(to) || isAccountHash(from)) return;
     const textHit = (table: string) =>
       `SELECT 1 FROM ${table} WHERE account = ? OR substr(account, 1, length(?) + 1) = ? || '#'`;
-    const hit = this.db
-      .prepare(
-        `SELECT 1 AS n FROM accounts WHERE id = ?
+    // Suggestions in Postgres are a cache the next upload rebuilds; they are
+    // renamed below but do not decide whether there is anything to migrate.
+    const suggestionsHit = this.suggestions.tables.local
+      ? "UNION ALL SELECT 1 FROM suggestions WHERE owner_id = ?"
+      : "";
+    const query = `SELECT 1 AS n FROM accounts WHERE id = ?
          UNION ALL SELECT 1 FROM characters WHERE account_id = ?
          UNION ALL ${textHit("progress")}
          UNION ALL ${textHit("requests")}
@@ -1208,36 +1250,13 @@ export class Store {
          UNION ALL ${textHit("history")}
          UNION ALL ${textHit("profile_snapshots")}
          UNION ALL ${textHit("advice")}
-         UNION ALL SELECT 1 FROM suggestions WHERE owner_id = ?
+         ${suggestionsHit}
          UNION ALL SELECT 1 FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ?
          UNION ALL SELECT 1 FROM section_history WHERE owner_kind = 'account' AND owner_id = ?
-         LIMIT 1`,
-      )
-      .get(
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-        from,
-      );
+         LIMIT 1`;
+    const hit = this.db
+      .prepare(query)
+      .get(...Array.from({ length: query.split("?").length - 1 }, () => from));
     if (!hit) return;
     const retarget = (table: string) => {
       this.db
@@ -1269,7 +1288,9 @@ export class Store {
       ]) {
         retarget(table);
       }
-      this.db.prepare(`UPDATE suggestions SET owner_id = ? WHERE owner_id = ?`).run(to, from);
+      if (this.suggestions.tables.local) {
+        this.db.prepare(`UPDATE suggestions SET owner_id = ? WHERE owner_id = ?`).run(to, from);
+      }
       const clash = this.db
         .prepare(
           `SELECT section FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ?`,
@@ -1291,6 +1312,9 @@ export class Store {
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
+    }
+    if (!this.suggestions.tables.local) {
+      void this.suggestions.tables.renameOwner(from, to).catch(() => undefined);
     }
   }
 
@@ -1480,7 +1504,7 @@ export class Store {
    * digest (its Alts) so routing works for Alts seen on other PCs (D76).
    */
   /** Suggestions for this device's characters (docs/adr/0040). */
-  suggestionsForDevice(deviceId: string) {
+  async suggestionsForDevice(deviceId: string) {
     const rows = this.data
       .characters()
       .filter((row) => deviceId === "legacy" || row.deviceId === deviceId);

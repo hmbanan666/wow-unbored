@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 
 import { presentedBearer, requireRole, sha256Hex, tokenMatches } from "./auth.ts";
 import type { Config } from "./config.ts";
+import type { Sql } from "./postgres.ts";
 import { clientIp, cleanRegistration, PENDING_CAP, RegisterLimiter } from "./devices.ts";
 import { cleanSnapshot, SNAPSHOT_MAX_COMPRESSED, SNAPSHOT_MAX_INFLATED } from "./data.ts";
 import {
@@ -76,9 +77,11 @@ export function createApp(
     blizzardFetch?: GameDataFetch;
     /** One line per request (docs/adr/0013). Defaults to stdout. */
     log?: (line: string) => void;
+    /** Postgres from DATABASE_URL, migrated (ADR 0057); the caller closes it. */
+    database?: Sql;
   },
 ) {
-  const store = new Store(config.dataDir);
+  const store = new Store(config.dataDir, { postgres: config.database });
   const tokens = { companion: config.companionToken, planner: config.plannerToken };
   const registerLimiter = new RegisterLimiter();
   const app = new Hono();
@@ -99,7 +102,7 @@ export function createApp(
   log(gameIds.describe());
   // Russian rare names for ideas come from the same Blizzard credentials (D154).
   store.suggestions.names = {
-    get: (npcID, locale) => store.creatureNames.get(npcID, locale),
+    many: (npcIDs, locale) => store.creatureNames.many(npcIDs, locale),
     warm: (npcIDs, locales) => gameIds.warmCreatureNames(store.creatureNames, npcIDs, locales),
   };
 
@@ -245,7 +248,7 @@ export function createApp(
     if ((body as { confirm?: unknown } | null)?.confirm !== true) {
       return c.json({ error: 'Send {"confirm": true} as JSON.' }, 400);
     }
-    return c.json({ ok: true, ...store.forgetDevice(device.id) });
+    return c.json({ ok: true, ...(await store.forgetDevice(device.id)) });
   });
 
   app.post("/v1/requests", async (c) => {
@@ -326,10 +329,10 @@ export function createApp(
   });
 
   // Ideas from the player's data for the choice Bubble (docs/adr/0040).
-  app.get("/v1/suggestions", (c) => {
+  app.get("/v1/suggestions", async (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
-    return c.json(store.suggestionsForDevice(access.deviceId));
+    return c.json(await store.suggestionsForDevice(access.deviceId));
   });
 
   app.get("/v1/plan", (c) => {
