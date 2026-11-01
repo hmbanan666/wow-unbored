@@ -447,7 +447,14 @@ export function openChains(sections: Map<string, SectionRow>): OpenChain[] {
   return out;
 }
 
-export type AchievementProgress = { id: number; d: number; t: number; ratio: number };
+export type AchievementProgress = {
+  id: number;
+  d: number;
+  t: number;
+  ratio: number;
+  /** The name from the game (client language), from addons 0.11 on. */
+  name?: string;
+};
 
 /** `achProgress` rows (D182), not yet earned, best first. */
 export function achievementProgress(sections: Map<string, SectionRow>): AchievementProgress[] {
@@ -461,7 +468,8 @@ export function achievementProgress(sections: Map<string, SectionRow>): Achievem
     const t = Number(row?.t);
     if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(d) || !Number.isFinite(t)) continue;
     if (t <= 0 || d < 0 || d >= t || earned.has(id)) continue;
-    out.push({ id, d, t, ratio: d / t });
+    const name = typeof row.name === "string" ? row.name.trim().slice(0, 60) : "";
+    out.push({ id, d, t, ratio: d / t, ...(name ? { name } : {}) });
   }
   return out.sort((a, b) => b.ratio - a.ratio || a.id - b.id);
 }

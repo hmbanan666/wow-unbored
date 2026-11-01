@@ -118,6 +118,7 @@ local function renown()
       local isMax = atMax(api, factionID)
       out[#out + 1] = {
         factionID = factionID,
+        name = str(data.name, 60),
         level = level,
         earned = num(data.renownReputationEarned),
         threshold = num(data.renownLevelThreshold),
@@ -155,6 +156,7 @@ function S.ReadReputation()
     if factionID and factionID > 0 and (not data.isHeader or data.isHeaderWithRep) then
       list[#list + 1] = {
         factionID = factionID,
+        name = str(data.name, 60),
         reaction = num(data.reaction),
         standing = num(data.currentStanding),
         min = num(data.currentReactionThreshold),

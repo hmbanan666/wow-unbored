@@ -4,7 +4,13 @@ import { test } from "vite-plus/test";
 import { packIds } from "@unbored/contracts";
 
 import type { SectionRow } from "../src/data.ts";
-import { READY_MAX_ITEMS, readyAlts, readyNow, type ReadyItem } from "../src/ready.ts";
+import {
+  READY_MAX_ITEMS,
+  READY_MAX_PER_KIND,
+  readyAlts,
+  readyNow,
+  type ReadyItem,
+} from "../src/ready.ts";
 import type { Catalog } from "../src/suggestions.ts";
 import { ACCOUNT, makeStore, NOW, snapshot } from "./helpers.ts";
 
@@ -279,13 +285,14 @@ test("chains: the 5 most finished open chains, and events on now from the catalo
   );
 });
 
-test("items are sorted by score, capped at 25, missing names absent Sections, taste nudges", () => {
+test("items are sorted by score, at most 5 per kind, missing names absent Sections, taste nudges", () => {
   const rows = Array.from({ length: 40 }, (_, n) => ({ id: 1000 + n, d: 8, t: 10 }));
   const out = ready([section("achProgress", { rows })], {
     taste: [
       {
         category: "achievement",
         picked: 5,
+        tracked: 5,
         finished: 4,
         doneSteps: 10,
         skippedSteps: 0,
@@ -295,7 +302,7 @@ test("items are sorted by score, capped at 25, missing names absent Sections, ta
       },
     ],
   });
-  assert.equal(out.items.length, READY_MAX_ITEMS);
+  assert.equal(out.items.length, READY_MAX_PER_KIND, "40 near-done achievements give 5 items");
   assert.equal(out.items[0]!.score, 80 + 11);
   assert.deepEqual(out.missing, [
     "reputation",
@@ -307,6 +314,67 @@ test("items are sorted by score, capped at 25, missing names absent Sections, ta
     "calendar",
   ]);
   assert.equal(out.taste[0]!.bonus, 11);
+});
+
+test("every kind gets its share before the 25-item cut, with the names the game gave", () => {
+  const ten = Array.from({ length: 10 }, (_, n) => n);
+  const out = ready([
+    section("achProgress", {
+      rows: Array.from({ length: 40 }, (_, n) => ({ id: 1000 + n, name: `Ach ${n}`, d: 9, t: 10 })),
+    }),
+    section("vault", { rewardWaiting: true }),
+    section("currencies", {
+      list: ten.map((n) => ({
+        id: 3000 + n,
+        name: `Coin ${n}`,
+        quantity: 10,
+        week: 1,
+        weekMax: 5,
+      })),
+    }),
+    section("lockouts", {
+      instances: ten.map((n) => ({
+        instanceID: 2000 + n,
+        name: `Raid ${n}`,
+        locked: true,
+        bosses: 8,
+        killed: 2,
+        resetAt: NOW + 5 * DAY,
+      })),
+    }),
+    section("reputation", {
+      factions: ten.map((n) => ({
+        factionID: 4000 + n,
+        name: `Faction ${n}`,
+        reaction: 5,
+        standing: 8500,
+        min: 3000,
+        max: 9000,
+      })),
+      renown: ten.map((n) => ({
+        factionID: 5000 + n,
+        name: `Renown ${n}`,
+        level: 3,
+        earned: 2000,
+        threshold: 2500,
+      })),
+    }),
+  ]);
+  assert.equal(out.items.length, READY_MAX_ITEMS);
+  const kinds = new Map<string, number>();
+  for (const item of out.items) kinds.set(item.kind, (kinds.get(item.kind) ?? 0) + 1);
+  assert.equal(kinds.get("vault"), 1, "the vault is not crowded out");
+  for (const kind of ["achievement", "lockout", "renown", "standing"]) {
+    assert.equal(kinds.get(kind), READY_MAX_PER_KIND, kind);
+  }
+  assert.equal(kinds.get("currency"), 4, "the lowest score loses the last slots");
+  const title = (kind: string) => out.items.find((item) => item.kind === kind)?.title;
+  assert.equal(title("achievement"), "Ach 0");
+  assert.equal(title("renown"), "Renown 0");
+  assert.equal(title("standing"), "Faction 0");
+  assert.equal(title("currency"), "Coin 0");
+  assert.equal(title("lockout"), "Raid 0");
+  assert.equal(title("vault"), undefined, "no name in the data, no title");
 });
 
 test("alts: another Character at least 0.2 further on and at least half done, at most 5", () => {

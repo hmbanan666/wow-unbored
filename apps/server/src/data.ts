@@ -62,12 +62,16 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   profile: { scope: "char", v: 1 },
 };
 
-/** Sections a Character or Account should have; `errors` and the 0.6 `profile` are not expected (D171). */
-const NOT_EXPECTED = new Set(["errors", "profile"]);
+/**
+ * Sections a Character or Account should have (D171). Not expected: `errors`
+ * (only exists after something broke), the 0.6 `profile`, and `reagentBank`:
+ * retail folded the reagent bank into the bank tabs (11.2), so most clients
+ * never write it. Old bodies are still read for holdings and wins.
+ */
+const NOT_EXPECTED = new Set(["errors", "profile", "reagentBank"]);
 /** Read only while a window is open, with the hint the owner sees (D171). */
 const WINDOW_SECTIONS: Record<string, string> = {
   bank: "open the bank",
-  reagentBank: "open the bank",
   warband: "open the warband bank",
   recipes: "open a profession",
 };

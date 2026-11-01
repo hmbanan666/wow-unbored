@@ -15,6 +15,8 @@ import type { TasteRow } from "./taste.ts";
  * rules over its own Sections. Every id comes from a Section; nothing is guessed.
  */
 export const READY_MAX_ITEMS = 25;
+/** At most this many items of one kind, so 20 near-done achievements cannot hide the vault, renown or a lockout. */
+export const READY_MAX_PER_KIND = 5;
 export const READY_MAX_ALTS = 5;
 export const READY_MAX_CHAINS = 5;
 /** Achievements at least this far along are listed (D182). */
@@ -127,6 +129,12 @@ function list(value: unknown): Raw[] {
     : [];
 }
 
+/** A Section row's own name (addons 0.11 on), trimmed; absent when the data has none. */
+function named(value: unknown): { title?: string } {
+  const title = typeof value === "string" ? value.trim().slice(0, 60) : "";
+  return title ? { title } : {};
+}
+
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
@@ -156,6 +164,7 @@ function reputationItems(section: SectionRow | undefined): ReadyItem[] {
     out.push({
       kind: "renown",
       key: `renown:${factionID}`,
+      ...named(row.name),
       tokens,
       have: earned,
       need: threshold,
@@ -175,6 +184,7 @@ function reputationItems(section: SectionRow | undefined): ReadyItem[] {
         out.push({
           kind: "paragon",
           key: `paragon:${factionID}`,
+          ...named(row.name),
           tokens: questID ? [`{quest:${questID}}`] : [],
           why: "A paragon reward is waiting",
           score: READY_SCORE.rewardWaiting,
@@ -209,6 +219,7 @@ function reputationItems(section: SectionRow | undefined): ReadyItem[] {
     out.push({
       kind: "standing",
       key: `standing:${factionID}`,
+      ...named(row.name),
       tokens: [],
       have,
       need: step,
@@ -322,6 +333,7 @@ function currencyItems(section: SectionRow | undefined): ReadyItem[] {
       out.push({
         kind: "currency",
         key: `cap:${id}`,
+        ...named(row.name),
         tokens: [`{currency:${id}}`],
         have: quantity,
         need: max,
@@ -335,6 +347,7 @@ function currencyItems(section: SectionRow | undefined): ReadyItem[] {
       out.push({
         kind: "currency",
         key: `week:${id}`,
+        ...named(row.name),
         tokens: [`{currency:${id}}`],
         have: week,
         need: weekMax,
@@ -354,6 +367,7 @@ function achievementItems(sections: Map<string, SectionRow>): ReadyItem[] {
     .map((row) => ({
       kind: "achievement" as const,
       key: `ach:${row.id}`,
+      ...named(row.name),
       tokens: [`{ach:${row.id}}`],
       have: row.d,
       need: row.t,
@@ -462,12 +476,18 @@ export function readyNow(input: {
   }
   // Stable: equal scores keep each rule's own order (chains most finished first).
   items.sort((a, b) => b.score - a.score);
+  const perKind = new Map<ReadyKind, number>();
+  const kept = items.filter((item) => {
+    const seen = perKind.get(item.kind) ?? 0;
+    perKind.set(item.kind, seen + 1);
+    return seen < READY_MAX_PER_KIND;
+  });
   return {
     character: input.character,
     realm: input.realm,
     account: input.account,
     computedAt: now,
-    items: items.slice(0, READY_MAX_ITEMS),
+    items: kept.slice(0, READY_MAX_ITEMS),
     taste: input.taste ?? [],
     alts: readyAlts(sections, input.others ?? []),
     missing: READY_SECTIONS.filter((name) => !sections.has(name)),
