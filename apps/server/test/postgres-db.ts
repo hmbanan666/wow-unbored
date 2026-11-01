@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import postgres from "postgres";
+import { afterAll, beforeAll, beforeEach } from "vite-plus/test";
 
 import { connectPostgres, migrate, migrationsHash, type Sql } from "../src/postgres.ts";
 
@@ -70,5 +71,35 @@ export async function testDatabase(options: { migrated?: boolean } = {}) {
       await root.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
       await root.end();
     },
+  };
+}
+
+export type Backend = "sqlite" | "postgres";
+/** SQLite always; Postgres too when UNBORED_TEST_DATABASE_URL is set. */
+export const BACKENDS: Backend[] = hasPostgres ? ["sqlite", "postgres"] : ["sqlite"];
+
+/**
+ * One Postgres database for this test file, emptied before each test. Returns
+ * the pool for a backend: undefined for SQLite.
+ */
+export function postgresPerFile(): (backend: Backend) => Sql | undefined {
+  let db: Awaited<ReturnType<typeof testDatabase>> | undefined;
+  beforeAll(async () => {
+    if (hasPostgres) db = await testDatabase();
+  });
+  afterAll(async () => {
+    await db?.drop();
+  });
+  beforeEach(async () => {
+    if (!db) return;
+    const tables = await db.sql<{ name: string }[]>`
+      SELECT tablename AS name FROM pg_tables
+      WHERE schemaname = 'public' AND tablename <> 'schema_migrations'`;
+    await db.sql.unsafe(`TRUNCATE ${tables.map((t) => `"${t.name}"`).join(", ")}`);
+  });
+  return (backend) => {
+    if (backend === "sqlite") return undefined;
+    if (!db) throw new Error("No test database.");
+    return db.sql;
   };
 }

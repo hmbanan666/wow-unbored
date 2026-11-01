@@ -95,7 +95,7 @@ async function fill(
     account: who.account,
     items: [{ itemID: 6948, action: "keep", line: "Your way home." }],
   });
-  built.store.suggestions.computeAccount(who.account.split("#")[0]!, NOW);
+  await built.store.suggestions.computeAccount(who.account.split("#")[0]!, NOW);
 }
 
 for (const endpoint of ["snapshot", "profile", "requests", "progress"]) {
@@ -295,7 +295,7 @@ test("Forget my data erases this device's Accounts and revokes it, leaving other
   }
 });
 
-test("delete_account_data erases Requests and plans unless told to keep them", () => {
+test("delete_account_data erases Requests and plans unless told to keep them", async () => {
   const built = setup();
   const { store, rows } = built;
   const request = (id: string) =>
@@ -317,17 +317,17 @@ test("delete_account_data erases Requests and plans unless told to keep them", (
       store.putPlan({ ...plan, requestId: "req-keep" }, NOW).id,
       NOW,
     );
-    const kept = store.deleteAccountData("111111#1", { requests: false });
+    const kept = await store.deleteAccountData("111111#1", { requests: false });
     assert.equal(kept.requests, 0);
     assert.equal(rows("requests"), 1);
     assert.equal(rows("plans"), 1);
 
-    const erased = store.deleteAccountData("111111#1");
+    const erased = await store.deleteAccountData("111111#1");
     assert.equal(erased.requests, 1);
     assert.equal(erased.plans, 1);
     assert.equal(rows("requests"), 0);
     assert.equal(rows("plans"), 0);
-    assert.throws(() => store.deleteAccountData("  "), /Name the Account/);
+    await assert.rejects(store.deleteAccountData("  "), /Name the Account/);
   } finally {
     built.close();
   }

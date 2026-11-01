@@ -10,6 +10,9 @@ import { packIds, sectionHash, suggestionsBodySchema } from "@unbored/contracts"
 import { createApp } from "../src/app.ts";
 import type { SectionRow } from "../src/data.ts";
 import { loadCatalog, suggest, type SuggestInput } from "../src/suggestions.ts";
+import { BACKENDS, postgresPerFile } from "./postgres-db.ts";
+
+const pg = postgresPerFile();
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -275,72 +278,74 @@ async function mcp(app: ReturnType<typeof createApp>["app"], name: string, args:
   return { isError: body.result.isError === true, text: body.result.content[0]!.text };
 }
 
-test("an upload schedules ideas; the Companion and the Planner read them", async () => {
-  const { app, store, close } = createApp({
-    companionToken: companion,
-    plannerToken: planner,
-    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
-    log: () => {},
-  });
-  const get = () =>
-    app.request("/v1/suggestions", { headers: { authorization: `Bearer ${companion}` } });
-  try {
-    assert.equal((await app.request("/v1/suggestions")).status, 401);
-    const empty = (await (await get()).json()) as Record<string, unknown>;
-    assert.deepEqual(empty, { v: 1, computedAt: 0, characters: {} });
-    assert.equal((await mcp(app, "get_suggestions", {})).isError, true);
-
-    const posted = await app.request("/v1/snapshot", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${companion}`,
-        "content-type": "application/json",
-        "content-encoding": "gzip",
-      },
-      body: gzipSync(Buffer.from(JSON.stringify(withIdeas()))),
+for (const backend of BACKENDS)
+  test(`an upload schedules ideas; the Companion and the Planner read them (${backend})`, async () => {
+    const { app, store, close } = createApp({
+      companionToken: companion,
+      plannerToken: planner,
+      dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
+      log: () => {},
+      database: pg(backend),
     });
-    assert.equal(posted.status, 200, await posted.clone().text());
-    const { account } = (await posted.json()) as { account: string };
-    assert.equal(store.suggestions.pending(account), true, "debounced, not run inline");
-    assert.equal(store.suggestions.computeAccount(account, NOW), 1);
-
-    // Computation and both readers must agree on the fixture's clock. Real
-    // time would eventually expire this holiday while leaving the rare idea.
-    const clock = vi.spyOn(Date, "now").mockReturnValue(NOW * 1000);
+    const get = () =>
+      app.request("/v1/suggestions", { headers: { authorization: `Bearer ${companion}` } });
     try {
-      const body = await (await get()).json();
-      const parsed = suggestionsBodySchema.safeParse(body);
-      assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
-      const list = parsed.data!.characters[`${snapshot.realm}-${snapshot.character}`];
-      assert.ok(list?.some((item) => item.id === "rare:rare-huolon"));
-      assert.ok(list?.some((item) => item.kind === "event"));
+      assert.equal((await app.request("/v1/suggestions")).status, 401);
+      const empty = (await (await get()).json()) as Record<string, unknown>;
+      assert.deepEqual(empty, { v: 1, computedAt: 0, characters: {} });
+      assert.equal((await mcp(app, "get_suggestions", {})).isError, true);
 
-      const tool = await mcp(app, "get_suggestions", { account });
-      assert.equal(tool.isError, false, tool.text);
-      const read = JSON.parse(tool.text) as {
-        characters: { character: string; list: unknown[] }[];
-      };
-      assert.equal(read.characters[0]?.character, snapshot.character);
-      assert.equal(read.characters[0]?.list.length, list?.length);
+      const posted = await app.request("/v1/snapshot", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${companion}`,
+          "content-type": "application/json",
+          "content-encoding": "gzip",
+        },
+        body: gzipSync(Buffer.from(JSON.stringify(withIdeas()))),
+      });
+      assert.equal(posted.status, 200, await posted.clone().text());
+      const { account } = (await posted.json()) as { account: string };
+      assert.equal(store.suggestions.pending(account), true, "debounced, not run inline");
+      assert.equal(await store.suggestions.computeAccount(account, NOW), 1);
 
-      clock.mockReturnValue(Date.UTC(2026, 10, 1, 11, 0) /* holiday ends */);
-      const expired = suggestionsBodySchema.parse(await (await get()).json());
-      const remaining = expired.characters[`${snapshot.realm}-${snapshot.character}`];
-      assert.ok(remaining?.some((item) => item.id === "rare:rare-huolon"));
-      assert.ok(!remaining?.some((item) => item.kind === "event"));
-      const expiredTool = await mcp(app, "get_suggestions", { account });
-      assert.equal(expiredTool.isError, false, expiredTool.text);
-      const afterExpiry = JSON.parse(expiredTool.text) as {
-        characters: { list: { kind: string }[] }[];
-      };
-      assert.ok(!afterExpiry.characters[0]?.list.some((item) => item.kind === "event"));
+      // Computation and both readers must agree on the fixture's clock. Real
+      // time would eventually expire this holiday while leaving the rare idea.
+      const clock = vi.spyOn(Date, "now").mockReturnValue(NOW * 1000);
+      try {
+        const body = await (await get()).json();
+        const parsed = suggestionsBodySchema.safeParse(body);
+        assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+        const list = parsed.data!.characters[`${snapshot.realm}-${snapshot.character}`];
+        assert.ok(list?.some((item) => item.id === "rare:rare-huolon"));
+        assert.ok(list?.some((item) => item.kind === "event"));
+
+        const tool = await mcp(app, "get_suggestions", { account });
+        assert.equal(tool.isError, false, tool.text);
+        const read = JSON.parse(tool.text) as {
+          characters: { character: string; list: unknown[] }[];
+        };
+        assert.equal(read.characters[0]?.character, snapshot.character);
+        assert.equal(read.characters[0]?.list.length, list?.length);
+
+        clock.mockReturnValue(Date.UTC(2026, 10, 1, 11, 0) /* holiday ends */);
+        const expired = suggestionsBodySchema.parse(await (await get()).json());
+        const remaining = expired.characters[`${snapshot.realm}-${snapshot.character}`];
+        assert.ok(remaining?.some((item) => item.id === "rare:rare-huolon"));
+        assert.ok(!remaining?.some((item) => item.kind === "event"));
+        const expiredTool = await mcp(app, "get_suggestions", { account });
+        assert.equal(expiredTool.isError, false, expiredTool.text);
+        const afterExpiry = JSON.parse(expiredTool.text) as {
+          characters: { list: { kind: string }[] }[];
+        };
+        assert.ok(!afterExpiry.characters[0]?.list.some((item) => item.kind === "event"));
+      } finally {
+        clock.mockRestore();
+      }
     } finally {
-      clock.mockRestore();
+      close();
     }
-  } finally {
-    close();
-  }
-});
+  });
 
 test("a Request from a picked idea keeps its id and a copy of it", async () => {
   const { app, close } = createApp({
@@ -458,60 +463,62 @@ test("Russian counts agree with the number", () => {
   assert.equal(ends(24 * 21), "Закончится через 21 день");
 });
 
-test("the Server writes ideas in the char Section's language, else the last Request's", async () => {
-  const { app, store, close } = createApp({
-    companionToken: companion,
-    plannerToken: planner,
-    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
-    log: () => {},
+for (const backend of BACKENDS)
+  test(`the Server writes ideas in the char Section's language, else the last Request's (${backend})`, async () => {
+    const { app, store, close } = createApp({
+      companionToken: companion,
+      plannerToken: planner,
+      dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
+      log: () => {},
+      database: pg(backend),
+    });
+    const upload = (lang?: string) => {
+      const next = withIdeas();
+      const char = next.sections.char!;
+      const body = { ...char.body, ...(lang ? { lang } : {}) };
+      if (!lang) delete (body as Record<string, unknown>).lang;
+      next.sections.char = { ...char, body, hash: sectionHash(body) };
+      return app.request("/v1/snapshot", {
+        method: "POST",
+        headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+        body: JSON.stringify(next),
+      });
+    };
+    const rare = async () => {
+      const body = (await (
+        await app.request("/v1/suggestions", { headers: { authorization: `Bearer ${companion}` } })
+      ).json()) as { characters: Record<string, { id: string; goal: string }[]> };
+      return body.characters[`${snapshot.realm}-${snapshot.character}`]!.find(
+        (item) => item.id === "rare:rare-huolon",
+      )!.goal;
+    };
+    try {
+      const first = (await (await upload()).json()) as { account: string };
+      await store.suggestions.computeAccount(first.account, NOW);
+      assert.match(await rare(), /^Hunt /, "English when nothing says otherwise");
+
+      await app.request("/v1/requests", {
+        method: "POST",
+        headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          id: "req-ru-1",
+          character: snapshot.character,
+          realm: snapshot.realm,
+          type: "question",
+          question: "что делать?",
+          lang: "ru",
+        }),
+      });
+      await store.suggestions.computeAccount(first.account, NOW);
+      assert.match(await rare(), /^Поохоться /, "the last Request was Russian");
+
+      await upload("en");
+      await store.suggestions.computeAccount(first.account, NOW);
+      assert.match(await rare(), /^Hunt /, "the char Section wins over the Request");
+    } finally {
+      close();
+    }
   });
-  const upload = (lang?: string) => {
-    const next = withIdeas();
-    const char = next.sections.char!;
-    const body = { ...char.body, ...(lang ? { lang } : {}) };
-    if (!lang) delete (body as Record<string, unknown>).lang;
-    next.sections.char = { ...char, body, hash: sectionHash(body) };
-    return app.request("/v1/snapshot", {
-      method: "POST",
-      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
-      body: JSON.stringify(next),
-    });
-  };
-  const rare = async () => {
-    const body = (await (
-      await app.request("/v1/suggestions", { headers: { authorization: `Bearer ${companion}` } })
-    ).json()) as { characters: Record<string, { id: string; goal: string }[]> };
-    return body.characters[`${snapshot.realm}-${snapshot.character}`]!.find(
-      (item) => item.id === "rare:rare-huolon",
-    )!.goal;
-  };
-  try {
-    const first = (await (await upload()).json()) as { account: string };
-    store.suggestions.computeAccount(first.account, NOW);
-    assert.match(await rare(), /^Hunt /, "English when nothing says otherwise");
-
-    await app.request("/v1/requests", {
-      method: "POST",
-      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "req-ru-1",
-        character: snapshot.character,
-        realm: snapshot.realm,
-        type: "question",
-        question: "что делать?",
-        lang: "ru",
-      }),
-    });
-    store.suggestions.computeAccount(first.account, NOW);
-    assert.match(await rare(), /^Поохоться /, "the last Request was Russian");
-
-    await upload("en");
-    store.suggestions.computeAccount(first.account, NOW);
-    assert.match(await rare(), /^Hunt /, "the char Section wins over the Request");
-  } finally {
-    close();
-  }
-});
 
 const timewalking = (starts: string, ends: string) => ({
   events: [{ eventID: 559, title: "Timewalking Dungeon Event", kind: "HOLIDAY", starts, ends }],
@@ -638,86 +645,105 @@ test("a chain an alt finished says so", () => {
   assert.deepEqual(chain?.reason, { kind: "altDone", name: "Grubbyman" });
 });
 
-test("a chain with no progress for two weeks reads as dropped", async () => {
-  const { app, store, close } = createApp({
-    companionToken: companion,
-    plannerToken: planner,
-    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-chains-")),
-    log: () => {},
-  });
-  const upload = async (lines: Record<string, unknown>) => {
-    const next = structuredClone(snapshot);
-    next.sections.questLines = { scope: "char", v: 1, body: lines, hash: sectionHash(lines) };
-    const posted = await app.request("/v1/snapshot", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${companion}`,
-        "content-type": "application/json",
-        "content-encoding": "gzip",
-      },
-      body: gzipSync(Buffer.from(JSON.stringify(next))),
+for (const backend of BACKENDS)
+  test(`a chain with no progress for two weeks reads as dropped (${backend})`, async () => {
+    const { app, store, close } = createApp({
+      companionToken: companion,
+      plannerToken: planner,
+      dataDir: mkdtempSync(path.join(tmpdir(), "unbored-chains-")),
+      log: () => {},
+      database: pg(backend),
     });
-    assert.equal(posted.status, 200, await posted.clone().text());
-    return ((await posted.json()) as { account: string }).account;
-  };
-  const chainAt = (account: string, now: number) => {
-    store.suggestions.computeAccount(account, now);
-    const row = store.data.characters(account)[0]!;
-    return store.suggestions.forCharacter(row, now)!.list.find((item) => item.kind === "chain");
-  };
-  try {
-    const account = await upload(chainLine());
-    assert.equal(chainAt(account, NOW)?.reason, undefined);
-    const later = NOW + 15 * 86_400;
-    const stale = chainAt(account, later);
-    assert.equal(stale?.why, "You stopped here 2 weeks ago");
-    assert.deepEqual(stale?.reason, { kind: "stopped", at: NOW });
-    await upload(chainLine({ done: 4 }));
-    assert.equal(chainAt(account, later + 60)?.reason, undefined, "progress restarts the clock");
-  } finally {
-    close();
-  }
-});
-
-test("rare names come from the Blizzard creature cache per language, English otherwise", async () => {
-  const asked: string[] = [];
-  const { store, close } = createApp({
-    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-names-")),
-    log: () => {},
-    companionToken: companion,
-    plannerToken: planner,
-    blizzard: { clientId: "id", clientSecret: "secret", region: "eu" },
-    blizzardFetch: async (url) => {
-      asked.push(url);
-      if (url.startsWith("https://oauth.battle.net/")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ access_token: "t", expires_in: 3600 }),
-        };
-      }
-      if (url.includes("locale=ru_RU")) {
-        return { ok: true, status: 200, json: async () => ({ name: "Хуолон" }) };
-      }
-      return { ok: false, status: 500, json: async () => ({}) };
-    },
+    const upload = async (lines: Record<string, unknown>) => {
+      const next = structuredClone(snapshot);
+      next.sections.questLines = { scope: "char", v: 1, body: lines, hash: sectionHash(lines) };
+      const posted = await app.request("/v1/snapshot", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${companion}`,
+          "content-type": "application/json",
+          "content-encoding": "gzip",
+        },
+        body: gzipSync(Buffer.from(JSON.stringify(next))),
+      });
+      assert.equal(posted.status, 200, await posted.clone().text());
+      return ((await posted.json()) as { account: string }).account;
+    };
+    const chainAt = async (account: string, now: number) => {
+      await store.suggestions.computeAccount(account, now);
+      const row = store.data.characters(account)[0]!;
+      return (await store.suggestions.forCharacter(row, now))!.list.find(
+        (item) => item.kind === "chain",
+      );
+    };
+    try {
+      const account = await upload(chainLine());
+      assert.equal((await chainAt(account, NOW))?.reason, undefined);
+      const later = NOW + 15 * 86_400;
+      const stale = await chainAt(account, later);
+      assert.equal(stale?.why, "You stopped here 2 weeks ago");
+      assert.deepEqual(stale?.reason, { kind: "stopped", at: NOW });
+      await upload(chainLine({ done: 4 }));
+      assert.equal(
+        (await chainAt(account, later + 60))?.reason,
+        undefined,
+        "progress restarts the clock",
+      );
+    } finally {
+      close();
+    }
   });
-  await store.suggestions.names!.warm!([73167], ["en_US", "ru_RU"]);
-  assert.ok(
-    asked.some((url) => url.includes("/data/wow/creature/73167?namespace=static-eu&locale=ru_RU")),
-  );
-  assert.equal(store.creatureNames.get(73167, "ru_RU"), "Хуолон");
-  assert.equal(store.creatureNames.get(73167, "en_US"), undefined, "an error is not cached");
-  const lookup = (lang: "en" | "ru") => (npcID: number) =>
-    store.suggestions.names!.get(npcID, lang === "ru" ? "ru_RU" : "en_US");
-  const ru = suggest(input({ sessions: played(554) }, { lang: "ru", npcName: lookup("ru") }));
-  const rare = ru.find((item) => item.kind === "rare");
-  assert.equal(rare?.title, "Хуолон");
-  assert.equal(rare?.goal, "Поохоться на {npc:73167|Хуолон} рядом с местами, где ты играешь.");
-  const en = suggest(input({ sessions: played(554) }, { npcName: lookup("en") }));
-  assert.equal(en.find((item) => item.kind === "rare")?.title, "Huolon");
-  const calls = asked.length;
-  await store.suggestions.names!.warm!([73167], ["ru_RU"]);
-  assert.equal(asked.length, calls, "a cached name is not asked again");
-  close();
-});
+
+for (const backend of BACKENDS)
+  test(`rare names come from the Blizzard creature cache per language, English otherwise (${backend})`, async () => {
+    const asked: string[] = [];
+    const { store, close } = createApp({
+      dataDir: mkdtempSync(path.join(tmpdir(), "unbored-names-")),
+      log: () => {},
+      database: pg(backend),
+      companionToken: companion,
+      plannerToken: planner,
+      blizzard: { clientId: "id", clientSecret: "secret", region: "eu" },
+      blizzardFetch: async (url) => {
+        asked.push(url);
+        if (url.startsWith("https://oauth.battle.net/")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ access_token: "t", expires_in: 3600 }),
+          };
+        }
+        if (url.includes("locale=ru_RU")) {
+          return { ok: true, status: 200, json: async () => ({ name: "Хуолон" }) };
+        }
+        return { ok: false, status: 500, json: async () => ({}) };
+      },
+    });
+    await store.suggestions.names!.warm!([73167], ["en_US", "ru_RU"]);
+    assert.ok(
+      asked.some((url) =>
+        url.includes("/data/wow/creature/73167?namespace=static-eu&locale=ru_RU"),
+      ),
+    );
+    assert.equal(await store.creatureNames.get(73167, "ru_RU"), "Хуолон");
+    assert.equal(
+      await store.creatureNames.get(73167, "en_US"),
+      undefined,
+      "an error is not cached",
+    );
+    const names = {
+      en: await store.suggestions.names!.many([73167], "en_US"),
+      ru: await store.suggestions.names!.many([73167], "ru_RU"),
+    };
+    const lookup = (lang: "en" | "ru") => (npcID: number) => names[lang].get(npcID);
+    const ru = suggest(input({ sessions: played(554) }, { lang: "ru", npcName: lookup("ru") }));
+    const rare = ru.find((item) => item.kind === "rare");
+    assert.equal(rare?.title, "Хуолон");
+    assert.equal(rare?.goal, "Поохоться на {npc:73167|Хуолон} рядом с местами, где ты играешь.");
+    const en = suggest(input({ sessions: played(554) }, { npcName: lookup("en") }));
+    assert.equal(en.find((item) => item.kind === "rare")?.title, "Huolon");
+    const calls = asked.length;
+    await store.suggestions.names!.warm!([73167], ["ru_RU"]);
+    assert.equal(asked.length, calls, "a cached name is not asked again");
+    close();
+  });

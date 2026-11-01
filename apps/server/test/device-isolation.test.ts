@@ -183,7 +183,7 @@ test("existing Request Plans retain their ownership across migration and restart
         assert.equal(store.latestPlanForDevice("audit-device-1"), undefined);
         assert.ok(store.latestPlanForDevice("audit-device-0"));
         if (i === 1) {
-          assert.equal(store.forgetDevice("audit-device-0").plans, 2);
+          assert.equal((await store.forgetDevice("audit-device-0")).plans, 2);
           assert.equal(store.listPlans(10).length, 0);
         }
       } finally {

@@ -568,9 +568,9 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     async (who) => {
       const rows = pickCharacters(who);
       if (rows.length === 0) return failure(new Error("No game data for that Character yet."));
-      const characters = rows
-        .map((row) => store.suggestions.forCharacter(row))
-        .filter((entry) => entry !== undefined);
+      const characters = (
+        await Promise.all(rows.map((row) => store.suggestions.forCharacter(row)))
+      ).filter((entry) => entry !== undefined);
       if (characters.length === 0)
         return failure(
           new Error("No ideas yet: they are made after the next upload from the Companion."),
@@ -709,7 +709,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     },
     async ({ account, requests }) => {
       try {
-        return text(store.deleteAccountData(account, { requests: requests !== false }));
+        return text(await store.deleteAccountData(account, { requests: requests !== false }));
       } catch (error) {
         return failure(error);
       }

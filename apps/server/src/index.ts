@@ -2,21 +2,21 @@ import { serve } from "@hono/node-server";
 
 import { createApp } from "./app.ts";
 import { configFromEnv } from "./config.ts";
-import { connectPostgres, ensurePartitions, migrate } from "./postgres.ts";
+import { connectPostgres, ensurePartitions, migrate, type Sql } from "./postgres.ts";
 
 const config = configFromEnv();
+let database: Sql | undefined;
 if (config.databaseUrl) {
-  // ADR 0057 rollout step 1: the schema is made and kept current, but every
-  // table is still read and written in SQLite until the storage modules move.
-  const sql = connectPostgres(config.databaseUrl, { max: config.databasePoolMax });
-  const applied = await migrate(sql);
-  await ensurePartitions(sql);
+  // ADR 0057 rollout step 2: the game id and creature name caches and the
+  // Suggestions are in Postgres; every other table stays in SQLite until step 3.
+  database = connectPostgres(config.databaseUrl, { max: config.databasePoolMax });
+  const applied = await migrate(database);
+  await ensurePartitions(database);
   console.log(
-    `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); storage stays on SQLite`,
+    `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); id cache, creature names and Suggestions on Postgres, the rest on SQLite`,
   );
-  await sql.end();
 }
-const { app, webhook } = createApp(config);
+const { app, webhook } = createApp({ ...config, database });
 webhook.start();
 
 serve({ fetch: app.fetch, hostname: "0.0.0.0", port: config.port }, (info) => {

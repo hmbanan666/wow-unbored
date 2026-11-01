@@ -92,7 +92,7 @@ test("an errors upload becomes one addon_errors row per hash; count is the most 
   }
 });
 
-test("bad rows are skipped and Forget my data erases the error reports", () => {
+test("bad rows are skipped and Forget my data erases the error reports", async () => {
   const store = makeStore();
   try {
     store.putSnapshot(
@@ -103,7 +103,7 @@ test("bad rows are skipped and Forget my data erases the error reports", () => {
       NOW,
     );
     assert.equal(store.listErrors({ limit: 50 }).length, 1);
-    const erased = store.deleteAccountData(ACCOUNT);
+    const erased = await store.deleteAccountData(ACCOUNT);
     assert.equal(erased.errors, 1);
     assert.equal(store.listErrors({ limit: 50 }).length, 0);
   } finally {

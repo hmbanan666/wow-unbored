@@ -1,5 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
+import type { Sql } from "./postgres.ts";
+
 export type GameDataFetch = (
   url: string,
   init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
@@ -32,7 +34,35 @@ export function blizzardFromEnv(env: NodeJS.ProcessEnv = process.env): BlizzardC
   return { clientId, clientSecret, region: /^(us|eu|kr|tw)$/.test(region) ? region : "us" };
 }
 
-export class IdCache {
+type IdRow = { found: number; checked_at: number };
+type NameRow = { name: string | null; checked_at: number };
+
+function idVerdict(row: IdRow | undefined, now: number): boolean | undefined {
+  if (!row) return undefined;
+  const ttl = row.found ? FOUND_TTL : MISSING_TTL;
+  return now - row.checked_at < ttl ? row.found === 1 : undefined;
+}
+
+/** Which `type:id` exist (ADR 0034): SQLite by default, Postgres with DATABASE_URL (ADR 0057). */
+export interface IdCache {
+  get(kind: string, id: number, now: number): Promise<boolean | undefined>;
+  put(kind: string, id: number, found: boolean, now: number): Promise<void>;
+}
+
+/** Creature names per locale (D154), in the same database as the id check. */
+export interface NameCache {
+  /** The cached row, fresh or not; name is null for a creature Blizzard does not know. */
+  entry(
+    npcID: number,
+    locale: string,
+  ): Promise<{ name: string | null; checkedAt: number } | undefined>;
+  get(npcID: number, locale: string): Promise<string | undefined>;
+  /** The known names of these creatures in one locale. */
+  many(npcIDs: number[], locale: string): Promise<Map<number, string>>;
+  put(npcID: number, locale: string, name: string | null, now: number): Promise<void>;
+}
+
+export class SqliteIdCache implements IdCache {
   private db: DatabaseSync;
 
   constructor(db: DatabaseSync) {
@@ -48,16 +78,14 @@ export class IdCache {
     `);
   }
 
-  get(kind: string, id: number, now: number): boolean | undefined {
+  async get(kind: string, id: number, now: number): Promise<boolean | undefined> {
     const row = this.db
       .prepare(`SELECT found, checked_at FROM game_ids WHERE kind = ? AND id = ?`)
-      .get(kind, id) as { found: number; checked_at: number } | undefined;
-    if (!row) return undefined;
-    const ttl = row.found ? FOUND_TTL : MISSING_TTL;
-    return now - row.checked_at < ttl ? row.found === 1 : undefined;
+      .get(kind, id) as IdRow | undefined;
+    return idVerdict(row, now);
   }
 
-  put(kind: string, id: number, found: boolean, now: number): void {
+  async put(kind: string, id: number, found: boolean, now: number): Promise<void> {
     this.db
       .prepare(
         `INSERT INTO game_ids (kind, id, found, checked_at) VALUES (?, ?, ?, ?)
@@ -67,8 +95,27 @@ export class IdCache {
   }
 }
 
-/** Creature names per locale (D154), in the same database as the id check. */
-export class NameCache {
+export class PostgresIdCache implements IdCache {
+  private sql: Sql;
+
+  constructor(sql: Sql) {
+    this.sql = sql;
+  }
+
+  async get(kind: string, id: number, now: number): Promise<boolean | undefined> {
+    const [row] = await this.sql<IdRow[]>`
+      SELECT found, checked_at FROM game_ids WHERE kind = ${kind} AND id = ${id}`;
+    return idVerdict(row, now);
+  }
+
+  async put(kind: string, id: number, found: boolean, now: number): Promise<void> {
+    await this.sql`
+      INSERT INTO game_ids (kind, id, found, checked_at) VALUES (${kind}, ${id}, ${found ? 1 : 0}, ${now})
+      ON CONFLICT (kind, id) DO UPDATE SET found = excluded.found, checked_at = excluded.checked_at`;
+  }
+}
+
+export class SqliteNameCache implements NameCache {
   private db: DatabaseSync;
 
   constructor(db: DatabaseSync) {
@@ -84,25 +131,69 @@ export class NameCache {
     `);
   }
 
-  /** The cached row, fresh or not; name is null for a creature Blizzard does not know. */
-  entry(npcID: number, locale: string): { name: string | null; checkedAt: number } | undefined {
+  async entry(npcID: number, locale: string) {
     const row = this.db
       .prepare(`SELECT name, checked_at FROM creature_names WHERE npc_id = ? AND locale = ?`)
-      .get(npcID, locale) as { name: string | null; checked_at: number } | undefined;
+      .get(npcID, locale) as NameRow | undefined;
     return row ? { name: row.name, checkedAt: row.checked_at } : undefined;
   }
 
-  get(npcID: number, locale: string): string | undefined {
-    return this.entry(npcID, locale)?.name ?? undefined;
+  async get(npcID: number, locale: string): Promise<string | undefined> {
+    return (await this.entry(npcID, locale))?.name ?? undefined;
   }
 
-  put(npcID: number, locale: string, name: string | null, now: number): void {
+  async many(npcIDs: number[], locale: string): Promise<Map<number, string>> {
+    const out = new Map<number, string>();
+    const read = this.db.prepare(
+      `SELECT name FROM creature_names WHERE npc_id = ? AND locale = ? AND name IS NOT NULL`,
+    );
+    for (const npcID of new Set(npcIDs)) {
+      const row = read.get(npcID, locale) as { name: string } | undefined;
+      if (row) out.set(npcID, row.name);
+    }
+    return out;
+  }
+
+  async put(npcID: number, locale: string, name: string | null, now: number): Promise<void> {
     this.db
       .prepare(
         `INSERT INTO creature_names (npc_id, locale, name, checked_at) VALUES (?, ?, ?, ?)
          ON CONFLICT (npc_id, locale) DO UPDATE SET name = excluded.name, checked_at = excluded.checked_at`,
       )
       .run(npcID, locale, name, now);
+  }
+}
+
+export class PostgresNameCache implements NameCache {
+  private sql: Sql;
+
+  constructor(sql: Sql) {
+    this.sql = sql;
+  }
+
+  async entry(npcID: number, locale: string) {
+    const [row] = await this.sql<NameRow[]>`
+      SELECT name, checked_at FROM creature_names WHERE npc_id = ${npcID} AND locale = ${locale}`;
+    return row ? { name: row.name, checkedAt: row.checked_at } : undefined;
+  }
+
+  async get(npcID: number, locale: string): Promise<string | undefined> {
+    return (await this.entry(npcID, locale))?.name ?? undefined;
+  }
+
+  async many(npcIDs: number[], locale: string): Promise<Map<number, string>> {
+    const ids = [...new Set(npcIDs)];
+    if (ids.length === 0) return new Map();
+    const rows = await this.sql<{ npc_id: number; name: string }[]>`
+      SELECT npc_id, name FROM creature_names
+      WHERE locale = ${locale} AND name IS NOT NULL AND npc_id = ANY(${ids}::integer[])`;
+    return new Map(rows.map((row) => [row.npc_id, row.name]));
+  }
+
+  async put(npcID: number, locale: string, name: string | null, now: number): Promise<void> {
+    await this.sql`
+      INSERT INTO creature_names (npc_id, locale, name, checked_at) VALUES (${npcID}, ${locale}, ${name}, ${now})
+      ON CONFLICT (npc_id, locale) DO UPDATE SET name = excluded.name, checked_at = excluded.checked_at`;
   }
 }
 
@@ -151,7 +242,7 @@ export class BlizzardIds {
       const [kind, text] = key.split(":");
       const id = Number(text);
       if (!DOCUMENTS[kind] || !Number.isInteger(id)) continue;
-      const cached = this.cache.get(kind, id, now);
+      const cached = await this.cache.get(kind, id, now);
       if (cached === false) out.add(key);
       if (cached === undefined && ask.length < MAX_LOOKUPS) ask.push({ key, kind, id });
     }
@@ -162,7 +253,7 @@ export class BlizzardIds {
       ask.map(async ({ key, kind, id }) => {
         const found = await this.lookup(token, kind, id);
         if (found === undefined) return;
-        this.cache.put(kind, id, found, now);
+        await this.cache.put(kind, id, found, now);
         if (!found) out.add(key);
       }),
     );
@@ -179,7 +270,7 @@ export class BlizzardIds {
     const ask: { npcID: number; locale: string }[] = [];
     for (const npcID of new Set(npcIDs)) {
       for (const locale of locales) {
-        const entry = names.entry(npcID, locale);
+        const entry = await names.entry(npcID, locale);
         const ttl = entry?.name ? FOUND_TTL : MISSING_TTL;
         if ((!entry || now - entry.checkedAt >= ttl) && ask.length < MAX_LOOKUPS) {
           ask.push({ npcID, locale });
@@ -192,7 +283,7 @@ export class BlizzardIds {
     await Promise.all(
       ask.map(async ({ npcID, locale }) => {
         const result = await this.creature(token, npcID, locale);
-        if (result !== undefined) names.put(npcID, locale, result, now);
+        if (result !== undefined) await names.put(npcID, locale, result, now);
       }),
     );
   }

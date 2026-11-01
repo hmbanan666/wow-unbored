@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 
+import type { Sql } from "./postgres.ts";
+
 import {
   unpackIds,
   type Suggestion,
@@ -669,26 +671,45 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
 
 export const SUGGEST_DEBOUNCE_MS = 30_000;
 
-/** Cached Suggestions per Character, recomputed after uploads (debounced per Account). */
 /** Creature names per locale, filled from the Blizzard Game Data API (blizzard.ts). */
 export type NameLookup = {
-  get(npcID: number, locale: string): string | undefined;
+  /** The known names of these creatures in one locale. */
+  many(npcIDs: number[], locale: string): Promise<Map<number, string>>;
   /** Fetches the names not cached yet; resolves when done or off. */
   warm?(npcIDs: number[], locales: string[]): Promise<void>;
 };
 
 export const LOCALE_FOR: Record<IdeaLang, string> = { en: "en_US", ru: "ru_RU" };
 
-export class SuggestionStore {
-  private db: DatabaseSync;
-  private data: DataStore;
-  private timers = new Map<string, ReturnType<typeof setTimeout>>();
-  names: NameLookup | undefined;
+type ChainRow = { quest_line_id: number; done: number; changed_at: number };
 
-  constructor(db: DatabaseSync, data: DataStore, names?: NameLookup) {
+/**
+ * Where Suggestions and chain progress live (ADR 0057): the Store's SQLite
+ * database by default, Postgres with DATABASE_URL. `local` means the same
+ * SQLite database as the Store, so Forget can erase them in its own transaction.
+ */
+export interface SuggestionTables {
+  readonly local: boolean;
+  chains(characterId: string): Promise<Map<number, { done: number; changedAt: number }>>;
+  putChain(characterId: string, questLineId: number, done: number, at: number): Promise<void>;
+  save(ownerId: string, characterId: string, computedAt: number, list: Suggestion[]): Promise<void>;
+  read(characterId: string): Promise<{ computedAt: number; list: Suggestion[] } | undefined>;
+  deleteOwner(ownerId: string): Promise<number>;
+  renameOwner(from: string, to: string): Promise<void>;
+}
+
+function chainMap(rows: ChainRow[]) {
+  return new Map(
+    rows.map((row) => [row.quest_line_id, { done: row.done, changedAt: row.changed_at }]),
+  );
+}
+
+export class SqliteSuggestionTables implements SuggestionTables {
+  readonly local = true;
+  private db: DatabaseSync;
+
+  constructor(db: DatabaseSync) {
     this.db = db;
-    this.data = data;
-    this.names = names;
     db.exec(`
       CREATE TABLE IF NOT EXISTS chain_progress (
         character_id TEXT NOT NULL,
@@ -707,6 +728,119 @@ export class SuggestionStore {
     `);
   }
 
+  async chains(characterId: string) {
+    const rows = this.db
+      .prepare(`SELECT quest_line_id, done, changed_at FROM chain_progress WHERE character_id = ?`)
+      .all(characterId) as ChainRow[];
+    return chainMap(rows);
+  }
+
+  async putChain(characterId: string, questLineId: number, done: number, at: number) {
+    this.db
+      .prepare(
+        `INSERT INTO chain_progress (character_id, quest_line_id, done, changed_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (character_id, quest_line_id) DO UPDATE SET done = excluded.done,
+           changed_at = excluded.changed_at`,
+      )
+      .run(characterId, questLineId, done, at);
+  }
+
+  async save(ownerId: string, characterId: string, computedAt: number, list: Suggestion[]) {
+    this.db
+      .prepare(
+        `INSERT INTO suggestions (owner_id, character_id, computed_at, body_json) VALUES (?, ?, ?, ?)
+         ON CONFLICT (character_id) DO UPDATE SET owner_id = excluded.owner_id,
+           computed_at = excluded.computed_at, body_json = excluded.body_json`,
+      )
+      .run(ownerId, characterId, computedAt, JSON.stringify(list));
+  }
+
+  async read(characterId: string) {
+    const stored = this.db
+      .prepare(`SELECT computed_at, body_json FROM suggestions WHERE character_id = ?`)
+      .get(characterId) as { computed_at: number; body_json: string } | undefined;
+    return stored
+      ? { computedAt: stored.computed_at, list: JSON.parse(stored.body_json) as Suggestion[] }
+      : undefined;
+  }
+
+  async deleteOwner(ownerId: string) {
+    return Number(
+      this.db.prepare(`DELETE FROM suggestions WHERE owner_id = ?`).run(ownerId).changes,
+    );
+  }
+
+  async renameOwner(from: string, to: string) {
+    this.db.prepare(`UPDATE suggestions SET owner_id = ? WHERE owner_id = ?`).run(to, from);
+  }
+}
+
+export class PostgresSuggestionTables implements SuggestionTables {
+  readonly local = false;
+  private sql: Sql;
+
+  constructor(sql: Sql) {
+    this.sql = sql;
+  }
+
+  async chains(characterId: string) {
+    return chainMap(
+      await this.sql<ChainRow[]>`
+        SELECT quest_line_id, done, changed_at FROM chain_progress
+        WHERE character_id = ${characterId}`,
+    );
+  }
+
+  async putChain(characterId: string, questLineId: number, done: number, at: number) {
+    await this.sql`
+      INSERT INTO chain_progress (character_id, quest_line_id, done, changed_at)
+      VALUES (${characterId}, ${questLineId}, ${done}, ${at})
+      ON CONFLICT (character_id, quest_line_id) DO UPDATE SET done = excluded.done,
+        changed_at = excluded.changed_at`;
+  }
+
+  async save(ownerId: string, characterId: string, computedAt: number, list: Suggestion[]) {
+    await this.sql`
+      INSERT INTO suggestions (owner_id, character_id, computed_at, body)
+      VALUES (${ownerId}, ${characterId}, ${computedAt}, ${this.sql.json(list as never)})
+      ON CONFLICT (character_id) DO UPDATE SET owner_id = excluded.owner_id,
+        computed_at = excluded.computed_at, body = excluded.body`;
+  }
+
+  async read(characterId: string) {
+    const [stored] = await this.sql<{ computed_at: number; body: Suggestion[] }[]>`
+      SELECT computed_at, body FROM suggestions WHERE character_id = ${characterId}`;
+    return stored ? { computedAt: stored.computed_at, list: stored.body } : undefined;
+  }
+
+  async deleteOwner(ownerId: string) {
+    return (await this.sql`DELETE FROM suggestions WHERE owner_id = ${ownerId}`).count;
+  }
+
+  async renameOwner(from: string, to: string) {
+    await this.sql`UPDATE suggestions SET owner_id = ${to} WHERE owner_id = ${from}`;
+  }
+}
+
+/** Cached Suggestions per Character, recomputed after uploads (debounced per Account). */
+export class SuggestionStore {
+  private db: DatabaseSync;
+  private data: DataStore;
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly tables: SuggestionTables;
+  names: NameLookup | undefined;
+
+  /**
+   * `db` is the Store's SQLite database: Requests and progress for the taste
+   * bonus and the last Request's language stay there until rollout step 3.
+   */
+  constructor(db: DatabaseSync, data: DataStore, names?: NameLookup, tables?: SuggestionTables) {
+    this.db = db;
+    this.data = data;
+    this.names = names;
+    this.tables = tables ?? new SqliteSuggestionTables(db);
+  }
+
   /** After a snapshot: recompute the Account once uploads have settled for 30 s. */
   schedule(account: string, delayMs = SUGGEST_DEBOUNCE_MS): void {
     const pending = this.timers.get(account);
@@ -719,13 +853,9 @@ export class SuggestionStore {
       const warm = this.names?.warm?.(npcIDs, Object.values(LOCALE_FOR)) ?? Promise.resolve();
       void warm
         .catch(() => undefined)
-        .then(() => {
-          try {
-            this.computeAccount(account);
-          } catch {
-            // A bad Section must not take the Server down; the next upload tries again.
-          }
-        });
+        .then(() => this.computeAccount(account))
+        // A bad Section must not take the Server down; the next upload tries again.
+        .catch(() => undefined);
     }, delayMs);
     timer.unref?.();
     this.timers.set(account, timer);
@@ -740,21 +870,28 @@ export class SuggestionStore {
     this.timers.clear();
   }
 
-  computeAccount(account: string, now = Math.floor(Date.now() / 1000)): number {
+  async computeAccount(account: string, now = Math.floor(Date.now() / 1000)): Promise<number> {
     const characters = this.data.characters(account);
     const quests = new Map(
       characters.map((row) => [row.id, ids(this.data.section("char", row.id, "questsDone"))]),
     );
-    const save = this.db.prepare(
-      `INSERT INTO suggestions (owner_id, character_id, computed_at, body_json) VALUES (?, ?, ?, ?)
-       ON CONFLICT (character_id) DO UPDATE SET owner_id = excluded.owner_id,
-         computed_at = excluded.computed_at, body_json = excluded.body_json`,
-    );
     const taste = this.taste(account, characters, now);
+    const rares = loadCatalog()
+      .rares.map((row) => row.npcID)
+      .filter((id): id is number => id !== undefined);
+    const names = new Map<IdeaLang, Promise<Map<number, string>>>();
+    const namesIn = (lang: IdeaLang) => {
+      if (!names.has(lang)) {
+        names.set(lang, this.names?.many(rares, LOCALE_FOR[lang]) ?? Promise.resolve(new Map()));
+      }
+      return names.get(lang)!;
+    };
     for (const row of characters) {
       const sections = this.data.sectionsFor(row);
       const lang = ideaLang(sections.get("char")?.body.lang) ?? this.lastRequestLang(row) ?? "en";
       const others = characters.filter((other) => other.id !== row.id);
+      const chainSince = await this.chainSince(row.id, sections.get("questLines")?.body.lines, now);
+      const npcNames = await namesIn(lang);
       const list = suggest({
         now,
         sections,
@@ -762,11 +899,11 @@ export class SuggestionStore {
         altQuests: others.map((other) => quests.get(other.id)!),
         alts: others.map((other) => ({ name: other.name, quests: quests.get(other.id)! })),
         characters: characters.length,
-        chainSince: this.chainSince(row.id, sections.get("questLines")?.body.lines, now),
-        npcName: (npcID) => this.names?.get(npcID, LOCALE_FOR[lang]),
+        chainSince,
+        npcName: (npcID) => npcNames.get(npcID),
         taste,
       });
-      save.run(row.accountId, row.id, now, JSON.stringify(list));
+      await this.tables.save(row.accountId, row.id, now, list);
     }
     return characters.length;
   }
@@ -775,27 +912,25 @@ export class SuggestionStore {
    * When each chain last moved on this Character: a new done count restarts the
    * clock, so a chain untouched for 14 days reads as dropped (D137).
    */
-  private chainSince(characterId: string, lines: unknown, now: number): Map<number, number> {
+  private async chainSince(
+    characterId: string,
+    lines: unknown,
+    now: number,
+  ): Promise<Map<number, number>> {
     const out = new Map<number, number>();
     if (!Array.isArray(lines)) return out;
-    const read = this.db.prepare(
-      `SELECT done, changed_at FROM chain_progress WHERE character_id = ? AND quest_line_id = ?`,
-    );
-    const save = this.db.prepare(
-      `INSERT INTO chain_progress (character_id, quest_line_id, done, changed_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (character_id, quest_line_id) DO UPDATE SET done = excluded.done,
-         changed_at = excluded.changed_at`,
-    );
+    const stored = await this.tables.chains(characterId);
     for (const line of lines as Record<string, unknown>[]) {
       const id = Number(line?.questLineID);
       const done = Number(line?.done);
       if (!Number.isInteger(id) || !Number.isInteger(done)) continue;
-      const stored = read.get(characterId, id) as { done: number; changed_at: number } | undefined;
-      if (!stored || stored.done !== done) {
-        save.run(characterId, id, done, now);
+      const known = stored.get(id);
+      if (!known || known.done !== done) {
+        await this.tables.putChain(characterId, id, done, now);
+        stored.set(id, { done, changedAt: now });
         out.set(id, now);
       } else {
-        out.set(id, stored.changed_at);
+        out.set(id, known.changedAt);
       }
     }
     return out;
@@ -825,23 +960,19 @@ export class SuggestionStore {
     }
   }
 
-  forCharacter(row: CharacterRow, now = Math.floor(Date.now() / 1000)) {
-    const stored = this.db
-      .prepare(`SELECT computed_at, body_json FROM suggestions WHERE character_id = ?`)
-      .get(row.id) as { computed_at: number; body_json: string } | undefined;
+  async forCharacter(row: CharacterRow, now = Math.floor(Date.now() / 1000)) {
+    const stored = await this.tables.read(row.id);
     if (!stored) return undefined;
-    const list = (JSON.parse(stored.body_json) as Suggestion[]).filter(
-      (item) => item.expiresAt === undefined || item.expiresAt > now,
-    );
-    return { character: row.name, realm: row.realm, computedAt: stored.computed_at, list };
+    const list = stored.list.filter((item) => item.expiresAt === undefined || item.expiresAt > now);
+    return { character: row.name, realm: row.realm, computedAt: stored.computedAt, list };
   }
 
   /** `{ v = 1, computedAt, characters = { ["Realm-Name"] = list } }` (D106). */
-  body(rows: CharacterRow[], now = Math.floor(Date.now() / 1000)): SuggestionsBody {
+  async body(rows: CharacterRow[], now = Math.floor(Date.now() / 1000)): Promise<SuggestionsBody> {
     const characters: Record<string, Suggestion[]> = {};
     let computedAt = 0;
     for (const row of rows) {
-      const entry = this.forCharacter(row, now);
+      const entry = await this.forCharacter(row, now);
       if (!entry) continue;
       characters[`${row.realm}-${row.name}`] = entry.list;
       computedAt = Math.max(computedAt, entry.computedAt);
