@@ -18,13 +18,13 @@ function titleOf(raw: unknown, wish?: string) {
   return { title, warnings };
 }
 
-test("the D94 good titles pass without a warning", () => {
+test("the D94 good titles pass without a warning", async () => {
   for (const good of ["Badges for a Timereaver", "Hallow's End in one evening"]) {
     assert.deepEqual(titleOf(good), { title: good, warnings: [] }, good);
   }
 });
 
-test("the D94 bad titles get warnings and stay usable", () => {
+test("the D94 bad titles get warnings and stay usable", async () => {
   const facts = titleOf("Warlords Timewalking: you have 3200 currency");
   const title = facts.title ?? "";
   assert.ok(title.length > 0 && [...title].length <= 40, title);
@@ -37,7 +37,7 @@ test("the D94 bad titles get warnings and stay usable", () => {
   assert.ok(technical.warnings.some((line) => line.includes('starts with "plan"')));
 });
 
-test("a title is cut at a word, made plain, and checked against the wish", () => {
+test("a title is cut at a word, made plain, and checked against the wish", async () => {
   const long = titleOf("A very long title about collecting every single mount in the world");
   assert.equal(long.title, "A very long title about collecting every");
   const tokens = titleOf("Get {mount:183|Ashes of Al'ar}");
@@ -52,7 +52,7 @@ test("a title is cut at a word, made plain, and checked against the wish", () =>
   assert.throws(() => cleanTitle(5), PlanError);
 });
 
-test("the 0.8 plan fixture keeps every card field, and survives UNB1", () => {
+test("the 0.8 plan fixture keeps every card field, and survives UNB1", async () => {
   const raw = fixture("plan-card.json");
   assert.equal(planSchema.safeParse(raw).success, true);
   const warnings: string[] = [];
@@ -75,7 +75,7 @@ test("the 0.8 plan fixture keeps every card field, and survives UNB1", () => {
   assert.ok(planMarkupIds(raw).includes("mount:183") && planMarkupIds(raw).includes("zone:109"));
 });
 
-test("a 0.7 plan has no card fields and only the title warning", () => {
+test("a 0.7 plan has no card fields and only the title warning", async () => {
   const warnings: string[] = [];
   const plan = cleanPlan(fixture("plan.json"), 1, { warnings });
   assert.equal(plan.title, undefined);
@@ -84,7 +84,7 @@ test("a 0.7 plan has no card fields and only the title warning", () => {
   assert.ok(warnings[0].startsWith("Plan title:"));
 });
 
-test("card texts are kept short, rewards are single tokens, conditions are checked", () => {
+test("card texts are kept short, rewards are single tokens, conditions are checked", async () => {
   const warnings: string[] = [];
   const plan = cleanPlan(
     {

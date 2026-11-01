@@ -15,11 +15,24 @@ const epochSeconds = {
   parse: (value: string) => Number(value),
 };
 
+/**
+ * json/jsonb parameters: the storage layer (db.ts) sends JSON as the text
+ * `JSON.stringify` made, so it goes to the server as is. The default would
+ * stringify it again and store a jsonb string instead of the object. Other
+ * values (an object from a tagged template) are stringified once.
+ */
+const jsonText = {
+  to: 3802,
+  from: [114, 3802],
+  serialize: (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value)),
+  parse: (value: string) => JSON.parse(value) as unknown,
+};
+
 export function connectPostgres(url: string, options: { max?: number } = {}) {
   return postgres(url, {
     max: options.max ?? 10,
     onnotice: () => {},
-    types: { bigint: epochSeconds },
+    types: { bigint: epochSeconds, jsonText },
     // The request path never waits on one statement for more than 5 s.
     connection: { statement_timeout: 5000, application_name: "unbored-server" },
   });

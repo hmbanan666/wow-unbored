@@ -7,13 +7,13 @@ import { connectPostgres, ensurePartitions, migrate, type Sql } from "./postgres
 const config = configFromEnv();
 let database: Sql | undefined;
 if (config.databaseUrl) {
-  // ADR 0057 rollout step 2: the game id and creature name caches and the
-  // Suggestions are in Postgres; every other table stays in SQLite until step 3.
+  // ADR 0057: with DATABASE_URL every table is in Postgres; the SQLite file
+  // in UNBORED_DATA_DIR is not opened (it stays as the rollback snapshot).
   database = connectPostgres(config.databaseUrl, { max: config.databasePoolMax });
   const applied = await migrate(database);
   await ensurePartitions(database);
   console.log(
-    `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); id cache, creature names and Suggestions on Postgres, the rest on SQLite`,
+    `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); every table on Postgres, the SQLite file untouched`,
   );
 }
 const { app, webhook } = createApp({ ...config, database });

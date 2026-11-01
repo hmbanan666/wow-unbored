@@ -13,20 +13,20 @@ import { hasPostgres, testDatabase } from "./postgres-db.ts";
 const tokens = { UNBORED_COMPANION_TOKEN: "c", UNBORED_PLANNER_TOKEN: "p" };
 const pg = test.skipIf(!hasPostgres);
 
-test("the Server workflow runs the Postgres tests", () => {
+test("the Server workflow runs the Postgres tests", async () => {
   if (process.env.UNBORED_REQUIRE_POSTGRES === "1") {
     assert.ok(hasPostgres, "UNBORED_TEST_DATABASE_URL must be set");
   }
 });
 
-test("without DATABASE_URL the Server stays on SQLite", () => {
+test("without DATABASE_URL the Server stays on SQLite", async () => {
   const config = configFromEnv(tokens);
   assert.equal(config.databaseUrl, undefined);
   assert.equal(config.databasePoolMax, 10);
   assert.equal(configFromEnv({ ...tokens, DATABASE_URL: "  " }).databaseUrl, undefined);
 });
 
-test("DATABASE_URL and DATABASE_POOL_MAX are read and checked", () => {
+test("DATABASE_URL and DATABASE_POOL_MAX are read and checked", async () => {
   const config = configFromEnv({
     ...tokens,
     DATABASE_URL: " postgres://u:p@db:5432/unbored ",
@@ -44,7 +44,7 @@ test("DATABASE_URL and DATABASE_POOL_MAX are read and checked", () => {
   }
 });
 
-test("migrations are numbered once each", () => {
+test("migrations are numbered once each", async () => {
   const files = migrationFiles();
   assert.equal(files[0]?.name, "0001_schema.sql");
   assert.deepEqual(

@@ -116,10 +116,10 @@ for (const backend of BACKENDS) {
           "pc-1",
           at,
         );
-      const { account } = upload(3, NOW);
+      const { account } = await upload(3, NOW);
       store.suggestions.close();
       assert.equal(await store.suggestions.computeAccount(account, NOW), 1);
-      const row = store.data.characters(account)[0]!;
+      const row = (await store.data.characters(account))[0]!;
       const first = await store.suggestions.forCharacter(row, NOW);
       assert.equal(first?.computedAt, NOW);
       assert.ok(first?.list.some((item) => item.kind === "chain"));
@@ -157,14 +157,14 @@ for (const backend of BACKENDS) {
   test(`Forget my data erases the device's Suggestions too (${backend})`, async () => {
     const store = open(backend);
     try {
-      const { account } = store.putSnapshot(
+      const { account } = await store.putSnapshot(
         snapshot({ questLines: { body: chain(3) } }),
         "pc-1",
         NOW,
       );
       store.suggestions.close();
       await store.suggestions.computeAccount(account, NOW);
-      const row = store.data.characters(account)[0]!;
+      const row = (await store.data.characters(account))[0]!;
       assert.ok(await store.suggestions.forCharacter(row, NOW));
       const totals = await store.forgetDevice("pc-1", NOW);
       assert.equal(totals.accounts, 1);
@@ -175,4 +175,133 @@ for (const backend of BACKENDS) {
       store.close();
     }
   });
+
+  // ADR 0057 phase 3: Forget and the Account migration are one transaction.
+  const count = async (store: Store, sql: string, ...args: string[]) =>
+    Number((await store.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM ${sql}`, ...args))?.n);
+
+  async function approved(store: Store) {
+    await store.registerDevice({
+      id: "pc-1",
+      name: "PC",
+      secretHash: "h1",
+      nowSeconds: NOW,
+      pendingCap: 10,
+    });
+    await store.setDeviceStatus("pc-1", "approved");
+  }
+
+  test(`a Forget that fails part way leaves every row and the device (${backend})`, async () => {
+    const store = open(backend);
+    try {
+      await approved(store);
+      const { account } = await store.putSnapshot(
+        snapshot({ questLines: { body: chain(3) } }),
+        "pc-1",
+        NOW,
+      );
+      store.suggestions.close();
+      await store.suggestions.computeAccount(account, NOW);
+      // The device is revoked last, so a failure there comes after every delete.
+      if (store.db.pg) {
+        await store.db.run(
+          `CREATE FUNCTION refuse() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$`,
+        );
+        await store.db.run(
+          `CREATE TRIGGER refuse BEFORE UPDATE ON devices FOR EACH ROW EXECUTE FUNCTION refuse()`,
+        );
+      } else {
+        await store.db.run(
+          `CREATE TRIGGER refuse BEFORE UPDATE ON devices BEGIN SELECT RAISE(ABORT, 'refused'); END`,
+        );
+      }
+      await assert.rejects(store.forgetDevice("pc-1", NOW), /refused/);
+      assert.equal(await count(store, "characters WHERE account_id = ?", account), 1);
+      assert.ok((await count(store, "sections_latest")) > 0);
+      assert.equal(await count(store, "suggestions WHERE owner_id = ?", account), 1);
+      assert.equal((await store.deviceById("pc-1"))?.status, "approved");
+      await store.db.run(`DROP TRIGGER refuse${store.db.pg ? " ON devices" : ""}`);
+      if (store.db.pg) await store.db.run(`DROP FUNCTION refuse()`);
+    } finally {
+      store.close();
+    }
+  });
+
+  test(`an upload racing Forget either lands first and is erased, or is refused (${backend})`, async () => {
+    const store = open(backend);
+    try {
+      await approved(store);
+      const [stored, totals] = await Promise.all([
+        store.asDevice("pc-1", () => store.putSnapshot(snapshot({}), "pc-1", NOW)),
+        store.forgetDevice("pc-1", NOW),
+      ]);
+      assert.equal(totals.revoked, true);
+      assert.equal(await count(store, "characters"), 0, String(stored && "landed first"));
+      assert.equal(await count(store, "sections_latest"), 0);
+      assert.equal(
+        await store.asDevice("pc-1", () => store.putSnapshot(snapshot({}), "pc-1", NOW + 1)),
+        undefined,
+        "a revoked device writes nothing",
+      );
+    } finally {
+      store.close();
+    }
+  });
+
+  test(`the Account migration renames rows and Suggestions together (${backend})`, async () => {
+    const store = open(backend);
+    const hash = "a".repeat(64);
+    try {
+      const { account } = await store.putSnapshot(
+        snapshot({ questLines: { body: chain(3) } }),
+        "pc-1",
+        NOW,
+      );
+      store.suggestions.close();
+      await store.suggestions.computeAccount(account, NOW);
+      assert.equal(await store.bindAccount(hash, ACCOUNT), hash);
+      assert.equal(await count(store, "characters WHERE account_id = ?", account), 0);
+      assert.equal(await count(store, "characters WHERE account_id = ?", hash), 1);
+      assert.equal(await count(store, "suggestions WHERE owner_id = ?", account), 0);
+      assert.equal(await count(store, "suggestions WHERE owner_id = ?", hash), 1);
+      assert.equal(await store.bindAccount(hash, ACCOUNT), hash, "a second bind is a no-op");
+    } finally {
+      store.close();
+    }
+  });
+
+  test.skipIf(backend !== "postgres")(
+    `JSON lands in jsonb as objects, not as JSON text in a string (${backend})`,
+    async () => {
+      const store = open(backend);
+      try {
+        await approved(store);
+        const { account } = await store.putSnapshot(
+          snapshot({ questLines: { body: chain(3) } }),
+          "pc-1",
+          NOW,
+        );
+        store.suggestions.close();
+        await store.suggestions.computeAccount(account, NOW);
+        const sql = pg(backend)!;
+        const columns = await sql<{ table: string; column: string }[]>`
+          SELECT table_name AS table, column_name AS column FROM information_schema.columns
+          WHERE table_schema = 'public' AND data_type = 'jsonb'
+            AND table_name NOT LIKE '%\_p%'`;
+        assert.ok(columns.length > 5);
+        let checked = 0;
+        for (const { table, column } of columns) {
+          const [row] = await sql.unsafe(
+            `SELECT count(*)::int AS n, count(*) FILTER (WHERE jsonb_typeof("${column}") = 'string')::int AS strings
+             FROM "${table}" WHERE "${column}" IS NOT NULL`,
+          );
+          checked += row!.n as number;
+          assert.equal(row!.strings, 0, `${table}.${column}`);
+        }
+        assert.ok(checked > 0);
+      } finally {
+        store.close();
+      }
+    },
+  );
 }

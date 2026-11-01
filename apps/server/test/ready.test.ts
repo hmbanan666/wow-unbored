@@ -63,7 +63,7 @@ function only(items: ReadyItem[], kind: string) {
   return items.filter((item) => item.kind === kind);
 }
 
-test("renown within 25% of the next level, with its rewards; not at max", () => {
+test("renown within 25% of the next level, with its rewards; not at max", async () => {
   const { items } = ready([
     section("reputation", {
       factions: [],
@@ -93,7 +93,7 @@ test("renown within 25% of the next level, with its rewards; not at max", () => 
   assert.equal(renown[0]!.why, "500 to renown 15");
 });
 
-test("a standing within 15% of the step and a paragon reward waiting", () => {
+test("a standing within 15% of the step and a paragon reward waiting", async () => {
   const { items } = ready([
     section("reputation", {
       factions: [
@@ -126,7 +126,7 @@ test("a standing within 15% of the step and a paragon reward waiting", () => {
   );
 });
 
-test("an achievement 70% done or more scores 70 to 100", () => {
+test("an achievement 70% done or more scores 70 to 100", async () => {
   const { items } = ready([
     section("achProgress", {
       rows: [
@@ -152,7 +152,7 @@ test("an achievement 70% done or more scores 70 to 100", () => {
   assert.equal(ach[1]!.why, "9 of 10 done");
 });
 
-test("a lockout with bosses left, +10 when it resets within 2 days", () => {
+test("a lockout with bosses left, +10 when it resets within 2 days", async () => {
   const { items } = ready([
     section("lockouts", {
       instances: [
@@ -190,7 +190,7 @@ test("a lockout with bosses left, +10 when it resets within 2 days", () => {
   );
 });
 
-test("the vault: a reward waiting, a slot 2 or fewer away named from the enum, else type N", () => {
+test("the vault: a reward waiting, a slot 2 or fewer away named from the enum, else type N", async () => {
   const { items } = ready([
     section("vault", {
       rewardWaiting: true,
@@ -217,7 +217,7 @@ test("the vault: a reward waiting, a slot 2 or fewer away named from the enum, e
   ]);
 });
 
-test("your key, a currency near its cap, and weekly room", () => {
+test("your key, a currency near its cap, and weekly room", async () => {
   const { items } = ready([
     section("mplus", { keyLevel: 12, keyMapID: 501 }),
     section("currencies", {
@@ -241,7 +241,7 @@ test("your key, a currency near its cap, and weekly room", () => {
   );
 });
 
-test("chains: the 5 most finished open chains, and events on now from the catalog", () => {
+test("chains: the 5 most finished open chains, and events on now from the catalog", async () => {
   const lines = Array.from({ length: 7 }, (_, n) => ({
     questLineID: 100 + n,
     name: `Chain ${n}`,
@@ -285,7 +285,7 @@ test("chains: the 5 most finished open chains, and events on now from the catalo
   );
 });
 
-test("items are sorted by score, at most 5 per kind, missing names absent Sections, taste nudges", () => {
+test("items are sorted by score, at most 5 per kind, missing names absent Sections, taste nudges", async () => {
   const rows = Array.from({ length: 40 }, (_, n) => ({ id: 1000 + n, d: 8, t: 10 }));
   const out = ready([section("achProgress", { rows })], {
     taste: [
@@ -316,7 +316,7 @@ test("items are sorted by score, at most 5 per kind, missing names absent Sectio
   assert.equal(out.taste[0]!.bonus, 11);
 });
 
-test("every kind gets its share before the 25-item cut, with the names the game gave", () => {
+test("every kind gets its share before the 25-item cut, with the names the game gave", async () => {
   const ten = Array.from({ length: 10 }, (_, n) => n);
   const out = ready([
     section("achProgress", {
@@ -377,7 +377,7 @@ test("every kind gets its share before the 25-item cut, with the names the game 
   assert.equal(title("vault"), undefined, "no name in the data, no title");
 });
 
-test("alts: another Character at least 0.2 further on and at least half done, at most 5", () => {
+test("alts: another Character at least 0.2 further on and at least half done, at most 5", async () => {
   const mine = new Map([
     section("achProgress", {
       rows: [
@@ -404,10 +404,10 @@ test("alts: another Character at least 0.2 further on and at least half done, at
   ]);
 });
 
-test("get_ready_now reads the stored Sections of a Character and its Account", () => {
+test("get_ready_now reads the stored Sections of a Character and its Account", async () => {
   const store = makeStore();
   try {
-    store.putSnapshot(
+    await store.putSnapshot(
       snapshot({
         char: { body: { level: 80 } },
         achProgress: { body: { rows: [{ id: 50, d: 9, t: 10 }] } },
@@ -416,7 +416,7 @@ test("get_ready_now reads the stored Sections of a Character and its Account", (
       "pc-1",
       NOW,
     );
-    store.putSnapshot(
+    await store.putSnapshot(
       snapshot(
         {
           char: { body: { level: 70 } },
@@ -427,7 +427,7 @@ test("get_ready_now reads the stored Sections of a Character and its Account", (
       "pc-1",
       NOW,
     );
-    const out = store.readyNow({ character: "Mira", realm: "Realm" }, NOW)!;
+    const out = (await store.readyNow({ character: "Mira", realm: "Realm" }, NOW))!;
     assert.equal(out.character, "Mira");
     assert.equal(out.account, "111111");
     assert.deepEqual(
@@ -435,8 +435,8 @@ test("get_ready_now reads the stored Sections of a Character and its Account", (
       ["vault:reward", "ach:50"],
     );
     assert.deepEqual(out.alts, [{ achievementID: 51, character: "Alt", d: 9, t: 10 }]);
-    assert.equal(store.readyNow({ account: "999" }, NOW), undefined);
-    assert.equal(store.readyNow({ account: ACCOUNT }, NOW)?.account, "111111");
+    assert.equal(await store.readyNow({ account: "999" }, NOW), undefined);
+    assert.equal((await store.readyNow({ account: ACCOUNT }, NOW))?.account, "111111");
   } finally {
     store.close();
   }

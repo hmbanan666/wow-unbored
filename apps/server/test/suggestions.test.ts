@@ -11,6 +11,7 @@ import { createApp } from "../src/app.ts";
 import type { SectionRow } from "../src/data.ts";
 import { loadCatalog, suggest, type SuggestInput } from "../src/suggestions.ts";
 import { BACKENDS, postgresPerFile } from "./postgres-db.ts";
+import { database } from "./backend.ts";
 
 const pg = postgresPerFile();
 
@@ -60,7 +61,7 @@ const hallowsEnd = {
   ],
 };
 
-test("an active holiday suggests what is left of it, mount first, and expires with it", () => {
+test("an active holiday suggests what is left of it, mount first, and expires with it", async () => {
   const list = suggest(input({ calendar: hallowsEnd, char: { faction: "Horde" } }));
   const event = list.find((item) => item.kind === "event");
   assert.ok(event, JSON.stringify(list));
@@ -78,7 +79,7 @@ test("an active holiday suggests what is left of it, mount first, and expires wi
   assert.ok(!event.request.wish.includes("{"), "the wish is plain words");
 });
 
-test("a finished holiday, or one weeks away, suggests nothing", () => {
+test("a finished holiday, or one weeks away, suggests nothing", async () => {
   const done = suggest(
     input({
       calendar: hallowsEnd,
@@ -97,7 +98,7 @@ test("a finished holiday, or one weeks away, suggests nothing", () => {
   assert.equal(later.filter((item) => item.kind === "event").length, 0);
 });
 
-test("achievements and rares come from the zones the player has been in", () => {
+test("achievements and rares come from the zones the player has been in", async () => {
   const list = suggest(input({ sessions: played(125, 554) }));
   const ach = list.find((item) => item.kind === "achievement");
   assert.equal(ach?.id, "ach:1956");
@@ -120,7 +121,7 @@ test("achievements and rares come from the zones the player has been in", () => 
   assert.equal(looted.filter((item) => item.kind !== "collection").length, 0);
 });
 
-test("mounts nobody owns are suggested, nearby ones first, at most three", () => {
+test("mounts nobody owns are suggested, nearby ones first, at most three", async () => {
   const catalog = loadCatalog();
   const list = suggest(input({ sessions: played(109) }));
   const mounts = list.filter((item) => item.kind === "collection");
@@ -138,7 +139,7 @@ test("mounts nobody owns are suggested, nearby ones first, at most three", () =>
   assert.ok(!owned.some((item) => item.rewards.includes("{mount:183}")));
 });
 
-test("the Account angle adds a why and lifts a rare no alt has looted", () => {
+test("the Account angle adds a why and lifts a rare no alt has looted", async () => {
   const alone = suggest(input({ sessions: played(554) }));
   const many = suggest(input({ sessions: played(554) }, { characters: 7, altQuests: [new Set()] }));
   const rare = many.find((item) => item.kind === "rare");
@@ -151,7 +152,7 @@ test("the Account angle adds a why and lifts a rare no alt has looted", () => {
   assert.equal(lootedOnAlt.find((item) => item.kind === "rare")?.why, undefined);
 });
 
-test("the list is ranked, capped at ten and three per rule, with limits on every field", () => {
+test("the list is ranked, capped at ten and three per rule, with limits on every field", async () => {
   const list = suggest(
     input(
       {
@@ -183,7 +184,7 @@ test("the list is ranked, capped at ten and three per rule, with limits on every
   assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
 });
 
-test("the shared fixture is what the rules make for Mira", () => {
+test("the shared fixture is what the rules make for Mira", async () => {
   const file = new URL("../../../packages/contracts/fixtures/suggestions.json", import.meta.url);
   const list = suggest(
     input(
@@ -349,6 +350,7 @@ for (const backend of BACKENDS)
 
 test("a Request from a picked idea keeps its id and a copy of it", async () => {
   const { app, close } = createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
@@ -403,7 +405,7 @@ test("a Request from a picked idea keeps its id and a copy of it", async () => {
   }
 });
 
-test("a Russian Character gets every idea in Russian, with game names from tokens", () => {
+test("a Russian Character gets every idea in Russian, with game names from tokens", async () => {
   const list = suggest(
     input(
       { calendar: hallowsEnd, sessions: played(125, 554, 70), char: { faction: "Horde" } },
@@ -435,7 +437,7 @@ test("a Russian Character gets every idea in Russian, with game names from token
   );
 });
 
-test("Russian counts agree with the number", () => {
+test("Russian counts agree with the number", async () => {
   const ends = (hours: number) =>
     suggest(
       input(
@@ -524,7 +526,7 @@ const timewalking = (starts: string, ends: string) => ({
   events: [{ eventID: 559, title: "Timewalking Dungeon Event", kind: "HOLIDAY", starts, ends }],
 });
 
-test("a Timewalking week offers only the mounts you lack, and nothing once you have them", () => {
+test("a Timewalking week offers only the mounts you lack, and nothing once you have them", async () => {
   const open = suggest(input({ calendar: timewalking("2026-10-28 09:00", "2026-11-04 08:00") }));
   const event = open.find((item) => item.kind === "event");
   assert.ok(event, JSON.stringify(open));
@@ -571,7 +573,7 @@ test("a Timewalking week offers only the mounts you lack, and nothing once you h
   );
 });
 
-test("an event that starts within three days scores below one that is on, and says when", () => {
+test("an event that starts within three days scores below one that is on, and says when", async () => {
   const list = suggest(input({ calendar: timewalking("2026-11-01 09:00", "2026-11-08 08:00") }));
   const event = list.find((item) => item.kind === "event");
   assert.ok(event);
@@ -606,7 +608,7 @@ const chainLine = (extra: Record<string, unknown> = {}) => ({
   ],
 });
 
-test("an unfinished chain is an idea with its progress and ids, a campaign scores higher", () => {
+test("an unfinished chain is an idea with its progress and ids, a campaign scores higher", async () => {
   const list = suggest(input({ questLines: chainLine() }));
   const chain = list.find((item) => item.kind === "chain");
   assert.ok(chain, JSON.stringify(list));
@@ -629,7 +631,7 @@ test("an unfinished chain is an idea with its progress and ids, a campaign score
   assert.ok(story && (!ach || campaign.indexOf(story) < campaign.indexOf(ach)));
 });
 
-test("a chain an alt finished says so", () => {
+test("a chain an alt finished says so", async () => {
   const list = suggest(
     input(
       { questLines: chainLine({ flags: "i|a" }) },
@@ -671,7 +673,7 @@ for (const backend of BACKENDS)
     };
     const chainAt = async (account: string, now: number) => {
       await store.suggestions.computeAccount(account, now);
-      const row = store.data.characters(account)[0]!;
+      const row = (await store.data.characters(account))[0]!;
       return (await store.suggestions.forCharacter(row, now))!.list.find(
         (item) => item.kind === "chain",
       );

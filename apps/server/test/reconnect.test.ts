@@ -5,6 +5,7 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
+import { database } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -12,6 +13,7 @@ const planner = "planner-test-token";
 function setup() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-reconnect-"));
   return createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,
@@ -48,7 +50,7 @@ test("Connect again mints a new approved device and the old secret stops working
   const built = setup();
   try {
     await register(built, "forget-pc", "old-secret-value-1");
-    built.store.setDeviceStatus("forget-pc", "approved");
+    await built.store.setDeviceStatus("forget-pc", "approved");
     const forgotten = await built.app.request("/v1/devices/me/forget", {
       method: "POST",
       headers: {
@@ -58,7 +60,7 @@ test("Connect again mints a new approved device and the old secret stops working
       body: JSON.stringify({ confirm: true }),
     });
     assert.equal(forgotten.status, 200);
-    assert.equal(built.store.deviceById("forget-pc")?.status, "revoked");
+    assert.equal((await built.store.deviceById("forget-pc"))?.status, "revoked");
 
     const retried = await built.app.request("/v1/devices/me/forget", {
       method: "POST",
@@ -69,7 +71,7 @@ test("Connect again mints a new approved device and the old secret stops working
       body: JSON.stringify({ confirm: true }),
     });
     assert.equal(retried.status, 200, "a lost Forget response can be retried");
-    assert.equal(built.store.deviceById("forget-pc")?.forgetRevoked, true);
+    assert.equal((await built.store.deviceById("forget-pc"))?.forgetRevoked, true);
 
     const again = await reconnect(built, "old-secret-value-1", {
       deviceId: "forget-pc-2",
@@ -79,8 +81,8 @@ test("Connect again mints a new approved device and the old secret stops working
     const body = (await again.json()) as { id: string; status: string };
     assert.equal(body.id, "forget-pc-2");
     assert.equal(body.status, "approved");
-    assert.equal(built.store.deviceById("forget-pc")?.status, "revoked");
-    assert.equal(built.store.deviceById("forget-pc")?.forgetRevoked, false);
+    assert.equal((await built.store.deviceById("forget-pc"))?.status, "revoked");
+    assert.equal((await built.store.deviceById("forget-pc"))?.forgetRevoked, false);
 
     const oldMe = await built.app.request("/v1/devices/me", {
       headers: { authorization: "Bearer old-secret-value-1" },
@@ -119,14 +121,14 @@ test("an owner revoke and a device that was never approved cannot connect again"
   const built = setup();
   try {
     await register(built, "owner-pc", "owner-secret-value");
-    built.store.setDeviceStatus("owner-pc", "approved");
-    built.store.setDeviceStatus("owner-pc", "revoked");
+    await built.store.setDeviceStatus("owner-pc", "approved");
+    await built.store.setDeviceStatus("owner-pc", "revoked");
     const owner = await reconnect(built, "owner-secret-value", {
       deviceId: "owner-pc-2",
       secret: "owner-secret-value-2",
     });
     assert.equal(owner.status, 403);
-    assert.equal(built.store.deviceById("owner-pc-2"), undefined);
+    assert.equal(await built.store.deviceById("owner-pc-2"), undefined);
 
     await register(built, "pending-pc", "pending-secret-val");
     const forgotten = await built.app.request("/v1/devices/me/forget", {
@@ -145,7 +147,7 @@ test("an owner revoke and a device that was never approved cannot connect again"
     assert.equal(pending.status, 403);
 
     await register(built, "same-id-pc", "same-id-secret-val");
-    built.store.setDeviceStatus("same-id-pc", "approved");
+    await built.store.setDeviceStatus("same-id-pc", "approved");
     await built.app.request("/v1/devices/me/forget", {
       method: "POST",
       headers: {

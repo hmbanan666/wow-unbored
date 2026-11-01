@@ -11,6 +11,7 @@ import {
   type SectionScope,
 } from "@unbored/contracts";
 
+import { fromJson, SqliteDb, type Db } from "./db.ts";
 import { buildHoldings, WARBAND_PLACE, type Holdings, type HoldingsPlace } from "./holdings.ts";
 import { PlanError } from "./plan.ts";
 
@@ -443,7 +444,9 @@ type SectionDbRow = {
   src: string | null;
   unknown: number;
   bytes: number;
-  body_json: string;
+  /** SQLite text; Postgres jsonb as `body`. */
+  body_json?: string;
+  body?: unknown;
 };
 
 type CharacterDbRow = {
@@ -455,7 +458,7 @@ type CharacterDbRow = {
   level: number | null;
   last_seen: number;
   saved_at: number | null;
-  dropped_json: string | null;
+  dropped_json: unknown;
   device_id: string | null;
 };
 
@@ -464,7 +467,7 @@ type AccountDbRow = {
   label: string;
   first_seen: number;
   last_seen: number;
-  dropped_json: string | null;
+  dropped_json: unknown;
 };
 
 type HistoryDbRow = {
@@ -476,7 +479,8 @@ type HistoryDbRow = {
   saved_at: number | null;
   hash: string;
   kind: string;
-  body_json: string;
+  body_json?: string;
+  body?: unknown;
 };
 
 function sectionFromRow(row: SectionDbRow): SectionRow {
@@ -492,7 +496,7 @@ function sectionFromRow(row: SectionDbRow): SectionRow {
     src: row.src,
     unknown: row.unknown === 1,
     bytes: row.bytes,
-    body: parse<Raw>(row.body_json) ?? {},
+    body: fromJson<Raw>(row.body_json ?? row.body) ?? {},
   };
 }
 
@@ -506,7 +510,7 @@ function characterFromRow(row: CharacterDbRow): CharacterRow {
     level: row.level,
     lastSeen: row.last_seen,
     savedAt: row.saved_at,
-    dropped: parse<Raw>(row.dropped_json),
+    dropped: fromJson<Raw>(row.dropped_json),
     deviceId: row.device_id,
   };
 }
@@ -517,7 +521,7 @@ function accountFromRow(row: AccountDbRow): AccountRow {
     label: row.label,
     firstSeen: row.first_seen,
     lastSeen: row.last_seen,
-    dropped: parse<Raw>(row.dropped_json),
+    dropped: fromJson<Raw>(row.dropped_json),
   };
 }
 
@@ -531,7 +535,7 @@ function historyFromRow(row: HistoryDbRow): HistoryRow {
     savedAt: row.saved_at,
     hash: row.hash,
     kind: row.kind === "diff" ? "diff" : "full",
-    body: parse<unknown>(row.body_json),
+    body: fromJson<unknown>(row.body_json ?? row.body),
   };
 }
 
@@ -554,13 +558,7 @@ export function mergeProfile(old: Raw, fresh: Raw): Raw {
   return out;
 }
 
-export class DataStore {
-  private db: DatabaseSync;
-  private holdingsCache = new Map<string, { key: string; value: Holdings }>();
-
-  constructor(db: DatabaseSync) {
-    this.db = db;
-    db.exec(`
+const SQLITE_SCHEMA = `
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,
         label TEXT NOT NULL,
@@ -626,36 +624,50 @@ export class DataStore {
         PRIMARY KEY (account, hash)
       );
       CREATE INDEX IF NOT EXISTS addon_errors_last ON addon_errors (last_at);
-    `);
-    this.backfill();
-  }
+    `;
 
-  private transaction<T>(work: () => T): T {
-    this.db.exec("BEGIN");
-    try {
-      const out = work();
-      this.db.exec("COMMIT");
-      return out;
-    } catch (error) {
-      this.db.exec("ROLLBACK");
-      throw error;
+/** History rows land in month partitions on Postgres (ADR 0057): an odd clock must not fail the upload. */
+const HISTORY_FLOOR = Date.UTC(2025, 0, 1) / 1000;
+export function historyAt(db: Db, at: number, now: number): number {
+  if (!db.pg) return at;
+  return at >= HISTORY_FLOOR && at <= now + 31 * 86_400 ? at : now;
+}
+
+export class DataStore {
+  private db: Db;
+  private holdingsCache = new Map<string, { key: string; value: Holdings }>();
+  /** The 0.6 backfill on SQLite; queries made meanwhile wait for its transaction. */
+  readonly ready: Promise<void>;
+
+  constructor(db: Db) {
+    this.db = db;
+    if (db instanceof SqliteDb) {
+      db.raw.exec(SQLITE_SCHEMA);
+      this.ready = this.backfill(db.raw).catch((error: unknown) => {
+        console.error(`Profile backfill failed: ${(error as Error).message}`);
+      });
+    } else {
+      this.ready = Promise.resolve();
     }
   }
 
-  private touchAccount(label: string, now: number, dropped?: Raw): string {
+  private async touchAccount(label: string, now: number, dropped?: Raw): Promise<string> {
     const id = accountId(label);
-    this.db
-      .prepare(
-        `INSERT INTO accounts (id, label, first_seen, last_seen, dropped_json) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET label = excluded.label,
-           last_seen = MAX(last_seen, excluded.last_seen),
-           dropped_json = COALESCE(excluded.dropped_json, dropped_json)`,
-      )
-      .run(id, label, now, now, dropped ? JSON.stringify(dropped) : null);
+    await this.db.run(
+      `INSERT INTO accounts (id, label, first_seen, last_seen, dropped_json) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET label = excluded.label,
+         last_seen = ${this.db.greatest("accounts.last_seen", "excluded.last_seen")},
+         dropped_json = COALESCE(excluded.dropped_json, accounts.dropped_json)`,
+      id,
+      label,
+      now,
+      now,
+      dropped ? JSON.stringify(dropped) : null,
+    );
     return id;
   }
 
-  private touchCharacter(input: {
+  private async touchCharacter(input: {
     account: string;
     name: string;
     realm: string;
@@ -663,57 +675,60 @@ export class DataStore {
     savedAt: number | null;
     dropped?: Raw;
     deviceId?: string;
-  }): string {
+  }): Promise<string> {
     const id = characterId(input.name, input.realm);
-    const previous = this.character(input.name, input.realm);
+    const previous = await this.character(input.name, input.realm);
     if (previous?.savedAt && input.savedAt && input.savedAt < previous.savedAt) {
       // A late upload is still a contact, but cannot move this Character back
       // to an old Account/Device or restore obsolete dropped-Section metadata.
-      this.db
-        .prepare(`UPDATE characters SET last_seen = MAX(last_seen, ?) WHERE id = ?`)
-        .run(input.now, id);
+      await this.db.run(
+        `UPDATE characters SET last_seen = ${this.db.greatest("last_seen", "?")} WHERE id = ?`,
+        input.now,
+        id,
+      );
       return id;
     }
-    this.db
-      .prepare(
-        `INSERT INTO characters (id, account_id, name, realm, last_seen, saved_at, dropped_json, device_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET
-           account_id = CASE WHEN excluded.account_id = '' THEN account_id ELSE excluded.account_id END,
-           last_seen = MAX(last_seen, excluded.last_seen),
-           saved_at = MAX(COALESCE(saved_at, 0), COALESCE(excluded.saved_at, 0)),
-           dropped_json = COALESCE(excluded.dropped_json, dropped_json),
-           device_id = COALESCE(excluded.device_id, device_id)`,
-      )
-      .run(
-        id,
-        input.account,
-        input.name,
-        input.realm,
-        input.now,
-        input.savedAt,
-        input.dropped ? JSON.stringify(input.dropped) : null,
-        input.deviceId ?? null,
-      );
+    await this.db.run(
+      `INSERT INTO characters (id, account_id, name, realm, last_seen, saved_at, dropped_json, device_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET
+         account_id = CASE WHEN excluded.account_id = '' THEN characters.account_id ELSE excluded.account_id END,
+         last_seen = ${this.db.greatest("characters.last_seen", "excluded.last_seen")},
+         saved_at = ${this.db.greatest("COALESCE(characters.saved_at, 0)", "COALESCE(excluded.saved_at, 0)")},
+         dropped_json = COALESCE(excluded.dropped_json, characters.dropped_json),
+         device_id = COALESCE(excluded.device_id, characters.device_id)`,
+      id,
+      input.account,
+      input.name,
+      input.realm,
+      input.now,
+      input.savedAt,
+      input.dropped ? JSON.stringify(input.dropped) : null,
+      input.deviceId ?? null,
+    );
     return id;
   }
 
   /** The catalog is derived from accepted Sections, never from an incoming upload. */
-  private refreshCharacterFacts(id: string): void {
-    const char = this.section("char", id, "char");
-    const context = char ? char.body : this.section("char", id, "profile")?.body.context;
+  private async refreshCharacterFacts(id: string): Promise<void> {
+    const char = await this.section("char", id, "char");
+    const context = char ? char.body : (await this.section("char", id, "profile"))?.body.context;
     if (!isObject(context)) return;
     const className =
       typeof context.class === "string" && context.class.trim() ? context.class : null;
-    const level = typeof context.level === "number" ? context.level : null;
-    this.db
-      .prepare(
-        `UPDATE characters SET class = COALESCE(?, class), level = COALESCE(?, level) WHERE id = ?`,
-      )
-      .run(className, level, id);
+    const level =
+      typeof context.level === "number" && (!this.db.pg || Number.isInteger(context.level))
+        ? context.level
+        : null;
+    await this.db.run(
+      `UPDATE characters SET class = COALESCE(?, class), level = COALESCE(?, level) WHERE id = ?`,
+      className,
+      level,
+      id,
+    );
   }
 
-  private putSection(input: {
+  private async putSection(input: {
     ownerKind: SectionScope;
     ownerId: string;
     name: string;
@@ -727,8 +742,8 @@ export class DataStore {
     unknown: boolean;
     now: number;
     changes?: SectionChange[];
-  }): "stored" | "unchanged" | "stale" {
-    const previous = this.section(input.ownerKind, input.ownerId, input.name);
+  }): Promise<"stored" | "unchanged" | "stale"> {
+    const previous = await this.section(input.ownerKind, input.ownerId, input.name);
     if (previous?.savedAt && input.savedAt && input.savedAt < previous.savedAt) return "stale";
     if (previous && previous.hash === input.hash && previous.v === input.v) {
       // An unchanged upload still acknowledges a newer save. Without advancing
@@ -737,62 +752,59 @@ export class DataStore {
         input.savedAt !== null &&
         (previous.savedAt === null || input.savedAt > previous.savedAt)
       ) {
-        this.db
-          .prepare(
-            `UPDATE sections_latest SET saved_at = ?
-             WHERE owner_kind = ? AND owner_id = ? AND section = ?`,
-          )
-          .run(input.savedAt, input.ownerKind, input.ownerId, input.name);
+        await this.db.run(
+          `UPDATE sections_latest SET saved_at = ?
+           WHERE owner_kind = ? AND owner_id = ? AND section = ?`,
+          input.savedAt,
+          input.ownerKind,
+          input.ownerId,
+          input.name,
+        );
       }
       if (input.ownerKind === "char" && (input.name === "char" || input.name === "profile"))
-        this.refreshCharacterFacts(input.ownerId);
+        await this.refreshCharacterFacts(input.ownerId);
       return "unchanged";
     }
-    this.db
-      .prepare(
-        `INSERT INTO sections_latest
-           (owner_kind, owner_id, section, v, hash, at, saved_at, updated_at, src, unknown, bytes, body_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (owner_kind, owner_id, section) DO UPDATE SET
-           v = excluded.v, hash = excluded.hash, at = excluded.at, saved_at = excluded.saved_at,
-           updated_at = excluded.updated_at, src = excluded.src, unknown = excluded.unknown,
-           bytes = excluded.bytes, body_json = excluded.body_json`,
-      )
-      .run(
-        input.ownerKind,
-        input.ownerId,
-        input.name,
-        input.v,
-        input.hash,
-        input.at,
-        input.savedAt,
-        input.now,
-        input.src,
-        input.unknown ? 1 : 0,
-        input.bytes,
-        JSON.stringify(input.body),
-      );
+    const body = this.db.body;
+    await this.db.run(
+      `INSERT INTO sections_latest
+         (owner_kind, owner_id, section, v, hash, at, saved_at, updated_at, src, unknown, bytes, ${body})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (owner_kind, owner_id, section) DO UPDATE SET
+         v = excluded.v, hash = excluded.hash, at = excluded.at, saved_at = excluded.saved_at,
+         updated_at = excluded.updated_at, src = excluded.src, unknown = excluded.unknown,
+         bytes = excluded.bytes, ${body} = excluded.${body}`,
+      input.ownerKind,
+      input.ownerId,
+      input.name,
+      input.v,
+      input.hash,
+      input.at,
+      input.savedAt,
+      input.now,
+      input.src,
+      input.unknown ? 1 : 0,
+      input.bytes,
+      JSON.stringify(input.body),
+    );
     if (input.ownerKind === "char" && (input.name === "char" || input.name === "profile"))
-      this.refreshCharacterFacts(input.ownerId);
+      await this.refreshCharacterFacts(input.ownerId);
     const change =
       previous && previous.v !== input.v
         ? { kind: "full" as const, body: input.body }
         : sectionChange(previous?.body ?? null, input.body);
-    this.db
-      .prepare(
-        `INSERT INTO section_history (owner_kind, owner_id, section, at, saved_at, hash, kind, body_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        input.ownerKind,
-        input.ownerId,
-        input.name,
-        input.at ?? input.now,
-        input.savedAt,
-        input.hash,
-        change.kind,
-        JSON.stringify(change.body),
-      );
+    await this.db.run(
+      `INSERT INTO section_history (owner_kind, owner_id, section, at, saved_at, hash, kind, ${body})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.ownerKind,
+      input.ownerId,
+      input.name,
+      historyAt(this.db, input.at ?? input.now, input.now),
+      input.savedAt,
+      input.hash,
+      change.kind,
+      JSON.stringify(change.body),
+    );
     input.changes?.push({
       section: input.name,
       scope: input.ownerKind,
@@ -806,31 +818,30 @@ export class DataStore {
   }
 
   /** Each `errors` row becomes one `addon_errors` row per Account and hash; count is the most seen (D178). */
-  private putErrors(input: {
+  private async putErrors(input: {
     account: string;
     deviceId?: string;
     character: string;
     realm: string;
     body: Raw;
     now: number;
-  }): void {
+  }): Promise<void> {
     const rows = Array.isArray(input.body.rows) ? input.body.rows : [];
     const short = (value: unknown, max: number) =>
       typeof value === "string" ? value.slice(0, max) : "";
     const whole = (value: unknown) =>
       typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
-    const upsert = this.db.prepare(
-      `INSERT INTO addon_errors
+    const db = this.db;
+    const upsert = `INSERT INTO addon_errors
          (hash, account, device_id, character_name, realm, version, "where", text, stack, count, first_at, last_at, seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (account, hash) DO UPDATE SET
-         device_id = COALESCE(excluded.device_id, device_id),
+         device_id = COALESCE(excluded.device_id, addon_errors.device_id),
          character_name = excluded.character_name, realm = excluded.realm,
-         stack = CASE WHEN excluded.stack <> '' THEN excluded.stack ELSE stack END,
-         count = MAX(count, excluded.count),
-         first_at = MIN(first_at, excluded.first_at),
-         last_at = MAX(last_at, excluded.last_at)`,
-    );
+         stack = CASE WHEN excluded.stack <> '' THEN excluded.stack ELSE addon_errors.stack END,
+         count = ${db.greatest("addon_errors.count", "excluded.count")},
+         first_at = ${db.least("addon_errors.first_at", "excluded.first_at")},
+         last_at = ${db.greatest("addon_errors.last_at", "excluded.last_at")}`;
     for (const row of rows.slice(0, 20)) {
       if (!isObject(row)) continue;
       const version = short(row.version, 20);
@@ -839,7 +850,8 @@ export class DataStore {
       if (!where || !text) continue;
       const hash = createHash("sha256").update(`${version}|${where}|${text}`).digest("hex");
       const lastAt = whole(row.lastAt) || whole(row.at) || input.now;
-      upsert.run(
+      await db.run(
+        upsert,
         hash,
         input.account,
         input.deviceId ?? null,
@@ -858,12 +870,12 @@ export class DataStore {
   }
 
   /** Error reports, newest first (D178). `since` keeps rows seen again after it. */
-  errors(filter: {
+  async errors(filter: {
     account?: string;
     since?: number;
     version?: string;
     limit: number;
-  }): AddonErrorRow[] {
+  }): Promise<AddonErrorRow[]> {
     const where: string[] = [];
     const args: (string | number)[] = [];
     if (filter.account) {
@@ -878,12 +890,12 @@ export class DataStore {
       where.push("version = ?");
       args.push(filter.version);
     }
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM addon_errors ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-         ORDER BY last_at DESC, seen_at DESC LIMIT ?`,
-      )
-      .all(...args, Math.min(filter.limit, ERRORS_LIST_MAX)) as Record<string, unknown>[];
+    const rows = await this.db.all(
+      `SELECT * FROM addon_errors ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY last_at DESC, seen_at DESC LIMIT ?`,
+      ...args,
+      Math.min(filter.limit, ERRORS_LIST_MAX),
+    );
     return rows.map((row) => ({
       hash: String(row.hash),
       account: String(row.account),
@@ -901,15 +913,17 @@ export class DataStore {
     }));
   }
 
-  ingestSnapshot(
+  async ingestSnapshot(
     snapshot: CleanSnapshot,
     deviceId?: string,
     now = Math.floor(Date.now() / 1000),
     changes?: SectionChange[],
-  ): SnapshotResult {
-    return this.transaction(() => {
-      const account = this.touchAccount(snapshot.account, now, snapshot.dropped.account);
-      const character = this.touchCharacter({
+  ): Promise<SnapshotResult> {
+    return this.db.tx(async () => {
+      // Two uploads of one Account apply one after the other (read, diff, write).
+      await this.db.lockKey(`account:${accountId(snapshot.account)}`);
+      const account = await this.touchAccount(snapshot.account, now, snapshot.dropped.account);
+      const character = await this.touchCharacter({
         account,
         name: snapshot.character,
         realm: snapshot.realm,
@@ -928,7 +942,7 @@ export class DataStore {
         stale: false,
       };
       for (const section of snapshot.sections) {
-        const outcome = this.putSection({
+        const outcome = await this.putSection({
           ownerKind: section.scope,
           ownerId: section.scope === "account" ? account : character,
           name: section.name,
@@ -944,7 +958,7 @@ export class DataStore {
           changes,
         });
         if (outcome === "stored" && section.name === "errors" && section.scope === "account") {
-          this.putErrors({
+          await this.putErrors({
             account,
             deviceId,
             character: snapshot.character,
@@ -963,7 +977,7 @@ export class DataStore {
   }
 
   /** A 0.6 profile upload becomes the `profile` Section of that Character (D56). */
-  ingestProfile(
+  async ingestProfile(
     input: {
       character: string;
       realm: string;
@@ -973,19 +987,20 @@ export class DataStore {
       deviceId?: string;
     },
     now = Math.floor(Date.now() / 1000),
-  ): { updated: boolean; savedAt: number | null; body: Raw } {
-    return this.transaction(() => {
+  ): Promise<{ updated: boolean; savedAt: number | null; body: Raw }> {
+    return this.db.tx(async () => {
       const id = characterId(input.character, input.realm);
-      const previous = this.section("char", id, "profile");
+      await this.db.lockKey(`character:${id}`);
+      const previous = await this.section("char", id, "profile");
       if (previous?.savedAt && input.savedAt && input.savedAt < previous.savedAt) {
         return { updated: false, savedAt: previous.savedAt, body: previous.body };
       }
-      const known = this.character(input.character, input.realm);
+      const known = await this.character(input.character, input.realm);
       const account = input.account
-        ? this.touchAccount(input.account, now)
+        ? await this.touchAccount(input.account, now)
         : (known?.accountId ?? "");
       const body = previous ? mergeProfile(previous.body, input.profile) : input.profile;
-      this.touchCharacter({
+      await this.touchCharacter({
         account,
         name: input.character,
         realm: input.realm,
@@ -994,7 +1009,7 @@ export class DataStore {
         deviceId: input.deviceId,
       });
       const text = JSON.stringify(body);
-      this.putSection({
+      await this.putSection({
         ownerKind: "char",
         ownerId: id,
         name: "profile",
@@ -1012,19 +1027,18 @@ export class DataStore {
     });
   }
 
-  /** Moves the 0.6 `profiles` and `profile_snapshots` rows in once; they stay read-only (D57). */
-  private backfill(): void {
-    const done = this.db
-      .prepare(`SELECT value FROM data_meta WHERE key = 'backfill_profiles'`)
-      .get();
+  /**
+   * Moves the 0.6 `profiles` and `profile_snapshots` rows in once; they stay
+   * read-only (D57). SQLite only: Postgres starts from the transfer (ADR 0057).
+   */
+  private async backfill(raw: DatabaseSync): Promise<void> {
+    const done = raw.prepare(`SELECT value FROM data_meta WHERE key = 'backfill_profiles'`).get();
     if (done) return;
     const exists = (table: string) =>
-      this.db
-        .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
-        .get(table);
-    this.transaction(() => {
+      raw.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table);
+    await this.db.tx(async () => {
       if (exists("profile_snapshots")) {
-        const snapshots = this.db
+        const snapshots = raw
           .prepare(
             `SELECT at, account, character_name, realm, saved_at, body_json FROM profile_snapshots ORDER BY at, id`,
           )
@@ -1036,12 +1050,12 @@ export class DataStore {
           saved_at: number | null;
           body_json: string;
         }[];
-        for (const row of snapshots) this.backfillOne(row, row.at);
+        for (const row of snapshots) await this.backfillOne(row, row.at);
       }
       if (exists("profiles")) {
-        const columns = this.db.prepare(`PRAGMA table_info(profiles)`).all() as { name: string }[];
+        const columns = raw.prepare(`PRAGMA table_info(profiles)`).all() as { name: string }[];
         const hasAccount = columns.some((column) => column.name === "account");
-        const rows = this.db
+        const rows = raw
           .prepare(
             `SELECT character_name, realm, ${hasAccount ? "account" : "'' AS account"}, device_id, saved_at, updated_at, body_json FROM profiles`,
           )
@@ -1054,15 +1068,16 @@ export class DataStore {
           updated_at: number;
           body_json: string;
         }[];
-        for (const row of rows) this.backfillOne(row, row.updated_at);
+        for (const row of rows) await this.backfillOne(row, row.updated_at);
       }
-      this.db
-        .prepare(`INSERT INTO data_meta (key, value) VALUES ('backfill_profiles', ?)`)
-        .run(String(Math.floor(Date.now() / 1000)));
+      await this.db.run(
+        `INSERT INTO data_meta (key, value) VALUES ('backfill_profiles', ?)`,
+        String(Math.floor(Date.now() / 1000)),
+      );
     });
   }
 
-  private backfillOne(
+  private async backfillOne(
     row: {
       account: string | null;
       character_name: string;
@@ -1072,11 +1087,11 @@ export class DataStore {
       device_id?: string;
     },
     at: number,
-  ): void {
+  ): Promise<void> {
     const body = parse<Raw>(row.body_json);
     if (!body) return;
-    const account = row.account ? this.touchAccount(row.account, at) : "";
-    const id = this.touchCharacter({
+    const account = row.account ? await this.touchAccount(row.account, at) : "";
+    const id = await this.touchCharacter({
       account,
       name: row.character_name,
       realm: row.realm,
@@ -1084,7 +1099,7 @@ export class DataStore {
       savedAt: row.saved_at,
       deviceId: row.device_id,
     });
-    this.putSection({
+    await this.putSection({
       ownerKind: "char",
       ownerId: id,
       name: "profile",
@@ -1100,74 +1115,82 @@ export class DataStore {
     });
   }
 
-  section(ownerKind: SectionScope, ownerId: string, name: string): SectionRow | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT * FROM sections_latest WHERE owner_kind = ? AND owner_id = ? AND section = ?`,
-      )
-      .get(ownerKind, ownerId, name) as SectionDbRow | undefined;
+  async section(
+    ownerKind: SectionScope,
+    ownerId: string,
+    name: string,
+  ): Promise<SectionRow | undefined> {
+    const row = await this.db.get<SectionDbRow>(
+      `SELECT * FROM sections_latest WHERE owner_kind = ? AND owner_id = ? AND section = ?`,
+      ownerKind,
+      ownerId,
+      name,
+    );
     return row ? sectionFromRow(row) : undefined;
   }
 
-  sections(ownerKind: SectionScope, ownerId: string, names?: string[]): SectionRow[] {
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM sections_latest WHERE owner_kind = ? AND owner_id = ? ORDER BY section`,
-      )
-      .all(ownerKind, ownerId) as SectionDbRow[];
+  async sections(
+    ownerKind: SectionScope,
+    ownerId: string,
+    names?: string[],
+  ): Promise<SectionRow[]> {
+    const rows = await this.db.all<SectionDbRow>(
+      `SELECT * FROM sections_latest WHERE owner_kind = ? AND owner_id = ? ORDER BY section${this.db.pg ? ' COLLATE "C"' : ""}`,
+      ownerKind,
+      ownerId,
+    );
     return rows.map(sectionFromRow).filter((row) => !names?.length || names.includes(row.section));
   }
 
-  accounts(): AccountRow[] {
-    return (
-      this.db.prepare(`SELECT * FROM accounts ORDER BY last_seen DESC`).all() as AccountDbRow[]
-    ).map(accountFromRow);
+  async accounts(): Promise<AccountRow[]> {
+    return (await this.db.all<AccountDbRow>(`SELECT * FROM accounts ORDER BY last_seen DESC`)).map(
+      accountFromRow,
+    );
   }
 
-  account(id: string): AccountRow | undefined {
-    const row = this.db.prepare(`SELECT * FROM accounts WHERE id = ?`).get(accountId(id)) as
-      | AccountDbRow
-      | undefined;
+  async account(id: string): Promise<AccountRow | undefined> {
+    const row = await this.db.get<AccountDbRow>(
+      `SELECT * FROM accounts WHERE id = ?`,
+      accountId(id),
+    );
     return row ? accountFromRow(row) : undefined;
   }
 
-  characters(account?: string): CharacterRow[] {
-    const rows = (
-      account
-        ? this.db
-            .prepare(`SELECT * FROM characters WHERE account_id = ? ORDER BY last_seen DESC`)
-            .all(accountId(account))
-        : this.db.prepare(`SELECT * FROM characters ORDER BY last_seen DESC`).all()
-    ) as CharacterDbRow[];
+  async characters(account?: string): Promise<CharacterRow[]> {
+    const rows = account
+      ? await this.db.all<CharacterDbRow>(
+          `SELECT * FROM characters WHERE account_id = ? ORDER BY last_seen DESC`,
+          accountId(account),
+        )
+      : await this.db.all<CharacterDbRow>(`SELECT * FROM characters ORDER BY last_seen DESC`);
     return rows.map(characterFromRow);
   }
 
   /** The named character (realm optional), or the most recently seen one. */
-  character(name?: string, realm?: string): CharacterRow | undefined {
-    const row = (
-      name
-        ? this.db
-            .prepare(
-              `SELECT * FROM characters WHERE name = ? AND (? IS NULL OR realm = ?)
-               ORDER BY last_seen DESC, COALESCE(saved_at, 0) DESC LIMIT 1`,
-            )
-            .get(name, realm ?? null, realm ?? null)
-        : this.db
-            .prepare(
-              `SELECT * FROM characters ORDER BY last_seen DESC, COALESCE(saved_at, 0) DESC LIMIT 1`,
-            )
-            .get()
-    ) as CharacterDbRow | undefined;
+  async character(name?: string, realm?: string): Promise<CharacterRow | undefined> {
+    const order = `ORDER BY last_seen DESC, COALESCE(saved_at, 0) DESC LIMIT 1`;
+    const row = name
+      ? realm !== undefined
+        ? await this.db.get<CharacterDbRow>(
+            `SELECT * FROM characters WHERE name = ? AND realm = ? ${order}`,
+            name,
+            realm,
+          )
+        : await this.db.get<CharacterDbRow>(
+            `SELECT * FROM characters WHERE name = ? ${order}`,
+            name,
+          )
+      : await this.db.get<CharacterDbRow>(`SELECT * FROM characters ${order}`);
     return row ? characterFromRow(row) : undefined;
   }
 
-  history(filter: {
+  async history(filter: {
     owners: { kind: SectionScope; id: string }[];
     sections?: string[];
     since?: number;
     savedAt?: number;
     limit: number;
-  }): HistoryRow[] {
+  }): Promise<HistoryRow[]> {
     if (filter.owners.length === 0) return [];
     const where = [
       `(${filter.owners.map(() => "(owner_kind = ? AND owner_id = ?)").join(" OR ")})`,
@@ -1185,30 +1208,35 @@ export class DataStore {
       where.push("saved_at = ?");
       args.push(filter.savedAt);
     }
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM section_history WHERE ${where.join(" AND ")} ORDER BY at DESC, id DESC LIMIT ?`,
-      )
-      .all(...args, filter.limit) as HistoryDbRow[];
+    const rows = await this.db.all<HistoryDbRow>(
+      `SELECT * FROM section_history WHERE ${where.join(" AND ")} ORDER BY at DESC, id DESC LIMIT ?`,
+      ...args,
+      filter.limit,
+    );
     return rows.map(historyFromRow);
   }
 
-  lastChange(ownerKind: SectionScope, ownerId: string, name: string): HistoryRow | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT * FROM section_history WHERE owner_kind = ? AND owner_id = ? AND section = ?
-         ORDER BY at DESC, id DESC LIMIT 1`,
-      )
-      .get(ownerKind, ownerId, name) as HistoryDbRow | undefined;
+  async lastChange(
+    ownerKind: SectionScope,
+    ownerId: string,
+    name: string,
+  ): Promise<HistoryRow | undefined> {
+    const row = await this.db.get<HistoryDbRow>(
+      `SELECT * FROM section_history WHERE owner_kind = ? AND owner_id = ? AND section = ?
+       ORDER BY at DESC, id DESC LIMIT 1`,
+      ownerKind,
+      ownerId,
+      name,
+    );
     return row ? historyFromRow(row) : undefined;
   }
 
   /** Latest Sections of a Character and its Account, by name (Character first). */
-  sectionsFor(row: CharacterRow): Map<string, SectionRow> {
+  async sectionsFor(row: CharacterRow): Promise<Map<string, SectionRow>> {
     const out = new Map<string, SectionRow>();
     if (row.accountId)
-      for (const s of this.sections("account", row.accountId)) out.set(s.section, s);
-    for (const s of this.sections("char", row.id)) out.set(s.section, s);
+      for (const s of await this.sections("account", row.accountId)) out.set(s.section, s);
+    for (const s of await this.sections("char", row.id)) out.set(s.section, s);
     return out;
   }
 
@@ -1217,51 +1245,53 @@ export class DataStore {
    * same Account with its faction and professions, so Alt routing works for
    * Alts never logged in on this PC.
    */
-  accountAlts(row: CharacterRow, limit = MAX_DIGEST_ALTS): DigestAlt[] {
+  async accountAlts(row: CharacterRow, limit = MAX_DIGEST_ALTS): Promise<DigestAlt[]> {
     if (!row.accountId) return [];
-    return this.characters(row.accountId)
+    const others = (await this.characters(row.accountId))
       .filter((other) => other.id !== row.id)
-      .slice(0, limit)
-      .map((other) => {
-        const char = this.section("char", other.id, "char")?.body ?? {};
-        const legacy = this.section("char", other.id, "profile")?.body;
-        const raw = this.section("char", other.id, "professions")?.body.list ?? legacy?.professions;
-        const professions = (Array.isArray(raw) ? raw : [])
-          .filter(isObject)
-          .map((item) => ({
-            skillLine: typeof item.skillLine === "number" ? item.skillLine : null,
-            name: typeof item.name === "string" ? item.name.slice(0, 60) : null,
-            skill: typeof item.skill === "number" ? item.skill : null,
-          }))
-          .filter((item) => item.skillLine !== null)
-          .slice(0, 6);
-        const alt: DigestAlt = {
-          name: other.name,
-          realm: other.realm,
-          seenAt: other.lastSeen,
-          professions,
-        };
-        if (typeof char.faction === "string") alt.faction = char.faction.slice(0, 20);
-        return alt;
-      });
+      .slice(0, limit);
+    const out: DigestAlt[] = [];
+    for (const other of others) {
+      const char = (await this.section("char", other.id, "char"))?.body ?? {};
+      const legacy = (await this.section("char", other.id, "profile"))?.body;
+      const raw =
+        (await this.section("char", other.id, "professions"))?.body.list ?? legacy?.professions;
+      const professions = (Array.isArray(raw) ? raw : [])
+        .filter(isObject)
+        .map((item) => ({
+          skillLine: typeof item.skillLine === "number" ? item.skillLine : null,
+          name: typeof item.name === "string" ? item.name.slice(0, 60) : null,
+          skill: typeof item.skill === "number" ? item.skill : null,
+        }))
+        .filter((item) => item.skillLine !== null)
+        .slice(0, 6);
+      const alt: DigestAlt = {
+        name: other.name,
+        realm: other.realm,
+        seenAt: other.lastSeen,
+        professions,
+      };
+      if (typeof char.faction === "string") alt.faction = char.faction.slice(0, 20);
+      out.push(alt);
+    }
+    return out;
   }
 
   /**
    * The Account holdings index (ADR 0048) from every Character's bags, bank
    * and reagent bank and the Warband bank. Kept until one of those changes.
    */
-  holdings(row: CharacterRow, now = Math.floor(Date.now() / 1000)): Holdings {
+  async holdings(row: CharacterRow, now = Math.floor(Date.now() / 1000)): Promise<Holdings> {
     if (!row.accountId) return { places: [], items: {} };
-    const characters = this.characters(row.accountId);
+    const characters = await this.characters(row.accountId);
     const owners = [row.accountId, ...characters.map((other) => other.id)];
-    const stamp = this.db
-      .prepare(
-        `SELECT COALESCE(MAX(updated_at), 0) AS at, COUNT(*) AS n FROM sections_latest
-         WHERE section IN ('bags', 'bank', 'reagentBank', 'warband')
-           AND owner_id IN (${owners.map(() => "?").join(",")})`,
-      )
-      .get(...owners) as { at: number; n: number };
-    const key = `${owners.join(",")}|${stamp.at}|${stamp.n}|${Math.floor(now / 86400)}`;
+    const stamp = (await this.db.get<{ at: number; n: number }>(
+      `SELECT COALESCE(MAX(updated_at), 0) AS at, COUNT(*) AS n FROM sections_latest
+       WHERE section IN ('bags', 'bank', 'reagentBank', 'warband')
+         AND owner_id IN (${owners.map(() => "?").join(",")})`,
+      ...owners,
+    ))!;
+    const key = `${owners.join(",")}|${Number(stamp.at)}|${Number(stamp.n)}|${Math.floor(now / 86400)}`;
     const cached = this.holdingsCache.get(row.accountId);
     if (cached?.key === key) return cached.value;
     const items = (section: SectionRow | undefined) =>
@@ -1271,15 +1301,16 @@ export class DataStore {
             count: item.values[0] ?? 1,
           }))
         : [];
-    const places: HoldingsPlace[] = characters.map((other) => {
-      const sections = this.sections("char", other.id, ["bags", "bank", "reagentBank"]);
-      return {
+    const places: HoldingsPlace[] = [];
+    for (const other of characters) {
+      const sections = await this.sections("char", other.id, ["bags", "bank", "reagentBank"]);
+      places.push({
         key: `${other.name}-${other.realm}`,
         seenAt: other.lastSeen,
         items: sections.flatMap(items),
-      };
-    });
-    const warband = this.section("account", row.accountId, "warband");
+      });
+    }
+    const warband = await this.section("account", row.accountId, "warband");
     if (warband)
       places.push({
         key: WARBAND_PLACE,
@@ -1295,89 +1326,14 @@ export class DataStore {
    * The player profile in its 0.6 shape for get_player_profile: the stored
    * 0.6 upload, with every 0.7 Section the Character has laid over it.
    */
-  profileView(row: CharacterRow) {
-    const all = this.sectionsFor(row);
-    const body = (name: string) => all.get(name)?.body;
-    const profile: Raw = { ...body("profile") };
-    const char = body("char");
-    if (char) {
-      const context: Raw = isObject(profile.context) ? { ...profile.context } : {};
-      for (const key of [
-        "level",
-        "class",
-        "classFile",
-        "race",
-        "faction",
-        "spec",
-        "specID",
-        "hearth",
-      ]) {
-        if (char[key] !== undefined) context[key] = char[key];
-      }
-      if (typeof char.ilvl === "number") context.ilvl = char.ilvl;
-      if (typeof char.money === "number") context.gold = Math.floor(char.money / 10000);
-      profile.context = context;
-    }
-    const items = (name: string) => {
-      const section = body(name);
-      if (!section || !isPackedIdSet(section.items)) return undefined;
-      return unpackRows(section.items).map((item) => ({
-        itemID: item.id,
-        count: item.values[0] ?? 1,
-      }));
-    };
-    const bags = items("bags");
-    if (bags) profile.bags = bags;
-    for (const name of ["bank", "reagentBank", "warband"]) {
-      const list = items(name);
-      if (list) profile[name] = { seenAt: all.get(name)?.at ?? null, items: list };
-    }
-    const gear = body("gear");
-    if (gear && Array.isArray(gear.slots)) profile.equipped = gear.slots;
-    const listOf = (name: string, key: string) => {
-      const section = body(name);
-      return section && Array.isArray(section[key]) ? section[key] : undefined;
-    };
-    const professions = listOf("professions", "list");
-    if (professions) profile.professions = professions;
-    const currencies = listOf("currencies", "list");
-    if (currencies) profile.currencies = currencies;
-    const quests = listOf("questLog", "quests");
-    if (quests) profile.quests = quests;
-    const sessions = listOf("sessions", "list");
-    if (sessions) profile.sessions = sessions;
-    const count = (name: string, key = "ids") => {
-      const section = body(name);
-      if (!section) return undefined;
-      return isPackedIdSet(section[key]) ? unpackRows(section[key]).length : section.count;
-    };
-    if (["mounts", "pets", "toys", "achievements"].some((name) => all.has(name))) {
-      const collections: Raw = isObject(profile.collections) ? { ...profile.collections } : {};
-      const set = (key: string, value: unknown) => {
-        if (value !== undefined) collections[key] = value;
-      };
-      set("mounts", count("mounts"));
-      set("pets", count("pets", "species"));
-      set("toys", count("toys"));
-      set("achievementPoints", body("achievements")?.points);
-      profile.collections = collections;
-    }
-    const updatedAt = Math.max(0, ...[...all.values()].map((s) => s.updatedAt));
-    return {
-      character: row.name,
-      realm: row.realm,
-      account: row.accountId,
-      deviceId: row.deviceId ?? "",
-      savedAt: row.savedAt || null,
-      updatedAt: updatedAt || row.lastSeen,
-      profile,
-      sections: [...all.values()].map((s) => ({ name: s.section, scope: s.ownerKind, at: s.at })),
-    };
+  async profileView(row: CharacterRow) {
+    const all = await this.sectionsFor(row);
+    return profileViewOf(row, all);
   }
 
   /** Sharing looks off when a Character has only the Sections written with sharing off. */
-  private sharingOff(row: CharacterRow): boolean {
-    const names = this.sections("char", row.id).map((s) => s.section);
+  private async sharingOff(row: CharacterRow): Promise<boolean> {
+    const names = (await this.sections("char", row.id)).map((s) => s.section);
     return (
       names.some((name) => ESSENTIAL_SECTIONS.has(name)) &&
       !names.some((name) => !ESSENTIAL_SECTIONS.has(name) && KNOWN_SECTIONS[name])
@@ -1385,8 +1341,8 @@ export class DataStore {
   }
 
   /** Expected Sections an owner does not have, each with why (D171). */
-  missing(scope: SectionScope, ownerId: string, dropped: Raw | null, sharingOff: boolean) {
-    const present = new Set(this.sections(scope, ownerId).map((s) => s.section));
+  async missing(scope: SectionScope, ownerId: string, dropped: Raw | null, sharingOff: boolean) {
+    const present = new Set((await this.sections(scope, ownerId)).map((s) => s.section));
     const out: MissingSection[] = [];
     for (const name of expectedSections(scope)) {
       if (present.has(name)) continue;
@@ -1402,19 +1358,21 @@ export class DataStore {
   }
 
   /** Missing Sections of a Character and of its Account. */
-  missingFor(row: CharacterRow): MissingSection[] {
-    const sharingOff = this.sharingOff(row);
-    const out = this.missing("char", row.id, row.dropped, sharingOff);
+  async missingFor(row: CharacterRow): Promise<MissingSection[]> {
+    const sharingOff = await this.sharingOff(row);
+    const out = await this.missing("char", row.id, row.dropped, sharingOff);
     if (row.accountId) {
-      const account = this.account(row.accountId);
-      out.push(...this.missing("account", row.accountId, account?.dropped ?? null, sharingOff));
+      const account = await this.account(row.accountId);
+      out.push(
+        ...(await this.missing("account", row.accountId, account?.dropped ?? null, sharingOff)),
+      );
     }
     return out;
   }
 
   /** One row per Character for get_account_overview (D59). */
-  overview(row: CharacterRow) {
-    const all = this.sectionsFor(row);
+  async overview(row: CharacterRow) {
+    const all = await this.sectionsFor(row);
     const char = all.get("char")?.body ?? {};
     const legacy = all.get("profile")?.body;
     const context = isObject(legacy?.context) ? legacy.context : {};
@@ -1437,12 +1395,12 @@ export class DataStore {
           { at: s.at, savedAt: s.savedAt, scope: s.ownerKind },
         ]),
       ),
-      missing: this.missingFor(row),
+      missing: await this.missingFor(row),
     };
   }
 
   /** Which of `ids` each Character (or the Account) has, without loading whole sets (D59). */
-  checkIds(kind: IdKind, ids: number[], characters: CharacterRow[]) {
+  async checkIds(kind: IdKind, ids: number[], characters: CharacterRow[]) {
     const wanted = new Set(ids);
     const pick = (set: unknown) => unpackIds(set).filter((id) => wanted.has(id));
     const accountScope: Record<string, { section: string; key: string }> = {
@@ -1461,7 +1419,7 @@ export class DataStore {
     if (scope) {
       const accountIds = [...new Set(characters.map((row) => row.accountId).filter(Boolean))];
       const section = accountIds.length
-        ? this.section("account", accountIds[0]!, scope.section)
+        ? await this.section("account", accountIds[0]!, scope.section)
         : undefined;
       const have = section ? pick(section.body[scope.key]) : [];
       out.account = section
@@ -1483,7 +1441,7 @@ export class DataStore {
             : null;
     if (charSection) {
       for (const row of characters) {
-        const section = this.section("char", row.id, charSection);
+        const section = await this.section("char", row.id, charSection);
         let have: number[] | null = null;
         if (section && kind === "recipe") {
           const found = new Set<number>();
@@ -1505,10 +1463,10 @@ export class DataStore {
     return out;
   }
 
-  private sectionInfo(row: SectionRow) {
+  private async sectionInfo(row: SectionRow) {
     const counts: Raw = {};
     for (const [path, set] of packedSets(row.body)) counts[path] = unpackRows(set).length;
-    const last = this.lastChange(row.ownerKind, row.ownerId, row.section);
+    const last = await this.lastChange(row.ownerKind, row.ownerId, row.section);
     // D160: ids Bory could not help with, counted per kind (quest, item, advice, ...).
     let byKind: Record<string, number> | undefined;
     if (row.section === "unresolvedIds" && Array.isArray(row.body.list)) {
@@ -1533,14 +1491,20 @@ export class DataStore {
     };
   }
 
+  private async sectionInfos(scope: SectionScope, ownerId: string) {
+    const out = [];
+    for (const s of await this.sections(scope, ownerId)) out.push(await this.sectionInfo(s));
+    return out;
+  }
+
   /** The Data explorer: every Account, Character and Section with sizes and the last change (D60). */
-  catalog(filter: { account?: string } = {}) {
+  async catalog(filter: { account?: string } = {}) {
     const accounts = filter.account
-      ? [this.account(filter.account)].filter((row): row is AccountRow => Boolean(row))
-      : this.accounts();
-    const loose = filter.account ? [] : this.characters().filter((row) => !row.accountId);
-    const character = (row: CharacterRow) => {
-      const sections = this.sections("char", row.id).map((s) => this.sectionInfo(s));
+      ? [await this.account(filter.account)].filter((row): row is AccountRow => Boolean(row))
+      : await this.accounts();
+    const loose = filter.account ? [] : (await this.characters()).filter((row) => !row.accountId);
+    const character = async (row: CharacterRow) => {
+      const sections = await this.sectionInfos("char", row.id);
       return {
         character: row.name,
         realm: row.realm,
@@ -1552,47 +1516,51 @@ export class DataStore {
         bytes: sections.reduce((sum, s) => sum + s.bytes, 0),
         sections,
         expected: expectedSections("char"),
-        missing: this.missing("char", row.id, row.dropped, this.sharingOff(row)),
+        missing: await this.missing("char", row.id, row.dropped, await this.sharingOff(row)),
       };
     };
-    return {
-      knownSections: Object.keys(KNOWN_SECTIONS),
-      accounts: [
-        ...accounts.map((row) => {
-          const sections = this.sections("account", row.id).map((s) => this.sectionInfo(s));
-          const characters = this.characters(row.id);
-          const sharingOff =
-            characters.length > 0 && characters.every((other) => this.sharingOff(other));
-          return {
-            account: row.id,
-            label: row.label,
-            firstSeen: row.firstSeen,
-            lastSeen: row.lastSeen,
-            dropped: row.dropped,
-            bytes: sections.reduce((sum, s) => sum + s.bytes, 0),
-            sections,
-            expected: expectedSections("account"),
-            missing: this.missing("account", row.id, row.dropped, sharingOff),
-            characters: characters.map(character),
-          };
-        }),
-        ...(loose.length
-          ? [{ account: "", label: "", sections: [], characters: loose.map(character) }]
-          : []),
-      ],
-    };
+    const out = [];
+    for (const row of accounts) {
+      const sections = await this.sectionInfos("account", row.id);
+      const characters = await this.characters(row.id);
+      let sharingOff = characters.length > 0;
+      for (const other of characters) {
+        if (!sharingOff) break;
+        sharingOff = await this.sharingOff(other);
+      }
+      const rows = [];
+      for (const other of characters) rows.push(await character(other));
+      out.push({
+        account: row.id,
+        label: row.label,
+        firstSeen: row.firstSeen,
+        lastSeen: row.lastSeen,
+        dropped: row.dropped,
+        bytes: sections.reduce((sum, s) => sum + s.bytes, 0),
+        sections,
+        expected: expectedSections("account"),
+        missing: await this.missing("account", row.id, row.dropped, sharingOff),
+        characters: rows,
+      });
+    }
+    if (loose.length) {
+      const rows = [];
+      for (const other of loose) rows.push(await character(other));
+      out.push({ account: "", label: "", sections: [], characters: rows });
+    }
+    return { knownSections: Object.keys(KNOWN_SECTIONS), accounts: out };
   }
 
   /** Owner-only erasure: every Section, history row and Character of one Account (D62). */
-  deleteAccount(account: string): {
+  async deleteAccount(account: string): Promise<{
     characters: number;
     sections: number;
     history: number;
     errors: number;
-  } {
+  }> {
     const id = accountId(account);
-    return this.transaction(() => {
-      const characters = this.characters(id).map((row) => row.id);
+    return this.db.tx(async () => {
+      const characters = (await this.characters(id)).map((row) => row.id);
       const owners: [string, string][] = [
         ["account", id],
         ...characters.map((char) => ["char", char] as [string, string]),
@@ -1600,23 +1568,101 @@ export class DataStore {
       let sections = 0;
       let history = 0;
       for (const [kind, owner] of owners) {
-        sections += Number(
-          this.db
-            .prepare(`DELETE FROM sections_latest WHERE owner_kind = ? AND owner_id = ?`)
-            .run(kind, owner).changes,
+        sections += await this.db.run(
+          `DELETE FROM sections_latest WHERE owner_kind = ? AND owner_id = ?`,
+          kind,
+          owner,
         );
-        history += Number(
-          this.db
-            .prepare(`DELETE FROM section_history WHERE owner_kind = ? AND owner_id = ?`)
-            .run(kind, owner).changes,
+        history += await this.db.run(
+          `DELETE FROM section_history WHERE owner_kind = ? AND owner_id = ?`,
+          kind,
+          owner,
         );
       }
-      const errors = Number(
-        this.db.prepare(`DELETE FROM addon_errors WHERE account = ?`).run(id).changes,
-      );
-      this.db.prepare(`DELETE FROM characters WHERE account_id = ?`).run(id);
-      this.db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+      const errors = await this.db.run(`DELETE FROM addon_errors WHERE account = ?`, id);
+      await this.db.run(`DELETE FROM characters WHERE account_id = ?`, id);
+      await this.db.run(`DELETE FROM accounts WHERE id = ?`, id);
       return { characters: characters.length, sections, history, errors };
     });
   }
+}
+
+/** The 0.6-shaped profile of one Character from its Sections (see DataStore.profileView). */
+function profileViewOf(row: CharacterRow, all: Map<string, SectionRow>) {
+  const body = (name: string) => all.get(name)?.body;
+  const profile: Raw = { ...body("profile") };
+  const char = body("char");
+  if (char) {
+    const context: Raw = isObject(profile.context) ? { ...profile.context } : {};
+    for (const key of [
+      "level",
+      "class",
+      "classFile",
+      "race",
+      "faction",
+      "spec",
+      "specID",
+      "hearth",
+    ]) {
+      if (char[key] !== undefined) context[key] = char[key];
+    }
+    if (typeof char.ilvl === "number") context.ilvl = char.ilvl;
+    if (typeof char.money === "number") context.gold = Math.floor(char.money / 10000);
+    profile.context = context;
+  }
+  const items = (name: string) => {
+    const section = body(name);
+    if (!section || !isPackedIdSet(section.items)) return undefined;
+    return unpackRows(section.items).map((item) => ({
+      itemID: item.id,
+      count: item.values[0] ?? 1,
+    }));
+  };
+  const bags = items("bags");
+  if (bags) profile.bags = bags;
+  for (const name of ["bank", "reagentBank", "warband"]) {
+    const list = items(name);
+    if (list) profile[name] = { seenAt: all.get(name)?.at ?? null, items: list };
+  }
+  const gear = body("gear");
+  if (gear && Array.isArray(gear.slots)) profile.equipped = gear.slots;
+  const listOf = (name: string, key: string) => {
+    const section = body(name);
+    return section && Array.isArray(section[key]) ? section[key] : undefined;
+  };
+  const professions = listOf("professions", "list");
+  if (professions) profile.professions = professions;
+  const currencies = listOf("currencies", "list");
+  if (currencies) profile.currencies = currencies;
+  const quests = listOf("questLog", "quests");
+  if (quests) profile.quests = quests;
+  const sessions = listOf("sessions", "list");
+  if (sessions) profile.sessions = sessions;
+  const count = (name: string, key = "ids") => {
+    const section = body(name);
+    if (!section) return undefined;
+    return isPackedIdSet(section[key]) ? unpackRows(section[key]).length : section.count;
+  };
+  if (["mounts", "pets", "toys", "achievements"].some((name) => all.has(name))) {
+    const collections: Raw = isObject(profile.collections) ? { ...profile.collections } : {};
+    const set = (key: string, value: unknown) => {
+      if (value !== undefined) collections[key] = value;
+    };
+    set("mounts", count("mounts"));
+    set("pets", count("pets", "species"));
+    set("toys", count("toys"));
+    set("achievementPoints", body("achievements")?.points);
+    profile.collections = collections;
+  }
+  const updatedAt = Math.max(0, ...[...all.values()].map((s) => s.updatedAt));
+  return {
+    character: row.name,
+    realm: row.realm,
+    account: row.accountId,
+    deviceId: row.deviceId ?? "",
+    savedAt: row.savedAt || null,
+    updatedAt: updatedAt || row.lastSeen,
+    profile,
+    sections: [...all.values()].map((s) => ({ name: s.section, scope: s.ownerKind, at: s.at })),
+  };
 }

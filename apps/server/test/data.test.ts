@@ -14,6 +14,7 @@ import { packIds, sectionHash, unpackIds, unpackRows } from "@unbored/contracts"
 import { createApp } from "../src/app.ts";
 import { sqlitePath } from "../src/config.ts";
 import { SNAPSHOT_MAX_COMPRESSED } from "../src/data.ts";
+import { database, onPostgres } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -33,7 +34,13 @@ const fixture = JSON.parse(
 type App = ReturnType<typeof createApp>["app"];
 
 function build(dataDir = mkdtempSync(path.join(tmpdir(), "unbored-data-"))) {
-  return createApp({ companionToken: companion, plannerToken: planner, dataDir, log: () => {} });
+  return createApp({
+    database: database(),
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir,
+    log: () => {},
+  });
 }
 
 async function json(response: Response) {
@@ -144,15 +151,15 @@ test("an unchanged Section body still advances its schema version", async () => 
     };
     const result = await json(await post(app, next));
     assert.deepEqual(result.stored, ["mounts"]);
-    const section = store.data.section("account", "111111", "mounts")!;
+    const section = (await store.data.section("account", "111111", "mounts"))!;
     assert.equal(section.v, 2);
     assert.equal(section.unknown, true, "a newer unknown schema must not masquerade as v1");
     assert.equal(section.hash, fixture.sections.mounts.hash);
-    const last = store.data.lastChange("account", "111111", "mounts")!;
+    const last = (await store.data.lastChange("account", "111111", "mounts"))!;
     assert.equal(last.kind, "full", "schema changes never become collection diffs");
     const retry = await json(await post(app, next));
     assert.deepEqual(retry.stored, []);
-    assert.equal(store.data.lastChange("account", "111111", "mounts")!.id, last.id);
+    assert.equal((await store.data.lastChange("account", "111111", "mounts"))!.id, last.id);
   } finally {
     close();
   }
@@ -163,15 +170,15 @@ test("an unchanged newer save prevents an older changed Section from replacing i
   try {
     assert.equal((await post(app, fixture)).status, 200);
     const newer = { ...fixture, savedAt: fixture.savedAt + 200 };
-    const initial = store.data.lastChange("account", "111111", "mounts")!;
+    const initial = (await store.data.lastChange("account", "111111", "mounts"))!;
     assert.deepEqual((await json(await post(app, newer))).stored, []);
     const older = withSection("mounts", { ids: packIds([999]), count: 1 }, fixture.savedAt + 100);
     const result = await json(await post(app, older));
     assert.equal(result.stale, true);
-    const section = store.data.section("account", "111111", "mounts")!;
+    const section = (await store.data.section("account", "111111", "mounts"))!;
     assert.equal(section.savedAt, newer.savedAt);
     assert.deepEqual(section.body, fixture.sections.mounts.body);
-    assert.equal(store.data.lastChange("account", "111111", "mounts")!.id, initial.id);
+    assert.equal((await store.data.lastChange("account", "111111", "mounts"))!.id, initial.id);
   } finally {
     close();
   }
@@ -187,7 +194,7 @@ test("a stale char Section cannot roll back the Character catalog or upload meta
     );
     fresh.sections = { char: fresh.sections.char };
     assert.equal((await post(app, fresh)).status, 200);
-    const before = store.data.character("Mira", fixture.realm)!;
+    const before = (await store.data.character("Mira", fixture.realm))!;
     const stale = {
       ...withSection("char", { name: "Mira", class: "Warrior", level: 70 }, fixture.savedAt + 100),
       account: "old-account",
@@ -195,13 +202,16 @@ test("a stale char Section cannot roll back the Character catalog or upload meta
     };
     stale.sections = { char: stale.sections.char };
     assert.equal((await json(await post(app, stale))).stale, true);
-    const after = store.data.character("Mira", fixture.realm)!;
+    const after = (await store.data.character("Mira", fixture.realm))!;
     assert.equal(after.level, 80);
     assert.equal(after.class, "Mage");
     assert.equal(after.accountId, before.accountId);
     assert.equal(after.savedAt, before.savedAt);
     assert.deepEqual(after.dropped, before.dropped);
-    assert.deepEqual(store.data.section("char", after.id, "char")!.body, fresh.sections.char.body);
+    assert.deepEqual(
+      (await store.data.section("char", after.id, "char"))!.body,
+      fresh.sections.char.body,
+    );
   } finally {
     close();
   }
@@ -226,8 +236,8 @@ test("Character facts follow the accepted char Section, not the latest unrelated
     );
     next.sections = { char: next.sections.char };
     assert.deepEqual((await json(await post(app, next))).stored, ["char"]);
-    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
-    assert.equal(store.data.character("Mira", fixture.realm)!.savedAt, bags.savedAt);
+    assert.equal((await store.data.character("Mira", fixture.realm))!.level, 80);
+    assert.equal((await store.data.character("Mira", fixture.realm))!.savedAt, bags.savedAt);
 
     const old = withSection(
       "char",
@@ -236,7 +246,7 @@ test("Character facts follow the accepted char Section, not the latest unrelated
     );
     old.sections = { char: old.sections.char };
     assert.equal((await json(await post(app, old))).stale, true);
-    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
+    assert.equal((await store.data.character("Mira", fixture.realm))!.level, 80);
   } finally {
     close();
   }
@@ -264,8 +274,8 @@ test("legacy profiles cannot replace Character facts supplied by a char Section"
       }),
     });
     assert.equal(profile.status, 200);
-    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
-    assert.equal(store.data.character("Mira", fixture.realm)!.class, "Mage");
+    assert.equal((await store.data.character("Mira", fixture.realm))!.level, 80);
+    assert.equal((await store.data.character("Mira", fixture.realm))!.class, "Mage");
   } finally {
     close();
   }
@@ -282,20 +292,18 @@ test("an unchanged char upload repairs catalog facts and an empty field preserve
     );
     current.sections = { char: current.sections.char };
     assert.equal((await post(app, current)).status, 200);
-    const db = new DatabaseSync(sqlitePath(dataDir));
-    try {
-      db.prepare(`UPDATE characters SET class = 'Warrior', level = 70 WHERE name = ?`).run("Mira");
-    } finally {
-      db.close();
-    }
+    await store.db.run(
+      `UPDATE characters SET class = 'Warrior', level = 70 WHERE name = ?`,
+      "Mira",
+    );
     assert.deepEqual((await json(await post(app, current))).stored, []);
-    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
-    assert.equal(store.data.character("Mira", fixture.realm)!.class, "Mage");
+    assert.equal((await store.data.character("Mira", fixture.realm))!.level, 80);
+    assert.equal((await store.data.character("Mira", fixture.realm))!.class, "Mage");
     const partial = withSection("char", { name: "Mira", class: "" }, fixture.savedAt + 100);
     partial.sections = { char: partial.sections.char };
     assert.equal((await post(app, partial)).status, 200);
-    assert.equal(store.data.character("Mira", fixture.realm)!.level, 80);
-    assert.equal(store.data.character("Mira", fixture.realm)!.class, "Mage");
+    assert.equal((await store.data.character("Mira", fixture.realm))!.level, 80);
+    assert.equal((await store.data.character("Mira", fixture.realm))!.class, "Mage");
   } finally {
     close();
   }
@@ -369,7 +377,7 @@ for (const declared of [undefined, "1"]) {
         assert.equal(response.status, 413);
         assert.equal(pulled, 2);
         assert.equal(cancelled, true);
-        assert.deepEqual(store.data.catalog().accounts, []);
+        assert.deepEqual((await store.data.catalog()).accounts, []);
       } finally {
         close();
       }
@@ -471,7 +479,7 @@ test("the HTTP adapter returns 413 before a chunked snapshot upload ends", async
     });
     assert.equal(status, 413);
     assert.equal(request.writableEnded, false);
-    assert.deepEqual(store.data.catalog().accounts, []);
+    assert.deepEqual((await store.data.catalog()).accounts, []);
   } finally {
     request.destroy();
     await new Promise<void>((resolve, reject) =>
@@ -499,7 +507,7 @@ test("an interrupted snapshot stream returns a clean error without storing data"
     const response = await app.request(new Request("http://localhost/v1/snapshot", init));
     assert.equal(response.status, 400);
     assert.equal((await json(response)).error, "The game data must be JSON, optionally gzip.");
-    assert.deepEqual(store.data.catalog().accounts, []);
+    assert.deepEqual((await store.data.catalog()).accounts, []);
   } finally {
     close();
   }
@@ -725,7 +733,8 @@ test("delete_account_data erases one Account and needs confirm", async () => {
   }
 });
 
-test("0.6 profiles are moved into Sections once", () => {
+// SQLite file migrations; Postgres starts from migrations/0001.
+test.skipIf(onPostgres)("0.6 profiles are moved into Sections once", async () => {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-backfill-"));
   const legacy = new DatabaseSync(sqlitePath(dataDir));
   legacy.exec(`
@@ -752,23 +761,24 @@ test("0.6 profiles are moved into Sections once", () => {
     .run("Old", "Area 52", "legacy", 200, 200, JSON.stringify(newer), "222#1");
   legacy.close();
 
-  const count = (store: ReturnType<typeof build>["store"]) =>
-    store.data.history({ owners: [{ kind: "char", id: "Area 52/Old" }], limit: 50 }).length;
+  const count = async (store: ReturnType<typeof build>["store"]) =>
+    (await store.data.history({ owners: [{ kind: "char", id: "Area 52/Old" }], limit: 50 })).length;
   const first = build(dataDir);
   try {
-    const row = first.store.data.character("Old", "Area 52");
+    const row = await first.store.data.character("Old", "Area 52");
     assert.equal(row?.accountId, "222");
-    const context = first.store.data.section("char", "Area 52/Old", "profile")?.body.context as {
+    const context = (await first.store.data.section("char", "Area 52/Old", "profile"))?.body
+      .context as {
       level: number;
     };
     assert.equal(context.level, 80);
-    assert.equal(count(first.store), 2, "both 0.6 rows became history");
+    assert.equal(await count(first.store), 2, "both 0.6 rows became history");
   } finally {
     first.close();
   }
   const second = build(dataDir);
   try {
-    assert.equal(count(second.store), 2, "a second start does not backfill again");
+    assert.equal(await count(second.store), 2, "a second start does not backfill again");
   } finally {
     second.close();
   }

@@ -6,6 +6,7 @@ import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
 import { MAX_ATTEMPTS, RETRY_DELAYS, type FetchLike } from "../src/webhook.ts";
+import { database } from "./backend.ts";
 
 const root = path.join(import.meta.dirname, "..", "..", "..", "packages", "contracts", "fixtures");
 const requests = JSON.parse(readFileSync(path.join(root, "requests.json"), "utf8")) as {
@@ -34,6 +35,7 @@ function build(options: { url?: string; respond?: (hit: Hit) => number | Error }
     return { ok: outcome >= 200 && outcome < 300, status: outcome };
   };
   const built = createApp({
+    database: database(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-webhook-")),
@@ -70,7 +72,7 @@ for (const { name, body } of requests.cases) {
       assert.equal(hits[0].body.requestId, body.id);
       assert.equal(hits[0].body.type, body.type);
       assert.equal(hits[0].headers.authorization, "Bearer hook-key");
-      assert.ok(store.webhookDelivery(body.id as string)?.deliveredAt);
+      assert.ok((await store.webhookDelivery(body.id as string))?.deliveredAt);
       assert.ok(
         lines.some((line) =>
           line.startsWith(`webhook req=${body.id} type=${body.type} attempt=1 ok`),
@@ -133,7 +135,7 @@ test("webhook: a failing planner is retried with backoff, then given up", async 
     app.advance(24 * 3600);
     await app.webhook.tick();
     assert.equal(app.hits.length, MAX_ATTEMPTS);
-    const delivery = app.store.webhookDelivery(question.id as string)!;
+    const delivery = (await app.store.webhookDelivery(question.id as string))!;
     assert.equal(delivery.deliveredAt, null);
     assert.equal(delivery.lastError, "ECONNREFUSED");
     assert.ok(
@@ -162,14 +164,14 @@ test("webhook: a request stuck before a restart is sent by the loop; answered on
     assert.equal((await post(app.app, { ...first, createdAt: app.now() })).status, 201);
     assert.equal((await post(app.app, { ...second, createdAt: app.now() })).status, 201);
     assert.equal(app.hits.length, 2);
-    app.store.fulfillRequest(second.id as string, 1, app.now());
+    await app.store.fulfillRequest(second.id as string, 1, app.now());
     up = true;
     app.advance(30);
     await app.webhook.tick();
     assert.equal(app.hits.length, 3);
     assert.equal(app.hits[2].body.requestId, first.id);
-    assert.ok(app.store.webhookDelivery(first.id as string)?.deliveredAt);
-    assert.equal(app.store.webhookDelivery(second.id as string)?.deliveredAt, null);
+    assert.ok((await app.store.webhookDelivery(first.id as string))?.deliveredAt);
+    assert.equal((await app.store.webhookDelivery(second.id as string))?.deliveredAt, null);
   } finally {
     app.close();
   }

@@ -4,13 +4,14 @@ import path from "node:path";
 
 import { cleanSnapshot } from "../src/data.ts";
 import { Store } from "../src/store.ts";
+import { database } from "./backend.ts";
 
 export const NOW = 1_790_000_000;
 export const ACCOUNT = "111111#1";
 export const ACCOUNT_KEY = "111111";
 
 export function makeStore(): Store {
-  return new Store(mkdtempSync(path.join(tmpdir(), "unbored-v010-")));
+  return new Store(mkdtempSync(path.join(tmpdir(), "unbored-v010-")), { postgres: database() });
 }
 
 type SectionInput = { scope?: "char" | "account"; v?: number; at?: number; body: object };

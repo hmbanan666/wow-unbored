@@ -31,7 +31,7 @@ function cagePlan(extra: Record<string, unknown> = {}) {
   };
 }
 
-test("the cage fixture keeps its contents and its step group, and survives UNB1", () => {
+test("the cage fixture keeps its contents and its step group, and survives UNB1", async () => {
   const raw = fixture("plan-group.json");
   assert.equal(planSchema.safeParse(raw).success, true);
   const { plan, warnings } = clean(raw);
@@ -51,7 +51,7 @@ test("the cage fixture keeps its contents and its step group, and survives UNB1"
   assert.ok(planMarkupIds(raw).includes("mount:900002"));
 });
 
-test("contents need an item reward of the plan or a step as their key", () => {
+test("contents need an item reward of the plan or a step as their key", async () => {
   const notOffered = clean(cagePlan({ contains: { "{item:5}": ["{mount:1}"] } }));
   assert.equal(notOffered.plan.contains, undefined);
   assert.ok(notOffered.warnings.some((line) => line.includes("also a plan or step reward")));
@@ -71,7 +71,7 @@ test("contents need an item reward of the plan or a step as their key", () => {
   assert.deepEqual(stepReward.plan.contains, { "{item:42}": ["{toy:9}", "{pet:3}"] });
 });
 
-test("contents keep 1 to 6 mount, toy, pet or item tokens and at most 2 containers", () => {
+test("contents keep 1 to 6 mount, toy, pet or item tokens and at most 2 containers", async () => {
   const values = [
     "{mount:1}",
     "{ach:2}",
@@ -112,7 +112,7 @@ test("contents keep 1 to 6 mount, toy, pet or item tokens and at most 2 containe
   assert.ok(notObject.warnings.some((line) => line.includes("must be an object")));
 });
 
-test("contents count toward the 12 tokens of goal plus details", () => {
+test("contents count toward the 12 tokens of goal plus details", async () => {
   const goal = Array.from({ length: 5 }, (_, n) => `{ach:${n + 1}}`).join(" ");
   const details = Array.from({ length: 5 }, (_, n) => `{ach:${n + 11}}`).join(" ");
   const { plan, warnings } = clean(
@@ -122,7 +122,7 @@ test("contents count toward the 12 tokens of goal plus details", () => {
   assert.ok(warnings.some((line) => line.includes("more than 12 tokens")));
 });
 
-test("two mounts next to an item reward without contents is a warning, not a drop", () => {
+test("two mounts next to an item reward without contents is a warning, not a drop", async () => {
   const loose = clean(cagePlan({ rewards: [CAGE, "{mount:1}", "{mount:2}"] }));
   assert.deepEqual(loose.plan.rewards, [CAGE, "{mount:1}", "{mount:2}"]);
   assert.ok(loose.warnings.some((line) => line.includes("2+ mounts and an item without contains")));
@@ -132,7 +132,7 @@ test("two mounts next to an item reward without contents is a warning, not a dro
   assert.ok(!tidy.warnings.some((line) => line.includes("2+ mounts")));
 });
 
-test("a step group needs 2 steps next to each other; else it is dropped with a warning", () => {
+test("a step group needs 2 steps next to each other; else it is dropped with a warning", async () => {
   const task = (id: string, group?: string) => ({ id, title: id, ...(group ? { group } : {}) });
   const split = clean({
     v: 1,
@@ -171,7 +171,7 @@ test("a step group needs 2 steps next to each other; else it is dropped with a w
   assert.deepEqual(two.warnings, []);
 });
 
-test("a 0.9 plan and a 0.9 progress post are still accepted as before", () => {
+test("a 0.9 plan and a 0.9 progress post are still accepted as before", async () => {
   const { plan, warnings } = clean(fixture("plan-card.json"));
   assert.deepEqual(warnings, []);
   assert.equal(plan.contains, undefined);
