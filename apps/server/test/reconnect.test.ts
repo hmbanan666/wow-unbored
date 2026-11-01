@@ -60,6 +60,17 @@ test("Connect again mints a new approved device and the old secret stops working
     assert.equal(forgotten.status, 200);
     assert.equal(built.store.deviceById("forget-pc")?.status, "revoked");
 
+    const retried = await built.app.request("/v1/devices/me/forget", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer old-secret-value-1",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ confirm: true }),
+    });
+    assert.equal(retried.status, 200, "a lost Forget response can be retried");
+    assert.equal(built.store.deviceById("forget-pc")?.forgetRevoked, true);
+
     const again = await reconnect(built, "old-secret-value-1", {
       deviceId: "forget-pc-2",
       secret: "new-secret-value-2",

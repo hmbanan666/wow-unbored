@@ -296,7 +296,7 @@ export function createApp(
   app.get("/v1/plan", (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
-    const stored = store.latestPlan();
+    const stored = store.latestPlanForDevice(access.deviceId);
     if (!stored) return c.json({ error: "No plan yet." }, 404);
     return c.json({ id: stored.id, createdAt: stored.createdAt, plan: stored.unb1 });
   });
