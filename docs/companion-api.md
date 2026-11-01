@@ -239,6 +239,49 @@ Ideas are written in the Character's language, English or Russian: `lang` in its
 
 The Companion fetches it on every sync and writes `Unbored_Plan/Suggestions.lua` (`UnboredSuggestions = {...}`, the same shape) only when it changed, within 20 KB and 2,000 literals, dropping the last ideas of each character until it fits. The game reads it when the UI loads, shows up to 4 ideas with the Server's first, and adds up to 2 live ones of its own (an active holiday, a curated rare in this zone), one per id, reward or holiday. The MCP tool `get_suggestions` returns the same ideas to the Planner.
 
+## POST /v1/snapshot
+
+The Game data upload: the Sections of one Character and its Account that changed since the last upload, gzip JSON with `Content-Encoding: gzip`, sent with the device bearer. The body, the caps (4 MB compressed, 32 MB inflated) and the hash rules are in [contract/README.md](contract/README.md#game-data-snapshot).
+
+Everything the Server could reject is checked on the request, before anything is stored: `401` for a bad or revoked device, `413` for a body over a cap, `400` for a body that is not JSON or not a snapshot. The Companion marks Sections as sent on any 2xx, so an upload that gets a 2xx is never rejected later.
+
+What a 2xx means depends on where the Server keeps data ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md)):
+
+- **SQLite** (no `DATABASE_URL`, the Server today): ingested on the request.
+
+  ```json
+  { "ok": true, "account": "<key>", "character": "Mira", "realm": "Silvermoon",
+    "stored": ["bags"], "unchanged": ["char"], "unknown": [], "stale": false }
+  ```
+
+- **Postgres** (`DATABASE_URL` set): the checked upload is queued and a worker in the Server ingests it, usually within a second or two.
+
+  ```
+  HTTP/1.1 202 Accepted
+  { "ok": true, "upload": "42", "state": "queued" }
+  ```
+
+  The same body sent again by the same Account is not queued twice: the answer has the first upload's id and its current `state` (`queued`, `done` or `failed`). Uploads that carry `questLog` or `bags` are ingested first. One Account's uploads are applied in the order they arrived.
+
+A Companion does not have to wait for the worker. A new Request (`POST /v1/requests`) and the planner's data tools wait up to 10 seconds for that Account's queued uploads, so they read the save that came just before.
+
+## GET /v1/uploads/:id
+
+Where a queued upload is, with the same device bearer as the upload. `:id` is the `upload` from the 202.
+
+```json
+{ "id": "42", "state": "done", "receivedAt": 1761830400, "processedAt": 1761830401, "attempts": 0,
+  "result": { "stored": ["bags"], "unchanged": ["char"], "unknown": [], "stale": false },
+  "error": null }
+```
+
+- `state` is `queued` (waiting, or retrying after an error), `done`, or `failed`.
+- `result` is set only when `done`. `stale: true` means a newer save of that Character was already stored, so this one changed nothing.
+- `error` is the last failure while `queued` or `failed`, else `null`. `attempts` counts failed tries; after 5 the upload is `failed` and the owner sees it in the MCP tool `list_failed_uploads`.
+- `404 { "error": "No such upload." }` for an unknown id, another device's upload, an upload already cleaned up (7 days after `done`, 30 after `failed`), or a Server on SQLite.
+
+The 0.10 Companion does not call this. A later one may, to show when a save has been read.
+
 ## POST /v1/profile
 
 The 0.6 player profile (docs/adr/0011), kept for older addons. Addons 0.6 and 0.7 keep `UnboredCharDB.profile` current from game events (bags, money, equipment, professions) and the game saves it at logout or a Refresh; from 0.8 the addon no longer writes it and removes the old table at login (D113), and the Game data snapshot carries the same facts. When the table is there, the companion posts it once per `savedAt`, with the companion bearer:

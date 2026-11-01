@@ -17,6 +17,14 @@ Only what the Companion on your PC sends, linked to your game account (the WoW a
 
 It never gets anything about other players, no passwords and no Battle.net sign-in. It is used only for Unbored. The game account is stored as a salted hash of the account folder name, not the folder name itself.
 
+## How long it is kept
+
+Today everything above is kept until you delete it (below). When the server moves to its new database ([ADR 0057](docs/adr/0057-postgres-storage-and-async-ingest.md)), these limits start:
+
+- **Older copies of your game data and player history:** 13 months, so Bory can compare a yearly event with last year. They are deleted a whole calendar month at a time, once the month is more than 13 months old.
+- **Uploads as the Companion sent them:** 7 days after the server has read them, 30 days if reading failed. They are kept that long only to read them again if the server had a bug.
+- **The latest copy of your game data, your Requests, plans, answers, advice, ideas and error notes:** until you delete them.
+
 ## Server logs and backups
 
 There are no scheduled backups of the database or the data volume.
@@ -27,7 +35,7 @@ Container logs use Docker's json-file driver. They do not include game data or r
 
 In the Companion window open **Advanced** and click **Forget my data**, then confirm. The server erases, for every game account this PC sent:
 
-- the characters, their game data and its older copies,
+- the characters, their game data and its older copies, and uploads not yet read or cleaned up,
 - player history and 0.6 profiles,
 - Requests, and the plans and answers made for them,
 - personal advice and ideas,
@@ -58,6 +66,14 @@ Questions: [open an issue](https://github.com/hmbanan666/wow-unbored/issues).
 
 О других игроках сервер не получает ничего, паролей и входа в Battle.net тоже. Данные используются только для Unbored. Игровая учётная запись хранится как хеш с солью от имени папки, а не само имя.
 
+### Сколько хранится
+
+Сейчас всё перечисленное хранится, пока ты сам это не удалишь (ниже). Когда сервер переедет на новую базу данных ([ADR 0057](docs/adr/0057-postgres-storage-and-async-ingest.md)), начнут действовать сроки:
+
+- **Старые копии игровых данных и история игрока:** 13 месяцев, чтобы Бори мог сравнить ежегодное событие с прошлым годом. Удаляются целым календарным месяцем, когда месяцу исполняется больше 13 месяцев.
+- **Загрузки в том виде, как их прислал Companion:** 7 дней после того, как сервер их прочитал, 30 дней, если прочитать не получилось. Они хранятся только для того, чтобы перечитать их, если в сервере была ошибка.
+- **Последняя копия игровых данных, запросы, планы, ответы, подсказки, идеи и заметки об ошибках:** пока ты их не удалишь.
+
 ### Журналы и резервные копии сервера
 
 Плановых резервных копий базы и тома с данными нет.
@@ -68,7 +84,7 @@ Questions: [open an issue](https://github.com/hmbanan666/wow-unbored/issues).
 
 В окне Companion открой **Advanced** и нажми **Forget my data**, затем подтверди. Сервер удалит для каждой игровой учётной записи, которую присылал этот ПК:
 
-- персонажей, их игровые данные и старые копии,
+- персонажей, их игровые данные и старые копии, а также загрузки, которые ещё не прочитаны или не удалены,
 - историю игрока и профили 0.6,
 - запросы, планы и ответы на них,
 - личные подсказки и идеи,
