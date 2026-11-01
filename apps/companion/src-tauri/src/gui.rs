@@ -1501,6 +1501,22 @@ fn sync_once(
 ) -> Result<(), String> {
     let settings = &session.settings;
     let retail = retail_path(settings);
+    if session
+        .apply(app, |model| {
+            if model.settings.forgotten_at.is_some() {
+                // Retry local failures before any network work, even while offline.
+                if let Some(retail) = &retail {
+                    clear_helper(retail).map_err(game_files)?;
+                }
+                save_settings(app, &model.settings)?;
+            }
+            Ok::<_, String>(())
+        })?
+        .transpose()?
+        .is_none()
+    {
+        return Ok(());
+    }
     follow_lang(app, settings);
     // The helper and the addon come from disk and GitHub, so they are set up
     // even while the planner is down or this PC is not approved yet.
@@ -1563,13 +1579,6 @@ fn sync_planner(app: &AppHandle, session: &SyncSession) -> Result<(), String> {
             }
             if model.approved && model.settings.forgotten_at.take().is_some() {
                 let _ = save_settings(app, &model.settings);
-            }
-            if status == "revoked" && model.settings.forgotten_at.is_some() {
-                // Retry a failed local erase/save. Old generations cannot write back.
-                if let Some(retail) = retail_path(settings) {
-                    clear_helper(&retail).map_err(game_files)?;
-                }
-                save_settings(app, &model.settings)?;
             }
             if changed || status != "approved" {
                 model.status = pairing_message(&status, needs_path);

@@ -66,8 +66,9 @@ outside that lock. Every personal file write, upload acknowledgement, migration
 acknowledgement, pairing/status result and ready notification is applied through
 `SyncState::apply`: the generation check and local effects share one critical
 section. Forget invalidates the generation before local erasure, even if a disk
-operation fails. It also writes revoked Companion status immediately. Revoked
-sync retries failed local cleanup/settings writes; it no longer compensates for
+operation fails. It also writes revoked Companion status immediately. Forgotten
+sync retries local cleanup/settings writes before network work, including while
+offline; it no longer compensates for
 stale responses writing data back.
 
 Forget, Connect again and settings changes serialize on a separate command lock.
