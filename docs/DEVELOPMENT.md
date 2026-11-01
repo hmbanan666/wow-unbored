@@ -61,6 +61,12 @@ game's failure status. HTTP 408/429 use the existing sync retry path; neither
 acknowledges migration nor writes a terminal Request failure. Rejections and
 Server statuses use the same `pick_plan_file` path.
 
+Transient failures of earlier Requests are returned as typed, redacted
+diagnostics, logged by the sync adapter and retried on its next pass. They do
+not abort the awaited Request. Failure of the awaited Request still takes the
+existing error path; successful uploads alone acknowledge Account migration.
+Submission remains sequential, so network timeouts can still delay a pass.
+
 With nvm installed, select the project's Node 26 before running commands:
 
 ```sh

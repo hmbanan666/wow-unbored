@@ -1168,7 +1168,15 @@ fn sync_plans(
         return Ok(Some(tr("APPROVED_CHOOSE_RETAIL")));
     };
     ensure_helper(&retail).map_err(game_files)?;
-    let PostedRequests { rejection, waiting } = post_requests(settings, &retail, secret, seal)?;
+    let PostedRequests {
+        rejection,
+        waiting,
+        deferred,
+    } = post_requests(settings, &retail, secret, seal)?;
+    for failure in deferred {
+        // Only a transport category or HTTP code, never ids, bodies or raw errors.
+        eprintln!("Earlier Request upload deferred ({failure:?}); retrying on the next sync.");
+    }
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(settings, &retail, secret, seal);
     let _ = post_profiles(settings, &retail, secret, seal);
