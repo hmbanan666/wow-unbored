@@ -22,10 +22,10 @@ use crate::i18n::{self, tr, trf};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::plan::{
     clear_helper, decode_unb1, ensure_helper, install_advice, install_plan, install_plan_file,
-    install_suggestions, pick_plan_file, plan_from_value, render_request_lua, write_status,
-    CompanionStatus, Plan, PlanFile, PlannerState, RequestState,
+    install_suggestions, pick_plan_file, plan_from_value, write_status, CompanionStatus, Plan,
+    PlannerState, RequestState,
 };
-use crate::request::{reason, request_body, request_status_path, waited_request};
+use crate::request::{self, request_status_path, PostedRequests, RequestUpload};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
 use crate::snapshot::{
     build_upload, character_identity, data_from_saved_variables, gzip, DataFile, SentSections,
@@ -969,74 +969,35 @@ fn planner_state(
     Ok(state)
 }
 
-/// Sends every character's pending Request. Returns the ones the planner
-/// refused outright (a 4xx other than 401), so the game can be told, and the
-/// Server's reason for the Companion's own status line. Also returns the id
-/// of the Request the game waits for.
+/// Read pending Requests from disk; the library owns submission and selection.
 fn post_requests(
     settings: &Settings,
     retail: &Path,
     secret: &str,
     seal: &mut AccountSeal,
-) -> Result<Posted, String> {
+) -> Result<PostedRequests, String> {
     let client = http_client(Duration::from_secs(20))?;
-    let url = effective_url(settings);
-    let mut rejected = Vec::new();
-    let mut saved = Vec::new();
-    for file in character_saved_variables(retail, None) {
-        let Ok(text) = fs::read_to_string(&file.path) else {
-            continue;
-        };
-        let Ok(Some(request)) = request_from_saved_variables(&text) else {
-            continue;
-        };
-        saved.push(request.clone());
-        let (account, legacy) = seal.publish(&file.account)?;
-        let mut body = request_body(&request, Some(&account));
-        account::attach_legacy(&mut body, legacy.as_deref());
-        let response = client
-            .post(join_url(&url, "v1/requests"))
+    let url = join_url(&effective_url(settings), "v1/requests");
+    let requests: Vec<RequestUpload> = character_saved_variables(retail, None)
+        .into_iter()
+        .filter_map(|file| {
+            let text = fs::read_to_string(&file.path).ok()?;
+            let request = request_from_saved_variables(&text).ok()??;
+            Some(RequestUpload {
+                account: file.account,
+                request,
+            })
+        })
+        .collect();
+    request::post_requests(&requests, seal, |body| {
+        client
+            .post(&url)
             .bearer_auth(secret)
-            .json(&body)
+            .json(body)
             .send()
-            .map_err(offline)?;
-        let code = response.status();
-        if code.is_client_error() && code.as_u16() != 401 {
-            let why = response
-                .json::<serde_json::Value>()
-                .ok()
-                .and_then(|body| {
-                    body.get("error")
-                        .and_then(|value| value.as_str())
-                        .map(str::to_string)
-                })
-                .unwrap_or_else(|| code.to_string());
-            rejected.push((
-                RequestState {
-                    id: request.id.clone(),
-                    kind: request.kind.clone(),
-                    status: "failed".into(),
-                    reason_code: Some(reason::REJECTED.into()),
-                    ..Default::default()
-                },
-                why,
-            ));
-            continue;
-        }
-        if !code.is_success() {
-            return Err(trf("PLANNER_RETURNED", &[&code.to_string()]));
-        }
-        seal.note_migrated(legacy.as_deref());
-    }
-    Ok(Posted {
-        waiting: waited_request(&saved).map(str::to_string),
-        rejected,
+            .map(|response| response.status().as_u16())
+            .map_err(offline)
     })
-}
-
-struct Posted {
-    rejected: Vec<(RequestState, String)>,
-    waiting: Option<String>,
 }
 
 /// The Section revisions the planner already has, so only changes are sent.
@@ -1207,25 +1168,20 @@ fn sync_plans(
         return Ok(Some(tr("APPROVED_CHOOSE_RETAIL")));
     };
     ensure_helper(&retail).map_err(game_files)?;
-    let Posted { rejected, waiting } = post_requests(settings, &retail, secret, seal)?;
+    let PostedRequests { rejection, waiting } = post_requests(settings, &retail, secret, seal)?;
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(settings, &retail, secret, seal);
     let _ = post_profiles(settings, &retail, secret, seal);
     let _ = sync_suggestions(settings, &retail, secret);
     let _ = sync_advice(settings, &retail, secret);
-    if let Some((request, _)) = rejected.first() {
-        // TODO(audit): only the waited Request's rejection should replace its
-        // status; an old Character's rejection currently wins this branch.
-        // Only the Reason code goes to the game; Bory says its own line.
-        let file = PlanFile {
-            body: render_request_lua(request, "failed", None),
-            ready_request: None,
-            ready_kind: None,
-        };
-        let written = install_plan_file(&retail, &file).map_err(game_files)?;
-        return Ok(written.changed.then(|| tr("PLANNER_REFUSED")));
-    }
-    let state = planner_state(settings, secret, waiting.as_deref())?;
+    let rejected = rejection.is_some();
+    let state = match rejection {
+        Some(request) => PlannerState {
+            request: Some(request),
+            ..Default::default()
+        },
+        None => planner_state(settings, secret, waiting.as_deref())?,
+    };
     let pending = state
         .request
         .as_ref()
@@ -1255,7 +1211,11 @@ fn sync_plans(
         Some(request) if file.ready_request.is_none() && request.status == "pending" => {
             tr("REQUEST_SENT")
         }
-        Some(request) if request.status == "failed" => tr("PLANNER_FAILED"),
+        Some(request) if request.status == "failed" => tr(if rejected {
+            "PLANNER_REFUSED"
+        } else {
+            "PLANNER_FAILED"
+        }),
         _ => tr("NEW_PLAN"),
     }))
 }

@@ -1,9 +1,59 @@
-//! The JSON body the Companion posts for a Request saved in SavedVariables
-//! (docs/adr/0013). Pure logic, so it is tested without a GUI.
+//! Request submission and the status the game waits for (docs/adr/0013).
+//! The HTTP adapter lives in the GUI; selection and retries are testable here.
 
 use serde_json::{Map, Value};
 
+use crate::account::{self, AccountSeal};
+use crate::i18n::trf;
+use crate::plan::RequestState;
 use crate::savedvars::SavedRequest;
+
+/// A pending Request and the Account folder that owns its SavedVariables.
+pub struct RequestUpload {
+    pub account: String,
+    pub request: SavedRequest,
+}
+
+/// The one Request whose status may be written into the helper addon.
+#[derive(Debug)]
+pub struct PostedRequests {
+    pub waiting: Option<String>,
+    pub rejection: Option<RequestState>,
+}
+
+/// Submit the saved Requests through the provided HTTP adapter. Accepted
+/// uploads acknowledge Account migration; failed attempts never do.
+pub fn post_requests(
+    requests: &[RequestUpload],
+    seal: &mut AccountSeal,
+    mut send: impl FnMut(&Value) -> Result<u16, String>,
+) -> Result<PostedRequests, String> {
+    let waiting = waited_request(requests.iter().map(|upload| &upload.request)).map(str::to_string);
+    let mut rejection = None;
+    for upload in requests {
+        let request = &upload.request;
+        let (account, legacy) = seal.publish(&upload.account)?;
+        let mut body = request_body(request, Some(&account));
+        account::attach_legacy(&mut body, legacy.as_deref());
+        let status = send(&body)?;
+        if (400..500).contains(&status) && !matches!(status, 401 | 408 | 429) {
+            if Some(request.id.as_str()) == waiting.as_deref() {
+                rejection = Some(RequestState {
+                    id: request.id.clone(),
+                    kind: request.kind.clone(),
+                    status: "failed".into(),
+                    reason_code: Some(reason::REJECTED.into()),
+                    ..Default::default()
+                });
+            }
+        } else if (200..300).contains(&status) {
+            seal.note_migrated(legacy.as_deref());
+        } else {
+            return Err(trf("PLANNER_RETURNED", &[&status.to_string()]));
+        }
+    }
+    Ok(PostedRequests { waiting, rejection })
+}
 
 /// Why a Request did not get an Answer. Bory has one friendly line per code.
 pub mod reason {
@@ -62,9 +112,9 @@ pub fn request_body(request: &SavedRequest, account: Option<&str>) -> Value {
 
 /// The Request the game waits for: the newest one saved in any character's
 /// SavedVariables (docs/decisions-v0.7.md, D82).
-pub fn waited_request(requests: &[SavedRequest]) -> Option<&str> {
+pub fn waited_request<'a>(requests: impl IntoIterator<Item = &'a SavedRequest>) -> Option<&'a str> {
     requests
-        .iter()
+        .into_iter()
         .max_by(|a, b| {
             a.created_at
                 .unwrap_or(0)
@@ -179,6 +229,91 @@ mod tests {
         assert_eq!(request_status_path(Some("a b/c")), "v1/requests/a%20b%2Fc");
         assert_eq!(waited_request(&[]), None);
         assert_eq!(request_status_path(None), "v1/requests/latest");
+    }
+
+    #[test]
+    fn an_old_characters_rejection_cannot_replace_the_waited_request() {
+        for reverse in [false, true] {
+            let mut uploads = uploads();
+            if reverse {
+                uploads.reverse();
+            }
+            let mut seal = seal();
+            let mut sent = Vec::new();
+            let posted = post_requests(&uploads, &mut seal, |body| {
+                let id = body["id"].as_str().unwrap().to_string();
+                sent.push(id.clone());
+                Ok(if id == "req-old" { 400 } else { 201 })
+            })
+            .unwrap();
+            assert_eq!(sent.len(), 2);
+            assert_eq!(posted.waiting.as_deref(), Some("req-new"));
+            assert!(
+                posted.rejection.is_none(),
+                "only the waited Request may supply a failure"
+            );
+        }
+    }
+
+    #[test]
+    fn the_waited_rejection_names_the_correct_request_and_reason() {
+        let posted = post_requests(&uploads(), &mut seal(), |_| Ok(400)).unwrap();
+        let rejection = posted.rejection.unwrap();
+        assert_eq!(rejection.id, "req-new");
+        assert_eq!(rejection.reason_code.as_deref(), Some(reason::REJECTED));
+        let file = crate::plan::pick_plan_file(&crate::plan::PlannerState {
+            request: Some(rejection),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(file.ready_request.is_none());
+        assert!(file.body.contains("req-new") && !file.body.contains("req-old"));
+        assert!(crate::savedvars::parse_saved_variables(&file.body).is_ok());
+    }
+
+    #[test]
+    fn temporary_http_failures_are_retried_without_acknowledging_migration() {
+        for status in [401, 408, 429, 500, 503] {
+            let mut seal = seal();
+            let uploads = uploads();
+            let attempted = &uploads[1..];
+            let result = post_requests(attempted, &mut seal, |_| Ok(status));
+            assert!(
+                result.is_err(),
+                "HTTP {status} must not become a permanent rejection"
+            );
+            let error = result.unwrap_err();
+            assert_eq!(crate::i18n::shown(&error), error);
+            assert!(seal.migrated_accounts().is_empty());
+            let retried = post_requests(attempted, &mut seal, |body| {
+                assert_eq!(body["accountLegacy"], "111111");
+                Ok(200)
+            })
+            .unwrap();
+            assert!(retried.rejection.is_none());
+            assert_eq!(seal.migrated_accounts(), vec!["111111"]);
+        }
+    }
+
+    fn seal() -> AccountSeal {
+        AccountSeal::new("01".repeat(32), Vec::<String>::new())
+    }
+
+    fn uploads() -> Vec<RequestUpload> {
+        let base = request_from_saved_variables(saved("plan.lua"))
+            .unwrap()
+            .unwrap();
+        [("req-old", 1000), ("req-new", 2000)]
+            .into_iter()
+            .map(|(id, at)| RequestUpload {
+                account: "111111#1".into(),
+                request: SavedRequest {
+                    id: id.into(),
+                    created_at: Some(at),
+                    ..base.clone()
+                },
+            })
+            .collect()
     }
 
     #[test]

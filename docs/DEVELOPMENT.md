@@ -46,6 +46,14 @@ Every UI string is in `Core/Locale.lua`, English and Russian. The name is one st
 
 ## Checks
 
+Request submission lives in `apps/companion/src-tauri/src/request.rs`. The GUI
+reads SavedVariables and supplies the HTTP adapter; the library selects the
+newest saved Request (D82) and acknowledges Account migration only after a
+successful response. Only that Request's permanent rejection can supply the
+game's failure status. HTTP 408/429 use the existing sync retry path; neither
+acknowledges migration nor writes a terminal Request failure. Rejections and
+Server statuses use the same `pick_plan_file` path.
+
 With nvm installed, select the project's Node 26 before running commands:
 
 ```sh
