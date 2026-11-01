@@ -214,14 +214,18 @@ export function createApp(
   });
 
   app.post("/v1/requests", async (c) => {
-    const access = allowCompanion(c);
-    if (access instanceof Response) return access;
+    const admitted = allowCompanion(c);
+    if (admitted instanceof Response) return admitted;
     let body: unknown;
     try {
       body = await c.req.json();
     } catch {
       return c.json({ error: "The request must be JSON." }, 400);
     }
+    // Reading the body yielded: Forget or owner revoke may have completed.
+    // Keep this check adjacent to the synchronous writes (including Account migration).
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
     try {
       const cleaned = cleanPlanRequest(body);
       const saved = store.addRequest({
@@ -302,14 +306,18 @@ export function createApp(
   });
 
   app.post("/v1/progress", async (c) => {
-    const access = allowCompanion(c);
-    if (access instanceof Response) return access;
+    const admitted = allowCompanion(c);
+    if (admitted instanceof Response) return admitted;
     let body: unknown;
     try {
       body = await c.req.json();
     } catch {
       return c.json({ error: "Progress must be JSON." }, 400);
     }
+    // Reading the body yielded: Forget or owner revoke may have completed.
+    // Keep this check adjacent to the synchronous writes (including Account migration).
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
     try {
       const stored = store.addProgress(body);
       return c.json({ ok: true, id: stored.id });
@@ -320,14 +328,18 @@ export function createApp(
   });
 
   app.post("/v1/profile", async (c) => {
-    const access = allowCompanion(c);
-    if (access instanceof Response) return access;
+    const admitted = allowCompanion(c);
+    if (admitted instanceof Response) return admitted;
     let body: unknown;
     try {
       body = await c.req.json();
     } catch {
       return c.json({ error: "The profile must be JSON." }, 400);
     }
+    // Reading the body yielded: Forget or owner revoke may have completed.
+    // Keep this check adjacent to the synchronous writes (including Account migration).
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
     try {
       const cleaned = cleanProfile(body);
       cleaned.account = store.bindAccount(cleaned.account, legacyOf(body));
@@ -341,8 +353,8 @@ export function createApp(
 
   // Game data Sections that changed, gzip JSON (docs/adr/0029).
   app.post("/v1/snapshot", async (c) => {
-    const access = allowCompanion(c);
-    if (access instanceof Response) return access;
+    const admitted = allowCompanion(c);
+    if (admitted instanceof Response) return admitted;
     const declared = Number(c.req.header("content-length") ?? 0);
     if (declared > SNAPSHOT_MAX_COMPRESSED) {
       return c.json({ error: "The game data is too large." }, 413);
@@ -359,6 +371,10 @@ export function createApp(
     } catch {
       return c.json({ error: "The game data must be JSON, optionally gzip." }, 400);
     }
+    // Reading the body yielded: Forget or owner revoke may have completed.
+    // Keep this check adjacent to the synchronous writes (including Account migration).
+    const access = allowCompanion(c);
+    if (access instanceof Response) return access;
     try {
       const cleaned = cleanSnapshot(body);
       cleaned.account = store.bindAccount(cleaned.account, legacyOf(body));
