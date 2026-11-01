@@ -876,6 +876,15 @@ impl HelperFiles {
             .map_err(|err| PlanError(format!("Could not replace {name}: {err}")))
     }
 
+    fn erase(&self, name: &str, empty: &str) -> Result<(), PlanError> {
+        // Unlike an update, explicit erasure may replace unreadable data.
+        // Repeated Forget checks should still leave already-empty files alone.
+        if self.read(name).ok().flatten().as_deref() != Some(empty.as_bytes()) {
+            self.replace(name, empty)?;
+        }
+        Ok(())
+    }
+
     fn ensure(&self) -> Result<(), PlanError> {
         for (name, body) in [
             ("Plan.lua", EMPTY_PLAN_LUA),
@@ -904,12 +913,12 @@ pub fn clear_helper(retail: &Path) -> Result<(), PlanError> {
     // status when readable, but never require personal data to be readable.
     let current = files.read_text("Plan.lua").unwrap_or_default();
     let (_, status) = split_status(&current);
-    files.replace("Plan.lua", &format!("{EMPTY_PLAN_LUA}{status}"))?;
+    files.erase("Plan.lua", &format!("{EMPTY_PLAN_LUA}{status}"))?;
     for (name, empty) in [
         ("Advice.lua", EMPTY_ADVICE_LUA),
         ("Suggestions.lua", EMPTY_SUGGESTIONS_LUA),
     ] {
-        files.replace(name, empty)?;
+        files.erase(name, empty)?;
     }
     Ok(())
 }
@@ -1836,6 +1845,20 @@ mod tests {
             assert!(!text.contains("private data"));
             assert!(parse_saved_variables(&text).unwrap().is_empty());
         }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn repeated_erasure_does_not_attempt_another_write() {
+        let root =
+            std::env::temp_dir().join(format!("unbored-clear-repeat-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        install_plan(&root, &small_plan("gone")).unwrap();
+        clear_helper(&root).unwrap();
+        for name in ["Plan.lua", "Advice.lua", "Suggestions.lua"] {
+            fs::create_dir(helper_dir(&root).join(format!("{name}.tmp"))).unwrap();
+        }
+        clear_helper(&root).expect("already-empty files must not need staging writes");
         fs::remove_dir_all(root).unwrap();
     }
 
