@@ -72,7 +72,11 @@ stale responses writing data back.
 
 Forget, Connect again and settings changes serialize on a separate command lock.
 Background sync never holds that lock. The lock order is command lock (when
-needed), then model, then Device or helper-file writer. Do not put HTTP calls
+needed), then model, then Device or helper-file writer. Progress operations
+instead serialize on their own lock, acquired before reading SavedVariables or
+copying acknowledgements, through POST and guarded apply. Forget never acquires
+that lock; old queued progress work checks its generation after acquiring it.
+This preserves progress order without holding the model during HTTP. Do not put HTTP calls
 inside `apply`, or acquire the model lock from a helper-file write. Successful
 Connect again and relevant settings changes also invalidate old results.
 Section/profile/progress acknowledgements and notification ids belong to the

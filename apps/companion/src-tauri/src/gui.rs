@@ -132,8 +132,10 @@ struct AppState {
     /// Kept alive so the SavedVariables watch does not stop.
     watcher: Mutex<Option<RecommendedWatcher>>,
     device: Mutex<DeviceCredential>,
-    /// Serialize explicit Device lifecycle commands, never background sync.
+    /// Serialize explicit Device lifecycle/settings commands, never background sync.
     device_change: Mutex<()>,
+    /// Preserve progress read/POST order without holding up Forget or the UI model.
+    progress_scan: Mutex<()>,
     /// Set when the game saved, so the next check runs at once.
     wake: (Mutex<bool>, Condvar),
 }
@@ -354,8 +356,15 @@ fn http_client(timeout: Duration) -> Result<reqwest::blocking::Client, String> {
 }
 
 fn sync_progress(app: &AppHandle, session: &SyncSession) -> Result<usize, String> {
-    let Some((approved, mut posted)) =
-        session.apply(app, |model| (model.approved, model.posted.clone()))?
+    let state = app.state::<AppState>();
+    let _scan = state.progress_scan.lock().map_err(|err| err.to_string())?;
+    let Some((approved, mut posted, mut seal)) = session.apply(app, |model| {
+        (
+            model.approved,
+            model.posted.clone(),
+            account_seal(&session.device, &model.settings),
+        )
+    })?
     else {
         return Ok(0);
     };
@@ -369,7 +378,6 @@ fn sync_progress(app: &AppHandle, session: &SyncSession) -> Result<usize, String
         .map(|retail| character_saved_variables(&retail, account))
         .unwrap_or_default();
     let progress = scan_progress(settings);
-    let mut seal = account_seal(&session.device, settings);
     let result = if approved {
         post_progress(
             settings,
@@ -642,11 +650,14 @@ fn write_plan_text(app: AppHandle, state: State<AppState>, text: String) -> Resu
 #[tauri::command]
 fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let session = SyncSession::capture(&state)?;
-    if session
-        .apply(&app, |model| model.approved)?
-        .unwrap_or(false)
-    {
-        let mut seal = account_seal(&session.device, &session.settings);
+    let seal = session
+        .apply(&app, |model| {
+            model
+                .approved
+                .then(|| account_seal(&session.device, &model.settings))
+        })?
+        .flatten();
+    if let Some(mut seal) = seal {
         let result = sync_plans(&app, &session, &mut seal);
         session
             .apply(&app, |model| {
@@ -1572,7 +1583,10 @@ fn sync_planner(app: &AppHandle, session: &SyncSession) -> Result<(), String> {
     }
     if status == "approved" && !needs_path {
         let _ = sync_progress(app, session);
-        let mut seal = account_seal(device, settings);
+        let Some(mut seal) = session.apply(app, |model| account_seal(device, &model.settings))?
+        else {
+            return Ok(());
+        };
         let result = sync_plans(app, session, &mut seal);
         session
             .apply(app, |model| {
@@ -1746,6 +1760,7 @@ pub fn run() {
                 watcher: Mutex::new(None),
                 device: Mutex::new(device),
                 device_change: Mutex::new(()),
+                progress_scan: Mutex::new(()),
                 wake: (Mutex::new(false), Condvar::new()),
             });
             arm_watch(app.handle(), &wow_path);
