@@ -435,6 +435,72 @@ A farm run. `instanceID` is the 14th return of `GetSavedInstanceInfo`. `mounts` 
 
 Each mode is a provider in `Providers/` with `Build(ctx)` returning tasks `{ id, title, mapID, x, y, estMinutes, note, complete }`. `complete.kind` is documented in the plan format.
 
+## Postgres cutover
+
+The one-off move of the hk Server from `/data/unbored.sqlite` to PostgreSQL ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md), rollout step 6). The transfer is `apps/server/scripts/sqlite-to-postgres.ts` (logic in `apps/server/src/transfer.ts`). It ships in the Server image and runs with the image's `node`:
+
+- It opens the SQLite file read-only, applies the migrations to the target, and copies every table in **one transaction**: batches of 500 rows (and at most about 4 MB of JSON), `body_json` and `*_json` text parsed into jsonb objects, identity sequences moved past the copied ids, and month partitions of `section_history` and `history` made back to their oldest row.
+- Before it commits it reads every table back and compares the row count and a checksum (an order-independent sum of the rows' sha256, JSON compared with sorted keys) with the SQLite side. Any mismatch, unknown table or column, or broken JSON rolls everything back and exits 1. Legacy `profiles` and `profile_snapshots` stay in SQLite only (they are listed with their row counts).
+- It refuses a target that already has rows (any copied table or `raw_uploads`) unless `--force`, which empties those tables first inside the same transaction.
+- `--dry-run` copies a snapshot of the file with SQLite's online backup API, does the whole copy and verification, and then rolls back. It is safe while the Server is up on SQLite. It does apply the migrations to the target (empty tables, as the Server would at its first start).
+- The target URL is read only from the `DATABASE_URL` environment variable, never from arguments. `--sqlite FILE` overrides `$UNBORED_DATA_DIR/unbored.sqlite`; `--batch N` sets rows per INSERT. Exit codes: 0 committed (or dry run ok), 1 failed and nothing committed, 2 bad arguments.
+
+Before the window:
+
+1. main with the transfer script is deployed on hk (the image has `apps/server/scripts/`). `DATABASE_URL` is still unset.
+2. A Postgres 18 service exists in Dokploy on hk, on the Server's Docker network, with a volume and daily backups, and one test restore was done. Its database is empty.
+3. Find the names on hk (Dokploy names its containers after the app):
+
+   ```sh
+   SERVER=$(docker ps --format '{{.Names}}' | grep unbored | head -n1)   # check it is the Server
+   IMAGE=$(docker inspect "$SERVER" --format '{{.Config.Image}}')
+   VOLUME=$(docker inspect "$SERVER" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}')
+   NETWORK=$(docker inspect "$SERVER" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' | awk '{print $1}')
+   ```
+
+4. Put the target URL in the shell without echoing it (the password stays out of history and `ps`):
+
+   ```sh
+   read -rs DATABASE_URL && export DATABASE_URL
+   ```
+
+5. Dry run against the live file, while the Server keeps serving:
+
+   ```sh
+   docker exec -u node -e DATABASE_URL "$SERVER" \
+     node --experimental-sqlite --experimental-strip-types scripts/sqlite-to-postgres.ts --dry-run
+   ```
+
+   It prints one `table: N rows, checksum … ok` line per table and ends with `Dry run ok, rolled back: 17 tables, N rows verified`. Fix anything it reports before the window.
+
+The window (Companion saves fail meanwhile; unsent Sections stay unsent and go with the next save):
+
+6. Stop the Server in Dokploy (Stop, not Redeploy). `docker ps` no longer lists `$SERVER`.
+7. Keep a copy of the file next to it, with its WAL if there is one:
+
+   ```sh
+   docker run --rm -v "$VOLUME":/data --entrypoint sh "$IMAGE" -c \
+     'mkdir -p /data/pre-postgres && cp -a /data/unbored.sqlite* /data/pre-postgres/ && ls -l /data/pre-postgres'
+   ```
+
+8. Transfer for real, from a one-off container of the same image on the same network and volume:
+
+   ```sh
+   docker run --rm -u node --network "$NETWORK" -v "$VOLUME":/data -e DATABASE_URL \
+     --entrypoint node "$IMAGE" \
+     --experimental-sqlite --experimental-strip-types scripts/sqlite-to-postgres.ts
+   ```
+
+   It must end with `Committed: 17 tables, N rows verified`, with the same counts as the dry run (plus whatever was written since). On `Transfer FAILED, nothing committed` the target is unchanged: start the Server again without `DATABASE_URL` and investigate.
+9. Set `DATABASE_URL` (and `DATABASE_POOL_MAX` if not 10) in the Server's Dokploy environment, then Deploy.
+10. Verify:
+    - The log has `Postgres schema ready (up to date); every table on Postgres, the SQLite file untouched` and `Upload inbox on`. A `Retention:` line on the first start is normal: it drops the empty month partitions older than 13 months.
+    - `https://unbored.kosarev.space/health` answers `{"ok":true,...}`.
+    - MCP `data_catalog` and `list_errors` show the same Accounts and Characters as before; `get_current_plan` still returns the last plan.
+    - After a Companion save the log shows `POST /v1/snapshot 202`, and MCP `list_failed_uploads` stays empty.
+
+Rollback: remove `DATABASE_URL` from the Server's Dokploy environment and Deploy. The Server opens the untouched `/data/unbored.sqlite` again (the copy in `/data/pre-postgres/` is the spare). Anything written while on Postgres is lost, which is acceptable in the first days. To cut over again later, run step 8 with `--force` (the target then has rows). Keep the SQLite file for 30 days after a stable cutover, then delete it and `/data/pre-postgres/`.
+
 ## Roadmap
 
 - More exploration continents once their achievement ids are confirmed on 12.1.5.

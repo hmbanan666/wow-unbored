@@ -95,3 +95,27 @@ jobs:
           done
           docker logs unbored-smoke
           exit 1
+      - name: Docker image runs the SQLite -> Postgres transfer as in the cutover runbook
+        run: |
+          docker volume create unbored-transfer
+          docker run -d --name unbored-sqlite -p 3997:3000 -v unbored-transfer:/data \
+            -e UNBORED_COMPANION_TOKEN=smoke-companion -e UNBORED_PLANNER_TOKEN=smoke-planner \
+            unbored-server
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3997/health && break
+            sleep 1
+          done
+          docker stop unbored-sqlite
+          psql "$UNBORED_TEST_DATABASE_URL" -c "CREATE DATABASE unbored_transfer"
+          transfer() {
+            docker run --rm -u node --network host -v unbored-transfer:/data \
+              -e DATABASE_URL=postgres://postgres:postgres@localhost:5432/unbored_transfer \
+              --entrypoint node unbored-server \
+              --experimental-sqlite --experimental-strip-types scripts/sqlite-to-postgres.ts "$@"
+          }
+          transfer --dry-run | tee dry.log
+          grep -q "Dry run ok, rolled back: 17 tables" dry.log
+          transfer | tee real.log
+          grep -q "Committed: 17 tables" real.log
+          if transfer; then echo "a second transfer must refuse a non-empty target" >&2; exit 1; fi
+          docker rm -f unbored-sqlite
