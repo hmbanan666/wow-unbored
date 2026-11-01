@@ -1550,7 +1550,7 @@ fn sync_planner(app: &AppHandle, session: &SyncSession) -> Result<(), String> {
         Err(err) => return Err(err),
     };
     let needs_path = settings.wow_path.trim().is_empty();
-    if session
+    let Some(refresh) = session
         .apply(app, |model| {
             let changed = model.pairing != status;
             let just_approved = changed && status == "approved" && model.pairing == "pending";
@@ -1574,12 +1574,16 @@ fn sync_planner(app: &AppHandle, session: &SyncSession) -> Result<(), String> {
             if changed || status != "approved" {
                 model.status = pairing_message(&status, needs_path);
             }
-            Ok::<_, String>(())
+            Ok::<_, String>(changed || status != "approved")
         })?
         .transpose()?
-        .is_none()
-    {
+    else {
         return Ok(());
+    };
+    if refresh {
+        // Read the current model after releasing apply's lock; never repaint
+        // from the captured response, which may already have been invalidated.
+        refresh_view(app);
     }
     if status == "approved" && !needs_path {
         let _ = sync_progress(app, session);
