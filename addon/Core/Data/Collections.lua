@@ -24,7 +24,16 @@ S.Register({
   prio = 60,
   every = DAY,
   events = { "ACHIEVEMENT_EARNED" },
-  read = function()
+  read = function(previous, src)
+    -- Event payloads add ids immediately; the one API read waits for the
+    -- settled worker outside combat. A queued event must still perform a due
+    -- daily scan: queue deduplication may have combined it with the login job.
+    local scannedAt = type(previous) == "table" and num(previous.scannedAt)
+    if src == "event" and scannedAt and ns.Now() - scannedAt < DAY then
+      local out = copy(previous)
+      out.points = num(call(GetTotalAchievementPoints)) or previous.points
+      return out
+    end
     if type(GetCategoryList) ~= "function" or type(GetCategoryNumAchievements) ~= "function"
       or type(GetAchievementInfo) ~= "function" then
       return nil
@@ -64,13 +73,15 @@ S.Register({
   end,
   delta = function(body, _, achievementID)
     achievementID = num(achievementID)
+    if achievementID then
+      S.Mark("achievements", "event")
+    end
     if not achievementID or type(body) ~= "table" then
       return nil
     end
     local out = copy(body)
     out.ids = ns.Pack.Add(body.ids, achievementID)
     out.count = ns.Pack.Count(out.ids)
-    out.points = num(call(GetTotalAchievementPoints)) or body.points
     return out
   end,
 })

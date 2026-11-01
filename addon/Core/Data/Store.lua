@@ -15,6 +15,7 @@ ns.Snapshot = {
   dirty = {},
   queue = {},
   open = {},
+  windowEpoch = {},
 }
 
 local S = ns.Snapshot
@@ -107,7 +108,7 @@ function S.Allowed(name)
 end
 
 -- def: name, scope ("char" or "account"), v, prio (lower is dropped first),
--- read(previousBody) -> body or nil, events, window (only while open),
+-- read(previousBody, source) -> body or nil, events, window (only while open),
 -- login (default true), every (seconds between login reads), delay
 -- (seconds after the login pass), delta(body, event, ...) -> body.
 function S.Register(def)
@@ -185,11 +186,16 @@ end
 -- fail the whole Section. Run that read in its own coroutine: when it yields,
 -- yield the worker so the next frame resumes the same read.
 local function readInWorker(def, name, previous, src)
+  local epoch = S.windowEpoch[name]
   local reader = coroutine.create(function()
-    return def.read(previous)
+    return def.read(previous, src)
   end)
   S.readCo = reader
   while true do
+    if def.window and (not S.IsOpen(name) or S.windowEpoch[name] ~= epoch) then
+      S.readCo = nil
+      return false
+    end
     local ok, body = coroutine.resume(reader)
     if not ok then
       S.readCo = nil
@@ -209,6 +215,9 @@ function S.Read(name, src)
   if not def or not def.read or not S.Allowed(name) then
     return false
   end
+  if def.window and not S.IsOpen(name) then
+    return false
+  end
   if ns.IsCombat() then
     S.dirty[name] = src or "event"
     return false
@@ -218,7 +227,7 @@ function S.Read(name, src)
     return readInWorker(def, name, previous, src)
   end
   local ok, body = xpcall(function()
-    return def.read(previous)
+    return def.read(previous, src)
   end, ns.ErrorHandler("section:" .. name))
   if not ok then
     return false
@@ -420,6 +429,7 @@ function S.OnEvent(event, ...)
     local def = S.defs[names[i]]
     if contains(def.closes, event) then
       S.open[def.name] = nil
+      S.windowEpoch[def.name] = (S.windowEpoch[def.name] or 0) + 1
     elseif contains(def.opens, event) then
       S.open[def.name] = true
     end

@@ -28,7 +28,7 @@ use crate::plan::{
 use crate::request::{reason, request_body, request_status_path, waited_request};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
 use crate::snapshot::{
-    build_upload, character_identity, data_from_saved_variables, gzip, DataFile,
+    build_upload, character_identity, data_from_saved_variables, gzip, DataFile, SentSections,
     MAX_COMPRESSED_BYTES,
 };
 use crate::wow::{
@@ -679,6 +679,8 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Show
     let url = effective_url(&settings);
     validate_endpoint(&url)?;
     let fresh = old.rotate_keeping_salt()?;
+    // TODO(audit): make reconnect recoverable when the response or local write
+    // is lost; the Server consumes the old credential before this save.
     let status = reconnect_on_planner(&url, &old.secret, &fresh)?;
     let path = settings_path(&app)?.with_file_name("device.json");
     device::save(&path, &fresh)?;
@@ -1037,10 +1039,10 @@ struct Posted {
     waiting: Option<String>,
 }
 
-/// The Section hashes the planner already has, so only changes are sent.
-fn sent_sections() -> &'static Mutex<HashMap<String, String>> {
-    static SENT: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
-    SENT.get_or_init(|| Mutex::new(HashMap::new()))
+/// The Section revisions the planner already has, so only changes are sent.
+fn sent_sections() -> &'static Mutex<SentSections> {
+    static SENT: std::sync::OnceLock<Mutex<SentSections>> = std::sync::OnceLock::new();
+    SENT.get_or_init(|| Mutex::new(SentSections::new()))
 }
 
 /// The profile save stamp the planner already has, per character.
@@ -1212,6 +1214,8 @@ fn sync_plans(
     let _ = sync_suggestions(settings, &retail, secret);
     let _ = sync_advice(settings, &retail, secret);
     if let Some((request, _)) = rejected.first() {
+        // TODO(audit): only the waited Request's rejection should replace its
+        // status; an old Character's rejection currently wins this branch.
         // Only the Reason code goes to the game; Bory says its own line.
         let file = PlanFile {
             body: render_request_lua(request, "failed", None),

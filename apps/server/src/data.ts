@@ -707,8 +707,23 @@ export class DataStore {
     changes?: SectionChange[];
   }): "stored" | "unchanged" | "stale" {
     const previous = this.section(input.ownerKind, input.ownerId, input.name);
-    if (previous && previous.hash === input.hash) return "unchanged";
     if (previous?.savedAt && input.savedAt && input.savedAt < previous.savedAt) return "stale";
+    if (previous && previous.hash === input.hash && previous.v === input.v) {
+      // An unchanged upload still acknowledges a newer save. Without advancing
+      // this watermark, an older, different body could overwrite the snapshot.
+      if (
+        input.savedAt !== null &&
+        (previous.savedAt === null || input.savedAt > previous.savedAt)
+      ) {
+        this.db
+          .prepare(
+            `UPDATE sections_latest SET saved_at = ?
+             WHERE owner_kind = ? AND owner_id = ? AND section = ?`,
+          )
+          .run(input.savedAt, input.ownerKind, input.ownerId, input.name);
+      }
+      return "unchanged";
+    }
     this.db
       .prepare(
         `INSERT INTO sections_latest

@@ -543,9 +543,18 @@ check(body("bags").count == 5, "the delayed read lands after combat")
 
 -- Events: a delta for achievements, a settled mark for bags.
 S.loginDone = true
+local achievementPointsReads = 0
+local oldAchievementPoints = GetTotalAchievementPoints
+GetTotalAchievementPoints = function()
+  achievementPointsReads = achievementPointsReads + 1
+  return 12500
+end
+combat = true
 S.OnEvent("ACHIEVEMENT_EARNED", 4242, false)
+check(achievementPointsReads == 0, "an achievement event never reads points in combat")
 check(ns.Pack.Set(body("achievements").ids)[4242], "achievement earned is added to the Account set")
 check(ns.Pack.Set(body("achievementsMine").ids)[4242], "and to this character's set")
+combat = false
 setBags(7, 400000)
 S.OnEvent("BAG_UPDATE_DELAYED")
 check(S.dirty.bags == "event", "a bag event marks the Section")
@@ -554,6 +563,10 @@ S.dirtyAt = ns.Now() - 5
 S.Pulse()
 S.Drain()
 check(body("bags").count == 7, "settled bag read")
+check(achievementPointsReads == 1 and body("achievements").points == 12500,
+  "achievement points refresh once after the event settles outside combat")
+check(ns.Pack.Set(body("achievements").ids)[4242], "the points refresh preserves the event's earned id")
+GetTotalAchievementPoints = oldAchievementPoints
 
 -- Window reads: the bank only while it is open.
 items[1].itemID = 1
@@ -677,6 +690,38 @@ check(#(UnboredDB.errors or {}) == 0, "pausing for combat leaves no errors")
 dropProbe("yieldCombat")
 combat = false
 
+-- A bank/profession read may span frames. Closing and reopening invalidates
+-- the old read even if the window is open again before the worker resumes.
+local windowReads = 0
+S.Register({
+  name = "yieldWindow",
+  window = true,
+  opens = { "TEST_WINDOW_OPEN" },
+  closes = { "TEST_WINDOW_CLOSE" },
+  read = function()
+    windowReads = windowReads + 1
+    S.Yield()
+    windowReads = windowReads + 1
+    return { reads = windowReads }
+  end,
+})
+S.Write("yieldWindow", { reads = 0 }, "window")
+S.OnEvent("TEST_WINDOW_OPEN")
+S.Queue("yieldWindow", "window")
+check(S.Step() and windowReads == 1, "the window read yields between frames")
+S.OnEvent("TEST_WINDOW_CLOSE")
+S.OnEvent("TEST_WINDOW_OPEN")
+S.Drain()
+check(windowReads == 1, "closing the window cancels the old read before another API call")
+check(S.Body("yieldWindow").reads == 0, "an interrupted window read preserves the last complete Section")
+S.Queue("yieldWindow", "window")
+S.Drain()
+check(windowReads == 3 and S.Body("yieldWindow").reads == 3, "reopening permits a fresh complete read")
+S.OnEvent("TEST_WINDOW_CLOSE")
+S.dirty.yieldWindow = nil
+S.byEvent.TEST_WINDOW_OPEN, S.byEvent.TEST_WINDOW_CLOSE = nil, nil
+dropProbe("yieldWindow")
+
 UnboredDB.errors = {}
 local errorWasShown = ns.errorShown
 ns.errorShown = true
@@ -737,6 +782,23 @@ for _, job in ipairs(S.queue) do
 end
 check(not queuedAchievements, "the login pass skips a fresh achievement scan")
 S.Drain()
+
+-- A pending event refresh must not replace the full scan due at login.
+do
+  local originalCategories = GetCategoryList
+  local categoryReads = 0
+  GetCategoryList = function()
+    categoryReads = categoryReads + 1
+    return originalCategories()
+  end
+  body("achievements").scannedAt = ns.Now() - 86401
+  S.Queue("achievements", "event")
+  S.LoginPass()
+  S.Drain()
+  check(categoryReads > 0 and body("achievements").scannedAt > ns.Now() - 60,
+    "an event queued before login cannot suppress the due daily achievement scan")
+  GetCategoryList = originalCategories
+end
 
 -- Reputation v2 without the 12.x APIs: renown and paragon fields are left out.
 do
