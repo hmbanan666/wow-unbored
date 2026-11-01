@@ -1014,6 +1014,59 @@ do
   GetCategoryList, GetCategoryNumAchievements = savedCategories, savedPerCategory
 end
 
+-- Unknown achievement flags are not evidence of an unfinished achievement.
+do
+  local savedInfo, savedCount, savedCriteria = GetAchievementInfo, GetAchievementNumCriteria, GetAchievementCriteriaInfo
+  local savedCategories, savedPerCategory = GetCategoryList, GetCategoryNumAchievements
+  local achievementDone, guild, criterionDone = false, false, false
+  local criteriaCount = 2
+  GetCategoryList = function() return { 1 } end
+  GetCategoryNumAchievements = function() return 1 end
+  GetAchievementInfo = function()
+    return 42, "A", 10, achievementDone, nil, nil, nil, nil, nil, nil, nil, guild, false
+  end
+  GetAchievementNumCriteria = function() return criteriaCount end
+  GetAchievementCriteriaInfo = function(_, index)
+    local done = index == 1 and criteriaCount > 1 or criterionDone
+    return "Criterion", 0, done, 75, 100, nil, nil, nil, nil, 4200 + index
+  end
+  local function rows()
+    return S.defs.achProgress.read().rows
+  end
+  check(#rows() == 1 and rows()[1].d == 1, "known false achievement flags keep partial progress")
+  for _, unknown in ipairs({ SECRET, "false", 0 }) do
+    achievementDone = unknown
+    check(#rows() == 0, "an unknown completion flag cannot become unfinished progress")
+    achievementDone, guild = false, unknown
+    check(#rows() == 0, "an unknown guild flag cannot become personal progress")
+    guild, criterionDone = false, unknown
+    check(#rows() == 0, "an unknown criterion cannot become an open criterion")
+    criteriaCount = 1
+    check(#rows() == 0, "a progress bar with an unknown completion flag is omitted")
+    criteriaCount, criterionDone = 2, false
+  end
+  achievementDone = nil
+  check(#rows() == 0, "a missing completion flag cannot become unfinished progress")
+  achievementDone, guild = false, nil
+  check(#rows() == 0, "a missing guild flag cannot become personal progress")
+  guild, criterionDone = false, nil
+  check(#rows() == 0, "a missing criterion cannot become an open criterion")
+  criteriaCount = 1
+  check(#rows() == 0, "a missing progress-bar completion flag is omitted")
+  local realSecret = issecretvalue
+  achievementDone, criterionDone = false, false
+  issecretvalue = function() error("secret check unavailable") end
+  local ok, result = pcall(rows)
+  check(ok and #result == 0, "a failed secret check omits progress without throwing")
+  issecretvalue = function(value) return type(value) == "boolean" or realSecret(value) end
+  check(ns.AsBoolean(false) == nil and ns.AsBoolean(true) == nil,
+    "even boolean-shaped secrets are dropped before comparison")
+  issecretvalue = realSecret
+  check(#rows() == 1 and rows()[1].d == 75, "readable progress resumes on the next scan")
+  GetAchievementInfo, GetAchievementNumCriteria, GetAchievementCriteriaInfo = savedInfo, savedCount, savedCriteria
+  GetCategoryList, GetCategoryNumAchievements = savedCategories, savedPerCategory
+end
+
 -- Error reports (docs/adr/0051) -------------------------------------------
 do
   local shownBefore = ns.errorShown
