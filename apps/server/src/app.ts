@@ -32,6 +32,41 @@ function limitOf(value: string | undefined, fallback: number): number {
   return Math.min(100, Math.max(1, parsed));
 }
 
+/** Stop at the compressed cap even when Content-Length is absent or incorrect. */
+async function snapshotBytes(body: Request["body"]): Promise<Buffer | null> {
+  if (!body) return Buffer.alloc(0);
+  const reader = body.getReader();
+  let bytes = Buffer.alloc(0);
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return bytes.subarray(0, size);
+      const nextSize = size + value.byteLength;
+      if (nextSize > SNAPSHOT_MAX_COMPRESSED) {
+        // A producer's slow or failed cleanup must not delay the 413 response.
+        void reader.cancel().catch(() => {});
+        return null;
+      }
+      if (nextSize > bytes.length) {
+        // Bound storage as well as bytes: millions of tiny chunks must not build
+        // an unbounded list of Buffer objects. Grow only as data arrives.
+        const capacity = Math.min(
+          SNAPSHOT_MAX_COMPRESSED,
+          Math.max(nextSize, bytes.length * 2, 64 * 1024),
+        );
+        const grown = Buffer.allocUnsafe(capacity);
+        bytes.copy(grown, 0, 0, size);
+        bytes = grown;
+      }
+      bytes.set(value, size);
+      size = nextSize;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export function createApp(
   config: Pick<Config, "companionToken" | "plannerToken" | "dataDir"> & {
     webhook?: WebhookConfig;
@@ -359,12 +394,10 @@ export function createApp(
     if (declared > SNAPSHOT_MAX_COMPRESSED) {
       return c.json({ error: "The game data is too large." }, 413);
     }
-    const raw = Buffer.from(await c.req.arrayBuffer());
-    if (raw.length > SNAPSHOT_MAX_COMPRESSED) {
-      return c.json({ error: "The game data is too large." }, 413);
-    }
     let body: unknown;
     try {
+      const raw = await snapshotBytes(c.req.raw.body);
+      if (raw === null) return c.json({ error: "The game data is too large." }, 413);
       const gzip = (c.req.header("content-encoding") ?? "").toLowerCase().includes("gzip");
       const bytes = gzip ? gunzipSync(raw, { maxOutputLength: SNAPSHOT_MAX_INFLATED }) : raw;
       body = JSON.parse(bytes.toString("utf8"));
