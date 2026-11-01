@@ -263,16 +263,20 @@ export class Store {
     raw: unknown,
     nowSeconds = Math.floor(Date.now() / 1000),
     check: MarkupCheck = {},
+    requestId?: string,
   ): StoredPlan {
+    // Async validation may have yielded to Forget my data. Check at the
+    // synchronous write boundary and never insert a private Plan as direct.
+    if (requestId && !this.requestById(requestId)) throw new PlanError("No request with that id.");
     const plan = cleanPlan(raw, nowSeconds, check);
     const unb1 = encodeUnb1(plan);
     const createdAt = nowSeconds;
     const result = this.db
       .prepare(
-        `INSERT INTO plans (player_key, created_at, body_json, unb1, generated_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO plans (player_key, created_at, body_json, unb1, generated_at, request_id)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(PLAYER, createdAt, JSON.stringify(plan), unb1, plan.generatedAt);
+      .run(PLAYER, createdAt, JSON.stringify(plan), unb1, plan.generatedAt, requestId ?? null);
     return { id: Number(result.lastInsertRowid), createdAt, plan, unb1 };
   }
 

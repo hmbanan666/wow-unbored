@@ -8,11 +8,12 @@ import { test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 import { sqlitePath } from "../src/config.ts";
 import { Store } from "../src/store.ts";
+import type { GameDataFetch } from "../src/blizzard.ts";
 
 const planner = "planner-test-token";
 const secrets = ["first-device-secret", "second-device-secret"];
 
-async function setup() {
+async function setup(blizzardFetch?: GameDataFetch) {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-isolation-"));
   const built = createApp({
     companionToken: "companion-test-token",
@@ -20,7 +21,8 @@ async function setup() {
     dataDir,
     log: () => {},
     webhook: { url: "", key: "", headerName: "X-Unbored-Key" },
-    blizzard: null,
+    blizzard: blizzardFetch ? { clientId: "test", clientSecret: "test", region: "eu" } : null,
+    blizzardFetch,
   });
   const call = (url: string, secret: string, body?: unknown, method = "POST") =>
     built.app.request(url, {
@@ -46,6 +48,71 @@ async function setup() {
 
 const request = { id: "audit-request", character: "Mira", realm: "Realm", mode: "farm" };
 const plan = { v: 1, kind: "plan", mode: "farm", tasks: [{ id: "one", title: "One step" }] };
+
+for (const endpoint of ["http", "put_plan", "answer_request"]) {
+  test(`${endpoint} cannot publish a Plan after Forget erases its Request during validation`, async () => {
+    let duringValidation: () => Promise<void>;
+    let checked = false;
+    const built = await setup(async (url) => {
+      if (url.includes("/oauth/token"))
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: "test", expires_in: 3600 }),
+        };
+      checked = true;
+      await duringValidation();
+      return { ok: true, status: 200, json: async () => ({ id: 6948 }) };
+    });
+    duringValidation = async () => {
+      assert.equal(
+        (await built.call("/v1/devices/me/forget", secrets[0], { confirm: true })).status,
+        200,
+      );
+    };
+    try {
+      assert.equal((await built.call("/v1/requests", secrets[0], request)).status, 201);
+      const linked = { ...plan, tasks: [{ id: "one", title: "Get {item:6948}" }] };
+      if (endpoint === "http") {
+        const result = await built.call(
+          "/v1/plan",
+          planner,
+          { ...linked, requestId: request.id },
+          "PUT",
+        );
+        assert.equal(result.status, 400);
+      } else {
+        const response = await built.app.request("/mcp", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${planner}`,
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: {
+              name: endpoint,
+              arguments: {
+                requestId: request.id,
+                plan: linked,
+                ...(endpoint === "answer_request" ? { message: "Here is your plan." } : {}),
+              },
+            },
+          }),
+        });
+        assert.equal((await response.json()).result.isError, true);
+      }
+      assert.equal(checked, true, "the test reaches the asynchronous lookup");
+      assert.equal(built.store.listPlans(10).length, 0);
+      assert.equal((await built.call("/v1/plan", secrets[1])).status, 404);
+    } finally {
+      built.close();
+    }
+  });
+}
 
 test("Request retries are idempotent only for the Device that created them", async () => {
   const built = await setup();

@@ -207,6 +207,8 @@ The Companion writes `Interface/AddOns/Unbored_Plan/Plan.lua`. A plan or answer 
 
 Build plan (without the companion) replaces a Companion plan with one made in game.
 
+On the Server, `plans.request_id` preserves a Plan's Request even after the Planner replaces it. The Companion's latest-Plan endpoint returns only its Device's Request Plans and explicit direct Plans (which have no Request); owner MCP reads can still see all Plans. The one-time transactional migration restores links from Requests and Player history. Forget my data erases replacement Plans too, and a Plan whose Request was erased during asynchronous validation is rejected at the write boundary.
+
 ## Error reports
 
 `ns.ReportError(where, err, stack)` keeps one row per problem in the account Section `errors` (above); the protected call sites (`Init.lua` event dispatch and setup, `Events.lua`, `Store.lua` `S.Read`, the staged worker) use `xpcall` with `ns.ErrorHandler(where)`, which adds `debugstack`. The player sees one friendly line per session (`OOPS`); `/unbored errors` lists them in chat. The Server upserts each row into `addon_errors` keyed by `sha256(version|where|text)`, count = the most seen; the MCP tool `list_errors` reads them newest first with the device name, and `delete_account_data` and Forget my data erase them ([ADR 0051](adr/0051-addon-error-reports.md)).

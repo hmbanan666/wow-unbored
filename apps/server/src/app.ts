@@ -394,7 +394,7 @@ export function createApp(
       const plan = stripRequestId(body);
       const warnings: string[] = [];
       const missing = await gameIds.missing(planMarkupIds(plan));
-      const stored = store.putPlan(plan, undefined, { missing, warnings });
+      const stored = store.putPlan(plan, undefined, { missing, warnings }, requestId);
       const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
       return c.json({
         id: stored.id,

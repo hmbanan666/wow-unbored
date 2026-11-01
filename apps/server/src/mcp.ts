@@ -226,7 +226,12 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         }
         const warnings: string[] = [];
         const missing = gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
-        const stored = store.putPlan(plan, undefined, { missing, warnings, wish: asked?.wish });
+        const stored = store.putPlan(
+          plan,
+          undefined,
+          { missing, warnings, wish: asked?.wish },
+          requestId,
+        );
         const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
         return text({
           id: stored.id,
@@ -778,7 +783,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
         const now = Math.floor(Date.now() / 1000);
         const answer = cleanAnswer(message, waypoints, now, entities, { missing, warnings });
         const stored = plan
-          ? store.putPlan(plan, now, { missing, warnings, wish: asked.wish })
+          ? store.putPlan(plan, now, { missing, warnings, wish: asked.wish }, requestId)
           : undefined;
         const request = store.answerRequest(requestId, answer, stored?.id ?? null);
         return text({
