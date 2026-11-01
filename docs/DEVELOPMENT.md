@@ -168,6 +168,13 @@ JavaScript uses Vite+ (`vp`, the `vite-plus` package). Lua stays on luacheck. Ru
 
 On Ubuntu the luacheck package is `lua-check`.
 
+The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md)). The PostgreSQL schema is the numbered SQL files in `apps/server/migrations/`; the Server applies the missing ones at startup under an advisory lock and records them in `schema_migrations`. `DATABASE_POOL_MAX` sets the pool size (default 10). The Postgres tests run when `UNBORED_TEST_DATABASE_URL` points at a server where that user may create databases; each test file gets its own database copied from a migrated template. In CI they run against a `postgres:18` service container in `server.yml`, which sets `UNBORED_REQUIRE_POSTGRES=1` so they cannot silently skip. Locally:
+
+```
+docker compose -f apps/server/compose.yaml up -d
+UNBORED_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm test:js
+```
+
 ## Commits and releases
 
 Commits and PR titles are [Conventional Commits](https://www.conventionalcommits.org/) with a scope: `feat(addon): ...`, `fix(companion): ...`, `perf(server): ...`, `docs: ...`, `chore: ...` (also `refactor`, `test`, `ci`). The `PR title` workflow checks the title, since a squash merge uses it as the commit subject. Write the subject as a short sentence a player could read; it becomes a line in the release notes ([ADR 0022](adr/0022-releases-and-docs.md)).

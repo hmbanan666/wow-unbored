@@ -1,0 +1,8 @@
+# Local PostgreSQL for the Server tests (ADR 0057), the same image as CI.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
