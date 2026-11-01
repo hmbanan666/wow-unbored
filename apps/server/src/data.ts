@@ -657,20 +657,25 @@ export class DataStore {
     realm: string;
     now: number;
     savedAt: number | null;
-    char?: Raw;
     dropped?: Raw;
     deviceId?: string;
   }): string {
     const id = characterId(input.name, input.realm);
-    const className = typeof input.char?.class === "string" ? input.char.class : null;
-    const level = typeof input.char?.level === "number" ? input.char.level : null;
+    const previous = this.character(input.name, input.realm);
+    if (previous?.savedAt && input.savedAt && input.savedAt < previous.savedAt) {
+      // A late upload is still a contact, but cannot move this Character back
+      // to an old Account/Device or restore obsolete dropped-Section metadata.
+      this.db
+        .prepare(`UPDATE characters SET last_seen = MAX(last_seen, ?) WHERE id = ?`)
+        .run(input.now, id);
+      return id;
+    }
     this.db
       .prepare(
-        `INSERT INTO characters (id, account_id, name, realm, class, level, last_seen, saved_at, dropped_json, device_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO characters (id, account_id, name, realm, last_seen, saved_at, dropped_json, device_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
            account_id = CASE WHEN excluded.account_id = '' THEN account_id ELSE excluded.account_id END,
-           class = COALESCE(excluded.class, class), level = COALESCE(excluded.level, level),
            last_seen = MAX(last_seen, excluded.last_seen),
            saved_at = MAX(COALESCE(saved_at, 0), COALESCE(excluded.saved_at, 0)),
            dropped_json = COALESCE(excluded.dropped_json, dropped_json),
@@ -681,14 +686,27 @@ export class DataStore {
         input.account,
         input.name,
         input.realm,
-        className,
-        level,
         input.now,
         input.savedAt,
         input.dropped ? JSON.stringify(input.dropped) : null,
         input.deviceId ?? null,
       );
     return id;
+  }
+
+  /** The catalog is derived from accepted Sections, never from an incoming upload. */
+  private refreshCharacterFacts(id: string): void {
+    const char = this.section("char", id, "char");
+    const context = char ? char.body : this.section("char", id, "profile")?.body.context;
+    if (!isObject(context)) return;
+    const className =
+      typeof context.class === "string" && context.class.trim() ? context.class : null;
+    const level = typeof context.level === "number" ? context.level : null;
+    this.db
+      .prepare(
+        `UPDATE characters SET class = COALESCE(?, class), level = COALESCE(?, level) WHERE id = ?`,
+      )
+      .run(className, level, id);
   }
 
   private putSection(input: {
@@ -722,6 +740,8 @@ export class DataStore {
           )
           .run(input.savedAt, input.ownerKind, input.ownerId, input.name);
       }
+      if (input.ownerKind === "char" && (input.name === "char" || input.name === "profile"))
+        this.refreshCharacterFacts(input.ownerId);
       return "unchanged";
     }
     this.db
@@ -748,6 +768,8 @@ export class DataStore {
         input.bytes,
         JSON.stringify(input.body),
       );
+    if (input.ownerKind === "char" && (input.name === "char" || input.name === "profile"))
+      this.refreshCharacterFacts(input.ownerId);
     const change =
       previous && previous.v !== input.v
         ? { kind: "full" as const, body: input.body }
@@ -883,14 +905,12 @@ export class DataStore {
   ): SnapshotResult {
     return this.transaction(() => {
       const account = this.touchAccount(snapshot.account, now, snapshot.dropped.account);
-      const charBody = snapshot.sections.find((s) => s.name === "char" && s.scope === "char")?.body;
       const character = this.touchCharacter({
         account,
         name: snapshot.character,
         realm: snapshot.realm,
         now,
         savedAt: snapshot.savedAt,
-        char: charBody,
         dropped: snapshot.dropped.char,
         deviceId,
       });
@@ -961,14 +981,12 @@ export class DataStore {
         ? this.touchAccount(input.account, now)
         : (known?.accountId ?? "");
       const body = previous ? mergeProfile(previous.body, input.profile) : input.profile;
-      const context = isObject(body.context) ? body.context : {};
       this.touchCharacter({
         account,
         name: input.character,
         realm: input.realm,
         now,
         savedAt: input.savedAt,
-        char: context,
         deviceId: input.deviceId,
       });
       const text = JSON.stringify(body);
@@ -1060,7 +1078,6 @@ export class DataStore {
       realm: row.realm,
       now: at,
       savedAt: row.saved_at,
-      char: isObject(body.context) ? body.context : undefined,
       deviceId: row.device_id,
     });
     this.putSection({
