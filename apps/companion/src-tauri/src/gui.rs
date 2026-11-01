@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -27,6 +27,7 @@ use crate::plan::{
 };
 use crate::request::{self, request_status_path, PostedRequests, RequestUpload};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
+use crate::settings::Settings;
 use crate::snapshot::{
     build_upload, character_identity, data_from_saved_variables, gzip, DataFile, SentSections,
     MAX_COMPRESSED_BYTES,
@@ -36,39 +37,6 @@ use crate::wow::{
     account_saved_variables, character_saved_variables, detect_installs, list_accounts,
     read_progress, retail_dir, CharacterFile,
 };
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Settings {
-    wow_path: String,
-    account: String,
-    endpoint_url: String,
-    poll_minutes: u32,
-    /// Launch at login is turned on once, on the first run; after that the
-    /// player's choice in the window stands.
-    #[serde(default)]
-    autostart_set: bool,
-    /// When the player used Forget my data. Cleared by Connect again.
-    #[serde(default)]
-    forgotten_at: Option<u64>,
-    /// Account keys this PC has already asked the Server to rename (docs/adr/0044).
-    #[serde(default)]
-    migrated_accounts: Vec<String>,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            wow_path: String::new(),
-            account: String::new(),
-            endpoint_url: String::new(),
-            poll_minutes: 5,
-            autostart_set: false,
-            forgotten_at: None,
-            migrated_accounts: Vec::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -233,16 +201,24 @@ fn load_settings(app: &AppHandle) -> Settings {
     let Ok(path) = settings_path(app) else {
         return Settings::default();
     };
-    let Ok(text) = fs::read_to_string(path) else {
-        return Settings::default();
-    };
-    serde_json::from_str(&text).unwrap_or_default()
+    Settings::load(&path)
 }
 
 fn save_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     let path = settings_path(app)?;
-    let text = serde_json::to_string_pretty(settings).map_err(|err| err.to_string())?;
-    fs::write(path, text).map_err(|err| err.to_string())
+    settings.save(&path)
+}
+
+/// Keep failed preference edits from changing the active sync session. Callers
+/// hold the model lock through persistence, invalidation and derived UI state.
+fn change_preferences(
+    app: &AppHandle,
+    model: &mut Current<Model>,
+    edit: impl FnOnce(&mut Settings),
+) -> Result<(), String> {
+    model.settings.update(&settings_path(app)?, edit)?;
+    model.invalidate();
+    Ok(())
 }
 
 fn retail_path(settings: &Settings) -> Option<PathBuf> {
@@ -521,16 +497,20 @@ fn get_state(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
 
 #[tauri::command]
 fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
-    let found = detect_installs();
+    let found: Vec<String> = detect_installs()
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect();
     let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.invalidate();
-    model.installs = found.iter().map(|p| p.display().to_string()).collect();
-    if model.settings.wow_path.is_empty() {
-        if let Some(first) = model.installs.first() {
-            model.settings.wow_path = first.clone();
+    change_preferences(&app, &mut model, |settings| {
+        if settings.wow_path.is_empty() {
+            if let Some(first) = found.first() {
+                settings.wow_path = first.clone();
+            }
         }
-    }
+    })?;
+    model.installs = found;
     let retail = PathBuf::from(&model.settings.wow_path);
     model.accounts = list_accounts(&retail);
     model.progress = scan_progress(&model.settings);
@@ -539,7 +519,6 @@ fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> 
         model.needs_wow_path = true;
     }
     let path = model.settings.wow_path.clone();
-    let _ = save_settings(&app, &model.settings);
     drop(model);
     arm_watch(&app, &path);
     let model = state.inner.lock().map_err(|err| err.to_string())?;
@@ -550,11 +529,11 @@ fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> 
 fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<UiState, Shown> {
     let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.invalidate();
     let chosen = path.trim();
-    model.settings.wow_path = retail_dir(Path::new(chosen))
+    let wow_path = retail_dir(Path::new(chosen))
         .map(|dir| dir.display().to_string())
         .unwrap_or_default();
+    change_preferences(&app, &mut model, |settings| settings.wow_path = wow_path)?;
     let retail = PathBuf::from(&model.settings.wow_path);
     model.accounts = list_accounts(&retail);
     model.progress = scan_progress(&model.settings);
@@ -567,7 +546,6 @@ fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<
         tr("NOT_WOW_FOLDER")
     };
     let path = model.settings.wow_path.clone();
-    let _ = save_settings(&app, &model.settings);
     drop(model);
     arm_watch(&app, &path);
     let model = state.inner.lock().map_err(|err| err.to_string())?;
@@ -578,10 +556,8 @@ fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<
 fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Result<UiState, Shown> {
     let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.invalidate();
-    model.settings.account = account;
+    change_preferences(&app, &mut model, |settings| settings.account = account)?;
     model.progress = scan_progress(&model.settings);
-    let _ = save_settings(&app, &model.settings);
     Ok(snapshot(&app, &model))
 }
 
@@ -617,15 +593,15 @@ fn set_endpoint(
     validate_endpoint(&url)?;
     let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.invalidate();
-    model.settings.endpoint_url = url;
-    model.settings.poll_minutes = poll_minutes.min(240);
+    change_preferences(&app, &mut model, |settings| {
+        settings.endpoint_url = url;
+        settings.poll_minutes = poll_minutes.min(240);
+    })?;
     model.posted.clear();
     model.sent_sections.clear();
     model.posted_profiles.clear();
     model.notified.clear();
     model.status = tr("ENDPOINT_SAVED");
-    let _ = save_settings(&app, &model.settings);
     Ok(snapshot(&app, &model))
 }
 
@@ -645,7 +621,6 @@ fn write_plan_text(app: AppHandle, state: State<AppState>, text: String) -> Resu
     let mut plan = decode_unb1(&text).map_err(|_| i18n::code("ERR_PLAN_STRING", &[]))?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     model.status = write_plan(&model.settings, &mut plan)?;
-    let _ = save_settings(&app, &model.settings);
     Ok(snapshot(&app, &model))
 }
 

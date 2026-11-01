@@ -106,6 +106,24 @@ Reconnect recovery after
 a lost response/local credential save and per-scope snapshot freshness still
 need the protocol work described in the audit reports.
 
+Companion settings live in `settings.rs`. Saving writes `settings.json.tmp` in
+the same directory, syncs and closes it, then renames it over `settings.json`.
+Readers never load the staging file. A failed write or replacement leaves the
+working file untouched; an abandoned staging file is overwritten on the next
+save. This assumes one Companion writer, serialized by the model lock after
+startup. It is not a multi-process lock or a power-loss durability guarantee
+(the parent directory is not synced).
+
+Detect/select WoW, Account and endpoint preferences use `Settings::update`:
+save a candidate first, then replace memory and invalidate the sync generation
+under the same model lock. Derived views, watchers and upload caches change only
+after that succeeds. Command errors use the existing localized `Shown` path.
+Forget deliberately keeps its immediate local revocation and retry behavior:
+an already completed remote erasure cannot be rolled back on a disk failure.
+The JSON format/defaults are unchanged. Malformed/unreadable settings still use
+the existing default fallback; recovery and ignored saves in other lifecycle
+paths remain audit items. Importing a Plan does not rewrite unchanged settings.
+
 Request submission lives in `apps/companion/src-tauri/src/request.rs`. The GUI
 reads SavedVariables and supplies the HTTP adapter; the library selects the
 newest saved Request (D82) and acknowledges Account migration only after a
