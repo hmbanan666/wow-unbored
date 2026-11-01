@@ -19,6 +19,14 @@ pub struct RequestUpload {
 pub struct PostedRequests {
     pub waiting: Option<String>,
     pub rejection: Option<RequestState>,
+    /// Earlier Requests to retry, without ids, Account names or transport text.
+    pub deferred: Vec<UploadFailure>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum UploadFailure {
+    Transport,
+    Http(u16),
 }
 
 /// Submit the saved Requests through the provided HTTP adapter. Accepted
@@ -30,14 +38,25 @@ pub fn post_requests(
 ) -> Result<PostedRequests, String> {
     let waiting = waited_request(requests.iter().map(|upload| &upload.request)).map(str::to_string);
     let mut rejection = None;
+    let mut deferred = Vec::new();
     for upload in requests {
         let request = &upload.request;
         let (account, legacy) = seal.publish(&upload.account)?;
         let mut body = request_body(request, Some(&account));
         account::attach_legacy(&mut body, legacy.as_deref());
-        let status = send(&body)?;
+        let is_waiting = Some(request.id.as_str()) == waiting.as_deref();
+        let status = match send(&body) {
+            Ok(status) => status,
+            Err(error) => {
+                if is_waiting {
+                    return Err(error);
+                }
+                deferred.push(UploadFailure::Transport);
+                continue;
+            }
+        };
         if (400..500).contains(&status) && !matches!(status, 401 | 408 | 429) {
-            if Some(request.id.as_str()) == waiting.as_deref() {
+            if is_waiting {
                 rejection = Some(RequestState {
                     id: request.id.clone(),
                     kind: request.kind.clone(),
@@ -49,10 +68,17 @@ pub fn post_requests(
         } else if (200..300).contains(&status) {
             seal.note_migrated(legacy.as_deref());
         } else {
-            return Err(trf("PLANNER_RETURNED", &[&status.to_string()]));
+            if is_waiting {
+                return Err(trf("PLANNER_RETURNED", &[&status.to_string()]));
+            }
+            deferred.push(UploadFailure::Http(status));
         }
     }
-    Ok(PostedRequests { waiting, rejection })
+    Ok(PostedRequests {
+        waiting,
+        rejection,
+        deferred,
+    })
 }
 
 /// Why a Request did not get an Answer. Bory has one friendly line per code.
@@ -269,6 +295,86 @@ mod tests {
         assert!(file.ready_request.is_none());
         assert!(file.body.contains("req-new") && !file.body.contains("req-old"));
         assert!(crate::savedvars::parse_saved_variables(&file.body).is_ok());
+    }
+
+    #[test]
+    fn an_older_transport_or_http_failure_does_not_stop_the_waited_request() {
+        for reverse in [false, true] {
+            for status in [None, Some(401), Some(408), Some(429), Some(503)] {
+                let mut uploads = uploads();
+                // Distinct Accounts let us prove only the successful upload
+                // acknowledges migration, even when another upload fails.
+                uploads[0].account = "222222#1".into();
+                if reverse {
+                    uploads.reverse();
+                }
+                let mut seal = seal();
+                let mut sent = Vec::new();
+                let posted = post_requests(&uploads, &mut seal, |body| {
+                    let id = body["id"].as_str().unwrap();
+                    sent.push(id.to_string());
+                    if id == "req-new" {
+                        Ok(201)
+                    } else {
+                        status.ok_or_else(|| "private network details".to_string())
+                    }
+                })
+                .expect("an earlier Request failure must not stop current delivery");
+                assert_eq!(sent.len(), 2);
+                assert_eq!(posted.waiting.as_deref(), Some("req-new"));
+                assert!(posted.rejection.is_none());
+                assert_eq!(
+                    posted.deferred,
+                    vec![status
+                        .map(UploadFailure::Http)
+                        .unwrap_or(UploadFailure::Transport)]
+                );
+                assert!(!format!("{:?}", posted.deferred).contains("private network details"));
+                assert_eq!(seal.migrated_accounts(), vec!["111111"]);
+                let retried = post_requests(&uploads, &mut seal, |body| {
+                    if body["id"] == "req-old" {
+                        assert_eq!(body["accountLegacy"], "222222");
+                    }
+                    Ok(200)
+                })
+                .unwrap();
+                assert!(retried.deferred.is_empty());
+                assert_eq!(seal.migrated_accounts(), vec!["111111", "222222"]);
+            }
+        }
+    }
+
+    #[test]
+    fn an_old_failure_does_not_mask_a_waited_rejection() {
+        let posted = post_requests(&uploads(), &mut seal(), |body| {
+            Ok(if body["id"] == "req-old" { 503 } else { 400 })
+        })
+        .unwrap();
+        assert_eq!(posted.rejection.unwrap().id, "req-new");
+        assert_eq!(posted.deferred, vec![UploadFailure::Http(503)]);
+    }
+
+    #[test]
+    fn a_waited_transport_failure_is_still_reported_in_either_order() {
+        for reverse in [false, true] {
+            let mut uploads = uploads();
+            if reverse {
+                uploads.reverse();
+            }
+            let mut sent = Vec::new();
+            let error = post_requests(&uploads, &mut seal(), |body| {
+                let id = body["id"].as_str().unwrap();
+                sent.push(id.to_string());
+                if id == "req-new" {
+                    Err("offline".into())
+                } else {
+                    Ok(201)
+                }
+            })
+            .unwrap_err();
+            assert_eq!(error, "offline");
+            assert!(sent.iter().any(|id| id == "req-new"));
+        }
     }
 
     #[test]
