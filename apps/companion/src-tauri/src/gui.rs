@@ -1,6 +1,6 @@
 //! Tray window. Talks to WoW only through files.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -31,6 +31,7 @@ use crate::snapshot::{
     build_upload, character_identity, data_from_saved_variables, gzip, DataFile, SentSections,
     MAX_COMPRESSED_BYTES,
 };
+use crate::sync_state::{Current, Generation, SyncState};
 use crate::wow::{
     account_saved_variables, character_saved_variables, detect_installs, list_accounts,
     read_progress, retail_dir, CharacterFile,
@@ -91,6 +92,11 @@ struct Model {
     progress: Vec<ProgressView>,
     /// Last progress body posted for each SavedVariables path.
     posted: HashMap<String, String>,
+    sent_sections: SentSections,
+    posted_profiles: HashMap<String, u64>,
+    notified: HashSet<String>,
+    /// Retry failed local erasure/settings persistence, not every forgotten poll.
+    forget_cleanup_pending: bool,
     approved: bool,
     needs_wow_path: bool,
     addon_version: String,
@@ -124,12 +130,66 @@ impl Model {
 }
 
 struct AppState {
-    inner: Mutex<Model>,
+    inner: SyncState<Model>,
     /// Kept alive so the SavedVariables watch does not stop.
     watcher: Mutex<Option<RecommendedWatcher>>,
     device: Mutex<DeviceCredential>,
+    /// Serialize explicit Device lifecycle/settings commands, never background sync.
+    device_change: Mutex<()>,
+    /// Preserve progress read/POST order without holding up Forget or the UI model.
+    progress_scan: Mutex<()>,
     /// Set when the game saved, so the next check runs at once.
     wake: (Mutex<bool>, Condvar),
+}
+
+/// Settings, credentials and generation are captured atomically with local state.
+struct SyncSession {
+    settings: Settings,
+    device: DeviceCredential,
+    generation: Generation,
+}
+
+/// Caller holds the current generation through the file write.
+fn write_heartbeat(
+    app: &AppHandle,
+    model: &Model,
+    retail: &Path,
+    online: bool,
+) -> Result<(), String> {
+    write_status(
+        retail,
+        &CompanionStatus {
+            pairing: model.pairing.clone(),
+            online,
+            addon_version: installed_version(retail),
+            companion_version: app.package_info().version.to_string(),
+            seen_at: now_secs(),
+        },
+    )
+    .map(|_| ())
+    .map_err(game_files)
+}
+
+impl SyncSession {
+    fn capture(state: &AppState) -> Result<Self, String> {
+        let model = state.inner.lock().map_err(|err| err.to_string())?;
+        let device = state.device.lock().map_err(|err| err.to_string())?;
+        Ok(Self {
+            settings: model.settings.clone(),
+            device: device.clone(),
+            generation: model.generation(),
+        })
+    }
+
+    fn apply<R>(
+        &self,
+        app: &AppHandle,
+        effect: impl FnOnce(&mut Current<Model>) -> R,
+    ) -> Result<Option<R>, String> {
+        app.state::<AppState>()
+            .inner
+            .apply(&self.generation, effect)
+    }
 }
 
 /// A command error as the window shows it: always words, never a raw message (D215).
@@ -234,17 +294,15 @@ fn account_seal(device: &DeviceCredential, settings: &Settings) -> AccountSeal {
     AccountSeal::new(&device.account_salt, &settings.migrated_accounts)
 }
 
-fn remember_migrations(app: &AppHandle, settings: &Settings, seal: &AccountSeal) {
-    let migrated = seal.migrated_accounts();
-    if settings.migrated_accounts == migrated {
-        return;
+fn remember_migrations(app: &AppHandle, model: &mut Model, seal: &AccountSeal) {
+    let mut migrated = model.settings.migrated_accounts.clone();
+    migrated.extend(seal.migrated_accounts());
+    migrated.sort();
+    migrated.dedup();
+    if model.settings.migrated_accounts != migrated {
+        model.settings.migrated_accounts = migrated;
+        let _ = save_settings(app, &model.settings);
     }
-    let state = app.state::<AppState>();
-    let Ok(mut model) = state.inner.lock() else {
-        return;
-    };
-    model.settings.migrated_accounts = migrated;
-    let _ = save_settings(app, &model.settings);
 }
 
 fn post_progress(
@@ -299,26 +357,46 @@ fn http_client(timeout: Duration) -> Result<reqwest::blocking::Client, String> {
         .map_err(|err| err.to_string())
 }
 
-fn run_scan(
-    model: &mut Model,
-    bearer: Option<&str>,
-    seal: Option<&mut AccountSeal>,
-) -> Result<usize, String> {
-    let settings = model.settings.clone();
+fn sync_progress(app: &AppHandle, session: &SyncSession) -> Result<usize, String> {
+    let state = app.state::<AppState>();
+    let _scan = state.progress_scan.lock().map_err(|err| err.to_string())?;
+    let Some((approved, mut posted, mut seal)) = session.apply(app, |model| {
+        (
+            model.approved,
+            model.posted.clone(),
+            account_seal(&session.device, &model.settings),
+        )
+    })?
+    else {
+        return Ok(0);
+    };
+    let settings = &session.settings;
     let account = if settings.account.is_empty() {
         None
     } else {
         Some(settings.account.as_str())
     };
-    let files = retail_path(&settings)
+    let files = retail_path(settings)
         .map(|retail| character_saved_variables(&retail, account))
         .unwrap_or_default();
-    model.progress = scan_progress(&settings);
-    if let (Some(bearer), Some(seal)) = (bearer, seal) {
-        post_progress(&settings, &files, &mut model.posted, bearer, seal)
+    let progress = scan_progress(settings);
+    let result = if approved {
+        post_progress(
+            settings,
+            &files,
+            &mut posted,
+            &session.device.secret,
+            &mut seal,
+        )
     } else {
         Ok(0)
-    }
+    };
+    session.apply(app, |model| {
+        model.progress = progress;
+        model.posted.extend(posted);
+        remember_migrations(app, model, &seal);
+    })?;
+    result
 }
 
 fn scan_status(posting: bool, progress_len: usize, result: Result<usize, String>) -> String {
@@ -444,7 +522,9 @@ fn get_state(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
 #[tauri::command]
 fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let found = detect_installs();
+    let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.invalidate();
     model.installs = found.iter().map(|p| p.display().to_string()).collect();
     if model.settings.wow_path.is_empty() {
         if let Some(first) = model.installs.first() {
@@ -468,7 +548,9 @@ fn detect_wow(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> 
 
 #[tauri::command]
 fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<UiState, Shown> {
+    let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.invalidate();
     let chosen = path.trim();
     model.settings.wow_path = retail_dir(Path::new(chosen))
         .map(|dir| dir.display().to_string())
@@ -494,7 +576,9 @@ fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<
 
 #[tauri::command]
 fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Result<UiState, Shown> {
+    let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.invalidate();
     model.settings.account = account;
     model.progress = scan_progress(&model.settings);
     let _ = save_settings(&app, &model.settings);
@@ -531,10 +615,15 @@ fn set_endpoint(
 ) -> Result<UiState, Shown> {
     let url = url.trim().to_string();
     validate_endpoint(&url)?;
+    let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.invalidate();
     model.settings.endpoint_url = url;
     model.settings.poll_minutes = poll_minutes.min(240);
     model.posted.clear();
+    model.sent_sections.clear();
+    model.posted_profiles.clear();
+    model.notified.clear();
     model.status = tr("ENDPOINT_SAVED");
     let _ = save_settings(&app, &model.settings);
     Ok(snapshot(&app, &model))
@@ -562,21 +651,24 @@ fn write_plan_text(app: AppHandle, state: State<AppState>, text: String) -> Resu
 
 #[tauri::command]
 fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
-    let (settings, device, approved) = {
-        let model = state.inner.lock().map_err(|err| err.to_string())?;
-        let device = state.device.lock().map_err(|err| err.to_string())?;
-        (model.settings.clone(), device.clone(), model.approved)
-    };
-    if !approved {
-        let model = state.inner.lock().map_err(|err| err.to_string())?;
-        return Ok(snapshot(&app, &model));
+    let session = SyncSession::capture(&state)?;
+    let seal = session
+        .apply(&app, |model| {
+            model
+                .approved
+                .then(|| account_seal(&session.device, &model.settings))
+        })?
+        .flatten();
+    if let Some(mut seal) = seal {
+        let result = sync_plans(&app, &session, &mut seal);
+        session
+            .apply(&app, |model| {
+                remember_migrations(&app, model, &seal);
+                result.map(|message| model.status = message.unwrap_or_else(|| tr("NO_PLAN_YET")))
+            })?
+            .transpose()?;
     }
-    let mut notified = std::collections::HashSet::new();
-    let mut seal = account_seal(&device, &settings);
-    let message = sync_plans(&app, &settings, &device.secret, &mut notified, &mut seal)?;
-    remember_migrations(&app, &settings, &seal);
-    let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.status = message.unwrap_or_else(|| tr("NO_PLAN_YET"));
+    let model = state.inner.lock().map_err(|err| err.to_string())?;
     Ok(snapshot(&app, &model))
 }
 
@@ -599,39 +691,47 @@ fn forget_on_planner(url: &str, secret: &str) -> Result<bool, String> {
 
 #[tauri::command]
 fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
-    let (settings, secret) = {
-        let model = state.inner.lock().map_err(|err| err.to_string())?;
-        let device = state.device.lock().map_err(|err| err.to_string())?;
-        (model.settings.clone(), device.secret.clone())
-    };
-    let url = effective_url(&settings);
+    let _change = state.device_change.lock().map_err(|err| err.to_string())?;
+    let session = SyncSession::capture(&state)?;
+    let url = effective_url(&session.settings);
     validate_endpoint(&url)?;
-    let erased = forget_on_planner(&url, &secret)?;
-    sent_sections()
-        .lock()
-        .map_err(|err| err.to_string())?
-        .clear();
-    posted_profiles()
-        .lock()
-        .map_err(|err| err.to_string())?
-        .clear();
-    if let Some(retail) = retail_path(&settings) {
-        clear_helper(&retail).map_err(game_files)?;
-    }
-    let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    model.posted.clear();
-    model.ready = None;
-    model.request_pending = false;
-    model.connected_at = None;
-    model.pairing = "revoked".into();
-    model.approved = false;
-    model.settings.forgotten_at = Some(now_secs());
-    let _ = save_settings(&app, &model.settings);
-    model.status = if erased {
-        tr("FORGET_DONE")
-    } else {
-        tr("FORGET_NOTHING")
-    };
+    let erased = forget_on_planner(&url, &session.device.secret)?;
+    session
+        .apply(&app, |model| -> Result<(), String> {
+            model.invalidate();
+            model.posted.clear();
+            model.ready = None;
+            model.request_pending = false;
+            model.connected_at = None;
+            model.pairing = "revoked".into();
+            model.approved = false;
+            model.error = false;
+            model.settings.forgotten_at = Some(now_secs());
+            model.forget_cleanup_pending = true;
+            // Revocation is local immediately, even if saving settings or erasing a
+            // file fails. Attempt all cleanup; a later revoked sync retries disk I/O.
+            let saved = save_settings(&app, &model.settings);
+            model.sent_sections.clear();
+            model.posted_profiles.clear();
+            model.notified.clear();
+            let cleared = retail_path(&session.settings)
+                .map(|retail| {
+                    clear_helper(&retail).map_err(game_files)?;
+                    write_heartbeat(&app, model, &retail, true)
+                })
+                .transpose();
+            saved?;
+            cleared?;
+            model.forget_cleanup_pending = false;
+            model.status = tr(if erased {
+                "FORGET_DONE"
+            } else {
+                "FORGET_NOTHING"
+            });
+            Ok(())
+        })?
+        .transpose()?;
+    let model = state.inner.lock().map_err(|err| err.to_string())?;
     Ok(snapshot(&app, &model))
 }
 
@@ -668,6 +768,7 @@ fn reconnect_on_planner(
 
 #[tauri::command]
 fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
+    let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let (settings, old) = {
         let model = state.inner.lock().map_err(|err| err.to_string())?;
         let device = state.device.lock().map_err(|err| err.to_string())?;
@@ -684,14 +785,13 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Show
     let status = reconnect_on_planner(&url, &old.secret, &fresh)?;
     let path = settings_path(&app)?.with_file_name("device.json");
     device::save(&path, &fresh)?;
-    {
-        let mut device = state.device.lock().map_err(|err| err.to_string())?;
-        *device = fresh;
-    }
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.invalidate();
+    *state.device.lock().map_err(|err| err.to_string())? = fresh;
     model.pairing = status.clone();
     model.approved = status == "approved";
     model.settings.forgotten_at = None;
+    model.forget_cleanup_pending = false;
     if model.approved {
         model.connected_at = Some(now_secs());
     }
@@ -709,31 +809,13 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Show
 
 #[tauri::command]
 fn rescan_progress(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
-    let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-    let bearer = if model.approved {
-        state.device.lock().ok().map(|device| device.secret.clone())
-    } else {
-        None
-    };
-    let mut seal = if model.approved {
-        state
-            .device
-            .lock()
-            .ok()
-            .map(|device| account_seal(&device, &model.settings))
-    } else {
-        None
-    };
-    let posting = bearer.is_some();
-    let result = run_scan(&mut model, bearer.as_deref(), seal.as_mut());
-    if let Some(seal) = &seal {
-        if model.settings.migrated_accounts != seal.migrated_accounts() {
-            model.settings.migrated_accounts = seal.migrated_accounts();
-            let _ = save_settings(&app, &model.settings);
-        }
-    }
-    model.status = scan_status(posting, model.progress.len(), result);
-    let _ = app.emit("progress", &model.progress);
+    let session = SyncSession::capture(&state)?;
+    let result = sync_progress(&app, &session);
+    session.apply(&app, |model| {
+        model.status = scan_status(model.approved, model.progress.len(), result);
+        let _ = app.emit("progress", &model.progress);
+    })?;
+    let model = state.inner.lock().map_err(|err| err.to_string())?;
     Ok(snapshot(&app, &model))
 }
 
@@ -762,40 +844,18 @@ fn touches_saved_variables(event: &Result<Event, notify::Error>) -> bool {
 
 fn note_saved_variables(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let Ok(mut model) = state.inner.lock() else {
+    let Ok(session) = SyncSession::capture(&state) else {
         return;
     };
-    let bearer = if model.approved {
-        state.device.lock().ok().map(|device| device.secret.clone())
-    } else {
-        None
-    };
-    let mut seal = if model.approved {
-        state
-            .device
-            .lock()
-            .ok()
-            .map(|device| account_seal(&device, &model.settings))
-    } else {
-        None
-    };
-    let result = run_scan(&mut model, bearer.as_deref(), seal.as_mut());
-    if let Some(seal) = &seal {
-        if model.settings.migrated_accounts != seal.migrated_accounts() {
-            model.settings.migrated_accounts = seal.migrated_accounts();
-            let _ = save_settings(app, &model.settings);
+    let result = sync_progress(app, &session);
+    let _ = session.apply(app, |model| {
+        match result {
+            Err(err) => model.status = err,
+            Ok(sent) if sent > 0 => model.status = trf("PROGRESS_SENT", &[&sent.to_string()]),
+            Ok(_) => {}
         }
-    }
-    match &result {
-        Err(err) => model.status = err.clone(),
-        Ok(sent) if *sent > 0 => {
-            model.status = trf("PROGRESS_SENT", &[&sent.to_string()]);
-        }
-        Ok(_) => {}
-    }
-    let progress = model.progress.clone();
-    drop(model);
-    let _ = app.emit("progress", &progress);
+        let _ = app.emit("progress", &model.progress);
+    });
     wake_sync(app);
 }
 
@@ -1000,28 +1060,17 @@ fn post_requests(
     })
 }
 
-/// The Section revisions the planner already has, so only changes are sent.
-fn sent_sections() -> &'static Mutex<SentSections> {
-    static SENT: std::sync::OnceLock<Mutex<SentSections>> = std::sync::OnceLock::new();
-    SENT.get_or_init(|| Mutex::new(SentSections::new()))
-}
-
-/// The profile save stamp the planner already has, per character.
-fn posted_profiles() -> &'static Mutex<HashMap<String, u64>> {
-    static POSTED: std::sync::OnceLock<Mutex<HashMap<String, u64>>> = std::sync::OnceLock::new();
-    POSTED.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
 /// Uploads the Sections that changed for every character and its Account,
 /// gzip, on each SavedVariables write (docs/adr/0029). Characters whose addon
 /// has no snapshot yet (0.6) are left to `post_profiles`.
 fn post_snapshots(
-    settings: &Settings,
+    app: &AppHandle,
+    session: &SyncSession,
     retail: &Path,
-    secret: &str,
     seal: &mut AccountSeal,
 ) -> Result<(), String> {
-    let sent = sent_sections();
+    let settings = &session.settings;
+    let secret = &session.device.secret;
     let client = http_client(Duration::from_secs(30))?;
     let url = effective_url(settings);
     let mut accounts: HashMap<String, Option<DataFile>> = HashMap::new();
@@ -1041,7 +1090,9 @@ fn post_snapshots(
             })
             .clone();
         let (character, realm) = character_identity(Some(&char_file), &file.realm, &file.character);
-        let known = sent.lock().map_err(|err| err.to_string())?.clone();
+        let Some(known) = session.apply(app, |model| model.sent_sections.clone())? else {
+            return Ok(());
+        };
         let (account, legacy) = seal.publish(&file.account)?;
         let Some((mut body, remember)) = build_upload(
             &account,
@@ -1073,7 +1124,12 @@ fn post_snapshots(
         if !response.status().is_success() {
             return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
         }
-        sent.lock().map_err(|err| err.to_string())?.extend(remember);
+        if session
+            .apply(app, |model| model.sent_sections.extend(remember))?
+            .is_none()
+        {
+            return Ok(());
+        }
         seal.note_migrated(legacy.as_deref());
     }
     Ok(())
@@ -1082,12 +1138,13 @@ fn post_snapshots(
 /// Uploads each character's profile once per save (docs/adr/0011). From 0.7
 /// only for characters whose addon has no Game data snapshot yet.
 fn post_profiles(
-    settings: &Settings,
+    app: &AppHandle,
+    session: &SyncSession,
     retail: &Path,
-    secret: &str,
     seal: &mut AccountSeal,
 ) -> Result<(), String> {
-    let posted = posted_profiles();
+    let settings = &session.settings;
+    let secret = &session.device.secret;
     let client = http_client(Duration::from_secs(20))?;
     let url = effective_url(settings);
     for file in character_saved_variables(retail, None) {
@@ -1105,7 +1162,11 @@ fn post_profiles(
         };
         let key = format!("{}-{}", profile.realm, profile.character);
         let stamp = profile.saved_at.unwrap_or(0);
-        if posted.lock().map_err(|err| err.to_string())?.get(&key) == Some(&stamp) {
+        let Some(known) = session.apply(app, |model| model.posted_profiles.get(&key).copied())?
+        else {
+            return Ok(());
+        };
+        if known == Some(stamp) {
             continue;
         }
         let (account, legacy) = seal.publish(&file.account)?;
@@ -1126,48 +1187,68 @@ fn post_profiles(
         if !response.status().is_success() {
             return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
         }
-        posted
-            .lock()
-            .map_err(|err| err.to_string())?
-            .insert(key, stamp);
+        if session
+            .apply(app, |model| {
+                model.posted_profiles.insert(key, stamp);
+            })?
+            .is_none()
+        {
+            return Ok(());
+        }
         seal.note_migrated(legacy.as_deref());
     }
     Ok(())
 }
 
 /// Personal advice for this PC's characters, into Advice.lua (docs/adr/0019).
-fn sync_advice(settings: &Settings, retail: &Path, secret: &str) -> Result<bool, String> {
+fn sync_advice(app: &AppHandle, session: &SyncSession, retail: &Path) -> Result<bool, String> {
     let client = http_client(Duration::from_secs(20))?;
-    let url = join_url(&effective_url(settings), "v1/advice");
-    let Some(body) = get_json(&client, &url, secret)? else {
+    let url = join_url(&effective_url(&session.settings), "v1/advice");
+    let Some(body) = get_json(&client, &url, &session.device.secret)? else {
         return Ok(false);
     };
-    install_advice(retail, &body["characters"], &body["holdings"]).map_err(game_files)
+    session
+        .apply(app, |_| {
+            install_advice(retail, &body["characters"], &body["holdings"]).map_err(game_files)
+        })?
+        .transpose()
+        .map(|changed| changed.unwrap_or(false))
 }
 
 /// Bory's ideas for this PC's characters, into Suggestions.lua (D107).
-fn sync_suggestions(settings: &Settings, retail: &Path, secret: &str) -> Result<bool, String> {
+fn sync_suggestions(app: &AppHandle, session: &SyncSession, retail: &Path) -> Result<bool, String> {
     let client = http_client(Duration::from_secs(20))?;
-    let url = join_url(&effective_url(settings), "v1/suggestions");
-    let Some(body) = get_json(&client, &url, secret)? else {
+    let url = join_url(&effective_url(&session.settings), "v1/suggestions");
+    let Some(body) = get_json(&client, &url, &session.device.secret)? else {
         return Ok(false);
     };
-    install_suggestions(retail, &body).map_err(game_files)
+    session
+        .apply(app, |_| {
+            install_suggestions(retail, &body).map_err(game_files)
+        })?
+        .transpose()
+        .map(|changed| changed.unwrap_or(false))
 }
 
 /// Sends in-game requests, then writes the one Plan.lua the game should see.
 /// Returns a status line when the file changed.
 fn sync_plans(
     app: &AppHandle,
-    settings: &Settings,
-    secret: &str,
-    notified: &mut std::collections::HashSet<String>,
+    session: &SyncSession,
     seal: &mut AccountSeal,
 ) -> Result<Option<String>, String> {
+    let settings = &session.settings;
+    let secret = &session.device.secret;
     let Some(retail) = retail_path(settings) else {
         return Ok(Some(tr("APPROVED_CHOOSE_RETAIL")));
     };
-    ensure_helper(&retail).map_err(game_files)?;
+    if session
+        .apply(app, |_| ensure_helper(&retail).map_err(game_files))?
+        .transpose()?
+        .is_none()
+    {
+        return Ok(None);
+    }
     let PostedRequests {
         rejection,
         waiting,
@@ -1178,10 +1259,10 @@ fn sync_plans(
         eprintln!("Earlier Request upload deferred ({failure:?}); retrying on the next sync.");
     }
     // Game data, a profile or advice that fails must not hold back plans and answers.
-    let _ = post_snapshots(settings, &retail, secret, seal);
-    let _ = post_profiles(settings, &retail, secret, seal);
-    let _ = sync_suggestions(settings, &retail, secret);
-    let _ = sync_advice(settings, &retail, secret);
+    let _ = post_snapshots(app, session, &retail, seal);
+    let _ = post_profiles(app, session, &retail, seal);
+    let _ = sync_suggestions(app, session, &retail);
+    let _ = sync_advice(app, session, &retail);
     let rejected = rejection.is_some();
     let state = match rejection {
         Some(request) => PlannerState {
@@ -1194,38 +1275,39 @@ fn sync_plans(
         .request
         .as_ref()
         .is_some_and(|request| request.status == "pending");
-    if let Ok(mut model) = app.state::<AppState>().inner.lock() {
-        model.request_pending = pending;
-    }
-    let Some(file) = pick_plan_file(&state) else {
-        return Ok(None);
-    };
-    let written = install_plan_file(&retail, &file).map_err(game_files)?;
-    if let Some(id) = &file.ready_request {
-        if notified.insert(id.clone()) && written.changed {
-            let kind = file.ready_kind.clone().unwrap_or_else(|| "plan".into());
-            let text = mood::ready_text(i18n::current(), &kind);
-            if let Ok(mut model) = app.state::<AppState>().inner.lock() {
-                model.ready = Some((kind, now_secs()));
+    session
+        .apply(app, |model| {
+            model.request_pending = pending;
+            let Some(file) = pick_plan_file(&state) else {
+                return Ok(None);
+            };
+            let written = install_plan_file(&retail, &file).map_err(game_files)?;
+            if let Some(id) = &file.ready_request {
+                if model.notified.insert(id.clone()) && written.changed {
+                    let kind = file.ready_kind.clone().unwrap_or_else(|| "plan".into());
+                    let text = mood::ready_text(i18n::current(), &kind);
+                    model.ready = Some((kind, now_secs()));
+                    notify(app, &text);
+                    return Ok(Some(text));
+                }
             }
-            notify(app, &text);
-            return Ok(Some(text));
-        }
-    }
-    if !written.changed {
-        return Ok(None);
-    }
-    Ok(Some(match &state.request {
-        Some(request) if file.ready_request.is_none() && request.status == "pending" => {
-            tr("REQUEST_SENT")
-        }
-        Some(request) if request.status == "failed" => tr(if rejected {
-            "PLANNER_REFUSED"
-        } else {
-            "PLANNER_FAILED"
-        }),
-        _ => tr("NEW_PLAN"),
-    }))
+            if !written.changed {
+                return Ok(None);
+            }
+            Ok(Some(match &state.request {
+                Some(request) if file.ready_request.is_none() && request.status == "pending" => {
+                    tr("REQUEST_SENT")
+                }
+                Some(request) if request.status == "failed" => tr(if rejected {
+                    "PLANNER_REFUSED"
+                } else {
+                    "PLANNER_FAILED"
+                }),
+                _ => tr("NEW_PLAN"),
+            }))
+        })?
+        .transpose()
+        .map(Option::flatten)
 }
 
 fn register_device(url: &str, device: &DeviceCredential) -> Result<String, String> {
@@ -1419,23 +1501,33 @@ fn wow_running() -> bool {
 
 fn sync_once(
     app: &AppHandle,
+    session: &SyncSession,
     addon_checked: &mut Option<std::time::Instant>,
-    notified: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let settings = state
-        .inner
-        .lock()
-        .map_err(|err| err.to_string())?
-        .settings
-        .clone();
-    let device = state.device.lock().map_err(|err| err.to_string())?.clone();
-    let retail = retail_path(&settings);
-    follow_lang(app, &settings);
+    let settings = &session.settings;
+    let retail = retail_path(settings);
+    if session
+        .apply(app, |model| {
+            if model.forget_cleanup_pending {
+                // Retry local failures before any network work, even while offline.
+                if let Some(retail) = &retail {
+                    clear_helper(retail).map_err(game_files)?;
+                }
+                save_settings(app, &model.settings)?;
+                model.forget_cleanup_pending = false;
+            }
+            Ok::<_, String>(())
+        })?
+        .transpose()?
+        .is_none()
+    {
+        return Ok(());
+    }
+    follow_lang(app, settings);
     // The helper and the addon come from disk and GitHub, so they are set up
     // even while the planner is down or this PC is not approved yet.
     if let Some(retail) = &retail {
-        let _ = ensure_helper(retail);
+        let _ = session.apply(app, |_| ensure_helper(retail));
         let due = addon_checked
             .map(|at| at.elapsed() >= Duration::from_secs(30 * 60))
             .unwrap_or(true);
@@ -1452,94 +1544,98 @@ fn sync_once(
                     // Try again in about 5 minutes; GitHub limits unauthenticated calls.
                     *addon_checked =
                         Some(now.checked_sub(Duration::from_secs(25 * 60)).unwrap_or(now));
-                    publish_status(app, &trf("ADDON_CHECK", &[&i18n::shown(&err)]));
+                    session.apply(app, |model| {
+                        model.status = trf("ADDON_CHECK", &[&i18n::shown(&err)])
+                    })?;
                 }
             }
         }
     }
-    let result = sync_planner(app, &settings, &device, notified);
+    let result = sync_planner(app, session);
     if let Some(retail) = &retail {
-        let model = state.inner.lock().map_err(|err| err.to_string())?;
-        let status = CompanionStatus {
-            pairing: model.pairing.clone(),
-            online: result.is_ok(),
-            addon_version: installed_version(retail),
-            companion_version: app.package_info().version.to_string(),
-            seen_at: now_secs(),
-        };
-        drop(model);
-        let _ = write_status(retail, &status);
+        session.apply(app, |model| {
+            let _ = write_heartbeat(app, model, retail, result.is_ok());
+        })?;
     }
     let _ = app.emit("progress", serde_json::json!({}));
     result
 }
 
-fn sync_planner(
-    app: &AppHandle,
-    settings: &Settings,
-    device: &DeviceCredential,
-    notified: &mut std::collections::HashSet<String>,
-) -> Result<(), String> {
-    let state = app.state::<AppState>();
+fn sync_planner(app: &AppHandle, session: &SyncSession) -> Result<(), String> {
+    let settings = &session.settings;
+    let device = &session.device;
     let url = effective_url(settings);
-    let secret = device.secret.clone();
-    let status = match device_status(&url, &secret) {
+    let secret = &device.secret;
+    let status = match device_status(&url, secret) {
         Ok(status) => status,
         Err(err) if err.contains("401") => register_device(&url, device)?,
         Err(err) => return Err(err),
     };
     let needs_path = settings.wow_path.trim().is_empty();
-    let (pairing_changed, just_approved) = {
-        let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-        let changed = model.pairing != status;
-        let just_approved = changed && status == "approved" && model.pairing == "pending";
-        model.pairing = status.clone();
-        model.approved = status == "approved";
-        model.needs_wow_path = needs_path;
-        if just_approved {
-            model.connected_at = Some(now_secs());
-        }
-        if model.approved && model.settings.forgotten_at.take().is_some() {
-            let _ = save_settings(app, &model.settings);
-        }
-        (changed, just_approved)
+    let Some(refresh) = session
+        .apply(app, |model| {
+            let changed = model.pairing != status;
+            let just_approved = changed && status == "approved" && model.pairing == "pending";
+            model.pairing = status.clone();
+            model.approved = status == "approved";
+            model.needs_wow_path = needs_path;
+            if just_approved {
+                model.connected_at = Some(now_secs());
+                notify(app, &tr("CONNECTED_TOAST"));
+            }
+            if model.approved && model.settings.forgotten_at.take().is_some() {
+                let _ = save_settings(app, &model.settings);
+            }
+            if changed || status != "approved" {
+                model.status = pairing_message(&status, needs_path);
+            }
+            Ok::<_, String>(changed || status != "approved")
+        })?
+        .transpose()?
+    else {
+        return Ok(());
     };
-    if status == "revoked" && settings.forgotten_at.is_some() {
-        // A sync that was already running may have written a plan after the erase.
-        if let Some(retail) = retail_path(settings) {
-            let _ = clear_helper(&retail);
-        }
-    }
-    if just_approved {
-        notify(app, &tr("CONNECTED_TOAST"));
-    }
-    if pairing_changed || status != "approved" {
-        publish_status(app, &pairing_message(&status, needs_path));
+    if refresh {
+        // Read the current model after releasing apply's lock; never repaint
+        // from the captured response, which may already have been invalidated.
+        refresh_view(app);
     }
     if status == "approved" && !needs_path {
-        let mut seal = account_seal(device, settings);
-        let mut model = state.inner.lock().map_err(|err| err.to_string())?;
-        let _ = run_scan(&mut model, Some(&secret), Some(&mut seal));
-        drop(model);
-        if let Some(message) = sync_plans(app, settings, &secret, notified, &mut seal)? {
-            publish_status(app, &message);
-        }
-        remember_migrations(app, settings, &seal);
+        let _ = sync_progress(app, session);
+        let Some(mut seal) = session.apply(app, |model| account_seal(device, &model.settings))?
+        else {
+            return Ok(());
+        };
+        let result = sync_plans(app, session, &mut seal);
+        session
+            .apply(app, |model| {
+                remember_migrations(app, model, &seal);
+                result.map(|message| {
+                    if let Some(message) = message {
+                        model.status = message;
+                    }
+                })
+            })?
+            .transpose()?;
     }
     Ok(())
 }
 
 fn sync_loop(app: AppHandle) {
     let mut addon_checked = None;
-    let mut notified = std::collections::HashSet::new();
     loop {
-        let result = sync_once(&app, &mut addon_checked, &mut notified);
-        if let Ok(mut model) = app.state::<AppState>().inner.lock() {
-            model.error = result.is_err();
-        }
-        match result {
+        match SyncSession::capture(&app.state::<AppState>()) {
+            Ok(session) => {
+                let result = sync_once(&app, &session, &mut addon_checked);
+                let _ = session.apply(&app, |model| {
+                    model.error = result.is_err();
+                    if let Err(err) = result {
+                        model.status = err;
+                    }
+                });
+                refresh_view(&app);
+            }
             Err(err) => publish_status(&app, &err),
-            Ok(()) => refresh_view(&app),
         }
         wait_for_wake(&app, Duration::from_secs(30));
     }
@@ -1658,13 +1754,17 @@ pub fn run() {
                 &settings_path(app.handle())?.with_file_name("device.json"),
             )?;
             app.manage(AppState {
-                inner: Mutex::new(Model {
+                inner: SyncState::new(Model {
+                    forget_cleanup_pending: settings.forgotten_at.is_some(),
                     settings,
                     status: String::new(),
                     installs,
                     accounts,
                     progress,
                     posted: HashMap::new(),
+                    sent_sections: SentSections::new(),
+                    posted_profiles: HashMap::new(),
+                    notified: HashSet::new(),
                     approved: false,
                     needs_wow_path,
                     addon_version: String::new(),
@@ -1679,6 +1779,8 @@ pub fn run() {
                 }),
                 watcher: Mutex::new(None),
                 device: Mutex::new(device),
+                device_change: Mutex::new(()),
+                progress_scan: Mutex::new(()),
                 wake: (Mutex::new(false), Condvar::new()),
             });
             arm_watch(app.handle(), &wow_path);

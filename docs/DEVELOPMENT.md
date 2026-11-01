@@ -60,6 +60,37 @@ read errors stop updates that need its contents. Explicit erasure can replace
 undecodable personal data. The lock covers writers in one Companion process;
 it does not coordinate multiple app processes or make a whole sync atomic.
 
+Companion sync captures settings, Device and a generation under the model lock
+(`sync_state.rs`, `SyncSession` in `gui.rs`). Network and SavedVariables reads run
+outside that lock. Every personal file write, upload acknowledgement, migration
+acknowledgement, pairing/status result and ready notification is applied through
+`SyncState::apply`: the generation check and local effects share one critical
+section. Forget invalidates the generation before local erasure, even if a disk
+operation fails. It also writes revoked Companion status immediately. Forgotten
+sync retries pending local cleanup/settings writes before network work, including
+while offline; a successful cleanup clears the retry flag. A saved forgotten
+marker schedules one cleanup after restart. It no longer compensates for
+stale responses writing data back.
+
+Forget, Connect again and settings changes serialize on a separate command lock.
+Background sync never holds that lock. The lock order is command lock (when
+needed), then model, then Device or helper-file writer. Progress operations
+instead serialize on their own lock, acquired before reading SavedVariables or
+copying acknowledgements, through POST and guarded apply. Forget never acquires
+that lock; old queued progress work checks its generation after acquiring it.
+This preserves progress order without holding the model during HTTP. Do not put HTTP calls
+inside `apply`, or acquire the model lock from a helper-file write. Successful
+Connect again and relevant settings changes also invalidate old results.
+Section/profile/progress acknowledgements and notification ids belong to the
+model, not process-global caches. Saving an endpoint clears its upload caches;
+concurrent migration acknowledgements are merged rather than replacing a list
+from an older settings snapshot.
+
+Generation invalidation discards results; it does not cancel blocking HTTP or
+order concurrent results within the same generation. Reconnect recovery after
+a lost response/local credential save and per-scope snapshot freshness still
+need the protocol work described in the audit reports.
+
 Request submission lives in `apps/companion/src-tauri/src/request.rs`. The GUI
 reads SavedVariables and supplies the HTTP adapter; the library selects the
 newest saved Request (D82) and acknowledges Account migration only after a

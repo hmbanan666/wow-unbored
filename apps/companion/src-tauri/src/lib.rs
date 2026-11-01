@@ -11,6 +11,8 @@ pub mod plan;
 pub mod request;
 pub mod savedvars;
 pub mod snapshot;
+#[cfg(any(feature = "gui", test))]
+mod sync_state;
 pub mod wow;
 
 #[cfg(feature = "gui")]
