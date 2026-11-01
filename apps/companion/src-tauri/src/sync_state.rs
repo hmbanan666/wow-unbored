@@ -5,7 +5,16 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, LockResult, Mutex, MutexGuard};
 
 #[derive(Clone)]
-pub(crate) struct Generation(Arc<()>);
+pub(crate) struct Generation(Arc<Mutex<()>>);
+
+impl Generation {
+    /// Serialize a complete Prefetch pass, from reading inputs through applying
+    /// its files, acknowledgements and status. Never acquire while holding the
+    /// model lock. A replacement generation has its own independent queue.
+    pub(crate) fn prefetch(&self) -> Result<MutexGuard<'_, ()>, String> {
+        self.0.lock().map_err(|err| err.to_string())
+    }
+}
 
 pub(crate) struct Current<T> {
     generation: Generation,
@@ -20,7 +29,7 @@ impl<T> Current<T> {
     /// Invalidate first, under the same lock as erasure or settings replacement.
     /// Even a failed disk operation must not make old results current again.
     pub(crate) fn invalidate(&mut self) {
-        self.generation = Generation(Arc::new(()));
+        self.generation = Generation(Arc::new(Mutex::new(())));
     }
 }
 
@@ -43,7 +52,7 @@ pub(crate) struct SyncState<T>(Mutex<Current<T>>);
 impl<T> SyncState<T> {
     pub(crate) fn new(value: T) -> Self {
         Self(Mutex::new(Current {
-            generation: Generation(Arc::new(())),
+            generation: Generation(Arc::new(Mutex::new(()))),
             value,
         }))
     }
@@ -152,6 +161,142 @@ mod tests {
         ready: bool,
         acknowledged: Vec<String>,
         notices: Vec<String>,
+    }
+
+    fn apply_prefetch(
+        state: &SyncState<Local>,
+        generation: &Generation,
+        retail: &Path,
+        label: &str,
+    ) {
+        state
+            .apply(generation, |local| {
+                let mut plan: Plan = serde_json::from_str(include_str!(
+                    "../../../../packages/contracts/fixtures/plan.json"
+                ))
+                .unwrap();
+                plan.title = Some(label.into());
+                install_plan(retail, &plan).unwrap();
+                install_advice(
+                    retail,
+                    &serde_json::json!([
+                        { "character": label, "realm": "Realm", "items": [] }
+                    ]),
+                    &serde_json::Value::Null,
+                )
+                .unwrap();
+                install_suggestions(retail, &serde_json::json!({
+                "characters": { "Hero-Realm": [{ "id": label, "title": label, "goal": label }] }
+            })).unwrap();
+                write_status(
+                    retail,
+                    &CompanionStatus {
+                        companion_version: label.into(),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                local.acknowledged.push(label.into());
+                local.notices.push(label.into());
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn overlapping_prefetch_reads_and_applies_in_order() {
+        let retail = Retail::new("ordered");
+        let state = SyncState::new(Local::default());
+        let generation = state.lock().unwrap().generation();
+        let (started, waiting) = mpsc::channel();
+        let (release, released) = mpsc::channel();
+        let (attempt, attempting) = mpsc::channel();
+        let (entered, entering) = mpsc::channel();
+        thread::scope(|scope| {
+            let (state, generation, retail) = (&state, &generation, &retail);
+            let first = scope.spawn(move || {
+                let _pass = generation.prefetch().unwrap();
+                started.send(()).unwrap();
+                released.recv().unwrap(); // Delayed Server response, outside the model lock.
+                apply_prefetch(state, generation, &retail.0, "older");
+            });
+            waiting.recv().unwrap();
+            let second = scope.spawn(move || {
+                attempt.send(()).unwrap();
+                let _pass = generation.prefetch().unwrap();
+                let acknowledged = state.lock().unwrap().acknowledged.clone();
+                entered.send(acknowledged).unwrap(); // Start reading only after entering the pass.
+                apply_prefetch(state, generation, &retail.0, "newer");
+            });
+            attempting.recv().unwrap();
+            let early = entering.recv_timeout(std::time::Duration::from_millis(100));
+            // Release before asserting, so a failing test cannot strand scoped threads.
+            release.send(()).unwrap();
+            first.join().unwrap();
+            second.join().unwrap();
+            assert!(
+                matches!(early, Err(mpsc::RecvTimeoutError::Timeout)),
+                "a second fetch started before the first applied: {early:?}"
+            );
+            assert_eq!(entering.recv().unwrap(), vec!["older"]);
+        });
+        for file in retail.files() {
+            let text = String::from_utf8(file).unwrap();
+            assert!(text.contains("newer"), "{text}");
+            assert!(!text.contains("older"), "{text}");
+        }
+        let local = state.lock().unwrap();
+        assert_eq!(local.acknowledged, vec!["older", "newer"]);
+        assert_eq!(local.notices, vec!["older", "newer"]);
+    }
+
+    #[test]
+    fn queued_prefetch_rechecks_generation_without_blocking_the_replacement() {
+        let state = SyncState::new(Local::default());
+        let old = state.lock().unwrap().generation();
+        let pass = old.prefetch().unwrap();
+        let (attempt, attempting) = mpsc::channel();
+        let (entered, entering) = mpsc::channel();
+        thread::scope(|scope| {
+            let queued = scope.spawn(|| {
+                attempt.send(()).unwrap();
+                let _pass = old.prefetch().unwrap();
+                state
+                    .apply(&old, |local| local.notices.push("stale".into()))
+                    .unwrap()
+            });
+            attempting.recv().unwrap();
+            let current = {
+                // Forget/settings need only the model, not the Prefetch lock.
+                let mut local = state.lock().unwrap();
+                local.invalidate();
+                local.generation()
+            };
+            let replacement = scope.spawn(move || {
+                let _pass = current.prefetch().unwrap();
+                entered.send(()).unwrap();
+            });
+            let fresh_entered = entering.recv_timeout(std::time::Duration::from_secs(1));
+            drop(pass);
+            let stale = queued.join().unwrap();
+            replacement.join().unwrap();
+            assert!(
+                fresh_entered.is_ok(),
+                "new generation waited for old network work"
+            );
+            assert_eq!(stale, None);
+        });
+        assert!(state.lock().unwrap().notices.is_empty());
+    }
+
+    #[test]
+    fn failed_prefetch_releases_the_next_pass() {
+        let generation = Generation(Arc::new(Mutex::new(())));
+        let fail = || -> Result<(), &str> {
+            let _pass = generation.prefetch().unwrap();
+            Err("transport failure")
+        };
+        assert!(fail().is_err());
+        let _next = generation.prefetch().unwrap();
     }
 
     #[test]

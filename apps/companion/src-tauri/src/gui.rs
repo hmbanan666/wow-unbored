@@ -650,8 +650,18 @@ fn write_plan_text(app: AppHandle, state: State<AppState>, text: String) -> Resu
 }
 
 #[tauri::command]
-fn fetch_plan(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
-    let session = SyncSession::capture(&state)?;
+async fn fetch_plan(app: AppHandle) -> Result<UiState, Shown> {
+    let session = SyncSession::capture(&app.state::<AppState>())?;
+    // A background pass can need the GUI thread for tray updates. Waiting for
+    // its guard (and blocking HTTP) must happen on neither GUI nor async workers.
+    tauri::async_runtime::spawn_blocking(move || fetch_plan_blocking(app, session))
+        .await
+        .map_err(|_| i18n::code("ERR_UNEXPECTED", &[]))?
+}
+
+fn fetch_plan_blocking(app: AppHandle, session: SyncSession) -> Result<UiState, Shown> {
+    let state = app.state::<AppState>();
+    let _prefetch = session.generation.prefetch()?;
     let seal = session
         .apply(&app, |model| {
             model
@@ -1551,14 +1561,27 @@ fn sync_once(
             }
         }
     }
+    // Include the final status/error and heartbeat in the same ordered pass.
+    // Addon installation above is independent of personal Prefetch and does
+    // not hold up a manual fetch. Forget never waits for this guard.
+    let _prefetch = session.generation.prefetch()?;
+    if session.apply(app, |_| ())?.is_none() {
+        return Ok(());
+    }
     let result = sync_planner(app, session);
     if let Some(retail) = &retail {
         session.apply(app, |model| {
             let _ = write_heartbeat(app, model, retail, result.is_ok());
         })?;
     }
+    session.apply(app, |model| {
+        model.error = result.is_err();
+        if let Err(err) = result {
+            model.status = err;
+        }
+    })?;
     let _ = app.emit("progress", serde_json::json!({}));
-    result
+    Ok(())
 }
 
 fn sync_planner(app: &AppHandle, session: &SyncSession) -> Result<(), String> {
@@ -1626,13 +1649,14 @@ fn sync_loop(app: AppHandle) {
     loop {
         match SyncSession::capture(&app.state::<AppState>()) {
             Ok(session) => {
-                let result = sync_once(&app, &session, &mut addon_checked);
-                let _ = session.apply(&app, |model| {
-                    model.error = result.is_err();
-                    if let Err(err) = result {
+                // Planner outcomes were applied while holding the Prefetch
+                // guard. Only preparation/lock failures can arrive here.
+                if let Err(err) = sync_once(&app, &session, &mut addon_checked) {
+                    let _ = session.apply(&app, |model| {
+                        model.error = true;
                         model.status = err;
-                    }
-                });
+                    });
+                }
                 refresh_view(&app);
             }
             Err(err) => publish_status(&app, &err),
