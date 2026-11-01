@@ -269,4 +269,39 @@ for (const backend of BACKENDS) {
       store.close();
     }
   });
+
+  test.skipIf(backend !== "postgres")(
+    `JSON lands in jsonb as objects, not as JSON text in a string (${backend})`,
+    async () => {
+      const store = open(backend);
+      try {
+        await approved(store);
+        const { account } = await store.putSnapshot(
+          snapshot({ questLines: { body: chain(3) } }),
+          "pc-1",
+          NOW,
+        );
+        store.suggestions.close();
+        await store.suggestions.computeAccount(account, NOW);
+        const sql = pg(backend)!;
+        const columns = await sql<{ table: string; column: string }[]>`
+          SELECT table_name AS table, column_name AS column FROM information_schema.columns
+          WHERE table_schema = 'public' AND data_type = 'jsonb'
+            AND table_name NOT LIKE '%\_p%'`;
+        assert.ok(columns.length > 5);
+        let checked = 0;
+        for (const { table, column } of columns) {
+          const [row] = await sql.unsafe(
+            `SELECT count(*)::int AS n, count(*) FILTER (WHERE jsonb_typeof("${column}") = 'string')::int AS strings
+             FROM "${table}" WHERE "${column}" IS NOT NULL`,
+          );
+          checked += row!.n as number;
+          assert.equal(row!.strings, 0, `${table}.${column}`);
+        }
+        assert.ok(checked > 0);
+      } finally {
+        store.close();
+      }
+    },
+  );
 }
