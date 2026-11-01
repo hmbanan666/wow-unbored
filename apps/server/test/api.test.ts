@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 
 import { createApp } from "../src/app.ts";
 import { lookupCriteria } from "../src/criteria.ts";
-import { database, onPostgres } from "./backend.ts";
+import { onPostgres, storage } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -44,7 +44,7 @@ const sample = {
 function build() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-server-"));
   return createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,
@@ -292,6 +292,7 @@ test("mcp lists the planner tools", async () => {
       "get_suggestions",
       "list_devices",
       "list_errors",
+      "list_failed_uploads",
       "list_requests",
       "list_sessions",
       "list_wins",
@@ -564,7 +565,7 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
   let clock = Math.floor(Date.now() / 1000);
   const lines: string[] = [];
   const { app, webhook, store, close } = createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-hook-")),
@@ -715,7 +716,7 @@ test("a device request is webhooked, fulfilled, and can fail", async () => {
 
 test("failing an old request never hides the answer to the newer one (D82)", async () => {
   const { app, store, close } = createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-d82-")),
@@ -882,7 +883,7 @@ test("a request keeps the player context for the webhook and list_requests", asy
   const address = hook.address();
   if (!address || typeof address === "string") throw new Error("no port");
   const { app, close } = createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ctx-")),
@@ -1025,7 +1026,7 @@ test.skipIf(onPostgres)("an older database gains the context column", async () =
   );
   old.close();
   const { store, close } = createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,
@@ -1064,7 +1065,7 @@ test("item and question requests are typed, webhooked, and answered", async () =
   const address = hook.address();
   if (!address || typeof address === "string") throw new Error("no port");
   const { app, close } = createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ask-")),

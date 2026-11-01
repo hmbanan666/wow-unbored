@@ -40,6 +40,7 @@ import type { ProfileUpload } from "./profile.ts";
 import type { Sql } from "./postgres.ts";
 import { fromJson, PostgresDb, SqliteDb, type Db } from "./db.ts";
 import { SuggestionStore } from "./suggestions.ts";
+import { UploadInbox } from "./inbox.ts";
 import { readyNow, type ReadyNow } from "./ready.ts";
 import { computeTaste, requestCategory, type TasteRow } from "./taste.ts";
 import {
@@ -201,16 +202,21 @@ export class Store {
   readonly suggestions: SuggestionStore;
   readonly gameIds: IdCache;
   readonly creatureNames: NameCache;
+  /** The upload inbox and its worker (ADR 0057 step 4); Postgres only. */
+  readonly inbox: UploadInbox | undefined;
 
   /**
    * Without `postgres` the Server keeps every table in the SQLite file in
    * `dataDir`. With it (DATABASE_URL, ADR 0057) every table is in Postgres and
    * the SQLite file is not opened. The caller owns the pool.
    */
-  constructor(dataDir: string, options: { postgres?: Sql } = {}) {
+  constructor(dataDir: string, options: { postgres?: Sql; log?: (line: string) => void } = {}) {
     const pg = options.postgres;
+    let inbox: UploadInbox | undefined;
     if (pg) {
-      this.db = new PostgresDb(pg);
+      const db = new PostgresDb(pg);
+      this.db = db;
+      inbox = new UploadInbox(this, db, pg, options.log);
       this.gameIds = new PostgresIdCache(pg);
       this.creatureNames = new PostgresNameCache(pg);
     } else {
@@ -222,11 +228,22 @@ export class Store {
     }
     this.data = new DataStore(this.db);
     this.suggestions = new SuggestionStore(this.db, this.data, this.creatureNames);
+    this.inbox = inbox;
   }
 
   close(): void {
+    void this.inbox?.stop();
     this.suggestions.close();
     this.db.close();
+  }
+
+  /**
+   * Read barrier (ADR 0057): on Postgres, waits up to 10 s until the Account
+   * (any Account without one) has no queued upload, so a Request or a planner
+   * read sees the save that came just before. SQLite ingests inline: no wait.
+   */
+  async settle(account?: string): Promise<boolean> {
+    return this.inbox ? this.inbox.settle(account || undefined) : true;
   }
 
   /** Runs `work` in one transaction; every Store call inside it joins (db.ts). */
@@ -1179,6 +1196,7 @@ export class Store {
       }
     }
     const suggestions = await this.suggestions.tables.deleteOwner(key);
+    if (this.db.pg) await this.db.run(`DELETE FROM raw_uploads WHERE account_id = ?`, key);
     let erased = { requests: 0, plans: 0 };
     if (options.requests !== false) {
       const ids = new Set<string>();
@@ -1272,6 +1290,7 @@ export class Store {
           }
         }
       }
+      if (this.db.pg) await this.db.run(`DELETE FROM raw_uploads WHERE device_id = ?`, deviceId);
       const reconnect = current?.status === "approved" || current?.forgetRevoked ? 1 : 0;
       await this.db.run(
         `UPDATE devices SET status = 'revoked', last_seen_at = ?, forget_revoked = ? WHERE id = ?`,
@@ -1315,10 +1334,12 @@ export class Store {
         `SELECT 1 FROM suggestions WHERE owner_id = ?`,
         `SELECT 1 FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ?`,
         `SELECT 1 FROM section_history WHERE owner_kind = 'account' AND owner_id = ?`,
+        ...(this.db.pg ? [`SELECT 1 FROM raw_uploads WHERE account_id = ?`] : []),
       ].join(" UNION ALL ");
       const args: string[] = [from, from];
       for (let i = 0; i < textHits.length; i += 1) args.push(from, prefix);
       args.push(from, from, from);
+      if (this.db.pg) args.push(from);
       const hit = await this.db.get(`SELECT n FROM (${query}) AS hits LIMIT 1`, ...args);
       if (!hit) return;
       const dest = await this.db.get(`SELECT id FROM accounts WHERE id = ?`, to);
@@ -1338,6 +1359,17 @@ export class Store {
         await this.db.run(`UPDATE ${table} SET account = ? WHERE ${textMatch}`, to, from, prefix);
       }
       await this.suggestions.tables.renameOwner(from, to);
+      if (this.db.pg) {
+        // Queued uploads apply under the new key; a body the new key already has is dropped.
+        await this.db.run(
+          `UPDATE raw_uploads SET account_id = ? WHERE account_id = ? AND NOT EXISTS (
+             SELECT 1 FROM raw_uploads kept WHERE kept.account_id = ? AND kept.hash = raw_uploads.hash)`,
+          to,
+          from,
+          to,
+        );
+        await this.db.run(`DELETE FROM raw_uploads WHERE account_id = ?`, from);
+      }
       const clash = await this.db.all<{ section: string }>(
         `SELECT section FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ?`,
         to,

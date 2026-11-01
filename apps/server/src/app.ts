@@ -18,6 +18,7 @@ import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError, planMarkupIds } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";
 import {
+  accountKey,
   legacyOf,
   publicDevice,
   publicRequest,
@@ -79,13 +80,20 @@ export function createApp(
     log?: (line: string) => void;
     /** Postgres from DATABASE_URL, migrated (ADR 0057); the caller closes it. */
     database?: Sql;
+    /**
+     * How `POST /v1/snapshot` stores an upload on Postgres: "inbox" (the
+     * default) queues it and answers 202; "inline" ingests on the request
+     * path and answers 200 as on SQLite. SQLite is always inline.
+     */
+    ingest?: "inbox" | "inline";
   },
 ) {
-  const store = new Store(config.dataDir, { postgres: config.database });
+  const log = config.log ?? ((line: string) => console.log(line));
+  const store = new Store(config.dataDir, { postgres: config.database, log });
+  const inbox = config.ingest === "inline" ? undefined : store.inbox;
   const tokens = { companion: config.companionToken, planner: config.plannerToken };
   const registerLimiter = new RegisterLimiter();
   const app = new Hono();
-  const log = config.log ?? ((line: string) => console.log(line));
   const webhook = new PlannerWebhook(
     config.webhook ?? webhookFromEnv(),
     store,
@@ -268,6 +276,8 @@ export function createApp(
     if (access instanceof Response) return access;
     try {
       const cleaned = cleanPlanRequest(body);
+      // Postgres inbox: the save just before this Request is ingested first (up to 10 s).
+      if (inbox) await store.settle(cleaned.account ? accountKey(cleaned.account) : undefined);
       const saved = await store.asDevice(access.deviceId, () =>
         store.addRequest({
           id: cleaned.id,
@@ -407,12 +417,15 @@ export function createApp(
       return c.json({ error: "The game data is too large." }, 413);
     }
     let body: unknown;
+    let inflated: Buffer;
+    let gzipped: Buffer | null;
     try {
       const raw = await snapshotBytes(c.req.raw.body);
       if (raw === null) return c.json({ error: "The game data is too large." }, 413);
       const gzip = (c.req.header("content-encoding") ?? "").toLowerCase().includes("gzip");
-      const bytes = gzip ? gunzipSync(raw, { maxOutputLength: SNAPSHOT_MAX_INFLATED }) : raw;
-      body = JSON.parse(bytes.toString("utf8"));
+      inflated = gzip ? gunzipSync(raw, { maxOutputLength: SNAPSHOT_MAX_INFLATED }) : raw;
+      gzipped = gzip ? raw : null;
+      body = JSON.parse(inflated.toString("utf8"));
     } catch {
       return c.json({ error: "The game data must be JSON, optionally gzip." }, 400);
     }
@@ -422,6 +435,16 @@ export function createApp(
     if (access instanceof Response) return access;
     try {
       const cleaned = cleanSnapshot(body);
+      if (inbox) {
+        // ADR 0057: checked here, ingested by the worker. 202 is a 2xx, so the
+        // Companion marks the Sections sent; everything it could reject is rejected above.
+        const queued = await store.asDevice(access.deviceId, async () => {
+          cleaned.account = await store.bindAccount(cleaned.account, legacyOf(body));
+          return inbox.enqueue({ deviceId: access.deviceId, snapshot: cleaned, inflated, gzipped });
+        });
+        if (!queued) return unauthorized(c);
+        return c.json({ ok: true, upload: queued.id, state: queued.state }, 202);
+      }
       const result = await store.asDevice(access.deviceId, async () => {
         cleaned.account = await store.bindAccount(cleaned.account, legacyOf(body));
         return store.putSnapshot(cleaned, access.deviceId);
@@ -432,6 +455,15 @@ export function createApp(
       if (error instanceof PlanError) return c.json({ error: error.message }, 400);
       throw error;
     }
+  });
+
+  // Where a queued upload is (ADR 0057): queued, done with what was stored, or failed.
+  app.get("/v1/uploads/:id", async (c) => {
+    const access = await allowCompanion(c);
+    if (access instanceof Response) return access;
+    const status = await store.inbox?.status(c.req.param("id"), access.deviceId);
+    if (!status) return c.json({ error: "No such upload." }, 404);
+    return c.json(status);
   });
 
   // The Data explorer as JSON, for quick checks with the owner bearer (docs/adr/0030).
@@ -506,13 +538,15 @@ export function createApp(
   app.all("/mcp", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
-    return handleMcp(c, store, config.dataDir, gameIds);
+    return handleMcp(c, store, config.dataDir, gameIds, { settle: inbox !== undefined });
   });
 
   return {
     app,
     store,
     webhook,
+    /** The upload worker; index.ts starts it. Undefined on SQLite or inline ingest. */
+    inbox,
     close: () => {
       webhook.stop();
       store.close();

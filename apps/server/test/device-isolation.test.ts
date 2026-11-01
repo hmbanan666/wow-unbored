@@ -9,7 +9,7 @@ import { createApp } from "../src/app.ts";
 import { sqlitePath } from "../src/config.ts";
 import { Store } from "../src/store.ts";
 import type { GameDataFetch } from "../src/blizzard.ts";
-import { database, onPostgres } from "./backend.ts";
+import { database, onPostgres, storage } from "./backend.ts";
 
 const planner = "planner-test-token";
 const secrets = ["first-device-secret", "second-device-secret"];
@@ -17,7 +17,7 @@ const secrets = ["first-device-secret", "second-device-secret"];
 async function setup(blizzardFetch?: GameDataFetch) {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-isolation-"));
   const built = createApp({
-    database: database(),
+    ...storage(),
     companionToken: "companion-test-token",
     plannerToken: planner,
     dataDir,

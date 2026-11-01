@@ -7,7 +7,7 @@ import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
 import { accountKey, isAccountHash } from "../src/store.ts";
-import { database } from "./backend.ts";
+import { storage } from "./backend.ts";
 
 const SALT = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const HASH = "7333440414623d4053ac778ca99e938ae2cf885cd54333c1c5f053e4a896c4ee";
@@ -35,7 +35,7 @@ test("the Account key hash matches the Companion scheme", async () => {
 test("a hashed Account key renames existing rows and an older upload still stores", async () => {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-account-"));
   const built = createApp({
-    database: database(),
+    ...storage(),
     companionToken: "companion-test-token",
     plannerToken: "planner-test-token",
     dataDir,

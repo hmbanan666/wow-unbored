@@ -7,7 +7,7 @@ import { test } from "vite-plus/test";
 import type { GameDataFetch } from "../src/blizzard.ts";
 import { createApp } from "../src/app.ts";
 import { cleanPlan } from "../src/plan.ts";
-import { database } from "./backend.ts";
+import { storage } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -22,7 +22,7 @@ type Built = ReturnType<typeof createApp>;
 
 function build(options: { blizzardFetch?: GameDataFetch } = {}): Built {
   return createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-markup-")),

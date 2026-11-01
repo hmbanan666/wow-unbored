@@ -42,3 +42,11 @@ export function database(): Sql | undefined {
   if (!db) throw new Error("The test database is not ready yet.");
   return db.sql;
 }
+
+/**
+ * createApp options for this run. The whole-suite Postgres run ingests inline
+ * (200 with the result, as on SQLite); `inbox.test.ts` covers the 202 inbox.
+ */
+export function storage(): { database?: Sql; ingest: "inline" } {
+  return { database: database(), ingest: "inline" };
+}

@@ -19,7 +19,7 @@ import type { Sql } from "./postgres.ts";
  * transaction holds a lock: queries from outside wait until it ends, so no
  * other request's statement lands inside it.
  */
-export type Param = string | number | null;
+export type Param = string | number | null | Uint8Array;
 export type Row = Record<string, unknown>;
 
 export interface Db {

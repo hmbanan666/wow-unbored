@@ -6,7 +6,7 @@ import { gzipSync } from "node:zlib";
 import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
-import { database, onPostgres } from "./backend.ts";
+import { onPostgres, storage } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -33,7 +33,7 @@ type Built = ReturnType<typeof createApp>;
 function setup() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-forget-"));
   const built = createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,

@@ -14,7 +14,7 @@ import { packIds, sectionHash, unpackIds, unpackRows } from "@unbored/contracts"
 import { createApp } from "../src/app.ts";
 import { sqlitePath } from "../src/config.ts";
 import { SNAPSHOT_MAX_COMPRESSED } from "../src/data.ts";
-import { database, onPostgres } from "./backend.ts";
+import { onPostgres, storage } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -35,7 +35,7 @@ type App = ReturnType<typeof createApp>["app"];
 
 function build(dataDir = mkdtempSync(path.join(tmpdir(), "unbored-data-"))) {
   return createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,

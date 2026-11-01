@@ -6,7 +6,7 @@ import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
 import { accountKey, mergeProfile } from "../src/store.ts";
-import { database } from "./backend.ts";
+import { storage } from "./backend.ts";
 
 const companion = "companion-history-token";
 const planner = "planner-history-token";
@@ -14,7 +14,7 @@ const planner = "planner-history-token";
 function build() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-history-"));
   return createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,

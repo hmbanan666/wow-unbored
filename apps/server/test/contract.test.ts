@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
-import { database } from "./backend.ts";
+import { storage } from "./backend.ts";
 
 // docs/adr/0013: the Companion and the Server read the same fixtures.
 const root = path.join(import.meta.dirname, "..", "..", "..", "packages", "contracts", "fixtures");
@@ -19,7 +19,7 @@ const planner = "planner-contract-token";
 function build(lines: string[] = []) {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-contract-"));
   return createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,
