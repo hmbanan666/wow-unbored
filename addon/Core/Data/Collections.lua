@@ -26,8 +26,10 @@ S.Register({
   events = { "ACHIEVEMENT_EARNED" },
   read = function(previous, src)
     -- Event payloads add ids immediately; the one API read waits for the
-    -- settled worker outside combat, without repeating the daily scan.
-    if src == "event" and type(previous) == "table" then
+    -- settled worker outside combat. A queued event must still perform a due
+    -- daily scan: queue deduplication may have combined it with the login job.
+    local scannedAt = type(previous) == "table" and num(previous.scannedAt)
+    if src == "event" and scannedAt and ns.Now() - scannedAt < DAY then
       local out = copy(previous)
       out.points = num(call(GetTotalAchievementPoints)) or previous.points
       return out

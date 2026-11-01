@@ -783,6 +783,23 @@ end
 check(not queuedAchievements, "the login pass skips a fresh achievement scan")
 S.Drain()
 
+-- A pending event refresh must not replace the full scan due at login.
+do
+  local originalCategories = GetCategoryList
+  local categoryReads = 0
+  GetCategoryList = function()
+    categoryReads = categoryReads + 1
+    return originalCategories()
+  end
+  body("achievements").scannedAt = ns.Now() - 86401
+  S.Queue("achievements", "event")
+  S.LoginPass()
+  S.Drain()
+  check(categoryReads > 0 and body("achievements").scannedAt > ns.Now() - 60,
+    "an event queued before login cannot suppress the due daily achievement scan")
+  GetCategoryList = originalCategories
+end
+
 -- Reputation v2 without the 12.x APIs: renown and paragon fields are left out.
 do
   local saved = {
