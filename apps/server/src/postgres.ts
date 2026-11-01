@@ -107,18 +107,3 @@ export async function migrate(sql: Sql, dir: URL = MIGRATIONS_DIR): Promise<stri
   }
   return applied;
 }
-
-/** Month partitions of `section_history` and `history` for this month and the next. */
-export async function ensurePartitions(sql: Sql, nowSeconds = Math.floor(Date.now() / 1000)) {
-  const now = new Date(nowSeconds * 1000);
-  const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const last = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const day = (date: Date) => date.toISOString().slice(0, 10);
-  let made = 0;
-  for (const table of ["section_history", "history"]) {
-    const [row] = await sql`
-      SELECT ensure_month_partitions(${table}, ${day(first)}::date, ${day(last)}::date) AS made`;
-    made += Number(row.made);
-  }
-  return made;
-}

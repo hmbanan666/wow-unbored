@@ -2,7 +2,8 @@ import { serve } from "@hono/node-server";
 
 import { createApp } from "./app.ts";
 import { configFromEnv } from "./config.ts";
-import { connectPostgres, ensurePartitions, migrate, type Sql } from "./postgres.ts";
+import { connectPostgres, migrate, type Sql } from "./postgres.ts";
+import { ensurePartitions, RetentionJob } from "./retention.ts";
 
 const config = configFromEnv();
 let database: Sql | undefined;
@@ -11,7 +12,11 @@ if (config.databaseUrl) {
   // in UNBORED_DATA_DIR is not opened (it stays as the rollback snapshot).
   database = connectPostgres(config.databaseUrl, { max: config.databasePoolMax });
   const applied = await migrate(database);
+  // Writes need this month's partition: a failure here stops the start.
   await ensurePartitions(database);
+  // ADR 0057 step 5: month partitions ahead, history past 13 months and old
+  // inbox rows dropped, now and then daily. The first pass runs before listen.
+  await new RetentionJob(database, (line) => console.log(line)).start();
   console.log(
     `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); every table on Postgres, the SQLite file untouched`,
   );
