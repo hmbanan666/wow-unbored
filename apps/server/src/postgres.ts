@@ -28,13 +28,19 @@ const jsonText = {
   parse: (value: string) => JSON.parse(value) as unknown,
 };
 
-export function connectPostgres(url: string, options: { max?: number } = {}) {
+export function connectPostgres(
+  url: string,
+  options: { max?: number; statementTimeoutMs?: number; application_name?: string } = {},
+) {
   return postgres(url, {
     max: options.max ?? 10,
     onnotice: () => {},
     types: { bigint: epochSeconds, jsonText },
     // The request path never waits on one statement for more than 5 s.
-    connection: { statement_timeout: 5000, application_name: "unbored-server" },
+    connection: {
+      statement_timeout: options.statementTimeoutMs ?? 5000,
+      application_name: options.application_name ?? "unbored-server",
+    },
   });
 }
 
