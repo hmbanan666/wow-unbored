@@ -490,6 +490,102 @@ check(hallows.texture == 235460 and hallows.sequenceType == "ONGOING" and hallow
 check(hallows.description and #hallows.description <= 300, "tomorrow's holiday has its description, capped")
 check(hallows.invitedBy == nil and hallows.inviteStatus == nil, "no invite fields are read")
 check(S.Get("calendar").v == 2, "calendar is v2")
+do
+  local realCalendar, realTime, realSecret = C_Calendar, C_DateAndTime, issecretvalue
+  local function forbidden()
+    error("calendar used a secret before dropping it")
+  end
+  local secret = setmetatable({}, { __index = forbidden, __tostring = forbidden, __sub = forbidden,
+    __add = forbidden, __lt = forbidden })
+  issecretvalue = function(value) return rawequal(value, secret) or realSecret(value) end
+  local today, view, month, event
+  C_DateAndTime = { GetCurrentCalendarTime = function() return today end }
+  C_Calendar = {
+    GetMonthInfo = function(offset) return offset == 0 and view or month end,
+    GetNumDayEvents = function() return 1 end,
+    GetDayEvent = function() return event end,
+  }
+  local function resetCalendar()
+    today = { year = 2026, month = 10, monthDay = 30 }
+    view = { year = 2026, month = 9, numDays = 30 }
+    month = { year = 2026, month = 10, numDays = 31 }
+    event = { eventID = 1, calendarType = "HOLIDAY", title = "Holiday" }
+  end
+  for _, field in ipairs({ "year", "month", "monthDay" }) do
+    for _, value in ipairs({ false, secret }) do
+      resetCalendar()
+      if value == false then today[field] = nil else today[field] = value end
+      local ok, result = pcall(S.ReadCalendar)
+      check(ok and result == nil, "calendar defers when today's " .. field .. " is missing or secret")
+    end
+  end
+  for _, source in ipairs({ "today", "view", "month" }) do
+    resetCalendar()
+    if source == "today" then today = secret
+    elseif source == "view" then view = secret
+    else month = secret end
+    local ok, result = pcall(S.ReadCalendar)
+    check(ok and result == nil, "calendar drops a secret " .. source .. " table before indexing")
+  end
+  resetCalendar()
+  view.year = secret
+  local ok, result = pcall(S.ReadCalendar)
+  check(ok and result == nil, "calendar sanitizes the viewed year before offset arithmetic")
+  resetCalendar()
+  month.numDays = secret
+  ok, result = pcall(S.ReadCalendar)
+  check(ok and result == nil, "calendar needs a readable month length")
+  resetCalendar()
+  event.eventID, event.startTime, event.endTime = secret, secret, secret
+  ok, result = pcall(S.ReadCalendar)
+  check(ok and result and #result.events == 1 and result.events[1].title == "Holiday"
+    and result.events[1].eventID == nil and result.events[1].starts == nil,
+    "calendar deduplicates with sanitized values and drops secret dates")
+  event.title = secret
+  ok, result = pcall(S.ReadCalendar)
+  check(ok and result and #result.events == 0, "calendar drops an event with neither readable id nor title")
+  event = secret
+  ok, result = pcall(S.ReadCalendar)
+  check(ok and result and #result.events == 0, "calendar drops secret event tables before indexing")
+  resetCalendar()
+  event.calendarType = secret
+  ok, result = pcall(S.ReadCalendar)
+  check(ok and result and #result.events == 0, "calendar only reads events with an allowed plain kind")
+  event = setmetatable({ calendarType = "PLAYER" }, { __index = function()
+    error("read another player's event details")
+  end })
+  ok, result = pcall(S.ReadCalendar)
+  check(ok and result and #result.events == 0, "calendar never inspects player-event details")
+  resetCalendar()
+  C_Calendar.GetHolidayInfo = function() return secret end
+  ok, result = pcall(S.ReadCalendar)
+  check(ok and result and result.events[1].description == nil,
+    "calendar drops a secret holiday description table before indexing")
+  resetCalendar()
+  local lastGood = body("calendar")
+  C_Calendar.GetMonthInfo = function(offset) return offset == 0 and view or offset == 1 and month or nil end
+  ok, result = pcall(S.ReadCalendar)
+  check(ok and result == nil, "an unavailable next month does not produce a partial calendar")
+  S.Read("calendar", "event")
+  check(body("calendar") == lastGood, "an incomplete calendar read preserves the last full Section")
+
+  today = { year = 2026, month = 1, monthDay = 31 }
+  view = { year = 2025, month = 12, numDays = 31 }
+  local days = {}
+  C_Calendar.GetMonthInfo = function(offset)
+    if offset == 0 then return view end
+    return { year = 2026, month = offset, numDays = offset == 1 and 31 or 28 }
+  end
+  C_Calendar.GetNumDayEvents = function(offset, day)
+    days[#days + 1] = { offset, day }
+    return 0
+  end
+  result = S.ReadCalendar()
+  check(result and #days == 15 and days[1][1] == 1 and days[1][2] == 31
+    and days[2][1] == 2 and days[2][2] == 1 and days[15][2] == 14,
+    "calendar uses the viewed month offset across a year and month boundary")
+  C_Calendar, C_DateAndTime, issecretvalue = realCalendar, realTime, realSecret
+end
 local lines = body("questLines") and body("questLines").lines or {}
 local byLine = {}
 for i = 1, #lines do
