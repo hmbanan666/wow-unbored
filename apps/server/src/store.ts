@@ -5,6 +5,7 @@ import {
   cleanPlan,
   cleanProgress,
   encodeUnb1,
+  PlanError,
   type Answer,
   type MarkupCheck,
   type Plan,
@@ -207,6 +208,7 @@ export class Store {
     ]);
     this.addColumns("devices", [["forget_revoked", "INTEGER NOT NULL DEFAULT 0"]]);
     this.addColumns("plans", [["generated_at", "INTEGER"]]);
+    this.migratePlanRequests();
     // D190: progress names its plan by generatedAt; plans stored before 0.10 get theirs from the body.
     this.db.exec(
       `UPDATE plans SET generated_at = json_extract(body_json, '$.generatedAt')
@@ -217,6 +219,30 @@ export class Store {
     this.gameIds = new IdCache(this.db);
     this.creatureNames = new NameCache(this.db);
     this.suggestions = new SuggestionStore(this.db, this.data, this.creatureNames);
+  }
+
+  /** Preserve provenance even when a Request gets a replacement Plan. */
+  private migratePlanRequests(): void {
+    const columns = this.db.prepare(`PRAGMA table_info(plans)`).all() as { name: string }[];
+    if (columns.some((column) => column.name === "request_id")) return;
+    this.db.exec("BEGIN");
+    try {
+      this.db.exec(`
+        ALTER TABLE plans ADD COLUMN request_id TEXT;
+        UPDATE plans SET request_id = (
+          SELECT id FROM requests WHERE plan_id = plans.id LIMIT 1
+        );
+        UPDATE plans SET request_id = (
+          SELECT ref FROM history WHERE kind = 'plan' AND json_valid(body_json)
+            AND json_extract(body_json, '$.planId') = plans.id LIMIT 1
+        ) WHERE request_id IS NULL;
+        CREATE INDEX plans_request ON plans (request_id);
+        COMMIT;
+      `);
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   private addColumns(table: string, added: [string, string][]): void {
@@ -237,16 +263,20 @@ export class Store {
     raw: unknown,
     nowSeconds = Math.floor(Date.now() / 1000),
     check: MarkupCheck = {},
+    requestId?: string,
   ): StoredPlan {
+    // Async validation may have yielded to Forget my data. Check at the
+    // synchronous write boundary and never insert a private Plan as direct.
+    if (requestId && !this.requestById(requestId)) throw new PlanError("No request with that id.");
     const plan = cleanPlan(raw, nowSeconds, check);
     const unb1 = encodeUnb1(plan);
     const createdAt = nowSeconds;
     const result = this.db
       .prepare(
-        `INSERT INTO plans (player_key, created_at, body_json, unb1, generated_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO plans (player_key, created_at, body_json, unb1, generated_at, request_id)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(PLAYER, createdAt, JSON.stringify(plan), unb1, plan.generatedAt);
+      .run(PLAYER, createdAt, JSON.stringify(plan), unb1, plan.generatedAt, requestId ?? null);
     return { id: Number(result.lastInsertRowid), createdAt, plan, unb1 };
   }
 
@@ -264,6 +294,19 @@ export class Store {
          WHERE player_key = ? ORDER BY id DESC LIMIT 1`,
       )
       .get(PLAYER) as PlanRow | undefined;
+    return row ? this.planFromRow(row) : undefined;
+  }
+
+  /** Direct Plans plus Plans for this Device's Requests (ADR 0002). */
+  latestPlanForDevice(deviceId: string): StoredPlan | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT p.id, p.created_at, p.body_json, p.unb1 FROM plans p
+         LEFT JOIN requests r ON r.id = p.request_id
+         WHERE p.player_key = ? AND (p.request_id IS NULL OR r.device_id = ?)
+         ORDER BY p.id DESC LIMIT 1`,
+      )
+      .get(PLAYER, deviceId) as PlanRow | undefined;
     return row ? this.planFromRow(row) : undefined;
   }
 
@@ -488,7 +531,11 @@ export class Store {
     nowSeconds: number;
   }): { created: boolean; request: PlanRequest } {
     const existing = this.requestById(input.id);
-    if (existing) return { created: false, request: existing };
+    if (existing) {
+      if (existing.deviceId !== input.deviceId)
+        throw new PlanError("Request id is already in use.");
+      return { created: false, request: existing };
+    }
     const account = input.account
       ? this.bindAccount(input.account, input.accountLegacy)
       : (this.profileFor(input.character, input.realm || undefined)?.account ?? "");
@@ -641,6 +688,7 @@ export class Store {
     nowSeconds = Math.floor(Date.now() / 1000),
   ): PlanRequest | undefined {
     if (!this.requestById(id)) return undefined;
+    this.db.prepare(`UPDATE plans SET request_id = ? WHERE id = ?`).run(id, planId);
     this.db
       .prepare(
         `UPDATE requests SET status = 'fulfilled', plan_id = ?, reason = NULL, reason_code = NULL, updated_at = ? WHERE id = ?`,
@@ -659,6 +707,8 @@ export class Store {
     nowSeconds = Math.floor(Date.now() / 1000),
   ): PlanRequest | undefined {
     if (!this.requestById(id)) return undefined;
+    if (planId !== null)
+      this.db.prepare(`UPDATE plans SET request_id = ? WHERE id = ?`).run(id, planId);
     this.db
       .prepare(
         `UPDATE requests SET status = 'fulfilled', answer_json = ?, plan_id = COALESCE(?, plan_id), reason = NULL,
@@ -1070,9 +1120,10 @@ export class Store {
         | { plan_id: number | null }
         | undefined;
       if (!row) continue;
-      if (row.plan_id !== null) {
-        plans += Number(this.db.prepare(`DELETE FROM plans WHERE id = ?`).run(row.plan_id).changes);
-      }
+      plans += Number(
+        this.db.prepare(`DELETE FROM plans WHERE request_id = ? OR id = ?`).run(id, row.plan_id)
+          .changes,
+      );
       this.db.prepare(`DELETE FROM webhook_deliveries WHERE request_id = ?`).run(id);
       requests += Number(this.db.prepare(`DELETE FROM requests WHERE id = ?`).run(id).changes);
     }
@@ -1121,7 +1172,7 @@ export class Store {
       }
     }
     const current = this.deviceById(deviceId);
-    const reconnect = current?.status === "approved" ? 1 : 0;
+    const reconnect = current?.status === "approved" || current?.forgetRevoked ? 1 : 0;
     this.db
       .prepare(
         `UPDATE devices SET status = 'revoked', last_seen_at = ?, forget_revoked = ? WHERE id = ?`,

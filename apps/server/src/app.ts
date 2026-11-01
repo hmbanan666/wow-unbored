@@ -296,7 +296,7 @@ export function createApp(
   app.get("/v1/plan", (c) => {
     const access = allowCompanion(c);
     if (access instanceof Response) return access;
-    const stored = store.latestPlan();
+    const stored = store.latestPlanForDevice(access.deviceId);
     if (!stored) return c.json({ error: "No plan yet." }, 404);
     return c.json({ id: stored.id, createdAt: stored.createdAt, plan: stored.unb1 });
   });
@@ -394,7 +394,7 @@ export function createApp(
       const plan = stripRequestId(body);
       const warnings: string[] = [];
       const missing = await gameIds.missing(planMarkupIds(plan));
-      const stored = store.putPlan(plan, undefined, { missing, warnings });
+      const stored = store.putPlan(plan, undefined, { missing, warnings }, requestId);
       const request = requestId ? store.fulfillRequest(requestId, stored.id) : undefined;
       return c.json({
         id: stored.id,
