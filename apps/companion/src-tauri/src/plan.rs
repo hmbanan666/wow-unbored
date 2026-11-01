@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use base64::engine::general_purpose::{STANDARD, URL_SAFE};
 use base64::Engine;
@@ -724,20 +725,8 @@ pub fn render_suggestions_lua(body: &Value) -> String {
 
 /// Writes Suggestions.lua only when it changed. Returns true when it did.
 pub fn install_suggestions(retail: &Path, body: &Value) -> Result<bool, PlanError> {
-    let dir = helper_dir(retail);
-    fs::create_dir_all(&dir)
-        .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
-    write_helper_toc(&dir)?;
-    let text = render_suggestions_lua(body);
-    let path = dir.join("Suggestions.lua");
-    if fs::read_to_string(&path).ok().as_deref() == Some(text.as_str()) {
-        return Ok(false);
-    }
-    let tmp = dir.join("Suggestions.lua.tmp");
-    fs::write(&tmp, &text).map_err(|err| PlanError(format!("Could not write the ideas: {err}")))?;
-    fs::rename(&tmp, &path)
-        .map_err(|err| PlanError(format!("Could not replace the ideas: {err}")))?;
-    Ok(true)
+    let files = HelperFiles::open(retail)?;
+    files.write("Suggestions.lua", &render_suggestions_lua(body))
 }
 
 /// Writes Advice.lua only when it changed. Returns true when it did.
@@ -746,23 +735,11 @@ pub fn install_advice(
     characters: &Value,
     holdings: &Value,
 ) -> Result<bool, PlanError> {
-    let dir = helper_dir(retail);
-    fs::create_dir_all(&dir)
-        .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
-    write_helper_toc(&dir)?;
-    let mut used = fs::read_to_string(dir.join("Plan.lua")).unwrap_or_default();
-    used.push_str(&fs::read_to_string(dir.join("Suggestions.lua")).unwrap_or_default());
+    let files = HelperFiles::open(retail)?;
+    let mut used = files.read_text("Plan.lua")?;
+    used.push_str(&files.read_text("Suggestions.lua")?);
     let body = render_advice_within(characters, holdings, used.len(), count_lua_literals(&used));
-    let path = dir.join("Advice.lua");
-    if fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
-        return Ok(false);
-    }
-    let tmp = dir.join("Advice.lua.tmp");
-    fs::write(&tmp, &body)
-        .map_err(|err| PlanError(format!("Could not write the advice: {err}")))?;
-    fs::rename(&tmp, &path)
-        .map_err(|err| PlanError(format!("Could not replace the advice: {err}")))?;
-    Ok(true)
+    files.write("Advice.lua", &body)
 }
 
 /// Everything after this line in Plan.lua is the Companion's own status. The
@@ -826,22 +803,10 @@ fn split_status(text: &str) -> (&str, &str) {
     }
 }
 
-fn replace_file(dir: &Path, body: &str) -> Result<PathBuf, PlanError> {
-    let lua_path = dir.join("Plan.lua");
-    let tmp = dir.join("Plan.lua.tmp");
-    fs::write(&tmp, body).map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
-    fs::rename(&tmp, &lua_path)
-        .map_err(|err| PlanError(format!("Could not replace the plan: {err}")))?;
-    Ok(lua_path)
-}
-
 /// Rewrites only the status part of Plan.lua. Returns true when it changed.
 pub fn write_status(retail: &Path, status: &CompanionStatus) -> Result<bool, PlanError> {
-    let dir = helper_dir(retail);
-    fs::create_dir_all(&dir)
-        .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
-    write_helper_toc(&dir)?;
-    let current = fs::read_to_string(dir.join("Plan.lua")).unwrap_or_default();
+    let files = HelperFiles::open(retail)?;
+    let current = files.read_text("Plan.lua")?;
     let (plan, old) = split_status(&current);
     let fresh = render_status_lua(status);
     if old == fresh {
@@ -852,63 +817,99 @@ pub fn write_status(retail: &Path, status: &CompanionStatus) -> Result<bool, Pla
     } else {
         plan
     };
-    replace_file(&dir, &format!("{plan}{fresh}"))?;
-    Ok(true)
+    files.write("Plan.lua", &format!("{plan}{fresh}"))
 }
 
 fn helper_dir(retail: &Path) -> PathBuf {
     retail.join("Interface").join("AddOns").join("Unbored_Plan")
 }
 
-fn write_helper_toc(dir: &Path) -> Result<(), PlanError> {
-    let toc = dir.join("Unbored_Plan.toc");
-    if fs::read_to_string(&toc).ok().as_deref() == Some(HELPER_TOC) {
-        return Ok(());
+/// All helper writers in this process share one read/modify/replace lock.
+/// No network or application-state lock is acquired while it is held.
+struct HelperFiles {
+    dir: PathBuf,
+    _write_guard: MutexGuard<'static, ()>,
+}
+
+impl HelperFiles {
+    fn open(retail: &Path) -> Result<Self, PlanError> {
+        static WRITES: Mutex<()> = Mutex::new(());
+        let guard = WRITES
+            .lock()
+            .map_err(|_| PlanError("Helper write interrupted.".into()))?;
+        let dir = helper_dir(retail);
+        fs::create_dir_all(&dir)
+            .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
+        let files = Self {
+            dir,
+            _write_guard: guard,
+        };
+        files.write("Unbored_Plan.toc", HELPER_TOC)?;
+        Ok(files)
     }
-    fs::write(&toc, HELPER_TOC)
-        .map_err(|err| PlanError(format!("Could not write the helper TOC: {err}")))
+
+    fn read(&self, name: &str) -> Result<Option<Vec<u8>>, PlanError> {
+        match fs::read(self.dir.join(name)) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(PlanError(format!("Could not read {name}: {err}"))),
+        }
+    }
+
+    fn read_text(&self, name: &str) -> Result<String, PlanError> {
+        String::from_utf8(self.read(name)?.unwrap_or_default())
+            .map_err(|err| PlanError(format!("Could not read {name}: {err}")))
+    }
+
+    fn write(&self, name: &str, body: &str) -> Result<bool, PlanError> {
+        if self.read(name)?.as_deref() == Some(body.as_bytes()) {
+            return Ok(false);
+        }
+        self.replace(name, body)?;
+        Ok(true)
+    }
+
+    fn replace(&self, name: &str, body: &str) -> Result<(), PlanError> {
+        let tmp = self.dir.join(format!("{name}.tmp"));
+        fs::write(&tmp, body).map_err(|err| PlanError(format!("Could not write {name}: {err}")))?;
+        fs::rename(&tmp, self.dir.join(name))
+            .map_err(|err| PlanError(format!("Could not replace {name}: {err}")))
+    }
+
+    fn ensure(&self) -> Result<(), PlanError> {
+        for (name, body) in [
+            ("Plan.lua", EMPTY_PLAN_LUA),
+            ("Advice.lua", EMPTY_ADVICE_LUA),
+            ("Suggestions.lua", EMPTY_SUGGESTIONS_LUA),
+        ] {
+            if self.read(name)?.is_none() {
+                self.replace(name, body)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The game addon treats a loaded Unbored_Plan as "a companion is here", so
 /// the helper exists from the first sync, even before any plan arrives.
 pub fn ensure_helper(retail: &Path) -> Result<(), PlanError> {
-    let dir = helper_dir(retail);
-    fs::create_dir_all(&dir)
-        .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
-    write_helper_toc(&dir)?;
-    let lua_path = dir.join("Plan.lua");
-    if !lua_path.is_file() {
-        fs::write(&lua_path, EMPTY_PLAN_LUA)
-            .map_err(|err| PlanError(format!("Could not write the plan: {err}")))?;
-    }
-    let advice_path = dir.join("Advice.lua");
-    if !advice_path.is_file() {
-        fs::write(&advice_path, EMPTY_ADVICE_LUA)
-            .map_err(|err| PlanError(format!("Could not write the advice: {err}")))?;
-    }
-    let ideas_path = dir.join("Suggestions.lua");
-    if !ideas_path.is_file() {
-        fs::write(&ideas_path, EMPTY_SUGGESTIONS_LUA)
-            .map_err(|err| PlanError(format!("Could not write the ideas: {err}")))?;
-    }
-    Ok(())
+    HelperFiles::open(retail)?.ensure()
 }
 
 /// Forget my data: empties the plan, advice and ideas the planner sent. The
 /// status part of Plan.lua stays, so Bory still knows the Companion is here.
 pub fn clear_helper(retail: &Path) -> Result<(), PlanError> {
-    ensure_helper(retail)?;
-    write_plan_lua(retail, EMPTY_PLAN_LUA)?;
-    let dir = helper_dir(retail);
+    let files = HelperFiles::open(retail)?;
+    // Erasure must work even if the old file cannot be decoded. Preserve the
+    // status when readable, but never require personal data to be readable.
+    let current = files.read_text("Plan.lua").unwrap_or_default();
+    let (_, status) = split_status(&current);
+    files.replace("Plan.lua", &format!("{EMPTY_PLAN_LUA}{status}"))?;
     for (name, empty) in [
         ("Advice.lua", EMPTY_ADVICE_LUA),
         ("Suggestions.lua", EMPTY_SUGGESTIONS_LUA),
     ] {
-        let path = dir.join(name);
-        if fs::read_to_string(&path).ok().as_deref() != Some(empty) {
-            fs::write(&path, empty)
-                .map_err(|err| PlanError(format!("Could not clear {name}: {err}")))?;
-        }
+        files.replace(name, empty)?;
     }
     Ok(())
 }
@@ -916,12 +917,9 @@ pub fn clear_helper(retail: &Path) -> Result<(), PlanError> {
 /// Leaves the file alone when the plan part is unchanged, so a running game is
 /// not handed the same plan again and no second toast goes out.
 fn write_plan_lua(retail: &Path, body: &str) -> Result<Written, PlanError> {
-    let dir = helper_dir(retail);
-    fs::create_dir_all(&dir)
-        .map_err(|err| PlanError(format!("Could not create the helper addon: {err}")))?;
-    write_helper_toc(&dir)?;
-    let lua_path = dir.join("Plan.lua");
-    let current = fs::read_to_string(&lua_path).unwrap_or_default();
+    let files = HelperFiles::open(retail)?;
+    let lua_path = files.dir.join("Plan.lua");
+    let current = files.read_text("Plan.lua")?;
     let (plan, status) = split_status(&current);
     if plan == body {
         return Ok(Written {
@@ -929,9 +927,9 @@ fn write_plan_lua(retail: &Path, body: &str) -> Result<Written, PlanError> {
             changed: false,
         });
     }
-    let path = replace_file(&dir, &format!("{body}{status}"))?;
+    files.write("Plan.lua", &format!("{body}{status}"))?;
     Ok(Written {
-        path,
+        path: lua_path,
         changed: true,
     })
 }
@@ -1787,6 +1785,121 @@ mod tests {
         };
         let file = pick_plan_file(&newer).unwrap();
         assert!(file.body.contains("later") && !file.body.contains("req-1"));
+    }
+
+    #[test]
+    fn unreadable_plan_is_not_replaced_by_a_status_or_plan_update() {
+        let root = std::env::temp_dir().join(format!("unbored-unreadable-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        ensure_helper(&root).unwrap();
+        let path = helper_dir(&root).join("Plan.lua");
+        let bytes = b"UnboredExternalPlan = {}\n\xff";
+        fs::write(&path, bytes).unwrap();
+        assert!(write_status(&root, &CompanionStatus::default()).is_err());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert!(install_plan(&root, &small_plan("new")).is_err());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn advice_keeps_its_old_file_when_the_budget_inputs_cannot_be_read() {
+        let root = std::env::temp_dir().join(format!("unbored-budget-read-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        ensure_helper(&root).unwrap();
+        let dir = helper_dir(&root);
+        let advice = b"-- existing advice\nUnboredAdvice = { v = 1 }\n";
+        fs::write(dir.join("Advice.lua"), advice).unwrap();
+        for name in ["Plan.lua", "Suggestions.lua"] {
+            let path = dir.join(name);
+            let previous = fs::read(&path).unwrap();
+            fs::write(&path, [0xff]).unwrap();
+            assert!(install_advice(&root, &Value::Null, &Value::Null).is_err());
+            assert_eq!(fs::read(dir.join("Advice.lua")).unwrap(), advice);
+            fs::write(path, previous).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn erasure_does_not_require_decodable_personal_data() {
+        let root =
+            std::env::temp_dir().join(format!("unbored-clear-corrupt-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        ensure_helper(&root).unwrap();
+        for name in ["Plan.lua", "Advice.lua", "Suggestions.lua"] {
+            fs::write(helper_dir(&root).join(name), b"private data\xff").unwrap();
+        }
+        clear_helper(&root).unwrap();
+        for name in ["Plan.lua", "Advice.lua", "Suggestions.lua"] {
+            let text = fs::read_to_string(helper_dir(&root).join(name)).unwrap();
+            assert!(!text.contains("private data"));
+            assert!(parse_saved_variables(&text).unwrap().is_empty());
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_replacement_keeps_the_previous_plan_and_status() {
+        let root =
+            std::env::temp_dir().join(format!("unbored-write-failure-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        install_plan(&root, &small_plan("old")).unwrap();
+        write_status(&root, &CompanionStatus::default()).unwrap();
+        let dir = helper_dir(&root);
+        let old = fs::read(dir.join("Plan.lua")).unwrap();
+        // Simulate a filesystem that refuses the staging write, without
+        // platform-specific permissions or running the test as another user.
+        fs::create_dir(dir.join("Plan.lua.tmp")).unwrap();
+        assert!(install_plan(&root, &small_plan("new")).is_err());
+        assert_eq!(fs::read(dir.join("Plan.lua")).unwrap(), old);
+        fs::remove_dir(dir.join("Plan.lua.tmp")).unwrap();
+        install_plan(&root, &small_plan("new")).unwrap();
+        let text = fs::read_to_string(dir.join("Plan.lua")).unwrap();
+        assert!(text.contains("\"new\"") && text.contains(STATUS_MARK));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn simultaneous_plan_and_status_updates_preserve_both_parts() {
+        let root = std::env::temp_dir().join(format!("unbored-concurrent-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        ensure_helper(&root).unwrap();
+        for n in 1..=50 {
+            let barrier = std::sync::Barrier::new(2);
+            std::thread::scope(|scope| {
+                let plans = scope.spawn(|| {
+                    barrier.wait();
+                    install_plan(&root, &small_plan(&format!("plan-{n}")))
+                });
+                let statuses = scope.spawn(|| {
+                    barrier.wait();
+                    write_status(
+                        &root,
+                        &CompanionStatus {
+                            seen_at: n * SEEN_STEP,
+                            ..Default::default()
+                        },
+                    )
+                });
+                plans.join().unwrap().unwrap();
+                statuses.join().unwrap().unwrap();
+            });
+            let text = fs::read_to_string(helper_dir(&root).join("Plan.lua")).unwrap();
+            let values = parse_saved_variables(&text).unwrap();
+            assert!(text.contains(&format!("\"plan-{n}\"")), "new Plan was lost");
+            assert_eq!(
+                crate::savedvars::table_get(
+                    values
+                        .get("UnboredCompanionStatus")
+                        .expect("status was lost"),
+                    "seenAt"
+                )
+                .and_then(|v| v.as_u64()),
+                Some(n * SEEN_STEP)
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

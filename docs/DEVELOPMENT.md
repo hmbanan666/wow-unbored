@@ -46,6 +46,13 @@ Every UI string is in `Core/Locale.lua`, English and Russian. The name is one st
 
 ## Checks
 
+Helper-file writes are serialized inside `plan.rs`, including the complete
+read/modify/replace operation for Plan and Companion status. All helper files
+are replaced through a staging file. A missing file may be initialized; other
+read errors stop updates that need its contents. Explicit erasure can replace
+undecodable personal data. The lock covers writers in one Companion process;
+it does not coordinate multiple app processes or make a whole sync atomic.
+
 Request submission lives in `apps/companion/src-tauri/src/request.rs`. The GUI
 reads SavedVariables and supplies the HTTP adapter; the library selects the
 newest saved Request (D82) and acknowledges Account migration only after a
