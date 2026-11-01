@@ -158,6 +158,8 @@ test("data_catalog and the overview list missing Sections with a reason", () => 
     const mira = account.characters.find((c) => c.character === "Mira")!;
     assert.ok(!mira.expected.includes("profile") && mira.expected.includes("achProgress"));
     const reasons = Object.fromEntries(mira.missing.map((m) => [m.section, m]));
+    assert.ok(!mira.expected.includes("reagentBank"), "retail has no reagent bank");
+    assert.equal(reasons.reagentBank, undefined, "a missing reagentBank is not reported");
     assert.equal(reasons.bags, undefined);
     assert.equal(reasons.bank?.reason, "window");
     assert.equal(reasons.bank?.hint, "open the bank");

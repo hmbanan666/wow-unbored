@@ -13,6 +13,8 @@ export const TASTE_SKIP_BONUS = -5;
 export type TasteRow = {
   category: string;
   picked: number;
+  /** Picks whose plan has progress from the game: the only ones that can be judged. */
+  tracked: number;
   finished: number;
   doneSteps: number;
   skippedSteps: number;
@@ -24,10 +26,14 @@ export type TasteRow = {
 
 type Counts = Omit<TasteRow, "category" | "rate" | "bonus">;
 
-/** D191: rate = (finished + wins + 1) / (picked + 2); bonus round((rate - 0.5) * 30) within ±15. */
+/**
+ * D191, over tracked picks: rate = (finished + wins + 1) / (tracked + 2), at most 1;
+ * bonus round((rate - 0.5) * 30) within ±15. A pick with no progress from the game
+ * (never opened, or from before progress named its plan) says nothing either way.
+ */
 export function tasteBonus(row: Counts): { rate?: number; bonus: number } {
-  if (row.picked < TASTE_MIN_PICKED) return { bonus: 0 };
-  const rate = (row.finished + row.wins + 1) / (row.picked + 2);
+  if (row.tracked < TASTE_MIN_PICKED) return { bonus: 0 };
+  const rate = Math.min(1, (row.finished + row.wins + 1) / (row.tracked + 2));
   let bonus = Math.round((rate - 0.5) * 30);
   bonus = Math.max(-TASTE_MAX_BONUS, Math.min(TASTE_MAX_BONUS, bonus));
   if (row.skippedSteps > 2 * row.doneSteps) bonus = Math.min(bonus, TASTE_SKIP_BONUS);
@@ -83,7 +89,7 @@ export function computeTaste(
   const bucket = (category: string) => {
     let row = rows.get(category);
     if (!row) {
-      row = { picked: 0, finished: 0, doneSteps: 0, skippedSteps: 0, wins: 0 };
+      row = { picked: 0, tracked: 0, finished: 0, doneSteps: 0, skippedSteps: 0, wins: 0 };
       rows.set(category, row);
     }
     return row;
@@ -91,28 +97,49 @@ export function computeTaste(
 
   // The newest progress per plan: by its generatedAt, else (0.9 and Quick plans) by its step ids.
   const latest = new Map<string, ProgressBody>();
+  /** Progress without generatedAt from a delivered plan, by Character and step ids: key, newest post time. */
+  const byIds = new Map<string, { key: string; at: number }>();
   const progress = db
     .prepare(
-      `SELECT account, realm, character, body_json FROM progress WHERE created_at >= ? ORDER BY id DESC`,
+      `SELECT account, realm, character, body_json, created_at FROM progress
+       WHERE created_at >= ? ORDER BY id DESC`,
     )
-    .all(since) as { account: string; realm: string; character: string; body_json: string }[];
+    .all(since) as {
+    account: string;
+    realm: string;
+    character: string;
+    body_json: string;
+    created_at: number;
+  }[];
   for (const row of progress) {
     if (!mine({ account: row.account, name: row.character, realm: row.realm })) continue;
     const body = parse<ProgressBody>(row.body_json);
     if (!body) continue;
+    const ids = stepIds(body);
     const key =
       typeof body.generatedAt === "number"
         ? `${row.character}\0${row.realm}\0at:${body.generatedAt}`
-        : `${row.character}\0${row.realm}\0ids:${body.source ?? ""}:${stepIds(body)}`;
-    if (!latest.has(key)) latest.set(key, body);
+        : `${row.character}\0${row.realm}\0ids:${body.source ?? ""}:${ids}`;
+    if (latest.has(key)) continue;
+    latest.set(key, body);
+    if (
+      typeof body.generatedAt !== "number" &&
+      ids !== "" &&
+      !localCategory(body.source ?? null, null)
+    ) {
+      const join = `${row.character}\0${row.realm}\0${ids}`;
+      if (!byIds.has(join)) byIds.set(join, { key, at: row.created_at });
+    }
   }
 
   const used = new Set<string>();
   const requests = db
     .prepare(
-      `SELECT r.account, r.character_name, r.realm, r.topic, r.mode, r.suggestion_json, p.generated_at
+      `SELECT r.account, r.character_name, r.realm, r.topic, r.mode, r.suggestion_json,
+              p.generated_at, p.created_at AS plan_at, p.body_json AS plan_json
        FROM requests r LEFT JOIN plans p ON p.id = r.plan_id
-       WHERE r.type = 'plan' AND r.created_at >= ?`,
+       WHERE r.type = 'plan' AND r.created_at >= ?
+       ORDER BY r.created_at DESC, r.rowid DESC`,
     )
     .all(since) as {
     account: string | null;
@@ -122,6 +149,8 @@ export function computeTaste(
     mode: string | null;
     suggestion_json: string | null;
     generated_at: number | null;
+    plan_at: number | null;
+    plan_json: string | null;
   }[];
   for (const request of requests) {
     if (!mine({ account: request.account, name: request.character_name, realm: request.realm }))
@@ -137,10 +166,20 @@ export function computeTaste(
       }),
     );
     row.picked += 1;
-    if (request.generated_at === null) continue;
-    const key = `${request.character_name}\0${request.realm}\0at:${request.generated_at}`;
-    const body = latest.get(key);
-    if (!body) continue;
+    const who = `${request.character_name}\0${request.realm}`;
+    let key: string | undefined;
+    if (request.generated_at !== null && latest.has(`${who}\0at:${request.generated_at}`)) {
+      key = `${who}\0at:${request.generated_at}`;
+    } else if (request.plan_json) {
+      // Progress from before 0.10 (or a session applied under 0.9) has no generatedAt:
+      // it is this plan's when it carries exactly the plan's step ids and came after it.
+      // Newest Request first, so a repeated plan joins its latest delivery only.
+      const ids = planStepIds(request.plan_json);
+      const hit = ids ? byIds.get(`${who}\0${ids}`) : undefined;
+      if (hit && !used.has(hit.key) && hit.at >= (request.plan_at ?? 0)) key = hit.key;
+    }
+    const body = key ? latest.get(key) : undefined;
+    if (!key || !body) continue;
     used.add(key);
     count(row, body);
   }
@@ -179,7 +218,19 @@ function stepIds(body: ProgressBody): string {
   return ids.sort().join(",");
 }
 
+/** A stored plan's step ids, sorted and joined like `stepIds`; empty when unreadable. */
+function planStepIds(planJson: string): string {
+  const plan = parse<{ tasks?: { id?: unknown }[] }>(planJson);
+  const tasks = Array.isArray(plan?.tasks) ? plan.tasks : [];
+  return tasks
+    .map((task) => (typeof task?.id === "string" ? task.id : ""))
+    .filter((id) => id !== "")
+    .sort()
+    .join(",");
+}
+
 function count(row: Counts, body: ProgressBody): void {
+  row.tracked += 1;
   const done = body.done?.length ?? 0;
   const skipped = body.skipped?.length ?? 0;
   row.doneSteps += done;

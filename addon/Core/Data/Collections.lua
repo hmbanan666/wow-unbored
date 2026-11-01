@@ -3,7 +3,7 @@
 local _, ns = ...
 
 local S = ns.Snapshot
-local num, boolean, call = ns.AsNumber, ns.AsBoolean, ns.Call
+local num, boolean, str, call = ns.AsNumber, ns.AsBoolean, ns.SafeString, ns.Call
 
 local DAY = 24 * 60 * 60
 
@@ -154,14 +154,21 @@ S.Register({
         if counter.calls >= S.ACH_MAX_CALLS then
           break
         end
-        local id, _, _, completed, _, _, _, _, _, _, _, isGuild = call(GetAchievementInfo, categories[i], j)
+        local id, name, _, completed, _, _, _, _, _, _, _, isGuild = call(GetAchievementInfo, categories[i], j)
         id = num(id)
         completed, isGuild = boolean(completed), boolean(isGuild)
         counter.calls = counter.calls + 1
         if id and completed == false and isGuild == false then
           local d, t, open = achievementProgress(id, counter)
           if d and t and t > 0 and d < t and d / t >= S.ACH_MIN_RATIO then
-            rows[#rows + 1] = { id = id, d = d, t = t, open = open and #open > 0 and open or nil }
+            -- The name (client language) lets Ready now say what it is (0.11).
+            rows[#rows + 1] = {
+              id = id,
+              name = str(name, 60),
+              d = d,
+              t = t,
+              open = open and #open > 0 and open or nil,
+            }
           end
         end
         if counter.calls >= nextYield then

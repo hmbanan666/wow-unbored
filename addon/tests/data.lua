@@ -233,7 +233,7 @@ C_CurrencyInfo = {
     if i == 1 then
       return { name = "The War Within", isHeader = true, isHeaderExpanded = currencyHeaders.expanded }
     elseif i == 2 then
-      return { currencyID = 3008, quantity = 1200, maxQuantity = 0, isAccountWide = false }
+      return { currencyID = 3008, name = "Valorstones", quantity = 1200, maxQuantity = 0, isAccountWide = false }
     elseif i == 3 then
       return { currencyID = 2815, quantity = SECRET }
     end
@@ -251,7 +251,8 @@ C_Reputation = {
     if i == 1 then
       return { factionID = 2590, isHeader = true, isCollapsed = not factionsOpen }
     elseif i == 2 then
-      return { factionID = 2594, reaction = 6, currentStanding = 4200, currentReactionThreshold = 3000,
+      return { factionID = 2594, name = "The Assembly of the Deeps", reaction = 6, currentStanding = 4200,
+        currentReactionThreshold = 3000,
         nextReactionThreshold = 9000, isAccountWide = true }
     elseif i == 3 then
       return { factionID = 2600, reaction = 5, currentStanding = 100 }
@@ -266,7 +267,8 @@ C_MajorFactions = {
     if id == 2594 then
       return { renownLevel = 25, renownReputationEarned = 0, renownLevelThreshold = 2500 }
     end
-    return { renownLevel = 12, renownReputationEarned = 2000, renownLevelThreshold = 2500 }
+    return { name = "Council of Dornogal", renownLevel = 12, renownReputationEarned = 2000,
+      renownLevelThreshold = 2500 }
   end,
   HasMaximumRenown = function(id) return id == 2594 end,
   GetRenownRewardsForLevel = function(id, level)
@@ -440,6 +442,7 @@ check(ns.Pack.DecodeValues(body("bags").items)[200001][1] == 2, "bag counts are 
 check(body("bags").gear and #body("bags").gear == 15, "bags keep item strings for gear only")
 check(body("bank") == nil, "bank is not read while closed")
 check(body("currencies") and #body("currencies").list == 1, "a secret currency amount is dropped")
+check(body("currencies").list[1].name == "Valorstones", "a currency keeps its name for Ready now")
 check(currencyHeaders.expanded == false and currencyHeaders.touched == 2, "currency headers are restored")
 check(body("professions") and #body("professions").list == 3, "professions list")
 check(body("recipes") == nil, "recipes wait for the profession window")
@@ -452,6 +455,8 @@ check(body("reputation") and #body("reputation").factions == 2, "collapsed facti
 check(factionsOpen == false, "faction headers are collapsed again")
 check(body("reputation").factions[1].accountWide == true, "account-wide reputation is flagged")
 check(body("reputation").renown[1].level == 12, "renown levels")
+check(body("reputation").renown[1].name == "Council of Dornogal" and body("reputation").factions[1].name
+  == "The Assembly of the Deeps", "renown and factions keep their names for Ready now")
 local renownNext = body("reputation").renown[1].next or {}
 check(#renownNext == 4 and renownNext[1].mountID == 2192 and renownNext[1].itemID == 223571
   and renownNext[1].name == "Shale Ramolith", "renown keeps up to four next-level rewards with their ids")
@@ -940,7 +945,7 @@ do
   GetAchievementInfo = function(_, index)
     calls = calls + 1
     local row = plan[index]
-    return index, "A", 10, row.done == true, 1, 1, 24, "", 0, 0, "", row.guild == true, false
+    return index, "Ach " .. index, 10, row.done == true, 1, 1, 24, "", 0, 0, "", row.guild == true, false
   end
   GetAchievementNumCriteria = function(id)
     calls = calls + 1
@@ -977,6 +982,7 @@ do
   end
   check(progress and table.concat(ids, ",") == "2,1,8", "achievement progress keeps >= half done, best first: "
     .. table.concat(ids, ","))
+  check(progress.rows[1].name == "Ach 2" and progress.rows[3].name == "Ach 8", "achievement progress keeps the name")
   check(progress.rows[1].d == 450 and progress.rows[1].t == 500 and progress.rows[1].open[1] == 9002,
     "a progress-bar achievement counts its quantity")
   check(progress.rows[2].d == 7 and progress.rows[2].t == 10 and #progress.rows[2].open == 3

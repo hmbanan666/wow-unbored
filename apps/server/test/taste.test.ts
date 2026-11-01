@@ -29,14 +29,21 @@ const rowBase = {
 
 const counts = (picked: number, finished: number, wins = 0, doneSteps = 1, skippedSteps = 0) => ({
   picked,
+  tracked: picked,
   finished,
   wins,
   doneSteps,
   skippedSteps,
 });
 
-test("taste math: (finished + wins + 1) / (picked + 2), ±15, and a skip-heavy category at most -5", () => {
+test("taste math: (finished + wins + 1) / (tracked + 2), ±15, and a skip-heavy category at most -5", () => {
   assert.deepEqual(tasteBonus(counts(2, 2)), { bonus: 0 }, "fewer than 3 picks: no nudge");
+  assert.deepEqual(
+    tasteBonus({ ...counts(10, 0), tracked: 2 }),
+    { bonus: 0 },
+    "picks without progress are not held against the category",
+  );
+  assert.equal(tasteBonus({ ...counts(3, 3), wins: 9 }).rate, 1, "rate is at most 1");
   assert.deepEqual(tasteBonus(counts(3, 3)), { rate: 0.8, bonus: 9 });
   assert.equal(tasteBonus(counts(10, 10, 10)).bonus, 15, "clamped at +15");
   assert.equal(tasteBonus(counts(30, 0)).bonus, -14);
@@ -60,7 +67,7 @@ test("a Request's category is its idea kind, surprise, or preset:<topic>", () =>
 function pick(
   store: Store,
   id: string,
-  options: { topic?: string; kind?: string; generatedAt: number; at: number },
+  options: { topic?: string; kind?: string; generatedAt: number; at: number; tasks?: string[] },
 ) {
   store.addRequest({
     id,
@@ -92,10 +99,7 @@ function pick(
       kind: "plan",
       title: `Plan ${id}`,
       generatedAt: options.generatedAt,
-      tasks: [
-        { id: "a", title: "A" },
-        { id: "b", title: "B" },
-      ],
+      tasks: (options.tasks ?? ["a", "b"]).map((task) => ({ id: task, title: task.toUpperCase() })),
     },
     options.at,
   );
@@ -154,9 +158,14 @@ test("progress joins its plan by generatedAt and Character; finished, steps and 
       if (finished)
         progress(store, { generatedAt: NOW + n, done: ["a", "b"], remaining: [] }, NOW + 20 + n);
     }
-    pick(store, "s1", { topic: "surprise", generatedAt: NOW + 50, at: NOW + 50 });
-    // A 0.9 progress post without generatedAt is still stored and never joins a plan.
-    progress(store, { done: ["a", "b"], remaining: [] }, NOW + 60);
+    pick(store, "s1", {
+      topic: "surprise",
+      generatedAt: NOW + 50,
+      at: NOW + 50,
+      tasks: ["s", "t"],
+    });
+    // A 0.9 progress post without generatedAt and with other step ids joins no plan.
+    progress(store, { done: ["x", "y"], remaining: [] }, NOW + 60);
     // A chain Quick plan has no Request: its source names it.
     progress(store, { done: ["q1"], remaining: [], source: "chain" }, NOW + 70);
 
@@ -166,6 +175,7 @@ test("progress joins its plan by generatedAt and Character; finished, steps and 
     assert.deepEqual(taste.rare, {
       category: "rare",
       picked: 4,
+      tracked: 4,
       finished: 3,
       doneSteps: 6,
       skippedSteps: 1,
@@ -174,6 +184,7 @@ test("progress joins its plan by generatedAt and Character; finished, steps and 
       bonus: 5,
     });
     assert.equal(taste.surprise?.picked, 1);
+    assert.equal(taste.surprise?.tracked, 0);
     assert.equal(taste.surprise?.finished, 0);
     assert.equal(taste.surprise?.bonus, 0);
     assert.equal(taste.chain?.picked, 1);
@@ -181,6 +192,54 @@ test("progress joins its plan by generatedAt and Character; finished, steps and 
 
     // Older than 60 days is left out.
     assert.equal(store.taste(ACCOUNT, NOW + 61 * 86_400).length, 0);
+  } finally {
+    store.close();
+  }
+});
+
+test("progress without generatedAt joins its plan by step ids; picks never played are not a penalty", () => {
+  const store = makeStore();
+  try {
+    // Four Surprise picks under 0.9: the game never sent progress for three of them.
+    for (const n of [1, 2, 3, 4]) {
+      pick(store, `s${n}`, {
+        topic: "surprise",
+        generatedAt: NOW + n,
+        at: NOW + n,
+        tasks: [`p${n}:a`, `p${n}:b`],
+      });
+    }
+    // The fourth was played to the end; its posts have no generatedAt (session applied under 0.9).
+    progress(store, { done: ["p4:a"], remaining: ["p4:b"] }, NOW + 10);
+    progress(store, { done: ["p4:a", "p4:b"], remaining: [] }, NOW + 11);
+    // Same step ids, but posted before the plan existed: not this plan's.
+    pick(store, "late", { topic: "mount", generatedAt: NOW + 30, at: NOW + 30, tasks: ["m:a"] });
+    progress(store, { done: ["m:a"], remaining: [] }, NOW + 20);
+
+    const taste = Object.fromEntries(
+      store.taste(ACCOUNT, NOW + 100).map((row) => [row.category, row]),
+    );
+    assert.equal(taste.surprise?.picked, 4);
+    assert.equal(taste.surprise?.tracked, 1);
+    assert.equal(taste.surprise?.finished, 1);
+    assert.equal(taste.surprise?.doneSteps, 2, "the newest post of that plan");
+    assert.equal(taste.surprise?.bonus, 0, "one tracked plan is too few to judge, and no -10");
+    assert.equal(taste["preset:mount"]?.tracked, 0);
+  } finally {
+    store.close();
+  }
+});
+
+test("a repeated plan's progress counts once, for its newest delivery", () => {
+  const store = makeStore();
+  try {
+    pick(store, "first", { topic: "nearby", generatedAt: NOW + 1, at: NOW + 1, tasks: ["x", "y"] });
+    pick(store, "again", { topic: "nearby", generatedAt: NOW + 2, at: NOW + 2, tasks: ["x", "y"] });
+    progress(store, { done: ["x"], remaining: ["y"] }, NOW + 3);
+    const row = store.taste(ACCOUNT, NOW + 10).find((item) => item.category === "preset:nearby");
+    assert.equal(row?.picked, 2);
+    assert.equal(row?.tracked, 1);
+    assert.equal(row?.doneSteps, 1);
   } finally {
     store.close();
   }

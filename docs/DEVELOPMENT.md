@@ -239,7 +239,7 @@ Unknown is never counted as an unfinished achievement or an open criterion.
 | `talents` | char | C_ClassTalents, C_Traits.GenerateImportString | TRAIT_CONFIG_* events | |
 | `played` | char | RequestTimePlayed, TIME_PLAYED_MSG (our chat line is hidden) | once per login | |
 | `bags` | char | C_Container | login, BAG_UPDATE_DELAYED | 8.6 KB |
-| `bank`, `reagentBank` | char | C_Container on the bank bags | while the bank is open | 20 KB |
+| `bank`, `reagentBank` | char | C_Container on the bank bags; `reagentBank` only where the client still has a reagent bank (retail folded it into the bank tabs in 11.2), so `data_catalog` does not expect it | while the bank is open | 20 KB |
 | `warband` | account | C_Container on the warband bank tabs | while the bank is open | 17 KB |
 | `currencies` | char | C_CurrencyInfo list (headers expanded, then restored) | login, CURRENCY_DISPLAY_UPDATE | 37 KB |
 | `professions` | char | GetProfessions, GetProfessionInfo | login, SKILL_LINES_CHANGED | |
@@ -250,7 +250,7 @@ Unknown is never counted as an unfinished achievement or an open criterion.
 | `reputation` (v2) | char | C_Reputation, C_MajorFactions, C_GossipInfo.GetFriendshipReputation; v2 adds per renown row `next` (up to 4 rewards of the next level from `C_MajorFactions.GetRenownRewardsForLevel`) and `max`, and per paragon faction `paragon = { value, threshold, questID, pending }` (D181) | login, UPDATE_FACTION | 52 KB |
 | `achievements` | account | GetCategoryList, GetAchievementInfo (packed) | staged scan once a day, ACHIEVEMENT_EARNED | 12 KB |
 | `achievementsMine` | char | ACHIEVEMENT_EARNED | events | 6 KB |
-| `achProgress` | char | GetAchievementNumCriteria, GetAchievementCriteriaInfo on incomplete non-guild achievements (a single progress-bar criterion uses its quantity); rows `{ id, d, t, open }` with ratio >= 0.5, at most 200, best first; skips achievements with more than 60 criteria and stops at 60,000 calls (D182). Priority 20, dropped first | staged, once a day per Character, 60 s after login | |
+| `achProgress` | char | GetAchievementNumCriteria, GetAchievementCriteriaInfo on incomplete non-guild achievements (a single progress-bar criterion uses its quantity); rows `{ id, name, d, t, open }` (`name` from 0.11) with ratio >= 0.5, at most 200, best first; skips achievements with more than 60 criteria and stops at 60,000 calls (D182). Priority 20, dropped first | staged, once a day per Character, 60 s after login | |
 | `mounts` | account | C_MountJournal (packed) | login, NEW_MOUNT_ADDED | 3 KB |
 | `pets` | account | C_PetJournal | login (staged), NEW_PET_ADDED | 12 KB |
 | `toys` | account | C_ToyBox, PlayerHasToy (packed) | login (staged), NEW_TOY_ADDED | 3.7 KB |
@@ -322,7 +322,7 @@ On the Server, `plans.request_id` preserves a Plan's Request even after the Plan
 
 ## Ready now, taste and wins
 
-`apps/server/src/ready.ts` computes **Ready now** per Character on demand from the latest Sections (MCP `get_ready_now`, [ADR 0052](adr/0052-ready-now.md)); at most 25 items, sorted by score:
+`apps/server/src/ready.ts` computes **Ready now** per Character on demand from the latest Sections (MCP `get_ready_now`, [ADR 0052](adr/0052-ready-now.md)); sorted by score, at most 5 items per kind (`READY_MAX_PER_KIND`, so near-done achievements cannot crowd out the vault, renown or a lockout) and 25 in all. An item's `title` is the name the game gave its row (achievement, faction, renown, currency, lockout, chain, event; addons 0.11 on for the first four), in the client's language, and is left out when the data has none:
 
 | Rule | Source | Score |
 | --- | --- | --- |
@@ -340,7 +340,7 @@ On the Server, `plans.request_id` preserves a Plan's Request even after the Plan
 
 Vault activity types are named from `Enum.WeeklyRewardChestThresholdType` (comment in `ready.ts`), else "type N". `alts` lists up to 5 achievements another Character of the Account is at least 0.2 further along on (and at least half done), `{ achievementID, character, d, t }` (D210). `missing` names Sections the rules needed and did not have.
 
-**Taste** (`taste.ts`, [ADR 0053](adr/0053-player-taste.md)) is computed per Account over 60 days and per category (the Request's idea kind or `preset:<topic>`, `surprise`, or a local plan's progress `source`): `rate = (finished + wins + 1) / (picked + 2)`, bonus `round((rate - 0.5) × 30)` clamped to ±15, nothing under 3 picks, at most -5 when skipped steps are more than twice the done ones. It reorders ideas and Ready now items before the cut and never hides one. Progress joins its plan by `generatedAt` (`plans.generated_at`, backfilled from the body).
+**Taste** (`taste.ts`, [ADR 0053](adr/0053-player-taste.md)) is computed per Account over 60 days and per category (the Request's idea kind or `preset:<topic>`, `surprise`, or a local plan's progress `source`): `rate = (finished + wins + 1) / (tracked + 2)` (at most 1), bonus `round((rate - 0.5) × 30)` clamped to ±15, nothing under 3 tracked picks, at most -5 when skipped steps are more than twice the done ones. `tracked` counts the picks whose plan has progress from the game; a pick that never got progress (never opened, or progress the Server could not tie to it) is in `picked` but is not held against the category. It reorders ideas and Ready now items before the cut and never hides one. Progress joins its plan by `generatedAt` (`plans.generated_at`, backfilled from the body); progress without `generatedAt` (addon 0.9, or a session applied under 0.9) joins the newest Request plan of the same Character with exactly the same step ids, made before the post.
 
 **Wins** (`wins.ts`, [ADR 0054](adr/0054-wins-from-game-data.md)): a plan's targets are its reward tokens, its steps' rewards, the contents of a container (`contains`; the container itself is not a target) and the last step's `complete` (quest, mount, toy, pet, achievement). When a snapshot diff adds one of those ids to `mounts`, `toys`, `pets`, `achievements`, `achievementsMine`, `questsDone` or a bag/bank Section, after a plan of the same Account made in the last 30 days, the Server writes one history row of kind `win` per Account and id. A first upload (`initial`), a whole-body Section, a version change, an item that only moved between bags and banks, or one another character already holds never count. MCP `list_wins` gives totals per kind and UTC days; `get_player_history` shows them. Players do not see wins in 0.10.
 

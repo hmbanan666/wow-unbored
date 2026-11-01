@@ -159,6 +159,7 @@ function S.ReadCurrencies()
         if id and quantity and (quantity > 0 or (week or 0) > 0) then
           out[#out + 1] = {
             id = id,
+            name = str(info.name, 60),
             quantity = quantity,
             max = num(info.maxQuantity),
             week = week,
