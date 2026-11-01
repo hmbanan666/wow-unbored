@@ -24,6 +24,15 @@ pub struct Section {
     pub body: Value,
 }
 
+/// The acknowledged revision; the wire hash remains a hash of the body only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SectionRevision {
+    version: u64,
+    body_hash: String,
+}
+
+pub type SentSections = HashMap<String, SectionRevision>;
+
 /// One SavedVariables file's `data` table.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DataFile {
@@ -161,8 +170,8 @@ pub fn owner_key(scope: &str, account: &str, realm: &str, character: &str) -> St
     }
 }
 
-/// The upload body with every Section whose hash is not in `sent`, and the
-/// `(key, hash)` pairs to remember once the Server accepted it. None when
+/// The upload body with every Section whose revision is not in `sent`, and the
+/// `(key, revision)` pairs to remember once the Server accepted it. None when
 /// nothing changed.
 pub fn build_upload(
     account: &str,
@@ -170,8 +179,8 @@ pub fn build_upload(
     realm: &str,
     char_file: Option<&DataFile>,
     account_file: Option<&DataFile>,
-    sent: &HashMap<String, String>,
-) -> Option<(Value, Vec<(String, String)>)> {
+    sent: &SentSections,
+) -> Option<(Value, Vec<(String, SectionRevision)>)> {
     let mut sections = Map::new();
     let mut remember = Vec::new();
     let mut dropped = Map::new();
@@ -185,8 +194,12 @@ pub fn build_upload(
                 continue;
             }
             let hash = section_hash(&section.body);
+            let revision = SectionRevision {
+                version: section.v,
+                body_hash: hash.clone(),
+            };
             let key = format!("{owner}|{name}");
-            if sent.get(&key) == Some(&hash) {
+            if sent.get(&key) == Some(&revision) {
                 continue;
             }
             let mut entry = Map::new();
@@ -201,7 +214,7 @@ pub fn build_upload(
             entry.insert("hash".into(), Value::from(hash.as_str()));
             entry.insert("body".into(), section.body.clone());
             sections.insert(name.clone(), Value::Object(entry));
-            remember.push((key, hash));
+            remember.push((key, revision));
         }
         if let Some(value) = &file.dropped {
             dropped.insert(scope.into(), value.clone());
@@ -210,6 +223,9 @@ pub fn build_upload(
     if sections.is_empty() {
         return None;
     }
+    // TODO(audit): Character and Account files can have different save stamps.
+    // The contract needs per-scope freshness; splitting uploads also changes
+    // cross-Section item-move detection on the Server (see docs/audits/2026-11-01.md).
     let saved_at = char_file
         .and_then(|file| file.saved_at)
         .or_else(|| account_file.and_then(|file| file.saved_at));
@@ -350,7 +366,7 @@ mod tests {
             &HashMap::new(),
         )
         .unwrap();
-        let sent: HashMap<String, String> = remember.into_iter().collect();
+        let sent: SentSections = remember.into_iter().collect();
         assert!(build_upload(
             "a",
             "Mira",
@@ -373,6 +389,49 @@ mod tests {
         let names: Vec<&String> = body["sections"].as_object().unwrap().keys().collect();
         assert_eq!(names, vec!["char"]);
         assert_eq!(remember.len(), 1);
+    }
+
+    #[test]
+    fn uploads_a_new_section_version_even_when_its_body_is_unchanged() {
+        let (mut char_file, account_file) = fixture_files();
+        let (_, remember) = build_upload(
+            "a",
+            "Mira",
+            "Silvermoon",
+            Some(&char_file),
+            Some(&account_file),
+            &HashMap::new(),
+        )
+        .unwrap();
+        let sent = remember.into_iter().collect();
+        let old_hash = section_hash(&char_file.sections["char"].body);
+        char_file.sections.get_mut("char").unwrap().v += 1;
+        let (body, remember) = build_upload(
+            "a",
+            "Mira",
+            "Silvermoon",
+            Some(&char_file),
+            Some(&account_file),
+            &sent,
+        )
+        .expect("a schema version change must reach the Server");
+        assert_eq!(body["sections"].as_object().unwrap().len(), 1);
+        assert_eq!(body["sections"]["char"]["v"], char_file.sections["char"].v);
+        assert_eq!(
+            body["sections"]["char"]["hash"], old_hash,
+            "wire hash still covers only the body"
+        );
+        let mut sent = sent;
+        sent.extend(remember);
+        assert!(build_upload(
+            "a",
+            "Mira",
+            "Silvermoon",
+            Some(&char_file),
+            Some(&account_file),
+            &sent,
+        )
+        .is_none());
     }
 
     #[test]

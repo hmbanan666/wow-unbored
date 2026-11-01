@@ -129,6 +129,50 @@ test("a gzip snapshot is stored, an unknown Section is kept raw, and a re-post c
   }
 });
 
+test("an unchanged Section body still advances its schema version", async () => {
+  const { app, store, close } = build();
+  try {
+    assert.equal((await post(app, fixture)).status, 200);
+    const next = {
+      ...fixture,
+      savedAt: fixture.savedAt + 100,
+      sections: { mounts: { ...fixture.sections.mounts, v: 2 } },
+    };
+    const result = await json(await post(app, next));
+    assert.deepEqual(result.stored, ["mounts"]);
+    const section = store.data.section("account", "111111", "mounts")!;
+    assert.equal(section.v, 2);
+    assert.equal(section.unknown, true, "a newer unknown schema must not masquerade as v1");
+    assert.equal(section.hash, fixture.sections.mounts.hash);
+    const last = store.data.lastChange("account", "111111", "mounts")!;
+    assert.equal(last.kind, "full", "schema changes never become collection diffs");
+    const retry = await json(await post(app, next));
+    assert.deepEqual(retry.stored, []);
+    assert.equal(store.data.lastChange("account", "111111", "mounts")!.id, last.id);
+  } finally {
+    close();
+  }
+});
+
+test("an unchanged newer save prevents an older changed Section from replacing it", async () => {
+  const { app, store, close } = build();
+  try {
+    assert.equal((await post(app, fixture)).status, 200);
+    const newer = { ...fixture, savedAt: fixture.savedAt + 200 };
+    const initial = store.data.lastChange("account", "111111", "mounts")!;
+    assert.deepEqual((await json(await post(app, newer))).stored, []);
+    const older = withSection("mounts", { ids: packIds([999]), count: 1 }, fixture.savedAt + 100);
+    const result = await json(await post(app, older));
+    assert.equal(result.stale, true);
+    const section = store.data.section("account", "111111", "mounts")!;
+    assert.equal(section.savedAt, newer.savedAt);
+    assert.deepEqual(section.body, fixture.sections.mounts.body);
+    assert.equal(store.data.lastChange("account", "111111", "mounts")!.id, initial.id);
+  } finally {
+    close();
+  }
+});
+
 test("bad bodies are refused with a reason, and an oversized one with 413", async () => {
   const { app, close } = build();
   try {
