@@ -168,13 +168,32 @@ JavaScript uses Vite+ (`vp`, the `vite-plus` package). Lua stays on luacheck. Ru
 
 On Ubuntu the luacheck package is `lua-check`.
 
-The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md)). The PostgreSQL schema is the numbered SQL files in `apps/server/migrations/`; the Server applies the missing ones at startup under an advisory lock and records them in `schema_migrations`. `DATABASE_POOL_MAX` sets the pool size (default 10). With `DATABASE_URL` set, every table is read and written in Postgres and the SQLite file is not opened; without it the Server runs on SQLite as before. Both go through one async layer (`apps/server/src/db.ts`); Forget and the Account migration run in one transaction on either. On Postgres `POST /v1/snapshot` queues the checked upload in `raw_uploads` and answers 202; a worker in the Server (`apps/server/src/inbox.ts`: `FOR UPDATE SKIP LOCKED`, the oldest upload of each Account first, `questLog`/`bags` uploads before others, woken by `LISTEN raw_uploads` and every 5 s, 5 attempts with backoff, then `failed` in the MCP tool `list_failed_uploads`) ingests it. SQLite keeps the inline 200. Tests that compare the backends run once per each (`BACKENDS` in `apps/server/test/postgres-db.ts`), and `UNBORED_TEST_BACKEND=postgres` runs the whole Server suite on Postgres (`apps/server/test/backend.ts`; CI does both). The Postgres tests run when `UNBORED_TEST_DATABASE_URL` points at a server where that user may create databases; each test file gets its own database copied from a migrated template. In CI they run against a `postgres:18` service container in `server.yml`, which sets `UNBORED_REQUIRE_POSTGRES=1` so they cannot silently skip. Locally:
+The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md)). The PostgreSQL schema is the numbered SQL files in `apps/server/migrations/`; the Server applies the missing ones at startup under an advisory lock and records them in `schema_migrations`. `DATABASE_POOL_MAX` sets the pool size (default 10). With `DATABASE_URL` set, every table is read and written in Postgres and the SQLite file is not opened; without it the Server runs on SQLite as before. Both go through one async layer (`apps/server/src/db.ts`); Forget and the Account migration run in one transaction on either. On Postgres `POST /v1/snapshot` queues the checked upload in `raw_uploads` and answers 202; a worker in the Server (`apps/server/src/inbox.ts`: `FOR UPDATE SKIP LOCKED`, the oldest upload of each Account first, `questLog`/`bags` uploads before others, woken by `LISTEN raw_uploads` and every 5 s, 5 attempts with backoff, then `failed` in the MCP tool `list_failed_uploads`) ingests it. SQLite keeps the inline 200. Tests that compare the backends run once per each (`BACKENDS` in `apps/server/test/postgres-db.ts`), and `UNBORED_TEST_BACKEND=postgres` runs the whole Server suite on Postgres (`apps/server/test/backend.ts`; CI does both). The Postgres tests run when `UNBORED_TEST_DATABASE_URL` points at a server where that user may create databases; each test file gets its own database copied from a migrated template. In CI they run against a `postgres:18` service container in `server.yml`, which sets `UNBORED_REQUIRE_POSTGRES=1` so they cannot silently skip. Without `UNBORED_TEST_DATABASE_URL` the Postgres tests are skipped and everything else runs on SQLite.
+
+### Local Postgres
+
+`apps/server/compose.yaml` runs the same `postgres:18` image as CI on port 5432, user and password `postgres`:
 
 ```
 docker compose -f apps/server/compose.yaml up -d
-UNBORED_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm test:js
-UNBORED_TEST_BACKEND=postgres UNBORED_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm exec vp test apps/server
+export UNBORED_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+pnpm test:js                                                  # SQLite, plus the Postgres-only tests
+UNBORED_TEST_BACKEND=postgres pnpm exec vp test apps/server   # every Server test on Postgres
+docker compose -f apps/server/compose.yaml down               # add -v to drop the test databases
 ```
+
+The test helper leaves `unbored_tpl_<hash>` template databases behind, one per set of migration files; they are reused and safe to drop. Without Docker, any Postgres 18 where the user may `CREATE DATABASE` works the same.
+
+To run the Server itself on Postgres, create a database and start it with `DATABASE_URL`; it applies the migrations at startup:
+
+```
+psql postgres://postgres:postgres@localhost:5432/postgres -c "CREATE DATABASE unbored"
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/unbored \
+  UNBORED_COMPANION_TOKEN=dev-companion UNBORED_PLANNER_TOKEN=dev-planner UNBORED_DATA_DIR=/tmp/unbored \
+  pnpm dev
+```
+
+`POST /v1/snapshot` then answers 202 and the worker ingests in the background (`docs/companion-api.md`). `psql "$DATABASE_URL" -c "SELECT state, count(*) FROM raw_uploads GROUP BY 1"` shows the queue.
 
 ## Commits and releases
 
