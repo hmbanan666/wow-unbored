@@ -3,7 +3,7 @@
 local _, ns = ...
 
 local S = ns.Snapshot
-local num, call = ns.AsNumber, ns.Call
+local num, boolean, call = ns.AsNumber, ns.AsBoolean, ns.Call
 
 local DAY = 24 * 60 * 60
 
@@ -107,8 +107,9 @@ local function achievementProgress(id, counter)
   if count == 1 then
     local _, _, done, quantity, required, _, _, _, _, criteriaID = call(GetAchievementCriteriaInfo, id, 1)
     counter.calls = counter.calls + 1
+    done = boolean(done)
     quantity, required = num(quantity), num(required)
-    if done == true or not quantity or not required or required <= 1 then
+    if done ~= false or not quantity or not required or required <= 1 then
       return nil
     end
     return math.min(quantity, required), required, { num(criteriaID) }
@@ -117,6 +118,10 @@ local function achievementProgress(id, counter)
   for k = 1, count do
     local _, _, done, _, _, _, _, _, _, criteriaID = call(GetAchievementCriteriaInfo, id, k)
     counter.calls = counter.calls + 1
+    done = boolean(done)
+    if done == nil then
+      return nil
+    end
     if done == true then
       d = d + 1
     elseif #open < S.ACH_OPEN then
@@ -151,8 +156,9 @@ S.Register({
         end
         local id, _, _, completed, _, _, _, _, _, _, _, isGuild = call(GetAchievementInfo, categories[i], j)
         id = num(id)
+        completed, isGuild = boolean(completed), boolean(isGuild)
         counter.calls = counter.calls + 1
-        if id and completed ~= true and isGuild ~= true then
+        if id and completed == false and isGuild == false then
           local d, t, open = achievementProgress(id, counter)
           if d and t and t > 0 and d < t and d / t >= S.ACH_MIN_RATIO then
             rows[#rows + 1] = { id = id, d = d, t = t, open = open and #open > 0 and open or nil }

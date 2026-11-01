@@ -294,6 +294,20 @@ function ns.Flag(value)
   return ok and isTrue or false
 end
 
+-- Preserve unknown separately from false; callers must not infer facts from it.
+function ns.AsBoolean(value)
+  if type(issecretvalue) == "function" then
+    local ok, secret = pcall(issecretvalue, value)
+    if not ok or secret then
+      return nil
+    end
+  end
+  if type(value) == "boolean" then
+    return value
+  end
+  return nil
+end
+
 function ns.AsNumber(value)
   if value == nil then
     return nil

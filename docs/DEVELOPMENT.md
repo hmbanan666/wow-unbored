@@ -162,6 +162,12 @@ Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua
 
 Snapshot deduplication compares both the Section version and its body hash. The wire hash still covers only the canonical body; a version change is uploaded and stored as a full history entry, never a collection diff. Re-posting an identical version/body advances the Server's save watermark without adding history, so an older changed upload cannot replace it. A staged bank or profession read is discarded when its window closes, even if it reopens before the next frame. Achievement event payloads update ids immediately; their points API read waits for the settled worker outside combat.
 
+Achievement progress requires readable boolean evidence: completion and guild
+flags must both be false, and every counted criterion must have a known done
+flag. `AsBoolean` preserves unknown as nil (including secret values or a failed
+secret check); an unknown criterion drops that achievement's progress row.
+Unknown is never counted as an unfinished achievement or an open criterion.
+
 | Section | Scope | API | When | Worst case |
 | --- | --- | --- | --- | --- |
 | `char` | char | UnitClass, UnitRace, UnitLevel, UnitXP, GetSpecializationInfo, GetAverageItemLevel, GetMoney, GetBindLocation, and `lang` (the addon's language, for the Server's ideas) | login, events | 0.5 KB |
