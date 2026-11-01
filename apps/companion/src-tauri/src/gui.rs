@@ -95,6 +95,8 @@ struct Model {
     sent_sections: SentSections,
     posted_profiles: HashMap<String, u64>,
     notified: HashSet<String>,
+    /// Retry failed local erasure/settings persistence, not every forgotten poll.
+    forget_cleanup_pending: bool,
     approved: bool,
     needs_wow_path: bool,
     addon_version: String,
@@ -705,6 +707,7 @@ fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Sho
             model.approved = false;
             model.error = false;
             model.settings.forgotten_at = Some(now_secs());
+            model.forget_cleanup_pending = true;
             // Revocation is local immediately, even if saving settings or erasing a
             // file fails. Attempt all cleanup; a later revoked sync retries disk I/O.
             let saved = save_settings(&app, &model.settings);
@@ -719,6 +722,7 @@ fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Sho
                 .transpose();
             saved?;
             cleared?;
+            model.forget_cleanup_pending = false;
             model.status = tr(if erased {
                 "FORGET_DONE"
             } else {
@@ -787,6 +791,7 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Show
     model.pairing = status.clone();
     model.approved = status == "approved";
     model.settings.forgotten_at = None;
+    model.forget_cleanup_pending = false;
     if model.approved {
         model.connected_at = Some(now_secs());
     }
@@ -1503,12 +1508,13 @@ fn sync_once(
     let retail = retail_path(settings);
     if session
         .apply(app, |model| {
-            if model.settings.forgotten_at.is_some() {
+            if model.forget_cleanup_pending {
                 // Retry local failures before any network work, even while offline.
                 if let Some(retail) = &retail {
                     clear_helper(retail).map_err(game_files)?;
                 }
                 save_settings(app, &model.settings)?;
+                model.forget_cleanup_pending = false;
             }
             Ok::<_, String>(())
         })?
@@ -1749,6 +1755,7 @@ pub fn run() {
             )?;
             app.manage(AppState {
                 inner: SyncState::new(Model {
+                    forget_cleanup_pending: settings.forgotten_at.is_some(),
                     settings,
                     status: String::new(),
                     installs,

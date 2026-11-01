@@ -67,8 +67,9 @@ acknowledgement, pairing/status result and ready notification is applied through
 `SyncState::apply`: the generation check and local effects share one critical
 section. Forget invalidates the generation before local erasure, even if a disk
 operation fails. It also writes revoked Companion status immediately. Forgotten
-sync retries local cleanup/settings writes before network work, including while
-offline; it no longer compensates for
+sync retries pending local cleanup/settings writes before network work, including
+while offline; a successful cleanup clears the retry flag. A saved forgotten
+marker schedules one cleanup after restart. It no longer compensates for
 stale responses writing data back.
 
 Forget, Connect again and settings changes serialize on a separate command lock.
