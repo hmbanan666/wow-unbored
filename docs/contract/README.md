@@ -22,6 +22,10 @@ The payloads the Companion posts and the Server accepts live in [`packages/contr
 
 The body is gzip with `Content-Encoding: gzip`, at most 4 MB compressed. `scope` is `char` (from `UnboredCharDB.data`) or `account` (from `UnboredDB.data`). `hash` is the lowercase hex sha256 of the **canonical JSON** of `body`: object keys sorted, no whitespace, integers without a fraction, strings as JSON writes them with non-ASCII left as UTF-8. The Server accepts unknown Sections and future versions and stores them raw. Every Section, with its API, size and timing, is listed in [`docs/DEVELOPMENT.md`](../DEVELOPMENT.md#game-data-sections).
 
+The answer depends on where the Server stores data ([ADR 0057](../adr/0057-postgres-storage-and-async-ingest.md)). On SQLite (no `DATABASE_URL`) it ingests on the request and answers `200 {"ok": true, "account", "character", "realm", "stored": [...], "unchanged": [...], "unknown": [...], "stale": false}`. On Postgres it checks the upload the same way (401, 400 and 413 are unchanged), queues it and answers `202 {"ok": true, "upload": "<id>", "state": "queued"}`; the same body sent again by the Account returns the same id and its current state. A Companion treats either 2xx as sent.
+
+`GET /v1/uploads/<id>` with the same device bearer returns `{ "id", "state": "queued" | "done" | "failed", "receivedAt", "processedAt", "attempts", "result", "error" }`. `result` (when `done`) holds `stored`, `unchanged`, `unknown` and `stale`; `error` is the last failure. Another device's id, an unknown id, or a Server on SQLite answers `404`. A new Request (`POST /v1/requests`) and the planner's data tools wait up to 10 s for that Account's queued uploads, so they read the save that came just before.
+
 ## Packed id sets
 
 A big list of ids is stored as a few strings instead of thousands of numeric literals, so SavedVariables stay small and far from the game's 262,144 unique literal limit.

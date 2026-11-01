@@ -9,7 +9,14 @@ import type { BlizzardIds } from "./blizzard.ts";
 import { resolveCriteria } from "./criteria.ts";
 import { ID_KINDS, readable, changeSummary, type CharacterRow, type IdKind } from "./data.ts";
 import { ANSWER_MAX_BYTES, cleanAnswer, PlanError, planMarkupIds } from "./plan.ts";
-import { HISTORY_KINDS, publicDevice, publicRequest, sessionSummary, type Store } from "./store.ts";
+import {
+  accountKey,
+  HISTORY_KINDS,
+  publicDevice,
+  publicRequest,
+  sessionSummary,
+  type Store,
+} from "./store.ts";
 
 const PLAN_SCOPE = `Plan the whole goal. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
 
@@ -132,7 +139,16 @@ const entitiesSchema = z
   })
   .strict();
 
-export function createMcpServer(store: Store, dataDir: string, gameIds?: BlizzardIds): McpServer {
+export function createMcpServer(
+  store: Store,
+  dataDir: string,
+  gameIds?: BlizzardIds,
+  options: { settle?: boolean } = {},
+): McpServer {
+  /** Read barrier (ADR 0057): uploads queued before this call are ingested first, up to 10 s. */
+  const settle = async (account?: string) => {
+    if (options.settle) await store.settle(account ? accountKey(account) : undefined);
+  };
   const server = new McpServer({
     name: "unbored",
     version: "0.10.0",
@@ -510,6 +526,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       inputSchema: { account: whoSchema.account },
     },
     async ({ account }) => {
+      await settle(account);
       const accounts = account
         ? [await data.account(account)].filter((row) => row !== undefined)
         : await data.accounts();
@@ -543,6 +560,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       inputSchema: whoSchema,
     },
     async (who) => {
+      await settle(who.account);
       const ready = await store.readyNow(who);
       if (!ready) return failure(new Error("No game data for that Character yet."));
       return text(ready);
@@ -564,6 +582,29 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
     },
     async ({ account, since, version, limit }) =>
       text({ errors: await store.listErrors({ account, since, version, limit: limit ?? 50 }) }),
+  );
+
+  server.registerTool(
+    "list_failed_uploads",
+    {
+      title: "List failed uploads",
+      description:
+        "Game data uploads the Server queued (202) but could not ingest after 5 attempts, newest first (Postgres inbox, ADR 0057): id, account, deviceId, character (Realm/Name), bytes, receivedAt, processedAt, attempts and error (the last one). The raw bytes are kept 30 days for a replay. inbox is off when the Server stores uploads inline (SQLite): then the list is always empty. Read it next to list_errors.",
+      inputSchema: {
+        account: whoSchema.account,
+        limit: z.number().int().min(1).max(200).optional().describe("Default 50."),
+      },
+    },
+    async ({ account, limit }) => {
+      if (!store.inbox) return text({ inbox: "off", uploads: [] });
+      return text({
+        inbox: "on",
+        uploads: await store.inbox.failed({
+          account: account ? accountKey(account) : undefined,
+          limit: limit ?? 50,
+        }),
+      });
+    },
   );
 
   server.registerTool(
@@ -592,6 +633,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       inputSchema: whoSchema,
     },
     async (who) => {
+      await settle(who.account);
       const rows = await pickCharacters(who);
       if (rows.length === 0) return failure(new Error("No game data for that Character yet."));
       const characters = (
@@ -618,6 +660,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ account, character, realm, sections, expand }) => {
+      await settle(account);
       const row = (await pickCharacters({ account, character, realm }))[0];
       if (!row) return failure(new Error("No game data for that character yet."));
       const all = await data.sectionsFor(row);
@@ -656,6 +699,7 @@ export function createMcpServer(store: Store, dataDir: string, gameIds?: Blizzar
       },
     },
     async ({ kind, ids, account, character, realm }) => {
+      await settle(account);
       const rows = await pickCharacters({ account, character, realm });
       if (rows.length === 0) return failure(new Error("No game data for that player yet."));
       const first = rows[0]!;
@@ -877,11 +921,12 @@ export async function handleMcp(
   store: Store,
   dataDir: string,
   gameIds?: BlizzardIds,
+  options: { settle?: boolean } = {},
 ): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
   });
-  const server = createMcpServer(store, dataDir, gameIds);
+  const server = createMcpServer(store, dataDir, gameIds, options);
   await server.connect(transport);
   return transport.handleRequest(c.req.raw);
 }

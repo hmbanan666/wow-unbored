@@ -11,7 +11,7 @@ import { createApp } from "../src/app.ts";
 import type { SectionRow } from "../src/data.ts";
 import { loadCatalog, suggest, type SuggestInput } from "../src/suggestions.ts";
 import { BACKENDS, postgresPerFile } from "./postgres-db.ts";
-import { database } from "./backend.ts";
+import { storage } from "./backend.ts";
 
 const pg = postgresPerFile();
 
@@ -287,6 +287,7 @@ for (const backend of BACKENDS)
       dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
       log: () => {},
       database: pg(backend),
+      ingest: "inline",
     });
     const get = () =>
       app.request("/v1/suggestions", { headers: { authorization: `Bearer ${companion}` } });
@@ -350,7 +351,7 @@ for (const backend of BACKENDS)
 
 test("a Request from a picked idea keeps its id and a copy of it", async () => {
   const { app, close } = createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
@@ -473,6 +474,7 @@ for (const backend of BACKENDS)
       dataDir: mkdtempSync(path.join(tmpdir(), "unbored-ideas-")),
       log: () => {},
       database: pg(backend),
+      ingest: "inline",
     });
     const upload = (lang?: string) => {
       const next = withIdeas();
@@ -655,6 +657,7 @@ for (const backend of BACKENDS)
       dataDir: mkdtempSync(path.join(tmpdir(), "unbored-chains-")),
       log: () => {},
       database: pg(backend),
+      ingest: "inline",
     });
     const upload = async (lines: Record<string, unknown>) => {
       const next = structuredClone(snapshot);
@@ -703,6 +706,7 @@ for (const backend of BACKENDS)
       dataDir: mkdtempSync(path.join(tmpdir(), "unbored-names-")),
       log: () => {},
       database: pg(backend),
+      ingest: "inline",
       companionToken: companion,
       plannerToken: planner,
       blizzard: { clientId: "id", clientSecret: "secret", region: "eu" },

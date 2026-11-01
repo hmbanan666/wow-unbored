@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
-import { database } from "./backend.ts";
+import { storage } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -13,7 +13,7 @@ const planner = "planner-test-token";
 function setup() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-reconnect-"));
   return createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir,

@@ -6,7 +6,7 @@ import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
 import { MAX_ATTEMPTS, RETRY_DELAYS, type FetchLike } from "../src/webhook.ts";
-import { database } from "./backend.ts";
+import { storage } from "./backend.ts";
 
 const root = path.join(import.meta.dirname, "..", "..", "..", "packages", "contracts", "fixtures");
 const requests = JSON.parse(readFileSync(path.join(root, "requests.json"), "utf8")) as {
@@ -35,7 +35,7 @@ function build(options: { url?: string; respond?: (hit: Hit) => number | Error }
     return { ok: outcome >= 200 && outcome < 300, status: outcome };
   };
   const built = createApp({
-    database: database(),
+    ...storage(),
     companionToken: companion,
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-webhook-")),
