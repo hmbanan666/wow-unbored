@@ -70,6 +70,18 @@ local methods = {
     self.width = width
     self.height = height
   end,
+  SetScrollChild = function(self, child)
+    self.scrollChild = child
+  end,
+  SetVerticalScroll = function(self, at)
+    self.scroll = at
+  end,
+  GetVerticalScroll = function(self)
+    return self.scroll or 0
+  end,
+  GetVerticalScrollRange = function(self)
+    return math.max(0, (self.scrollChild and self.scrollChild.height or 0) - self.height)
+  end,
   GetWidth = function(self)
     return self.width
   end,
@@ -1336,6 +1348,44 @@ check(reEncoded.title == card.title and reEncoded.tasks[2].condition.text == car
 local old = assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan.json"), false))
 check(old.title == nil and old.rewards == nil and #old.tasks == 2, "a 0.7 plan still loads, with no card fields")
 
+-- Long raid instructions stay intact and scroll separately from the boss list.
+local raidRaw = readJson("../packages/contracts/fixtures/plan-instance.json")
+local raid = assert(ns.ValidatePlan(raidRaw, false))
+check(#raid.tasks == 15 and raid.tasks[2].note == raidRaw.tasks[2].note,
+  "travel and thirteen bosses preserve the longer Russian note")
+UnboredCharDB.request = nil
+ns.Session.answer = nil
+ns.Session:ApplyPlan(raid, "companion", true)
+ns.Session:Done()
+if not ns.Mascot.CardOpen() then mascot.cardToggle:Click() end
+mascot:Refresh()
+check(mascot.detailsScroll ~= nil, "long raid details have their own scroll area")
+if mascot.detailsScroll then
+  check(mascot.detailsScroll:GetHeight() <= 180, "expanded instructions stay within 180 pixels")
+  check(mascot.detailsScroll.child:GetHeight() > mascot.detailsScroll:GetHeight(),
+    "long instructions remain reachable by scrolling")
+  local scroll = mascot.detailsScroll
+  scroll.scripts.OnMouseWheel(scroll, -1)
+  check(scroll:GetVerticalScroll() == 24, "wheel reaches the next lines of the boss instructions")
+  scroll.scripts.OnMouseWheel(scroll, -1000)
+  check(scroll:GetVerticalScroll() == scroll:GetVerticalScrollRange(), "wheel stops at the end of the note")
+  scroll.scripts.OnMouseWheel(scroll, 1000)
+  check(scroll:GetVerticalScroll() == 0, "wheel returns to the start of the note")
+end
+check(mascot.list:GetHeight() <= 260, "fifteen raid steps stay in the existing scroll list")
+check(textOf(mascot.details):find(raid.tasks[2].note, 1, true), "the current boss's whole note is shown")
+
+for i = 2, 14 do
+  raid.tasks[i].title = string.rep("я", 120)
+  raid.tasks[i].note = string.rep("я", 500)
+  raid.tasks[i].why = string.rep("я", 60)
+end
+local raidEncoded = ns.EncodePlan(raid)
+check(#raidEncoded > 20000 and #raidEncoded < 64000, "full boss notes fit the larger delivery cap")
+local raidDecoded = assert(ns.DecodeImport(raidEncoded))
+check(raidDecoded.tasks[14].note == raid.tasks[14].note, "thirteen full notes survive delivery intact")
+check(ns.DecodeImport("UNB1:" .. string.rep("a", 64000)) == nil, "oversized imports are still rejected")
+
 -- A plan with links: the Bubble shows native links, other places plain names.
 local linked = assert(ns.ValidatePlan(markup.plan, false))
 check(linked.tasks[1].npcs and linked.tasks[1].npcs["12345"].name == "Fixer Kev", "a Step keeps the npcs it links")
@@ -1360,6 +1410,9 @@ check(tooltipLines[1] == "Fixer Kev" and tooltipLines[2] == "Stormwind City" and
 mascot.bubble.scripts.OnHyperlinkClick(mascot.bubble, "addon:Unbored:npc:12345", "[Fixer Kev]", "LeftButton")
 check(C_Map.pin and C_Map.pin.uiMapID == 2339 and math.abs(C_Map.pin.position.x - 0.521) < 1e-9,
   "an npc click sets the waypoint")
+mascot.detailsScroll.child.scripts.OnHyperlinkClick(mascot.detailsScroll.child,
+  "addon:Unbored:pin:2339:40:60", "[x]", "LeftButton")
+check(math.abs(C_Map.pin.position.y - 0.6) < 1e-9, "a link inside scrolling details sets its waypoint")
 mascot.bubble.scripts.OnHyperlinkClick(mascot.bubble, "addon:Unbored:pin:2339:40:60", "[x]", "LeftButton")
 check(math.abs(C_Map.pin.position.y - 0.6) < 1e-9, "a pin click sets the waypoint")
 local hovered, referred

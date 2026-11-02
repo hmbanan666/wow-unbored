@@ -485,7 +485,7 @@ function ns.DecodeMessage(text)
   if text == "" then
     return nil, "empty"
   end
-  if #text > 20000 then
+  if #text > 64000 then
     return nil, "long"
   end
   local prefix, payload

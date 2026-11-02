@@ -242,8 +242,18 @@ export const planSchema = z
         z
           .object({
             id: z.string(),
-            title: z.string(),
-            why: z.string().optional(),
+            title: z
+              .string()
+              .min(1)
+              .refine((text) => new TextEncoder().encode(text).length <= 240),
+            note: z
+              .string()
+              .refine((text) => new TextEncoder().encode(text).length <= 1000)
+              .optional(),
+            why: z
+              .string()
+              .refine((text) => new TextEncoder().encode(text).length <= 120)
+              .optional(),
             rewards: z.array(z.string()).max(3).optional(),
             group: z
               .string()
@@ -264,7 +274,8 @@ export const planSchema = z
           })
           .passthrough(),
       )
-      .min(1),
+      .min(1)
+      .max(40),
   })
   .passthrough();
 

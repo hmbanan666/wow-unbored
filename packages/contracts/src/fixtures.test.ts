@@ -46,6 +46,7 @@ test("the suggestions fixture matches the shared schema", () => {
 
 test("plan and player profile fixtures match the shared schema", () => {
   expect(planSchema.safeParse(read("plan.json")).success).toBe(true);
+  expect(planSchema.safeParse(read("plan-instance.json")).success).toBe(true);
   expect(playerProfileSchema.safeParse(read("profile.json")).success).toBe(true);
 });
 

@@ -221,6 +221,7 @@ ns.PLAN_LIMITS = {
   rewards = 6,
   why = 120,
   stepRewards = 3,
+  stepNote = 1000,
   condition = 160,
 }
 local CHECK_KINDS = { currency = true, item = true, level = true, quest = true, ach = true }
@@ -505,8 +506,8 @@ function ns.ValidatePlan(raw, loose)
     local taskNote = plain(task.note)
     if type(taskNote) ~= "string" then
       taskNote = nil
-    elseif #taskNote > 400 then
-      taskNote = taskNote:sub(1, 400)
+    elseif #taskNote > ns.PLAN_LIMITS.stepNote then
+      taskNote = ns.Utf8Truncate(taskNote, ns.PLAN_LIMITS.stepNote)
     end
     local waypoints, wpErr = ns.CleanWaypoints(task.waypoints, i)
     if wpErr then
