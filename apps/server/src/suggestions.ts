@@ -79,12 +79,21 @@ type CatalogRare = {
   mapID?: number;
   questID?: number;
 };
+type MountSource =
+  | { achievementID: number }
+  | {
+      boss: string;
+      difficulty?: "normal-heroic" | "normal-heroic-mythic" | "heroic" | "heroic25" | "mythic";
+      condition?: "no-keepers" | "timed-summon";
+    };
+
 type CatalogFarm = {
   id: string;
   fallbackTitle: string;
   mapID?: number;
   instanceID?: number;
   mounts?: number[];
+  mountSources: Record<string, MountSource>;
 };
 
 export type Catalog = {
@@ -154,7 +163,9 @@ const TEXT: Record<
     alts: (count: number) => string;
     achievementGoal: (token: string) => string;
     rareGoal: (name: string) => string;
-    farmGoal: (place: string, token: string) => string;
+    farmGoal: (place: string, boss: string, token: string) => string;
+    farmAchievement: (place: string, achievement: string, token: string) => string;
+    farmDetails: Record<string, string>;
     almostTitle: string;
     almostGoal: (token: string) => string;
     almostWhy: (done: number, total: number) => string;
@@ -185,7 +196,18 @@ const TEXT: Record<
     alts: (count) => `None of your ${count} characters has it yet`,
     achievementGoal: (token) => `Earn ${token} close to where you play.`,
     rareGoal: (name) => `Hunt ${name} near where you play.`,
-    farmGoal: (place, token) => `Run ${place} for ${token}.`,
+    farmGoal: (place, boss, token) => `In ${place}, defeat ${boss} for ${token}.`,
+    farmAchievement: (place, achievement, token) =>
+      `In ${place}, finish ${achievement} for ${token}.`,
+    farmDetails: {
+      "normal-heroic": "Normal/Heroic",
+      "normal-heroic-mythic": "Normal/Heroic/Mythic",
+      heroic: "Heroic",
+      heroic25: "25-player Heroic",
+      mythic: "Mythic",
+      "no-keepers": "no keepers assisting",
+      "timed-summon": "timed summon",
+    },
     almostTitle: "Almost there",
     almostGoal: (token) => `Finish ${token}: only a little is left.`,
     almostWhy: (done, total) => `${done} of ${total} done`,
@@ -215,7 +237,18 @@ const TEXT: Record<
     alts: (count) => `Нет ни у одного из твоих ${count} персонажей`,
     achievementGoal: (token) => `Получи ${token} рядом с местами, где ты играешь.`,
     rareGoal: (name) => `Поохоться на ${name} рядом с местами, где ты играешь.`,
-    farmGoal: (place, token) => `Пройди ${place}: там падает ${token}.`,
+    farmGoal: (place, boss, token) => `${place}: победи ${boss}, награда ${token}.`,
+    farmAchievement: (place, achievement, token) =>
+      `${place}: заверши ${achievement}, награда ${token}.`,
+    farmDetails: {
+      "normal-heroic": "обычный/героический",
+      "normal-heroic-mythic": "обычный и выше",
+      heroic: "героический",
+      heroic25: "героический, 25 игроков",
+      mythic: "эпохальный",
+      "no-keepers": "без помощи хранителей",
+      "timed-summon": "призыв на время",
+    },
     almostTitle: "Почти готово",
     almostGoal: (token) => `Заверши ${token}: осталось совсем немного.`,
     almostWhy: (done, total) => `Сделано ${done} из ${total}`,
@@ -621,32 +654,45 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     (a, b) => Number(near.has(b.mapID ?? -1)) - Number(near.has(a.mapID ?? -1)),
   );
   for (const row of farms) {
-    const missing = (row.mounts ?? []).filter((id) => !mounts.has(id));
-    if (missing.length === 0) continue;
-    const token = `{mount:${missing[0]}}`;
-    const place =
-      row.instanceID === undefined
-        ? row.fallbackTitle
-        : `{instance:${row.instanceID}|${row.fallbackTitle}}`;
-    candidates.push(
-      altBonus(
-        make(
+    for (const id of row.mounts ?? []) {
+      if (mounts.has(id)) continue;
+      const source = row.mountSources?.[id];
+      if (!source) continue;
+      const token = `{mount:${id}}`;
+      const place =
+        row.instanceID === undefined
+          ? row.fallbackTitle
+          : `{instance:${row.instanceID}|${row.fallbackTitle}}`;
+      let goal: string;
+      if ("achievementID" in source) {
+        goal = say.farmAchievement(place, `{ach:${source.achievementID}}`, token);
+      } else {
+        const details = [source.difficulty, source.condition]
+          .filter((value) => value !== undefined)
+          .map((value) => say.farmDetails[value]);
+        const boss = source.boss + (details.length ? ` (${details.join(", ")})` : "");
+        goal = say.farmGoal(place, boss, token);
+      }
+      candidates.push(
+        altBonus(
+          make(
+            lang,
+            "collection",
+            `mount:${id}`,
+            SCORE.collection + (near.has(row.mapID ?? -1) ? 1 : 0),
+            {
+              title: row.fallbackTitle,
+              titleToken: token,
+              goal,
+              rewards: [token],
+              ...(row.mapID !== undefined ? { mapID: row.mapID } : {}),
+            },
+          ),
+          input.characters,
           lang,
-          "collection",
-          `mount:${missing[0]}`,
-          SCORE.collection + (near.has(row.mapID ?? -1) ? 1 : 0),
-          {
-            title: row.fallbackTitle,
-            ...(row.instanceID !== undefined ? { titleToken: `{instance:${row.instanceID}}` } : {}),
-            goal: say.farmGoal(place, token),
-            rewards: missing.slice(0, SUGGESTION_LIMITS.rewards).map((id) => `{mount:${id}}`),
-            ...(row.mapID !== undefined ? { mapID: row.mapID } : {}),
-          },
         ),
-        input.characters,
-        lang,
-      ),
-    );
+      );
+    }
   }
 
   // Taste (D191) nudges each kind by at most 15 before the per-rule cut.

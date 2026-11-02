@@ -84,8 +84,12 @@
       "id": "farm-onyxia",
       "instanceID": 249,
       "mapID": 70,
+      "mountSources": {
+        "349": {
+          "boss": "Onyxia"
+        }
+      },
       "mounts": [349],
-      "note": "Dustwallow Marsh. Onyxian Drake from Onyxia.",
       "x": 0.56,
       "y": 0.71
     },
@@ -95,8 +99,12 @@
       "id": "farm-eye",
       "instanceID": 550,
       "mapID": 109,
+      "mountSources": {
+        "183": {
+          "boss": "Kael'thas Sunstrider"
+        }
+      },
       "mounts": [183],
-      "note": "Netherstorm. Ashes of Al'ar from Kael'thas.",
       "x": 0.739,
       "y": 0.637
     },
@@ -106,8 +114,18 @@
       "id": "farm-kara",
       "instanceID": 1651,
       "mapID": 42,
+      "mountSources": {
+        "875": {
+          "boss": "Attumen the Huntsman",
+          "difficulty": "mythic"
+        },
+        "883": {
+          "boss": "Nightbane",
+          "condition": "timed-summon",
+          "difficulty": "mythic"
+        }
+      },
       "mounts": [875, 883],
-      "note": "Deadwind Pass. Midnight from Attumen, plus the ember wyrm.",
       "x": 0.47,
       "y": 0.7
     },
@@ -117,8 +135,12 @@
       "id": "farm-firelands",
       "instanceID": 720,
       "mapID": 198,
+      "mountSources": {
+        "425": {
+          "boss": "Alysrazor"
+        }
+      },
       "mounts": [425],
-      "note": "Mount Hyjal portal. Flametalon of Alysrazor.",
       "x": 0.47,
       "y": 0.77
     },
@@ -128,8 +150,17 @@
       "id": "farm-dragon-soul",
       "instanceID": 967,
       "mapID": 71,
+      "mountSources": {
+        "444": {
+          "boss": "Madness of Deathwing",
+          "difficulty": "heroic"
+        },
+        "445": {
+          "boss": "Ultraxion",
+          "difficulty": "normal-heroic"
+        }
+      },
       "mounts": [445, 444],
-      "note": "Caverns of Time in Tanaris, then Dragon Soul. Experiment 12-B and Life-Binder's Handmaiden.",
       "x": 0.65,
       "y": 0.5
     },
@@ -138,8 +169,17 @@
       "fallbackTitle": "Battle of Dazar'alor",
       "id": "farm-bod",
       "instanceID": 2070,
-      "mounts": [1217],
-      "note": "G.M.O.D. Use your faction's door.",
+      "mountSources": {
+        "1217": {
+          "boss": "High Tinker Mekkatorque",
+          "difficulty": "normal-heroic-mythic"
+        },
+        "1219": {
+          "boss": "Lady Jaina Proudmoore",
+          "difficulty": "mythic"
+        }
+      },
+      "mounts": [1217, 1219],
       "pins": {
         "Alliance": {
           "mapID": 1161,
@@ -159,21 +199,15 @@
       "id": "farm-foundry",
       "instanceID": 1205,
       "mapID": 543,
+      "mountSources": {
+        "613": {
+          "boss": "Blackhand",
+          "difficulty": "mythic"
+        }
+      },
       "mounts": [613],
-      "note": "Gorgrond. Ironhoof Destroyer from Blackhand.",
       "x": 0.51,
       "y": 0.29
-    },
-    {
-      "estMinutes": 30,
-      "fallbackTitle": "The Eternal Palace",
-      "id": "farm-palace",
-      "instanceID": 2164,
-      "mapID": 1355,
-      "mounts": [1219],
-      "note": "Nazjatar. Glacial Tidestorm from Queen Azshara.",
-      "x": 0.5,
-      "y": 0.12
     },
     {
       "estMinutes": 30,
@@ -181,8 +215,13 @@
       "id": "farm-nya",
       "instanceID": 2217,
       "mapID": 1527,
+      "mountSources": {
+        "1293": {
+          "boss": "N'Zoth the Corruptor",
+          "difficulty": "mythic"
+        }
+      },
       "mounts": [1293],
-      "note": "Uldum entrance. Ny'alotha Allseer. Vale of Eternal Blossoms is the other door.",
       "x": 0.38,
       "y": 0.44
     },
@@ -192,8 +231,13 @@
       "id": "farm-icc",
       "instanceID": 631,
       "mapID": 118,
+      "mountSources": {
+        "363": {
+          "boss": "The Lich King",
+          "difficulty": "heroic25"
+        }
+      },
       "mounts": [363],
-      "note": "Icecrown. Invincible from the Lich King.",
       "x": 0.536,
       "y": 0.867
     },
@@ -203,8 +247,13 @@
       "id": "farm-soo",
       "instanceID": 1136,
       "mapID": 390,
+      "mountSources": {
+        "559": {
+          "boss": "Garrosh Hellscream",
+          "difficulty": "mythic"
+        }
+      },
       "mounts": [559],
-      "note": "Vale of Eternal Blossoms. Kor'kron Juggernaut from Garrosh.",
       "x": 0.74,
       "y": 0.42
     },
@@ -214,8 +263,16 @@
       "id": "farm-hfc",
       "instanceID": 1448,
       "mapID": 534,
-      "mounts": [633, 751],
-      "note": "Tanaan Jungle. Hellfire Infernal and Felsteel Annihilator.",
+      "mountSources": {
+        "751": {
+          "boss": "Archimonde",
+          "difficulty": "mythic"
+        },
+        "758": {
+          "achievementID": 10149
+        }
+      },
+      "mounts": [751, 758],
       "x": 0.47,
       "y": 0.53
     },
@@ -225,8 +282,13 @@
       "id": "farm-ulduar",
       "instanceID": 603,
       "mapID": 120,
+      "mountSources": {
+        "304": {
+          "boss": "Yogg-Saron",
+          "condition": "no-keepers"
+        }
+      },
       "mounts": [304],
-      "note": "The Storm Peaks. Mimiron's Head. A long, good raid.",
       "x": 0.415,
       "y": 0.176
     },
@@ -236,8 +298,16 @@
       "id": "farm-antorus",
       "instanceID": 1712,
       "mapID": 885,
+      "mountSources": {
+        "954": {
+          "boss": "Argus the Unmaker",
+          "difficulty": "mythic"
+        },
+        "971": {
+          "boss": "Felhounds of Sargeras"
+        }
+      },
       "mounts": [971, 954],
-      "note": "Antoran Wastes. Charhound and Shackled Ur'zul.",
       "x": 0.55,
       "y": 0.62
     },
@@ -247,8 +317,13 @@
       "id": "farm-sepulcher",
       "instanceID": 2481,
       "mapID": 1970,
+      "mountSources": {
+        "1587": {
+          "boss": "The Jailer",
+          "difficulty": "mythic"
+        }
+      },
       "mounts": [1587],
-      "note": "Zereth Mortis. Zereth Overseer.",
       "x": 0.81,
       "y": 0.53
     }

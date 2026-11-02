@@ -35,3 +35,11 @@ Known and sourced rows live in `addon/Data/Holidays.lua` and `packages/contracts
 | What | Why it is open | How to get it |
 | --- | --- | --- |
 | Which of the two Warlords Timewalking vendor mounts (ids 1242 and 1243 as named in D213, unverified) is Alliance and which Horde | The side per mount is not sourced, so a plan could offer the wrong one | warcraft.wiki.gg [MountID](https://warcraft.wiki.gg/wiki/MountID) and each mount's wowhead page (its faction tag); then two catalog tasks with `faction`. |
+
+## Farm rewards
+
+The checked reward table is `addon/Data/Farm.lua`: `mountSources[mountID]` records one acquisition method per mount, with Warcraft Wiki and Wowhead links beside it. Journal ids were checked against [MountID](https://warcraft.wiki.gg/wiki/MountID). HFC now has 751 (Mythic Archimonde) and 758 (achievement 10149); Glacial Tidestorm 1219 belongs to Mythic Jaina in Battle of Dazar'alor. G.M.O.D. lists Mekkatorque on Normal/Heroic/Mythic; its alternate Raid Finder source is Jaina. The table records the boss route used by the idea, not every alternate way to obtain a mount.
+
+| What | Why it is open | How to get it |
+| --- | --- | --- |
+| A replacement mount reward for the removed `farm-palace` row | Its former mount 1219 comes from [Mythic Jaina](https://warcraft.wiki.gg/wiki/Glacial_Tidestorm), confirmed on [Wowhead](https://www.wowhead.com/item=166705/glacial-tidestorm); it has moved to `farm-bod`. No replacement id was guessed. | Verify an Eternal Palace reward's journal id on MountID and its boss/difficulty or achievement on its Warcraft Wiki and Wowhead pages before restoring the row. |

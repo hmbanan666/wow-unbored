@@ -447,6 +447,42 @@ check(not sawICC, "locked icecrown is hidden")
 check(sawOny, "unowned onyxia mount is offered")
 check(sawBod, "faction pin is present")
 check(#farm >= 3, "farm mode still has several runs")
+local hfcTask
+for _, task in ipairs(farm) do
+  if task.id == "farm-hfc" then
+    hfcTask = task
+  end
+end
+check(hfcTask and hfcTask.note:find("Archimonde (Mythic)", 1, true), "HFC names its Mythic drop boss")
+check(hfcTask and hfcTask.note:find("Finish {ach:10149} for {mount:758}", 1, true),
+  "HFC explains the achievement reward offline")
+check(hfcTask and not hfcTask.note:find("633", 1, true), "HFC never offers Hellfire Infernal offline")
+local savedMountInfo, savedLocale = C_MountJournal.GetMountInfoByID, ns.L
+C_MountJournal.GetMountInfoByID = function(id)
+  return "Mount " .. id, 1, 1, false, true, 1, false, false, nil, false, id == 751, id, false
+end
+for _, lang in ipairs({ "en", "ru" }) do
+  ns.L = ns.Locales[lang]
+  local hfcFound = false
+  for _, task in ipairs(ns.Providers.farm.Build({ faction = "Alliance", level = 80 })) do
+    if task.id == "farm-hfc" then
+      hfcFound = true
+      check(task.note == ns.T("FARM_ACHIEVEMENT", "{ach:10149}", "{mount:758}"),
+        "only the missing achievement mount is described in " .. lang)
+      check(task.complete.mountIDs[1] == 751 and task.complete.mountIDs[2] == 758,
+        "HFC completion uses the real rewards")
+    end
+    if task.id == "farm-ulduar" then
+      check(task.note:find(ns.T("FARM_no-keepers"), 1, true), "Ulduar names the keeper condition in " .. lang)
+    end
+    if task.id == "farm-bod" then
+      check(task.note:find("Lady Jaina Proudmoore", 1, true) and task.note:find("{mount:1219}", 1, true),
+        "Dazar'alor names the Tidestorm source in " .. lang)
+    end
+  end
+  check(hfcFound, "HFC remains open for its missing achievement mount in " .. lang)
+end
+C_MountJournal.GetMountInfoByID, ns.L = savedMountInfo, savedLocale
 
 C_MountJournal.GetMountInfoByID = function(id)
   return "Mount " .. id, 1, 1, false, true, 1, false, false, nil, false, true, id, false

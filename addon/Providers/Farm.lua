@@ -70,6 +70,33 @@ local function collectiblesOpen(entry)
   return true, missingNames
 end
 
+local function mountNotes(entry)
+  local notes = {}
+  for _, id in ipairs(entry.mounts or {}) do
+    local state = ns.MountState(id)
+    local source = entry.mountSources and entry.mountSources[id]
+    if source and (not state or not state.collected) then
+      local token = "{mount:" .. id .. "}"
+      if source.achievementID then
+        notes[#notes + 1] = ns.T("FARM_ACHIEVEMENT", "{ach:" .. source.achievementID .. "}", token)
+      elseif source.boss then
+        local details = {}
+        for _, field in ipairs({ "difficulty", "condition" }) do
+          if source[field] then
+            details[#details + 1] = ns.T("FARM_" .. source[field])
+          end
+        end
+        local boss = source.boss
+        if #details > 0 then
+          boss = boss .. " (" .. table.concat(details, ", ") .. ")"
+        end
+        notes[#notes + 1] = ns.T("FARM_DROP", boss, token)
+      end
+    end
+  end
+  return #notes > 0 and table.concat(notes, " ") or ns.T("NOTE_FARM")
+end
+
 local function Build(ctx)
   local tasks = {}
   local locked = ns.LockoutMap()
@@ -98,7 +125,7 @@ local function Build(ctx)
           y = pin.y,
           estMinutes = entry.estMinutes or 30,
           priority = index,
-          note = entry.note or ns.T("NOTE_FARM"),
+          note = mountNotes(entry),
           source = "farm",
           complete = { kind = "mount", mountIDs = entry.mounts },
         }

@@ -5,12 +5,9 @@ local _, ns = ...
 -- https://warcraft.wiki.gg/wiki/API_GetSavedInstanceInfo
 -- https://warcraft.wiki.gg/wiki/InstanceID
 -- Mount journal ids: https://warcraft.wiki.gg/wiki/MountID
---   Ashes 183, Onyxian Drake 349, Midnight 875, Smoldering Ember Wyrm 883,
---   Flametalon 425, Experiment 12-B 445, Life-Binder's Handmaiden 444,
---   Mimiron's Head 304, Invincible 363, Kor'kron Juggernaut 559,
---   Ironhoof Destroyer 613, Hellfire Infernal 633, Felsteel Annihilator 751,
---   Antoran Charhound 971, Shackled Ur'zul 954, Glacial Tidestorm 1219,
---   G.M.O.D. 1217, Ny'alotha Allseer 1293, Zereth Overseer 1587.
+-- Each mountSources entry names one verified way to earn that mount here.
+-- difficulty is required when the chosen boss only awards it in that mode.
+-- condition records encounter requirements beyond difficulty.
 -- Entrance coordinates are the Wowhead "Dungeon and Raid Entrances" guide
 -- (guide 8974), converted from 0-100 to 0-1. Several of those are rounded
 -- to whole numbers.
@@ -28,7 +25,11 @@ ns.Data.Farm = {
     y = 0.71,
     estMinutes = 15,
     mounts = { 349 },
-    note = "Dustwallow Marsh. Onyxian Drake from Onyxia.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Reins_of_the_Onyxian_Drake
+      -- https://www.wowhead.com/item=49636/reins-of-the-onyxian-drake
+      [349] = { boss = "Onyxia" },
+    },
   },
   {
     id = "farm-eye",
@@ -39,7 +40,11 @@ ns.Data.Farm = {
     y = 0.637,
     estMinutes = 20,
     mounts = { 183 },
-    note = "Netherstorm. Ashes of Al'ar from Kael'thas.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Ashes_of_Al%27ar
+      -- https://www.wowhead.com/item=32458/ashes-of-alar
+      [183] = { boss = "Kael'thas Sunstrider" },
+    },
   },
   {
     id = "farm-kara",
@@ -50,7 +55,14 @@ ns.Data.Farm = {
     y = 0.70,
     estMinutes = 25,
     mounts = { 875, 883 },
-    note = "Deadwind Pass. Midnight from Attumen, plus the ember wyrm.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Midnight%27s_Eternal_Reins
+      -- https://www.wowhead.com/item=142236/midnights-eternal-reins
+      [875] = { boss = "Attumen the Huntsman", difficulty = "mythic" },
+      -- https://warcraft.wiki.gg/wiki/Smoldering_Ember_Wyrm
+      -- https://www.wowhead.com/item=142552/smoldering-ember-wyrm
+      [883] = { boss = "Nightbane", difficulty = "mythic", condition = "timed-summon" },
+    },
   },
   {
     id = "farm-firelands",
@@ -61,7 +73,11 @@ ns.Data.Farm = {
     y = 0.77,
     estMinutes = 25,
     mounts = { 425 },
-    note = "Mount Hyjal portal. Flametalon of Alysrazor.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Flametalon_of_Alysrazor
+      -- https://www.wowhead.com/item=71665/flametalon-of-alysrazor
+      [425] = { boss = "Alysrazor" },
+    },
   },
   {
     id = "farm-dragon-soul",
@@ -72,15 +88,29 @@ ns.Data.Farm = {
     y = 0.50,
     estMinutes = 30,
     mounts = { 445, 444 },
-    note = "Caverns of Time in Tanaris, then Dragon Soul. Experiment 12-B and Life-Binder's Handmaiden.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Experiment_12-B
+      -- https://www.wowhead.com/item=78919/experiment-12-b
+      [445] = { boss = "Ultraxion", difficulty = "normal-heroic" },
+      -- https://warcraft.wiki.gg/wiki/Life-Binder%27s_Handmaiden
+      -- https://www.wowhead.com/spell=107845/life-binders-handmaiden
+      [444] = { boss = "Madness of Deathwing", difficulty = "heroic" },
+    },
   },
   {
     id = "farm-bod",
     instanceID = 2070,
     fallbackTitle = "Battle of Dazar'alor",
     estMinutes = 30,
-    mounts = { 1217 },
-    note = "G.M.O.D. Use your faction's door.",
+    mounts = { 1217, 1219 },
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/G.M.O.D.
+      -- https://www.wowhead.com/item=166518/g-m-o-d
+      [1217] = { boss = "High Tinker Mekkatorque", difficulty = "normal-heroic-mythic" },
+      -- https://warcraft.wiki.gg/wiki/Glacial_Tidestorm
+      -- https://www.wowhead.com/item=166705/glacial-tidestorm
+      [1219] = { boss = "Lady Jaina Proudmoore", difficulty = "mythic" },
+    },
     pins = {
       Alliance = { mapID = 1161, x = 0.70, y = 0.35 },
       Horde = { mapID = 1165, x = 0.39, y = 0.02 },
@@ -95,18 +125,11 @@ ns.Data.Farm = {
     y = 0.29,
     estMinutes = 30,
     mounts = { 613 },
-    note = "Gorgrond. Ironhoof Destroyer from Blackhand.",
-  },
-  {
-    id = "farm-palace",
-    instanceID = 2164,
-    fallbackTitle = "The Eternal Palace",
-    mapID = 1355,
-    x = 0.50,
-    y = 0.12,
-    estMinutes = 30,
-    mounts = { 1219 },
-    note = "Nazjatar. Glacial Tidestorm from Queen Azshara.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Ironhoof_Destroyer
+      -- https://www.wowhead.com/item=116660/ironhoof-destroyer
+      [613] = { boss = "Blackhand", difficulty = "mythic" },
+    },
   },
   {
     id = "farm-nya",
@@ -117,7 +140,11 @@ ns.Data.Farm = {
     y = 0.44,
     estMinutes = 30,
     mounts = { 1293 },
-    note = "Uldum entrance. Ny'alotha Allseer. Vale of Eternal Blossoms is the other door.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Ny%27alotha_Allseer
+      -- https://www.wowhead.com/spell=308814/nyalotha-allseer
+      [1293] = { boss = "N'Zoth the Corruptor", difficulty = "mythic" },
+    },
   },
   {
     id = "farm-icc",
@@ -128,7 +155,11 @@ ns.Data.Farm = {
     y = 0.867,
     estMinutes = 35,
     mounts = { 363 },
-    note = "Icecrown. Invincible from the Lich King.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Invincible%27s_Reins
+      -- https://www.wowhead.com/item=50818/invincibles-reins
+      [363] = { boss = "The Lich King", difficulty = "heroic25" },
+    },
   },
   {
     id = "farm-soo",
@@ -139,7 +170,11 @@ ns.Data.Farm = {
     y = 0.42,
     estMinutes = 35,
     mounts = { 559 },
-    note = "Vale of Eternal Blossoms. Kor'kron Juggernaut from Garrosh.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Kor%27kron_Juggernaut
+      -- https://www.wowhead.com/item=104253/korkron-juggernaut
+      [559] = { boss = "Garrosh Hellscream", difficulty = "mythic" },
+    },
   },
   {
     id = "farm-hfc",
@@ -149,8 +184,15 @@ ns.Data.Farm = {
     x = 0.47,
     y = 0.53,
     estMinutes = 35,
-    mounts = { 633, 751 },
-    note = "Tanaan Jungle. Hellfire Infernal and Felsteel Annihilator.",
+    mounts = { 751, 758 },
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Felsteel_Annihilator
+      -- https://www.wowhead.com/item=123890/felsteel-annihilator
+      [751] = { boss = "Archimonde", difficulty = "mythic" },
+      -- https://warcraft.wiki.gg/wiki/Infernal_Direwolf
+      -- https://www.wowhead.com/achievement=10149/glory-of-the-hellfire-raider
+      [758] = { achievementID = 10149 },
+    },
   },
   {
     id = "farm-ulduar",
@@ -161,7 +203,11 @@ ns.Data.Farm = {
     y = 0.176,
     estMinutes = 40,
     mounts = { 304 },
-    note = "The Storm Peaks. Mimiron's Head. A long, good raid.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Mimiron%27s_Head
+      -- https://www.wowhead.com/item=45693/mimirons-head
+      [304] = { boss = "Yogg-Saron", condition = "no-keepers" },
+    },
   },
   {
     id = "farm-antorus",
@@ -172,7 +218,14 @@ ns.Data.Farm = {
     y = 0.62,
     estMinutes = 40,
     mounts = { 971, 954 },
-    note = "Antoran Wastes. Charhound and Shackled Ur'zul.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Antoran_Charhound
+      -- https://www.wowhead.com/guide/raid-entrances-of-legion-6034
+      [971] = { boss = "Felhounds of Sargeras" },
+      -- https://warcraft.wiki.gg/wiki/Shackled_Ur%27zul
+      -- https://www.wowhead.com/npc=124828/argus-the-unmaker
+      [954] = { boss = "Argus the Unmaker", difficulty = "mythic" },
+    },
   },
   {
     id = "farm-sepulcher",
@@ -183,6 +236,10 @@ ns.Data.Farm = {
     y = 0.53,
     estMinutes = 40,
     mounts = { 1587 },
-    note = "Zereth Mortis. Zereth Overseer.",
+    mountSources = {
+      -- https://warcraft.wiki.gg/wiki/Fractal_Cypher_of_the_Zereth_Overseer
+      -- https://www.wowhead.com/item=190768/fractal-cypher-of-the-zereth-overseer
+      [1587] = { boss = "The Jailer", difficulty = "mythic" },
+    },
   },
 }
