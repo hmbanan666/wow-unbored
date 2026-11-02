@@ -128,16 +128,16 @@ test("Hellfire Citadel offers its drop and achievement mounts, never Hellfire In
   const list = suggest(input({ sessions: played(534) }));
   assert.equal(
     list.find((idea) => idea.id === "mount:751")?.goal,
-    "Defeat Archimonde (Mythic) for {mount:751}.",
+    "In {instance:1448|Hellfire Citadel}, defeat Archimonde (Mythic) for {mount:751}.",
   );
   const wolf = list.find((idea) => idea.id === "mount:758");
   assert.ok(wolf);
-  assert.match(wolf.goal, /Finish \{ach:10149\}/);
+  assert.match(wolf.goal, /finish \{ach:10149\}/);
   assert.deepEqual(wolf.rewards, ["{mount:758}"]);
   assert.ok(!JSON.stringify(list).includes("{mount:633}"));
   const onlyWolf = suggest(input({ sessions: played(534), mounts: { ids: packIds([751]) } }));
   assert.ok(!onlyWolf.some((idea) => idea.id === "mount:751"));
-  assert.match(onlyWolf.find((idea) => idea.id === "mount:758")!.goal, /Finish \{ach:10149\}/);
+  assert.match(onlyWolf.find((idea) => idea.id === "mount:758")!.goal, /finish \{ach:10149\}/);
 });
 
 test("every farm idea keeps its source and reward within the existing limits in both languages", () => {
@@ -484,7 +484,7 @@ test("a Russian Character gets every idea in Russian, with game names from token
   assert.equal(rare!.why, "Нет ни у одного из твоих 3 персонажей");
   const mount = list.find((item) => item.kind === "collection");
   assert.equal(mount!.titleToken, "{mount:349}");
-  assert.equal(mount!.goal, "Босс: Onyxia. Награда: {mount:349}.");
+  assert.equal(mount!.goal, "{instance:249|Onyxia's Lair}: победи Onyxia, награда {mount:349}.");
   for (const item of list) {
     assert.ok(!/ you |None of|Ends in/.test(`${item.goal} ${item.why ?? ""}`), item.goal);
     assert.ok(!item.request.wish.includes("{"), "the wish is plain words");
@@ -494,7 +494,7 @@ test("a Russian Character gets every idea in Russian, with game names from token
   const english = suggest(input({ sessions: played(70) }));
   assert.match(
     english.find((item) => item.kind === "collection")!.goal,
-    /^Defeat Onyxia for \{mount:349\}\.$/,
+    /^In \{instance:249\|Onyxia's Lair\}, defeat Onyxia for \{mount:349\}\.$/,
   );
 });
 

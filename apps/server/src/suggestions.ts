@@ -163,8 +163,8 @@ const TEXT: Record<
     alts: (count: number) => string;
     achievementGoal: (token: string) => string;
     rareGoal: (name: string) => string;
-    farmGoal: (boss: string, token: string) => string;
-    farmAchievement: (achievement: string, token: string) => string;
+    farmGoal: (place: string, boss: string, token: string) => string;
+    farmAchievement: (place: string, achievement: string, token: string) => string;
     farmDetails: Record<string, string>;
     almostTitle: string;
     almostGoal: (token: string) => string;
@@ -196,8 +196,9 @@ const TEXT: Record<
     alts: (count) => `None of your ${count} characters has it yet`,
     achievementGoal: (token) => `Earn ${token} close to where you play.`,
     rareGoal: (name) => `Hunt ${name} near where you play.`,
-    farmGoal: (boss, token) => `Defeat ${boss} for ${token}.`,
-    farmAchievement: (achievement, token) => `Finish ${achievement} for ${token}.`,
+    farmGoal: (place, boss, token) => `In ${place}, defeat ${boss} for ${token}.`,
+    farmAchievement: (place, achievement, token) =>
+      `In ${place}, finish ${achievement} for ${token}.`,
     farmDetails: {
       "normal-heroic": "Normal/Heroic",
       "normal-heroic-mythic": "Normal/Heroic/Mythic",
@@ -236,8 +237,9 @@ const TEXT: Record<
     alts: (count) => `Нет ни у одного из твоих ${count} персонажей`,
     achievementGoal: (token) => `Получи ${token} рядом с местами, где ты играешь.`,
     rareGoal: (name) => `Поохоться на ${name} рядом с местами, где ты играешь.`,
-    farmGoal: (boss, token) => `Босс: ${boss}. Награда: ${token}.`,
-    farmAchievement: (achievement, token) => `Заверши ${achievement}, чтобы получить ${token}.`,
+    farmGoal: (place, boss, token) => `${place}: победи ${boss}, награда ${token}.`,
+    farmAchievement: (place, achievement, token) =>
+      `${place}: заверши ${achievement}, награда ${token}.`,
     farmDetails: {
       "normal-heroic": "обычный/героический",
       "normal-heroic-mythic": "обычный и выше",
@@ -657,15 +659,19 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
       const source = row.mountSources?.[id];
       if (!source) continue;
       const token = `{mount:${id}}`;
+      const place =
+        row.instanceID === undefined
+          ? row.fallbackTitle
+          : `{instance:${row.instanceID}|${row.fallbackTitle}}`;
       let goal: string;
       if ("achievementID" in source) {
-        goal = say.farmAchievement(`{ach:${source.achievementID}}`, token);
+        goal = say.farmAchievement(place, `{ach:${source.achievementID}}`, token);
       } else {
         const details = [source.difficulty, source.condition]
           .filter((value) => value !== undefined)
           .map((value) => say.farmDetails[value]);
         const boss = source.boss + (details.length ? ` (${details.join(", ")})` : "");
-        goal = say.farmGoal(boss, token);
+        goal = say.farmGoal(place, boss, token);
       }
       candidates.push(
         altBonus(

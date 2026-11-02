@@ -65,7 +65,7 @@ UnboredSuggestions = {
         ["why"] = "None of your 2 characters has it yet",
       },
       {
-        ["goal"] = "Defeat Kael'thas Sunstrider for {mount:183}.",
+        ["goal"] = "In {instance:550|Tempest Keep}, defeat Kael'thas Sunstrider for {mount:183}.",
         ["id"] = "mount:183",
         ["kind"] = "collection",
         ["mapID"] = 109,
@@ -76,7 +76,7 @@ UnboredSuggestions = {
         ["request"] = {
           ["suggestionId"] = "mount:183",
           ["topic"] = "suggestion",
-          ["wish"] = "Tempest Keep: Defeat Kael'thas Sunstrider for a mount.",
+          ["wish"] = "Tempest Keep: In Tempest Keep, defeat Kael'thas Sunstrider for a mount.",
         },
         ["rewards"] = {
           "{mount:183}",
@@ -86,7 +86,7 @@ UnboredSuggestions = {
         ["why"] = "None of your 2 characters has it yet",
       },
       {
-        ["goal"] = "Defeat High Tinker Mekkatorque (Normal/Heroic/Mythic) for {mount:1217}.",
+        ["goal"] = "In {instance:2070|Battle of Dazar'alor}, defeat High Tinker Mekkatorque (Normal/Heroic/Mythic) for {mount:1217}.",
         ["id"] = "mount:1217",
         ["kind"] = "collection",
         ["reason"] = {
@@ -96,7 +96,7 @@ UnboredSuggestions = {
         ["request"] = {
           ["suggestionId"] = "mount:1217",
           ["topic"] = "suggestion",
-          ["wish"] = "Battle of Dazar'alor: Defeat High Tinker Mekkatorque (Normal/Heroic/Mythic) for a mount.",
+          ["wish"] = "Battle of Dazar'alor: In Battle of Dazar'alor, defeat High Tinker Mekkatorque (Normal/Heroic/Mythic) for a mount.",
         },
         ["rewards"] = {
           "{mount:1217}",
@@ -106,7 +106,7 @@ UnboredSuggestions = {
         ["why"] = "None of your 2 characters has it yet",
       },
       {
-        ["goal"] = "Defeat Lady Jaina Proudmoore (Mythic) for {mount:1219}.",
+        ["goal"] = "In {instance:2070|Battle of Dazar'alor}, defeat Lady Jaina Proudmoore (Mythic) for {mount:1219}.",
         ["id"] = "mount:1219",
         ["kind"] = "collection",
         ["reason"] = {
@@ -116,7 +116,7 @@ UnboredSuggestions = {
         ["request"] = {
           ["suggestionId"] = "mount:1219",
           ["topic"] = "suggestion",
-          ["wish"] = "Battle of Dazar'alor: Defeat Lady Jaina Proudmoore (Mythic) for a mount.",
+          ["wish"] = "Battle of Dazar'alor: In Battle of Dazar'alor, defeat Lady Jaina Proudmoore (Mythic) for a mount.",
         },
         ["rewards"] = {
           "{mount:1219}",
