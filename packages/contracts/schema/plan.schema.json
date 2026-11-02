@@ -96,7 +96,7 @@
           },
           "note": {
             "type": "string",
-            "description": "At most 1000 UTF-8 bytes, in short paragraphs. Expanded details scroll (ADR 0060). May carry entity markup.",
+            "description": "At most 1000 UTF-8 bytes, in short paragraphs. Expanded details scroll (ADR 0061). May carry entity markup.",
             "maxLength": 1000
           },
           "why": {

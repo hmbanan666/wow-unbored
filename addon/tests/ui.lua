@@ -1418,6 +1418,8 @@ local raidRaw = readJson("../packages/contracts/fixtures/plan-instance.json")
 local raid = assert(ns.ValidatePlan(raidRaw, false))
 check(#raid.tasks == 15 and raid.tasks[2].note == raidRaw.tasks[2].note,
   "travel and thirteen bosses preserve the longer Russian note")
+-- The test font measures characters, so use a full-length English note to overflow 180 pixels.
+raid.tasks[2].note = string.rep("Stand in the green circle, then run to the next platform. ", 20):sub(1, 1000)
 UnboredCharDB.request = nil
 ns.Session.answer = nil
 ns.Session:ApplyPlan(raid, "companion", true)
