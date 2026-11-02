@@ -288,6 +288,56 @@ export class BlizzardIds {
     );
   }
 
+  private journalCache = new Map<string, { until: number; ids: number[] }>();
+
+  /** Exact creature ids from a journal document, never creature display ids. */
+  async journalCreatures(
+    encounterID: number,
+    lang: "en" | "ru" = "en",
+  ): Promise<number[] | undefined> {
+    if (!this.config) return undefined;
+    const locale = lang === "ru" ? "ru_RU" : "en_US";
+    const key = `${encounterID}:${locale}`;
+    const cached = this.journalCache.get(key);
+    if (cached && cached.until > this.now()) return cached.ids;
+    const token = await this.accessToken();
+    if (!token) return undefined;
+    const region = this.config.region;
+    try {
+      const response = await this.fetchImpl(
+        `https://${region}.api.blizzard.com/data/wow/journal-encounter/${encounterID}?namespace=static-${region}&locale=${locale}`,
+        {
+          method: "GET",
+          headers: { authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        },
+      );
+      if (!response.ok) return undefined;
+      const body = (await response.json()) as { id?: number; creatures?: { id?: number }[] };
+      if (
+        !body ||
+        body.id !== encounterID ||
+        !Array.isArray(body.creatures) ||
+        body.creatures.length > 100 ||
+        Buffer.byteLength(JSON.stringify(body)) > 64_000
+      )
+        return undefined;
+      const ids = [
+        ...new Set(
+          body.creatures.flatMap((creature) =>
+            creature && Number.isSafeInteger(creature.id) && creature.id! > 0 ? [creature.id!] : [],
+          ),
+        ),
+      ];
+      if (this.journalCache.size >= 256)
+        this.journalCache.delete(this.journalCache.keys().next().value!);
+      this.journalCache.set(key, { until: this.now() + 86_400, ids });
+      return ids;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async creature(
     token: string,
     npcID: number,

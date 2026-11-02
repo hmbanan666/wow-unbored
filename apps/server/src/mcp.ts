@@ -6,6 +6,7 @@ import { z } from "zod";
 import { markupIds } from "@unbored/contracts";
 
 import type { BlizzardIds } from "./blizzard.ts";
+import { getInstanceGuide } from "./instances.ts";
 import { resolveCriteria } from "./criteria.ts";
 import { ID_KINDS, readable, changeSummary, type CharacterRow, type IdKind } from "./data.ts";
 import type { PlanRunner } from "./runner.ts";
@@ -34,7 +35,7 @@ const MARKUP = `Links (step title, note, why, condition text, plan goal, details
 - {instance:JOURNALINSTANCEID} a dungeon or raid by Adventure Guide instance id; a click opens the guide
 - {npc:ID} an npc; needs entities.npc["ID"] = { name, mapID, x, y } on the plan (or the answer), x and y in percent
 - {pin:MAPID:X:Y} a map point, e.g. {pin:2339:52.1:47.3|the forge}; X and Y are map percent 0 to 100 with at most one decimal (wowhead numbers), unlike task x/y
-Use only ids a tool gave you (get_player_profile, get_game_data, check_ids, get_suggestions, the request, resolve_criteria); never guess an id, write the plain name instead. check_ids confirms mount, toy and pet ids against the player's data. At most 12 tokens per step and 12 in goal plus details. A bad token is replaced by its label and listed in warnings in the reply: read them and fix the plan if a link mattered.`;
+Use only ids a tool gave you (get_player_profile, get_game_data, check_ids, get_suggestions, the request, resolve_criteria, get_instance_guide); never guess an id, write the plain name instead. check_ids confirms mount, toy and pet ids against the player's data. At most 12 tokens per step and 12 in goal plus details. A bad token is replaced by its label and listed in warnings in the reply: read them and fix the plan if a link mattered.`;
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
@@ -61,7 +62,7 @@ Each task:
 - mapID: optional ui map id
 - x and y: optional, both required together, fractions of the map from 0 to 1. Wowhead 0-100 coordinates must be divided by 100.
 - why: optional, at most 120 bytes, one short reason shown under the step. May carry tokens.
-- note: optional, at most 400 bytes. Shown under Show more; say where to go and what to do.
+- note: optional, at most 1000 bytes. Use short paragraphs; long details scroll under Show more; say where to go and what to do.
 - rewards: optional, up to 3 single tokens this step gives, same kinds as the plan rewards.
 - condition: optional { text, check }. text (at most 160 bytes) is shown before the step, e.g. "If you have 5,000 {currency:1166}". check = { kind: currency | item | level | quest | ach, id, atLeast? } is evaluated live in the game: met shows Ready; unmet shows the live count and Skip moves past without counting it as skipped. For level, id is the level. Never guess the player's numbers; let the check read them.
 - waypoints: optional, 1 to 10 points [{ mapID, x, y, label }] in route order. x and y are 0 to 1, label at most 80 bytes. The addon sets the native waypoint arrow (and TomTom when installed) on point 1 and moves to the next point when the player comes within about 30 yards. Use it for a multi-stop task. Without waypoints the task's own mapID, x, y is the single point.
@@ -160,6 +161,7 @@ const LEASE_TOOLS = new Set([
   "get_progress",
   "get_current_plan",
   "resolve_criteria",
+  "get_instance_guide",
   "put_plan",
   "answer_request",
   "fail_request",
@@ -1031,6 +1033,27 @@ export function createMcpServer(
       const request = await store.failRequest(requestId, reason.slice(0, 400));
       if (!request) return failure(new Error("No request with that id."));
       return text({ request: publicRequest(request) });
+    },
+  );
+
+  registerTool(
+    "get_instance_guide",
+    {
+      title: "Read an instance guide",
+      description:
+        "Call before planning a dungeon or raid. Returns bosses in journal order, floor names and fractional UiMap points, achievement requirements with proved boss mappings, and unmapped criteria. instanceID is a journal id (669 for Hellfire Citadel), never the lockout Map id (1448). achievementID can infer a unique instance; supply both to select one for a multi-instance achievement. Entrance/door/portal paths are unknown unless another source supplies them. Never turn unknown coordinates or creature display ids into waypoints or links.",
+      inputSchema: {
+        instanceID: z.number().int().positive().optional(),
+        achievementID: z.number().int().positive().optional(),
+        lang: z.enum(["en", "ru"]).default("en"),
+      },
+    },
+    async (query) => {
+      try {
+        return text(await getInstanceGuide(dataDir, query, { gameIds }));
+      } catch (error) {
+        return failure(error);
+      }
     },
   );
 
