@@ -26,6 +26,7 @@ export const SUGGESTION_LIMITS = {
   perRule: 3,
   title: 40,
   goal: 140,
+  action: 60,
   why: 100,
   rewards: 3,
 } as const;
@@ -153,6 +154,7 @@ const TEXT: Record<
   IdeaLang,
   {
     generic: Record<string, string>;
+    action: Record<SuggestionKind, string>;
     eventGoal: (name: string, left: number) => string;
     startsSoon: string;
     startsIn: (days: number) => string;
@@ -166,12 +168,21 @@ const TEXT: Record<
     farmGoal: (place: string, boss: string, token: string) => string;
     farmAchievement: (place: string, achievement: string, token: string) => string;
     farmDetails: Record<string, string>;
+    farmBossAction: (boss: string) => string;
+    farmMetaAction: string;
     almostTitle: string;
     almostGoal: (token: string) => string;
     almostWhy: (done: number, total: number) => string;
   }
 > = {
   en: {
+    action: {
+      achievement: "Complete the remaining criteria",
+      chain: "Continue the quest chain",
+      collection: "Run it for a missing mount",
+      event: "Complete the event activities",
+      rare: "Find and defeat this rare",
+    },
     generic: {
       ach: "an achievement",
       mount: "a mount",
@@ -199,6 +210,8 @@ const TEXT: Record<
     farmGoal: (place, boss, token) => `In ${place}, defeat ${boss} for ${token}.`,
     farmAchievement: (place, achievement, token) =>
       `In ${place}, finish ${achievement} for ${token}.`,
+    farmBossAction: (boss) => `Defeat ${boss}`,
+    farmMetaAction: "Finish the raid's meta achievement",
     farmDetails: {
       "normal-heroic": "Normal/Heroic",
       "normal-heroic-mythic": "Normal/Heroic/Mythic",
@@ -213,6 +226,13 @@ const TEXT: Record<
     almostWhy: (done, total) => `${done} of ${total} done`,
   },
   ru: {
+    action: {
+      achievement: "Выполни условия",
+      chain: "Продолжи цепочку",
+      collection: "Пройди ради маунта",
+      event: "Выполни дела события",
+      rare: "Найди и победи",
+    },
     generic: {
       ach: "достижение",
       mount: "маунт",
@@ -240,6 +260,8 @@ const TEXT: Record<
     farmGoal: (place, boss, token) => `${place}: победи ${boss}, награда ${token}.`,
     farmAchievement: (place, achievement, token) =>
       `${place}: заверши ${achievement}, награда ${token}.`,
+    farmBossAction: (boss) => `Победи: ${boss}`,
+    farmMetaAction: "Заверши мета-достижение рейда",
     farmDetails: {
       "normal-heroic": "обычный/героический",
       "normal-heroic-mythic": "обычный и выше",
@@ -332,6 +354,8 @@ function make(
   const goal = fit(fields.goal, SUGGESTION_LIMITS.goal, bytes);
   const rewards = (fields.rewards ?? []).slice(0, SUGGESTION_LIMITS.rewards);
   const out: Candidate = {
+    displayKind: rule,
+    action: TEXT[lang].action[rule],
     ...fields,
     id,
     kind: rule,
@@ -344,6 +368,7 @@ function make(
     key: rewards[0] ?? id,
   };
   if (out.why !== undefined) out.why = fit(out.why, SUGGESTION_LIMITS.why, bytes);
+  if (out.action !== undefined) out.action = fit(out.action, SUGGESTION_LIMITS.action, bytes);
   return out;
 }
 
@@ -457,7 +482,13 @@ export function openChains(sections: Map<string, SectionRow>): OpenChain[] {
     const total = Number(line.total);
     const title = typeof line.name === "string" ? line.name.trim() : "";
     if (!Number.isInteger(questLineID) || questLineID <= 0 || !title) continue;
-    if (!Number.isInteger(total) || total <= 0 || !Number.isInteger(done) || done >= total)
+    if (
+      !Number.isInteger(total) ||
+      total <= 0 ||
+      !Number.isInteger(done) ||
+      done < 0 ||
+      done >= total
+    )
       continue;
     const nextQuestID = Number.isInteger(line.nextQuestID)
       ? (line.nextQuestID as number)
@@ -567,6 +598,7 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
       make(lang, "chain", `chain:${questLineID}`, score, {
         title,
         goal: say.chainGoal(done, total),
+        progress: { done, total },
         ...(why !== undefined ? { why } : {}),
         ...(reason !== undefined ? { reason } : {}),
         ...(mapID !== undefined ? { mapID } : {}),
@@ -584,8 +616,9 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
   const catalogAchievements = new Map(
     [...catalog.achievements, ...catalog.exploration].map((row) => [row.achievementID, row]),
   );
+  const progress = new Map(achievementProgress(sections).map((row) => [row.id, row]));
   const almost = new Set<number>();
-  for (const row of achievementProgress(sections)) {
+  for (const row of progress.values()) {
     if (row.ratio < ALMOST_DONE_RATIO) continue;
     almost.add(row.id);
     const token = `{ach:${row.id}}`;
@@ -594,6 +627,7 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
       make(lang, "achievement", `ach:${row.id}`, SCORE.almostDone, {
         title: known?.fallbackTitle ?? say.almostTitle,
         titleToken: token,
+        progress: { done: row.d, total: row.t },
         goal: say.almostGoal(
           lang === "en" && known ? `{ach:${row.id}|${known.fallbackTitle}}` : token,
         ),
@@ -611,11 +645,13 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     }
     if (almost.has(row.achievementID)) continue;
     const token = `{ach:${row.achievementID}}`;
+    const knownProgress = progress.get(row.achievementID);
     candidates.push(
       altBonus(
         make(lang, "achievement", `ach:${row.achievementID}`, SCORE.achievement, {
           title: row.fallbackTitle,
           titleToken: token,
+          ...(knownProgress ? { progress: { done: knownProgress.d, total: knownProgress.t } } : {}),
           // The catalog name is English: a Russian goal lets the game name it.
           goal: say.achievementGoal(
             lang === "en" ? `{ach:${row.achievementID}|${row.fallbackTitle}}` : token,
@@ -664,14 +700,17 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
           ? row.fallbackTitle
           : `{instance:${row.instanceID}|${row.fallbackTitle}}`;
       let goal: string;
+      let action: string;
       if ("achievementID" in source) {
         goal = say.farmAchievement(place, `{ach:${source.achievementID}}`, token);
+        action = say.farmMetaAction;
       } else {
         const details = [source.difficulty, source.condition]
           .filter((value) => value !== undefined)
           .map((value) => say.farmDetails[value]);
         const boss = source.boss + (details.length ? ` (${details.join(", ")})` : "");
         goal = say.farmGoal(place, boss, token);
+        action = say.farmBossAction(boss);
       }
       candidates.push(
         altBonus(
@@ -684,6 +723,16 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
               title: row.fallbackTitle,
               titleToken: token,
               goal,
+              displayKind: "mount",
+              action,
+              ...(sections.has("mounts")
+                ? {
+                    progress: {
+                      done: (row.mounts ?? []).filter((owned) => mounts.has(owned)).length,
+                      total: (row.mounts ?? []).length,
+                    },
+                  }
+                : {}),
               rewards: [token],
               ...(row.mapID !== undefined ? { mapID: row.mapID } : {}),
             },

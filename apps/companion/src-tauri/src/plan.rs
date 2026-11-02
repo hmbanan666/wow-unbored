@@ -299,9 +299,10 @@ const EMPTY_SUGGESTIONS_LUA: &str = "-- Written by Unbored Companion. No ideas y
 pub const SUGGESTIONS_MAX_BYTES: usize = 20 * 1024;
 pub const SUGGESTIONS_MAX_LITERALS: usize = 2_000;
 const MAX_SUGGESTIONS: usize = 10;
-const SUGGESTION_TEXT: [(&str, usize); 6] = [
+const SUGGESTION_TEXT: [(&str, usize); 7] = [
     ("id", 120),
     ("kind", 20),
+    ("displayKind", 20),
     ("title", 40),
     ("titleToken", 60),
     ("goal", 140),
@@ -622,6 +623,23 @@ fn clean_suggestion(item: &Value) -> Option<Value> {
     }
     if !(out.contains_key("id") && out.contains_key("title") && out.contains_key("goal")) {
         return None;
+    }
+    if let Some(action) = item["action"]
+        .as_str()
+        .filter(|text| !text.trim().is_empty() && !text.contains(['{', '}', '|', '\r', '\n']))
+    {
+        out.insert("action".into(), Value::String(clip(action, 60)));
+    }
+    let progress = &item["progress"];
+    if let (Some(done), Some(total)) = (progress["done"].as_f64(), progress["total"].as_f64()) {
+        if done >= 0.0 && total > 0.0 && done <= total {
+            out.insert(
+                "progress".into(),
+                serde_json::json!({
+                    "done": progress["done"], "total": progress["total"],
+                }),
+            );
+        }
     }
     let rewards: Vec<Value> = item["rewards"]
         .as_array()
@@ -1463,12 +1481,55 @@ mod tests {
     }
 
     #[test]
+    fn idea_button_fields_are_bounded_and_old_payloads_still_work() {
+        let written = |idea: &Value| {
+            let body = serde_json::json!({ "v": 1, "computedAt": 1, "characters": { "Realm-Hero": [idea] } });
+            let lua = render_suggestions_lua(&body);
+            let parsed = parse_saved_variables(&lua).unwrap();
+            parsed["UnboredSuggestions"].to_json()["characters"]["Realm-Hero"][0].clone()
+        };
+        let idea = serde_json::json!({
+            "id": "a", "kind": "achievement", "title": "A", "goal": "G", "rewards": [],
+        });
+        let old = written(&idea);
+        assert!(old.get("action").is_none() && old.get("progress").is_none());
+        let mut newer = idea.clone();
+        newer["action"] = Value::String("я".repeat(40));
+        newer["progress"] = serde_json::json!({"done": 3, "total": 16});
+        let clean = written(&newer);
+        assert_eq!(clean["action"], "я".repeat(30));
+        assert_eq!(
+            clean["progress"],
+            serde_json::json!({"done": 3, "total": 16})
+        );
+        for progress in [
+            serde_json::json!({"done": -1, "total": 16}),
+            serde_json::json!({"done": 17, "total": 16}),
+            serde_json::json!({"done": 0, "total": 0}),
+        ] {
+            newer["progress"] = progress;
+            assert!(written(&newer).get("progress").is_none());
+        }
+        newer["action"] = Value::String("Do {quest:1}".into());
+        assert!(written(&newer).get("action").is_none());
+    }
+
+    #[test]
     fn writes_the_ideas_the_addon_reads_within_budget() {
         const IDEAS: &str =
             include_str!("../../../../packages/contracts/fixtures/suggestions.json");
         const IDEAS_LUA: &str =
             include_str!("../../../../packages/contracts/fixtures/suggestions.lua");
         let body: Value = serde_json::from_str(IDEAS).unwrap();
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/schema/suggestions.schema.json"
+        ))
+        .unwrap();
+        let validator = jsonschema::validator_for(&schema).expect("suggestions schema");
+        assert!(
+            validator.is_valid(&body),
+            "the shared fixture matches the JSON schema"
+        );
         let lua = render_suggestions_lua(&body);
         if std::env::var_os("UNBORED_WRITE_FIXTURES").is_some() {
             fs::write(
@@ -1491,6 +1552,17 @@ mod tests {
         let list = crate::savedvars::array_items(get(chars, "Silvermoon-Mira").unwrap());
         assert_eq!(list.len(), 6);
         assert_eq!(get(list[0], "kind").and_then(|v| v.as_str()), Some("event"));
+        assert_eq!(
+            get(list[0], "action").and_then(|v| v.as_str()),
+            Some("Complete the event activities")
+        );
+        assert_eq!(
+            get(list[3], "displayKind").and_then(|v| v.as_str()),
+            Some("mount")
+        );
+        let progress = get(list[1], "progress").expect("known chain progress reaches the addon");
+        assert_eq!(get(progress, "done").and_then(|v| v.as_u64()), Some(3));
+        assert_eq!(get(progress, "total").and_then(|v| v.as_u64()), Some(8));
         let chain = list
             .iter()
             .find(|item| get(item, "kind").and_then(|v| v.as_str()) == Some("chain"))

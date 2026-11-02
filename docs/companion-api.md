@@ -224,22 +224,31 @@ The addon checks every line again: it drops lines that say delete, never shows s
 
 ## GET /v1/suggestions
 
-Ideas for the choice Bubble ([ADR 0040](adr/0040-suggestions-from-data.md)), for the characters this device uploaded, with the companion bearer. The Server makes them without an LLM from the player's Game data and the Catalog (`packages/contracts/catalog/catalog.json`, exported from `addon/Data/*.lua`), 30 seconds after the last snapshot upload of the Account, at most 6 per character. The shape is `packages/contracts/schema/suggestions.schema.json`; the fixture is `packages/contracts/fixtures/suggestions.json`:
+Ideas for the choice Bubble ([ADR 0040](adr/0040-suggestions-from-data.md)), for the characters this device uploaded, with the companion bearer. The Server makes them without an LLM from the player's Game data and the Catalog (`packages/contracts/catalog/catalog.json`, exported from `addon/Data/*.lua`), 30 seconds after the last snapshot upload of the Account, at most 10 per character. The shape is `packages/contracts/schema/suggestions.schema.json`; the fixture is `packages/contracts/fixtures/suggestions.json`:
 
 ```json
 { "v": 1, "computedAt": 1793361600, "characters": { "Silvermoon-Mira": [
   { "id": "mount:183", "kind": "collection", "title": "Tempest Keep", "goal": "Run {instance:550|Tempest Keep} for {mount:183}.", "titleToken": "{instance:550}",
     "why": "None of your 2 characters has it yet", "rewards": ["{mount:183}"], "mapID": 109,
     "reason": { "kind": "alts", "count": 2 },
+    "displayKind": "mount", "action": "Run it for a missing mount", "progress": { "done": 0, "total": 1 },
     "request": { "topic": "suggestion", "suggestionId": "mount:183", "wish": "Tempest Keep: Run Tempest Keep for a mount." } }
 ] } }
 ```
 
-`kind` is `event`, `achievement`, `rare` or `collection`. `reason` lets the game write the line under the title in the player's language (`ends` with `at`, `alts` with `count`, `near` with `mapID`); `why` is the same line from the Server. An idea with `expiresAt` in the past is not shown.
+`kind` is `event`, `achievement`, `rare`, `collection` or `chain`. `reason` lets the game write the line under the title in the player's language (`ends` with `at`, `alts` with `count`, `near` with `mapID`); `why` is the same line from the Server. An idea with `expiresAt` in the past is not shown.
+
+Optional button fields ([ADR 0060](adr/0060-idea-button-details.md)):
+
+- `displayKind`: a localized label key, one of the existing kinds or `mount`. Mount farms use `mount` while retaining `kind: "collection"` for ranking and Taste.
+- `action`: one plain-text line in the Character's language, 1–60 UTF-8 bytes, without tokens, game markup or line breaks. Every Server rule supplies it.
+- `progress: { done, total }`: nonnegative `done`, positive `total`, `done <= total`. Achievements use known `achProgress` counts (including catalog ideas below the almost-done threshold); Chains use quest counts; mount farms use owned/total mounts in that farm's catalog list only when the `mounts` Section exists. Unknown progress is omitted, never assumed zero. Events and rares have no single completion total; reputation/renown currently has no Suggestion rule.
+
+The two-line button shows title plus kind/progress, then action, truncating text on UTF-8 boundaries to fit its existing width. Hover keeps the full title, Goal, why/reason and all Rewards using the Plan reward renderer and game names. Version stays 1: old addons ignore these fields, and the current addon retains its previous title/reason layout for old payloads without them. The Companion forwards these fields within its existing file budget.
 
 Ideas are written in the Character's language, English or Russian: `lang` in its `char` Section (the language the addon speaks), else the `lang` of its last Request, else English. The Catalog only has English names, so a Russian idea names achievements and dungeons by token (`{ach:1956}`, `{instance:249}`) and carries `titleToken`; the game shows its own localized name for them, and the English `title` when it cannot resolve the id. Rare names stay English.
 
-The Companion fetches it on every sync and writes `Unbored_Plan/Suggestions.lua` (`UnboredSuggestions = {...}`, the same shape) only when it changed, within 20 KB and 2,000 literals, dropping the last ideas of each character until it fits. The game reads it when the UI loads, shows up to 4 ideas with the Server's first, and adds up to 2 live ones of its own (an active holiday, a curated rare in this zone), one per id, reward or holiday. The MCP tool `get_suggestions` returns the same ideas to the Planner.
+The Companion fetches it on every sync and writes `Unbored_Plan/Suggestions.lua` (`UnboredSuggestions = {...}`, the same shape) only when it changed, within 20 KB and 2,000 literals, dropping the last ideas of each character until it fits. The game reads it when the UI loads, shows up to 4 ideas with the Server's first, and adds up to 3 live ones of its own (a calendar event, an unfinished Chain, a curated rare in this zone), one per id, reward or holiday. The MCP tool `get_suggestions` returns the same ideas to the Planner.
 
 ## POST /v1/snapshot
 
