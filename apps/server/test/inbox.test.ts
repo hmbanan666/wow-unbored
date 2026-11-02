@@ -304,6 +304,70 @@ pgTest("Forget while queued erases the queued bytes; a revoke drops them unread"
   }
 });
 
+for (const forget of [false, true]) {
+  pgTest(`a worker yields a busy device to ${forget ? "Forget" : "a later retry"}`, async () => {
+    const built = build(true);
+    let work: Promise<boolean> | undefined;
+    try {
+      await pair(built, "busy-device", "busy-device-secret");
+      await upload(built, body({}), "busy-device-secret");
+      await built.inbox!.processNext();
+      await upload(built, body({ savedAt: fixture.savedAt + 60 }), "busy-device-secret");
+      let markLocked!: () => void;
+      let release!: () => void;
+      const locked = new Promise<void>((resolve) => {
+        markLocked = resolve;
+      });
+      const proceed = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      // This transaction is Forget's connection; the worker uses another.
+      const holder = built.store.db.tx(async () => {
+        await built.store.db.get(`SELECT id FROM devices WHERE id = ? FOR UPDATE`, "busy-device");
+        markLocked();
+        await proceed;
+        if (forget) await built.store.forgetDevice("busy-device");
+      });
+      await locked;
+      let finished = false;
+      work = built.inbox!.processNext().finally(() => {
+        finished = true;
+      });
+      void work.catch(() => {});
+      // Observe the old worker waiting for the device, or the fixed worker
+      // yielding it. Only then let Forget ask for the Account lock.
+      try {
+        const deadline = Date.now() + 2000;
+        while (!finished) {
+          const blocked = await built.store.db.get(`SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'
+              AND query LIKE 'SELECT status FROM devices%'`);
+          if (blocked) break;
+          assert.ok(Date.now() < deadline, "worker reached the device lock");
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        if (!forget) assert.equal(finished, true, "busy devices must not block the worker");
+      } finally {
+        release();
+        await holder;
+      }
+      assert.equal(await work, false);
+      if (forget) {
+        assert.equal((await rows(built)).length, 0);
+        assert.equal((await built.store.data.characters()).length, 0);
+      } else {
+        const queued = (await rows(built)).find((row) => row.state === "queued");
+        assert.equal(queued?.attempts, 0, "busy is neither revoked nor an ingest failure");
+        assert.equal(await built.inbox!.processNext(), true);
+        assert.ok((await rows(built)).every((row) => row.state === "done"));
+      }
+    } finally {
+      await work?.catch(() => {});
+      built.close();
+    }
+  });
+}
+
 pgTest("the Account migration moves queued uploads to the new key", async () => {
   const built = build(true);
   try {
