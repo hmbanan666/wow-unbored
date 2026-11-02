@@ -583,12 +583,29 @@ check(ns.Session:RefreshOffer() == nil, "right after a load there is nothing to 
 local loadedAt = ns.Session.loadedAt
 req.sentAt = ns.Now() - ns.ETA_DEFAULT_SECONDS - 1
 check(ns.Session.requestNote == "sending" and ns.Session:RefreshOffer() == nil,
-  "no ETA offer while the Companion file does not name the request (D82)")
+  "no ETA offer for an unacknowledged request without Companion status")
+UnboredCompanionStatus = { seenAt = ns.Session.loadedAt, pairing = "approved", online = true }
+check(ns.Session:RefreshOffer() ~= nil,
+  "after the send reload and ETA, a live Companion offers Refresh without the request id in the file")
+for _, status in ipairs({
+  { seenAt = ns.Session.loadedAt - ns.COMPANION_STALE_SECONDS - 1 },
+  { seenAt = ns.Session.loadedAt, pairing = "pending" },
+  { seenAt = ns.Session.loadedAt, pairing = "revoked" },
+  { seenAt = ns.Session.loadedAt, online = false },
+}) do
+  UnboredCompanionStatus = status
+  check(ns.Session:RefreshOffer() == nil, "a Companion problem suppresses the sending ETA offer")
+end
+UnboredCompanionStatus = nil
 local fileBefore = UnboredExternalPlan
 UnboredExternalPlan = { v = 1, kind = "plan", requestId = "req-old", requestStatus = "failed" }
 ns.Session:NoteRequest()
 check(ns.Session.requestNote == "sending" and ns.Session:RefreshOffer() == nil,
-  "a stale failed request in the file never offers a Refresh")
+  "a stale failure alone cannot offer a Refresh")
+UnboredCompanionStatus = { seenAt = ns.Session.loadedAt, pairing = "approved", online = true }
+check(ns.Session:RefreshOffer() ~= nil and ns.Session:FlowState() == "waiting",
+  "a live Companion permits the ETA guess despite a different request's stale failure")
+UnboredCompanionStatus = nil
 UnboredExternalPlan = { v = 1, kind = "plan", requestId = req.id, requestStatus = "pending", eta = 600 }
 ns.Session:NoteRequest()
 check(ns.Session.Eta() == 600 and ns.Session:RefreshOffer() == nil, "the ETA comes from the Companion file")
@@ -657,6 +674,8 @@ UnboredExternalPlan = {
   },
 }
 check(ns.Session:AutoApplyExternal() == false, "a plan for another request is ignored")
+check(ns.Session.requestNote == "sending" and ns.Session:FlowState() == "waiting",
+  "before the next login, the request still waits without an acknowledgement")
 UnboredExternalPlan.requestId = req.id
 UnboredExternalPlan.tasks = {
   {
@@ -670,7 +689,8 @@ UnboredExternalPlan.tasks = {
     },
   },
 }
-check(ns.Session:AutoApplyExternal() == true, "the matching plan starts with no prompt")
+ns.Session:Start(true)
+check(ns.Session:FlowState() == "idle", "login picks up the matching plan even after a sending note")
 check(ns.Session:Current() and ns.Session:Current().id == "req:1", "the requested plan is current")
 check(UnboredCharDB.request == nil, "the request is cleared once its plan starts")
 check(ns.Session:AutoApplyExternal() == false, "the same requested plan does not restart")

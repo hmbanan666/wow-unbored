@@ -1879,6 +1879,7 @@ function ns.Mascot:Refresh()
   local key = view.kind .. ":" .. tostring(view.key or "")
   local old = self.view
   local changed = key ~= self.lastKey
+  local due = ns.Session:RefreshOffer()
   if changed and old and old.message
     and (old.kind == "answer" or old.kind == "offer" or old.kind == "failed") then
     self:Echo(old.message, old.kind == "answer")
@@ -1888,15 +1889,15 @@ function ns.Mascot:Refresh()
       self:Echo(view.before[i], true)
     end
   end
-  if changed and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice" or view.kind == "offer"
+  if (changed or (due and due.kind ~= self.offerKind))
+    and (view.kind == "answer" or view.kind == "failed" or view.kind == "choice" or view.kind == "offer"
     or view.kind == "update" or view.kind == "welcome" or view.kind == "confirm"
-    or view.kind == "expired" or ns.Session:RefreshOffer() ~= nil) then
+    or view.kind == "expired" or due ~= nil) then
     saved.collapsed = false
   end
   local stepped = changed and view.kind == "step" and old and old.kind == "step"
   self.lastKey = key
   self.view = view
-  local due = ns.Session:RefreshOffer()
   self.offerKind = due and due.kind or nil
   self.leadShown = leadText(self) ~= nil
   self.flowShown = ns.Session:FlowState()

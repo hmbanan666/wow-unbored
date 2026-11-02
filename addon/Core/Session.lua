@@ -1033,15 +1033,17 @@ function ns.Session.Eta()
   return math.max(60, math.min(900, eta))
 end
 
--- The one Refresh offer (D68): when the ETA has passed for a Request the
--- Companion file names as being prepared. Without that id in the file a
--- Refresh would find nothing, so Bory never guesses then (D82).
+-- The one Refresh offer (D68): after the ETA, or two minutes after a check.
+-- Send now writes the Request during its reload, before the Companion can
+-- name it in the loaded file. A live Companion also permits that ETA guess;
+-- only a matching Request can supply the actual Plan (D82, amended by 0033).
 function ns.Session:RefreshOffer()
   local req = self:PendingRequest()
   if not req or self:FlowState() ~= "waiting" or self.CompanionProblem() then
     return nil
   end
-  if self.requestNote ~= "preparing" then
+  if self.requestNote ~= "preparing"
+    and not (self.requestNote == "sending" and self.CompanionStatus()) then
     return nil
   end
   local due
@@ -1059,7 +1061,8 @@ end
 -- Pending after an ETA Refresh: "Almost. Give me a couple more minutes."
 function ns.Session:CheckedAgain()
   local req = self:PendingRequest()
-  return req ~= nil and (tonumber(req.checks) or 0) > 0 and self.requestNote == "preparing"
+  return req ~= nil and (tonumber(req.checks) or 0) > 0
+    and (self.requestNote == "preparing" or (self.requestNote == "sending" and self.CompanionStatus() ~= nil))
 end
 
 ns.ITEM_NOTES_MAX = 200
