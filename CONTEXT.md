@@ -62,8 +62,12 @@ One paired Companion install. The owner approves a new one via MCP. After Forget
 _Avoid_: account, user, token, key (in anything the player sees).
 
 **Planner**
-Whoever fulfils Requests. Today an external agent reached by webhook; later an LLM on the Server.
-_Avoid_: AI, bot, GPT, the server (the Server only stores and relays).
+Whoever fulfils Requests: a Plan runner that claims them from the Server's queue, or the legacy webhook (ADR 0058).
+_Avoid_: AI, bot, chatbot, the server (the Server only stores and relays).
+
+**Plan runner**
+An outside program holding the runner token. It claims one Request at a time with a lease, keeps it alive with heartbeats, and answers it through the MCP tools with a lease token scoped to that Request and its Account (ADR 0058). Which program it is lives in deploy config, never in the repo.
+_Avoid_: worker (that is the upload inbox), vendor or model names.
 
 **Load**
 The click that reloads the UI after an addon update: "Press Load to finish the update". For new data the same click is called Refresh (see Refresh offer). Both are hardware events, so they may run ReloadUI; neither is ever needed for normal play.
