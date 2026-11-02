@@ -14,6 +14,7 @@ import {
 import { fromJson, SqliteDb, type Db } from "./db.ts";
 import { buildHoldings, WARBAND_PLACE, type Holdings, type HoldingsPlace } from "./holdings.ts";
 import { PlanError } from "./plan.ts";
+import { historyCutoff } from "./retention.ts";
 
 // docs/adr/0029: the Companion posts only the Sections that changed; the
 // Server keeps the latest body per Section and a dated diff for each change.
@@ -630,7 +631,8 @@ const SQLITE_SCHEMA = `
 const HISTORY_FLOOR = Date.UTC(2025, 0, 1) / 1000;
 export function historyAt(db: Db, at: number, now: number): number {
   if (!db.pg) return at;
-  return at >= HISTORY_FLOOR && at <= now + 31 * 86_400 ? at : now;
+  const floor = Math.max(HISTORY_FLOOR, historyCutoff(now));
+  return at >= floor && at <= now + 31 * 86_400 ? at : now;
 }
 
 export class DataStore {
