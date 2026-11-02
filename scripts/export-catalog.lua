@@ -84,6 +84,7 @@ local catalog = {
   achievements = ns.Data.FunAchievements,
   exploration = ns.Data.Exploration,
   rares = ns.Data.Rares,
+  -- Keep mountSources keyed by journal id, alongside the mounts each row offers.
   farm = ns.Data.Farm,
 }
 local text = encode(catalog, "") .. "\n"

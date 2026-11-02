@@ -9,7 +9,7 @@ import { packIds, sectionHash, suggestionsBodySchema } from "@unbored/contracts"
 
 import { createApp } from "../src/app.ts";
 import type { SectionRow } from "../src/data.ts";
-import { loadCatalog, suggest, type SuggestInput } from "../src/suggestions.ts";
+import { loadCatalog, suggest, SUGGESTION_LIMITS, type SuggestInput } from "../src/suggestions.ts";
 import { BACKENDS, postgresPerFile } from "./postgres-db.ts";
 import { storage } from "./backend.ts";
 
@@ -119,6 +119,66 @@ test("achievements and rares come from the zones the player has been in", async 
     }),
   );
   assert.equal(looted.filter((item) => item.kind !== "collection").length, 0);
+});
+
+test("Hellfire Citadel offers its drop and achievement mounts, never Hellfire Infernal", () => {
+  const catalog = loadCatalog();
+  const hfc = catalog.farm.find((row) => row.id === "farm-hfc")!;
+  assert.deepEqual(hfc.mounts, [751, 758]);
+  const list = suggest(input({ sessions: played(534) }));
+  assert.equal(
+    list.find((idea) => idea.id === "mount:751")?.goal,
+    "Defeat Archimonde (Mythic) for {mount:751}.",
+  );
+  const wolf = list.find((idea) => idea.id === "mount:758");
+  assert.ok(wolf);
+  assert.match(wolf.goal, /Finish \{ach:10149\}/);
+  assert.deepEqual(wolf.rewards, ["{mount:758}"]);
+  assert.ok(!JSON.stringify(list).includes("{mount:633}"));
+  const onlyWolf = suggest(input({ sessions: played(534), mounts: { ids: packIds([751]) } }));
+  assert.ok(!onlyWolf.some((idea) => idea.id === "mount:751"));
+  assert.match(onlyWolf.find((idea) => idea.id === "mount:758")!.goal, /Finish \{ach:10149\}/);
+});
+
+test("every farm idea keeps its source and reward within the existing limits in both languages", () => {
+  const catalog = loadCatalog();
+  for (const lang of ["en", "ru"] as const) {
+    for (const row of catalog.farm) {
+      const list = suggest(input({}, { lang }), { ...catalog, farm: [row] });
+      assert.equal(list.length, row.mounts!.length);
+      for (const id of row.mounts!) {
+        const idea = list.find((entry) => entry.id === `mount:${id}`)!;
+        const source = row.mountSources![id]!;
+        const token = `{mount:${id}}`;
+        assert.equal(idea.titleToken, token);
+        assert.deepEqual(idea.rewards, [token]);
+        assert.ok(idea.goal.endsWith(`${token}.`), idea.goal);
+        assert.ok(Buffer.byteLength(idea.goal) <= SUGGESTION_LIMITS.goal, idea.goal);
+        if ("achievementID" in source) {
+          assert.ok(idea.goal.includes(`{ach:${source.achievementID}}`));
+        } else {
+          assert.ok(idea.goal.includes(source.boss), idea.goal);
+        }
+      }
+      const owned = suggest(input({ mounts: { ids: packIds(row.mounts!) } }, { lang }), {
+        ...catalog,
+        farm: [row],
+      });
+      assert.equal(owned.length, 0);
+    }
+  }
+});
+
+test("Glacial Tidestorm belongs to Mythic Jaina in Battle of Dazar'alor", () => {
+  const catalog = loadCatalog();
+  const rows = catalog.farm.filter((row) => row.mounts?.includes(1219));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.instanceID, 2070);
+  assert.deepEqual(rows[0]!.mountSources![1219], {
+    boss: "Lady Jaina Proudmoore",
+    difficulty: "mythic",
+  });
+  assert.ok(!catalog.farm.some((row) => row.id === "farm-palace"));
 });
 
 test("mounts nobody owns are suggested, nearby ones first, at most three", async () => {
@@ -423,8 +483,8 @@ test("a Russian Character gets every idea in Russian, with game names from token
   assert.equal(rare!.goal, "Поохоться на {npc:73167|Huolon} рядом с местами, где ты играешь.");
   assert.equal(rare!.why, "Нет ни у одного из твоих 3 персонажей");
   const mount = list.find((item) => item.kind === "collection");
-  assert.equal(mount!.titleToken, "{instance:249}");
-  assert.match(mount!.goal, /^Пройди \{instance:249\|Onyxia's Lair\}: там падает \{mount:\d+\}\.$/);
+  assert.equal(mount!.titleToken, "{mount:349}");
+  assert.equal(mount!.goal, "Босс: Onyxia. Награда: {mount:349}.");
   for (const item of list) {
     assert.ok(!/ you |None of|Ends in/.test(`${item.goal} ${item.why ?? ""}`), item.goal);
     assert.ok(!item.request.wish.includes("{"), "the wish is plain words");
@@ -434,7 +494,7 @@ test("a Russian Character gets every idea in Russian, with game names from token
   const english = suggest(input({ sessions: played(70) }));
   assert.match(
     english.find((item) => item.kind === "collection")!.goal,
-    /^Run \{instance:249\|Onyxia's Lair\} for \{mount:\d+\}\.$/,
+    /^Defeat Onyxia for \{mount:349\}\.$/,
   );
 });
 

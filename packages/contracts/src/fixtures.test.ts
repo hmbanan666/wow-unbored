@@ -134,3 +134,39 @@ test("the catalog is what scripts/export-catalog.lua makes from addon/Data", () 
   const file = readFileSync(path.join(root, "..", "catalog", "catalog.json"), "utf8");
   expect(file, "run lua5.1 scripts/export-catalog.lua --write").toBe(made);
 });
+
+test("every farm mount has exactly one sourced acquisition method", () => {
+  const catalog = JSON.parse(
+    readFileSync(path.join(root, "..", "catalog", "catalog.json"), "utf8"),
+  );
+  for (const row of catalog.farm) {
+    expect(
+      Object.keys(row.mountSources ?? {})
+        .map(Number)
+        .sort(),
+      row.id,
+    ).toEqual([...row.mounts].sort());
+    for (const id of row.mounts) {
+      const source = row.mountSources[id];
+      expect(Boolean(source.boss) !== Boolean(source.achievementID), `${row.id}:${id}`).toBe(true);
+      if (source.achievementID) {
+        expect(Number.isInteger(source.achievementID) && source.achievementID > 0).toBe(true);
+        expect(source.difficulty).toBeUndefined();
+      } else {
+        expect(typeof source.boss).toBe("string");
+        if (source.difficulty) {
+          expect([
+            "normal-heroic",
+            "normal-heroic-mythic",
+            "heroic",
+            "heroic25",
+            "mythic",
+          ]).toContain(source.difficulty);
+        }
+        if (source.condition) {
+          expect(["no-keepers", "timed-summon"]).toContain(source.condition);
+        }
+      }
+    }
+  }
+});

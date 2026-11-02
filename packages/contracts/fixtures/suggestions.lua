@@ -65,7 +65,7 @@ UnboredSuggestions = {
         ["why"] = "None of your 2 characters has it yet",
       },
       {
-        ["goal"] = "Run {instance:550|Tempest Keep} for {mount:183}.",
+        ["goal"] = "Defeat Kael'thas Sunstrider for {mount:183}.",
         ["id"] = "mount:183",
         ["kind"] = "collection",
         ["mapID"] = 109,
@@ -76,17 +76,17 @@ UnboredSuggestions = {
         ["request"] = {
           ["suggestionId"] = "mount:183",
           ["topic"] = "suggestion",
-          ["wish"] = "Tempest Keep: Run Tempest Keep for a mount.",
+          ["wish"] = "Tempest Keep: Defeat Kael'thas Sunstrider for a mount.",
         },
         ["rewards"] = {
           "{mount:183}",
         },
         ["title"] = "Tempest Keep",
-        ["titleToken"] = "{instance:550}",
+        ["titleToken"] = "{mount:183}",
         ["why"] = "None of your 2 characters has it yet",
       },
       {
-        ["goal"] = "Run {instance:2070|Battle of Dazar'alor} for {mount:1217}.",
+        ["goal"] = "Defeat High Tinker Mekkatorque (Normal/Heroic/Mythic) for {mount:1217}.",
         ["id"] = "mount:1217",
         ["kind"] = "collection",
         ["reason"] = {
@@ -96,20 +96,19 @@ UnboredSuggestions = {
         ["request"] = {
           ["suggestionId"] = "mount:1217",
           ["topic"] = "suggestion",
-          ["wish"] = "Battle of Dazar'alor: Run Battle of Dazar'alor for a mount.",
+          ["wish"] = "Battle of Dazar'alor: Defeat High Tinker Mekkatorque (Normal/Heroic/Mythic) for a mount.",
         },
         ["rewards"] = {
           "{mount:1217}",
         },
         ["title"] = "Battle of Dazar'alor",
-        ["titleToken"] = "{instance:2070}",
+        ["titleToken"] = "{mount:1217}",
         ["why"] = "None of your 2 characters has it yet",
       },
       {
-        ["goal"] = "Run {instance:2164|The Eternal Palace} for {mount:1219}.",
+        ["goal"] = "Defeat Lady Jaina Proudmoore (Mythic) for {mount:1219}.",
         ["id"] = "mount:1219",
         ["kind"] = "collection",
-        ["mapID"] = 1355,
         ["reason"] = {
           ["count"] = 2,
           ["kind"] = "alts",
@@ -117,13 +116,13 @@ UnboredSuggestions = {
         ["request"] = {
           ["suggestionId"] = "mount:1219",
           ["topic"] = "suggestion",
-          ["wish"] = "The Eternal Palace: Run The Eternal Palace for a mount.",
+          ["wish"] = "Battle of Dazar'alor: Defeat Lady Jaina Proudmoore (Mythic) for a mount.",
         },
         ["rewards"] = {
           "{mount:1219}",
         },
-        ["title"] = "The Eternal Palace",
-        ["titleToken"] = "{instance:2164}",
+        ["title"] = "Battle of Dazar'alor",
+        ["titleToken"] = "{mount:1219}",
         ["why"] = "None of your 2 characters has it yet",
       },
     },

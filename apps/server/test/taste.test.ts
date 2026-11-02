@@ -328,7 +328,14 @@ test("taste nudges an idea kind before the per-rule cut", async () => {
     achievements: [],
     exploration: [],
     rares: [],
-    farm: [{ id: "a", fallbackTitle: "A", mounts: [1] }],
+    farm: [
+      {
+        id: "farm-onyxia",
+        fallbackTitle: "Onyxia's Lair",
+        mounts: [349],
+        mountSources: { 349: { boss: "Onyxia" } },
+      },
+    ],
   };
   assert.deepEqual(
     suggest(base, catalog).map((idea) => idea.kind),
