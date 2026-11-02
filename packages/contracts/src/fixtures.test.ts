@@ -44,6 +44,35 @@ test("the suggestions fixture matches the shared schema", () => {
   }
 });
 
+test("idea button fields are optional and enforce text and progress limits", () => {
+  const body = read("suggestions.json") as {
+    characters: Record<string, Record<string, unknown>[]>;
+  };
+  const idea = Object.values(body.characters)[0]![0]!;
+  const valid = () => suggestionsBodySchema.safeParse(body).success;
+  delete idea.action;
+  delete idea.progress;
+  delete idea.displayKind;
+  expect(valid()).toBe(true);
+  idea.action = "я".repeat(30);
+  idea.progress = { done: 3, total: 16 };
+  idea.displayKind = "mount";
+  expect(valid()).toBe(true);
+  for (const action of ["я".repeat(31), "Do {quest:1}", "two\nlines", "|cffffff00text", ""]) {
+    idea.action = action;
+    expect(valid(), action).toBe(false);
+  }
+  idea.action = "Continue";
+  for (const progress of [
+    { done: -1, total: 16 },
+    { done: 1, total: 0 },
+    { done: 17, total: 16 },
+  ]) {
+    idea.progress = progress;
+    expect(valid(), JSON.stringify(progress)).toBe(false);
+  }
+});
+
 test("plan and player profile fixtures match the shared schema", () => {
   expect(planSchema.safeParse(read("plan.json")).success).toBe(true);
   expect(playerProfileSchema.safeParse(read("profile.json")).success).toBe(true);

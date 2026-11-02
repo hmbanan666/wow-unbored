@@ -441,6 +441,12 @@ export type SuggestionChain = {
 export type Suggestion = {
   id: string;
   kind: SuggestionKind;
+  /** Display label only; ranking and Taste still use kind. */
+  displayKind?: SuggestionKind | "mount";
+  /** Plain text in the Character's language, at most 60 UTF-8 bytes. */
+  action?: string;
+  /** Known criteria, quests or collected rewards; absent when unknown. */
+  progress?: { done: number; total: number };
   /** At most 40 characters, human. */
   title: string;
   /** When set, the addon shows the game's own name of this token as the title. */
@@ -470,6 +476,17 @@ const suggestionSchema = z
   .object({
     id: z.string().min(1).max(120),
     kind: z.enum(SUGGESTION_KINDS),
+    displayKind: z.enum([...SUGGESTION_KINDS, "mount"]).optional(),
+    action: z
+      .string()
+      .min(1)
+      .refine((action) => new TextEncoder().encode(action).length <= 60, "action is over 60 bytes")
+      .refine((action) => !/[{}\r\n|]/.test(action), "action must be plain text on one line")
+      .optional(),
+    progress: z
+      .object({ done: z.number().nonnegative(), total: z.number().positive() })
+      .refine((progress) => progress.done <= progress.total, "progress exceeds total")
+      .optional(),
     title: z.string().min(1).max(40),
     titleToken: z.string().optional(),
     goal: z

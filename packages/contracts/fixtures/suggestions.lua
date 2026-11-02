@@ -5,6 +5,8 @@ UnboredSuggestions = {
   ["characters"] = {
     ["Silvermoon-Mira"] = {
       {
+        ["action"] = "Complete the event activities",
+        ["displayKind"] = "event",
         ["expiresAt"] = 1793530800,
         ["goal"] = "Hallow's End is on: 4 things you have not done yet.",
         ["id"] = "event:hallows-end:1792317600",
@@ -26,16 +28,22 @@ UnboredSuggestions = {
         ["why"] = "Ends in 2 days",
       },
       {
+        ["action"] = "Continue the quest chain",
         ["chain"] = {
           ["done"] = 3,
           ["nextQuestID"] = 79100,
           ["questLineID"] = 5678,
           ["total"] = 8,
         },
+        ["displayKind"] = "chain",
         ["goal"] = "Continue: 3 of 8 done",
         ["id"] = "chain:5678",
         ["kind"] = "chain",
         ["mapID"] = 2248,
+        ["progress"] = {
+          ["done"] = 3,
+          ["total"] = 8,
+        },
         ["request"] = {
           ["suggestionId"] = "chain:5678",
           ["topic"] = "suggestion",
@@ -46,6 +54,8 @@ UnboredSuggestions = {
         ["title"] = "The Forgotten Path",
       },
       {
+        ["action"] = "Find and defeat this rare",
+        ["displayKind"] = "rare",
         ["goal"] = "Hunt {npc:73167|Huolon} near where you play.",
         ["id"] = "rare:rare-huolon",
         ["kind"] = "rare",
@@ -65,6 +75,8 @@ UnboredSuggestions = {
         ["why"] = "None of your 2 characters has it yet",
       },
       {
+        ["action"] = "Run it for a missing mount",
+        ["displayKind"] = "mount",
         ["goal"] = "Run {instance:550|Tempest Keep} for {mount:183}.",
         ["id"] = "mount:183",
         ["kind"] = "collection",
@@ -86,6 +98,8 @@ UnboredSuggestions = {
         ["why"] = "None of your 2 characters has it yet",
       },
       {
+        ["action"] = "Run it for a missing mount",
+        ["displayKind"] = "mount",
         ["goal"] = "Run {instance:2070|Battle of Dazar'alor} for {mount:1217}.",
         ["id"] = "mount:1217",
         ["kind"] = "collection",
@@ -106,6 +120,8 @@ UnboredSuggestions = {
         ["why"] = "None of your 2 characters has it yet",
       },
       {
+        ["action"] = "Run it for a missing mount",
+        ["displayKind"] = "mount",
         ["goal"] = "Run {instance:2164|The Eternal Palace} for {mount:1219}.",
         ["id"] = "mount:1219",
         ["kind"] = "collection",

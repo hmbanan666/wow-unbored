@@ -4,6 +4,8 @@
   "characters": {
     "Silvermoon-Mira": [
       {
+        "displayKind": "event",
+        "action": "Complete the event activities",
         "title": "Hallow's End",
         "goal": "Hallow's End is on: 4 things you have not done yet.",
         "why": "Ends in 2 days",
@@ -22,8 +24,14 @@
         }
       },
       {
+        "displayKind": "chain",
+        "action": "Continue the quest chain",
         "title": "The Forgotten Path",
         "goal": "Continue: 3 of 8 done",
+        "progress": {
+          "done": 3,
+          "total": 8
+        },
         "mapID": 2248,
         "chain": {
           "questLineID": 5678,
@@ -41,6 +49,8 @@
         }
       },
       {
+        "displayKind": "rare",
+        "action": "Find and defeat this rare",
         "title": "Huolon",
         "goal": "Hunt {npc:73167|Huolon} near where you play.",
         "reason": {
@@ -59,6 +69,8 @@
         "why": "None of your 2 characters has it yet"
       },
       {
+        "displayKind": "mount",
+        "action": "Run it for a missing mount",
         "title": "Tempest Keep",
         "titleToken": "{instance:550}",
         "goal": "Run {instance:550|Tempest Keep} for {mount:183}.",
@@ -78,6 +90,8 @@
         }
       },
       {
+        "displayKind": "mount",
+        "action": "Run it for a missing mount",
         "title": "Battle of Dazar'alor",
         "titleToken": "{instance:2070}",
         "goal": "Run {instance:2070|Battle of Dazar'alor} for {mount:1217}.",
@@ -96,6 +110,8 @@
         }
       },
       {
+        "displayKind": "mount",
+        "action": "Run it for a missing mount",
         "title": "The Eternal Palace",
         "titleToken": "{instance:2164}",
         "goal": "Run {instance:2164|The Eternal Palace} for {mount:1219}.",

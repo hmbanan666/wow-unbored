@@ -26,6 +26,7 @@ export const SUGGESTION_LIMITS = {
   perRule: 3,
   title: 40,
   goal: 140,
+  action: 60,
   why: 100,
   rewards: 3,
 } as const;
@@ -144,6 +145,7 @@ const TEXT: Record<
   IdeaLang,
   {
     generic: Record<string, string>;
+    action: Record<SuggestionKind, string>;
     eventGoal: (name: string, left: number) => string;
     startsSoon: string;
     startsIn: (days: number) => string;
@@ -161,6 +163,13 @@ const TEXT: Record<
   }
 > = {
   en: {
+    action: {
+      achievement: "Complete the remaining criteria",
+      chain: "Continue the quest chain",
+      collection: "Run it for a missing mount",
+      event: "Complete the event activities",
+      rare: "Find and defeat this rare",
+    },
     generic: {
       ach: "an achievement",
       mount: "a mount",
@@ -191,6 +200,13 @@ const TEXT: Record<
     almostWhy: (done, total) => `${done} of ${total} done`,
   },
   ru: {
+    action: {
+      achievement: "Выполни условия",
+      chain: "Продолжи цепочку",
+      collection: "Пройди ради маунта",
+      event: "Выполни дела события",
+      rare: "Найди и победи",
+    },
     generic: {
       ach: "достижение",
       mount: "маунт",
@@ -299,6 +315,8 @@ function make(
   const goal = fit(fields.goal, SUGGESTION_LIMITS.goal, bytes);
   const rewards = (fields.rewards ?? []).slice(0, SUGGESTION_LIMITS.rewards);
   const out: Candidate = {
+    displayKind: rule,
+    action: TEXT[lang].action[rule],
     ...fields,
     id,
     kind: rule,
@@ -424,7 +442,13 @@ export function openChains(sections: Map<string, SectionRow>): OpenChain[] {
     const total = Number(line.total);
     const title = typeof line.name === "string" ? line.name.trim() : "";
     if (!Number.isInteger(questLineID) || questLineID <= 0 || !title) continue;
-    if (!Number.isInteger(total) || total <= 0 || !Number.isInteger(done) || done >= total)
+    if (
+      !Number.isInteger(total) ||
+      total <= 0 ||
+      !Number.isInteger(done) ||
+      done < 0 ||
+      done >= total
+    )
       continue;
     const nextQuestID = Number.isInteger(line.nextQuestID)
       ? (line.nextQuestID as number)
@@ -534,6 +558,7 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
       make(lang, "chain", `chain:${questLineID}`, score, {
         title,
         goal: say.chainGoal(done, total),
+        progress: { done, total },
         ...(why !== undefined ? { why } : {}),
         ...(reason !== undefined ? { reason } : {}),
         ...(mapID !== undefined ? { mapID } : {}),
@@ -551,8 +576,9 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
   const catalogAchievements = new Map(
     [...catalog.achievements, ...catalog.exploration].map((row) => [row.achievementID, row]),
   );
+  const progress = new Map(achievementProgress(sections).map((row) => [row.id, row]));
   const almost = new Set<number>();
-  for (const row of achievementProgress(sections)) {
+  for (const row of progress.values()) {
     if (row.ratio < ALMOST_DONE_RATIO) continue;
     almost.add(row.id);
     const token = `{ach:${row.id}}`;
@@ -561,6 +587,7 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
       make(lang, "achievement", `ach:${row.id}`, SCORE.almostDone, {
         title: known?.fallbackTitle ?? say.almostTitle,
         titleToken: token,
+        progress: { done: row.d, total: row.t },
         goal: say.almostGoal(
           lang === "en" && known ? `{ach:${row.id}|${known.fallbackTitle}}` : token,
         ),
@@ -578,11 +605,13 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
     }
     if (almost.has(row.achievementID)) continue;
     const token = `{ach:${row.achievementID}}`;
+    const knownProgress = progress.get(row.achievementID);
     candidates.push(
       altBonus(
         make(lang, "achievement", `ach:${row.achievementID}`, SCORE.achievement, {
           title: row.fallbackTitle,
           titleToken: token,
+          ...(knownProgress ? { progress: { done: knownProgress.d, total: knownProgress.t } } : {}),
           // The catalog name is English: a Russian goal lets the game name it.
           goal: say.achievementGoal(
             lang === "en" ? `{ach:${row.achievementID}|${row.fallbackTitle}}` : token,
@@ -639,6 +668,15 @@ export function suggest(input: SuggestInput, catalog: Catalog = loadCatalog()): 
             title: row.fallbackTitle,
             ...(row.instanceID !== undefined ? { titleToken: `{instance:${row.instanceID}}` } : {}),
             goal: say.farmGoal(place, token),
+            displayKind: "mount",
+            ...(sections.has("mounts")
+              ? {
+                  progress: {
+                    done: (row.mounts ?? []).length - missing.length,
+                    total: (row.mounts ?? []).length,
+                  },
+                }
+              : {}),
             rewards: missing.slice(0, SUGGESTION_LIMITS.rewards).map((id) => `{mount:${id}}`),
             ...(row.mapID !== undefined ? { mapID: row.mapID } : {}),
           },
