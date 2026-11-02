@@ -61,5 +61,6 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0057. Postgres storage and async ingest](0057-postgres-storage-and-async-ingest.md) (amends 0029)
 - [0058. Plan runner](0058-plan-runner.md) (amends 0032, 0033)
 - [0059. Farm mount sources](0059-farm-mount-sources.md) (amends 0040)
+- [0060. Idea button details](0060-idea-button-details.md) (amends 0040, 0047)
 
 The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md), v0.8 (D83-D121) in [`docs/decisions-v0.8.md`](../decisions-v0.8.md), v0.9 (D122-D167) in [`docs/decisions-v0.9.md`](../decisions-v0.9.md), and v0.10 (D168-D223) in [`docs/decisions-v0.10.md`](../decisions-v0.10.md).

@@ -61,6 +61,94 @@ const hallowsEnd = {
   ],
 };
 
+test("achievement buttons include known criteria progress and a short action in either language", () => {
+  for (const lang of ["en", "ru"] as const) {
+    const list = suggest(
+      input(
+        {
+          sessions: played(125),
+          achProgress: {
+            rows: [
+              { id: 1956, d: 3, t: 16 },
+              { id: 999, d: 8, t: 10 },
+            ],
+          },
+        },
+        { lang },
+      ),
+    );
+    for (const [id, done, total] of [
+      [1956, 3, 16],
+      [999, 8, 10],
+    ]) {
+      const idea = list.find((item) => item.id === `ach:${id}`)!;
+      assert.deepEqual(idea.progress, { done, total });
+      assert.equal(idea.displayKind, "achievement");
+      assert.equal(
+        idea.action,
+        lang === "ru" ? "Выполни условия" : "Complete the remaining criteria",
+      );
+      assert.ok(Buffer.byteLength(idea.action!) <= 60);
+    }
+  }
+});
+
+test("chain and mount buttons report known progress; events and rares only supply an action", () => {
+  for (const lang of ["en", "ru"] as const) {
+    const list = suggest(
+      input(
+        {
+          sessions: played(554, 109),
+          calendar: hallowsEnd,
+          mounts: { ids: packIds([]) },
+          questLines: { lines: [{ questLineID: 5678, name: "A chain", done: 3, total: 8 }] },
+        },
+        { lang },
+      ),
+    );
+    const chain = list.find((item) => item.kind === "chain")!;
+    assert.deepEqual(chain.progress, { done: 3, total: 8 });
+    assert.equal(chain.action, lang === "ru" ? "Продолжи цепочку" : "Continue the quest chain");
+    const farm = list.find((item) => item.id === "mount:183")!;
+    assert.deepEqual(farm.progress, { done: 0, total: 1 });
+    assert.equal(farm.displayKind, "mount");
+    assert.equal(
+      farm.action,
+      lang === "ru" ? "Победи: Kael'thas Sunstrider" : "Defeat Kael'thas Sunstrider",
+    );
+    for (const kind of ["event", "rare"] as const) {
+      const idea = list.find((item) => item.kind === kind)!;
+      assert.equal(idea.displayKind, kind);
+      assert.equal(idea.progress, undefined);
+      assert.equal(
+        idea.action,
+        kind === "event"
+          ? lang === "ru"
+            ? "Выполни дела события"
+            : "Complete the event activities"
+          : lang === "ru"
+            ? "Найди и победи"
+            : "Find and defeat this rare",
+      );
+    }
+    for (const idea of list) assert.ok(Buffer.byteLength(idea.action!) <= 60);
+  }
+  assert.equal(suggest(input({})).find((item) => item.kind === "collection")?.progress, undefined);
+  const catalog = {
+    ...loadCatalog(),
+    farm: [
+      {
+        id: "farm",
+        fallbackTitle: "A raid",
+        mounts: [1, 2, 3],
+        mountSources: { "1": { boss: "One" }, "2": { boss: "Two" }, "3": { achievementID: 1 } },
+      },
+    ],
+  };
+  const farm = suggest(input({ mounts: { ids: packIds([1]) } }), catalog)[0]!;
+  assert.deepEqual(farm.progress, { done: 1, total: 3 });
+});
+
 test("an active holiday suggests what is left of it, mount first, and expires with it", async () => {
   const list = suggest(input({ calendar: hallowsEnd, char: { faction: "Horde" } }));
   const event = list.find((item) => item.kind === "event");

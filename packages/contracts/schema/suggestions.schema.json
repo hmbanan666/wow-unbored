@@ -135,6 +135,32 @@
               "minLength": 1
             }
           }
+        },
+        "displayKind": {
+          "enum": ["event", "achievement", "rare", "collection", "chain", "mount"],
+          "description": "Display label only; kind still controls ranking and Taste."
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "pattern": "^[^{}|\\r\\n]+$",
+          "description": "Plain text in the Character language, at most 60 UTF-8 bytes (enforced by consumers)."
+        },
+        "progress": {
+          "type": "object",
+          "required": ["done", "total"],
+          "description": "Known criteria, quests or collected rewards. done <= total; absent when unknown.",
+          "properties": {
+            "done": {
+              "type": "number",
+              "minimum": 0
+            },
+            "total": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
         }
       }
     }
