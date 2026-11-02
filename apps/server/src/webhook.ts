@@ -121,6 +121,11 @@ export class PlannerWebhook {
 
   /** One attempt for one request. Returns true when the planner took it. */
   async notify(request: PlanRequest): Promise<boolean> {
+    if (
+      this.store.plannerRoute === "runner" &&
+      (await this.store.runnerStatus(request.id))?.state !== "handed_off"
+    )
+      return false;
     if (!this.enabled) {
       this.log(
         `webhook req=${request.id} type=${request.type} skipped: UNBORED_PLANNER_WEBHOOK_URL is not set`,

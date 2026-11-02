@@ -58,7 +58,11 @@ pg("migrate applies each file once, also when two Servers start together", async
   const db = await testDatabase({ migrated: false });
   try {
     const runs = await Promise.all([migrate(db.sql), migrate(db.sql), migrate(db.sql)]);
-    assert.deepEqual(runs.flat(), ["0001_schema.sql", "0002_raw_uploads.sql"]);
+    assert.deepEqual(runs.flat(), [
+      "0001_schema.sql",
+      "0002_raw_uploads.sql",
+      "0003_runner_jobs.sql",
+    ]);
     assert.deepEqual(await migrate(db.sql), []);
     const rows = await db.sql`SELECT version, name FROM schema_migrations ORDER BY version`;
     assert.deepEqual(
@@ -66,6 +70,7 @@ pg("migrate applies each file once, also when two Servers start together", async
       [
         [1, "0001_schema.sql"],
         [2, "0002_raw_uploads.sql"],
+        [3, "0003_runner_jobs.sql"],
       ],
     );
   } finally {

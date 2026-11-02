@@ -14,6 +14,7 @@ import {
   type BlizzardConfig,
   type GameDataFetch,
 } from "./blizzard.ts";
+import { PlanRunner } from "./runner.ts";
 import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError, planMarkupIds } from "./plan.ts";
 import { cleanProfile } from "./profile.ts";
@@ -71,6 +72,10 @@ async function snapshotBytes(body: Request["body"]): Promise<Buffer | null> {
 
 export function createApp(
   config: Pick<Config, "companionToken" | "plannerToken" | "dataDir"> & {
+    plannerRoute?: Config["plannerRoute"];
+    runnerToken?: string;
+    runnerFallbackSeconds?: number;
+    runnerNow?: () => number;
     webhook?: WebhookConfig;
     webhookFetch?: FetchLike;
     webhookNow?: () => number;
@@ -89,7 +94,12 @@ export function createApp(
   },
 ) {
   const log = config.log ?? ((line: string) => console.log(line));
-  const store = new Store(config.dataDir, { postgres: config.database, log });
+  const store = new Store(config.dataDir, {
+    postgres: config.database,
+    log,
+    plannerRoute: config.plannerRoute,
+    runnerNow: config.runnerNow,
+  });
   const inbox = config.ingest === "inline" ? undefined : store.inbox;
   const tokens = { companion: config.companionToken, planner: config.plannerToken };
   const registerLimiter = new RegisterLimiter();
@@ -101,6 +111,13 @@ export function createApp(
     config.webhookFetch,
     config.webhookNow,
   );
+  const runner =
+    store.plannerRoute === "runner"
+      ? new PlanRunner(store, log, config.runnerNow, {
+          enabled: webhook.enabled,
+          seconds: config.runnerFallbackSeconds ?? 90,
+        })
+      : undefined;
   log(webhook.describe());
   const gameIds = new BlizzardIds(
     config.blizzard === undefined ? blizzardFromEnv() : config.blizzard,
@@ -164,7 +181,44 @@ export function createApp(
     }),
   );
 
-  app.get("/health", (c) => c.json({ ok: true, webhook: webhook.enabled ? "on" : "off" }));
+  app.get("/health", (c) =>
+    c.json({ ok: true, planner: store.plannerRoute, webhook: webhook.enabled ? "on" : "off" }),
+  );
+
+  app.use("/v1/runner/*", async (c, next) => {
+    if (!runner || !config.runnerToken) return c.notFound();
+    const token = presentedBearer(c.req.header("authorization"));
+    if (!token || !tokenMatches(token, config.runnerToken)) return unauthorized(c);
+    await next();
+  });
+  app.post("/v1/runner/claim", async (c) => {
+    const wait = Number(c.req.query("wait") ?? 0);
+    if (!Number.isFinite(wait) || wait < 0 || wait > 25)
+      return c.json({ error: "wait must be from 0 to 25 seconds." }, 400);
+    const lease = await runner!.poll(wait, c.req.raw.signal);
+    return lease ? c.json(lease) : c.body(null, 204);
+  });
+
+  app.post("/v1/runner/leases/:leaseId/heartbeat", async (c) => {
+    const result = await runner!.heartbeat(c.req.param("leaseId"));
+    return result ? c.json(result) : c.json({ error: "Lost lease." }, 409);
+  });
+  app.post("/v1/runner/leases/:leaseId/finish", async (c) => {
+    let body;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Finish must be JSON." }, 400);
+    }
+    if (
+      !body ||
+      typeof body.ok !== "boolean" ||
+      (body.error !== undefined && typeof body.error !== "string")
+    )
+      return c.json({ error: "Finish needs ok and an optional error string." }, 400);
+    const finished = await runner!.finish(c.req.param("leaseId"), body);
+    return finished ? c.json({ ok: true }) : c.json({ error: "Lost lease." }, 409);
+  });
 
   app.post("/v1/devices/register", async (c) => {
     const ip = clientIp(c.req.header("x-forwarded-for"), c.req.header("x-real-ip"));
@@ -301,7 +355,8 @@ export function createApp(
         }),
       );
       if (!saved) return unauthorized(c);
-      if (saved.created) {
+      if (saved.created) runner?.wake();
+      if (saved.created && !runner) {
         await webhook.notify(saved.request);
       }
       return c.json(publicRequest(saved.request), saved.created ? 201 : 200);
@@ -536,18 +591,26 @@ export function createApp(
   });
 
   app.all("/mcp", async (c) => {
-    const denied = requireRole(c, "planner", tokens);
-    if (denied) return denied;
-    return handleMcp(c, store, config.dataDir, gameIds, { settle: inbox !== undefined });
+    const token = presentedBearer(c.req.header("authorization"));
+    if (!token) return unauthorized(c);
+    if (tokenMatches(token, tokens.planner))
+      return handleMcp(c, store, config.dataDir, gameIds, { settle: inbox !== undefined });
+    if (!runner || !(await runner.scope(token))) return unauthorized(c);
+    return handleMcp(c, store, config.dataDir, gameIds, {
+      settle: inbox !== undefined,
+      lease: { runner, token },
+    });
   });
 
   return {
     app,
     store,
     webhook,
+    runner,
     /** The upload worker; index.ts starts it. Undefined on SQLite or inline ingest. */
     inbox,
     close: () => {
+      runner?.stop();
       webhook.stop();
       store.close();
     },

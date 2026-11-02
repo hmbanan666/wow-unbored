@@ -4,6 +4,9 @@ import path from "node:path";
 export type Config = {
   companionToken: string;
   plannerToken: string;
+  plannerRoute: "webhook" | "runner";
+  runnerToken?: string;
+  runnerFallbackSeconds: number;
   dataDir: string;
   port: number;
   /** PostgreSQL (ADR 0057). Unset: the Server stays on SQLite. */
@@ -20,6 +23,22 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
   if (companionToken === plannerToken) {
     throw new Error("UNBORED_COMPANION_TOKEN and UNBORED_PLANNER_TOKEN must be different.");
   }
+  const plannerRoute = env.UNBORED_PLANNER_ROUTE?.trim() || "webhook";
+  if (plannerRoute !== "webhook" && plannerRoute !== "runner")
+    throw new Error("UNBORED_PLANNER_ROUTE must be webhook or runner.");
+  const runnerToken = env.UNBORED_RUNNER_TOKEN?.trim() || undefined;
+  if (
+    runnerToken &&
+    (runnerToken.length < 32 || runnerToken === companionToken || runnerToken === plannerToken)
+  )
+    throw new Error(
+      "UNBORED_RUNNER_TOKEN must have at least 32 characters and differ from the companion and planner tokens.",
+    );
+  if (plannerRoute === "runner" && !runnerToken)
+    throw new Error("UNBORED_RUNNER_TOKEN is required for the runner route.");
+  const runnerFallbackSeconds = Number(env.UNBORED_RUNNER_FALLBACK_SECONDS?.trim() || "90");
+  if (!Number.isInteger(runnerFallbackSeconds) || runnerFallbackSeconds < 0)
+    throw new Error("UNBORED_RUNNER_FALLBACK_SECONDS must be a non-negative whole number.");
   const dataDir = env.UNBORED_DATA_DIR?.trim() || "/data";
   const port = Number(env.PORT ?? "3000");
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -33,7 +52,17 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
   if (!Number.isInteger(databasePoolMax) || databasePoolMax < 1 || databasePoolMax > 100) {
     throw new Error("DATABASE_POOL_MAX must be a whole number from 1 to 100.");
   }
-  return { companionToken, plannerToken, dataDir, port, databaseUrl, databasePoolMax };
+  return {
+    companionToken,
+    plannerToken,
+    plannerRoute,
+    runnerToken,
+    runnerFallbackSeconds,
+    dataDir,
+    port,
+    databaseUrl,
+    databasePoolMax,
+  };
 }
 
 export function sqlitePath(dataDir: string): string {
