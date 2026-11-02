@@ -146,7 +146,12 @@ export function lookupCriteria(
   };
 }
 
-async function cachedCsv(dir: string, name: string, url: string): Promise<string> {
+export async function cachedCsv(
+  dir: string,
+  name: string,
+  url: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
   mkdirSync(dir, { recursive: true });
   const file = path.join(dir, name);
   try {
@@ -161,10 +166,24 @@ async function cachedCsv(dir: string, name: string, url: string): Promise<string
   } catch {
     // download
   }
-  const response = await fetch(url);
+  const response = await fetchImpl(url, { signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw new Error(`Could not download ${name} (${response.status}).`);
-  const text = await response.text();
-  if (text.length > MAX_BYTES) throw new Error(`${name} is larger than the cache limit.`);
+  if (!response.body) throw new Error(`${name} has no body.`);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_BYTES) throw new Error(`${name} is larger than the cache limit.`);
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel();
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
   writeFileSync(file, text);
   return text;
 }

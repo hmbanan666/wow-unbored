@@ -285,6 +285,7 @@ test("mcp lists the planner tools", async () => {
       "get_current_plan",
       "get_data_changes",
       "get_game_data",
+      "get_instance_guide",
       "get_player_history",
       "get_player_profile",
       "get_progress",
