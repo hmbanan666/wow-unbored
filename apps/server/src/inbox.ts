@@ -297,10 +297,20 @@ export class UploadInbox {
         `account:${row.account_id}`,
       );
       if (!locked?.ok) return false;
-      const device = await this.db.get<{ status: string }>(
-        `SELECT status FROM devices WHERE id = ? FOR SHARE`,
-        row.device_id,
-      );
+      let device: { status: string } | undefined;
+      try {
+        // Forget holds the device before the Account lock. Never wait for it
+        // while holding the Account: release our locks and retry this row later.
+        device = await this.db.savepoint(() =>
+          this.db.get<{ status: string }>(
+            `SELECT status FROM devices WHERE id = ? FOR SHARE NOWAIT`,
+            row.device_id,
+          ),
+        );
+      } catch (error) {
+        if ((error as { code?: string }).code === "55P03") return false;
+        throw error;
+      }
       if (row.device_id !== "legacy" && device?.status !== "approved") {
         // Revoked or forgotten after the 202: drop the bytes, write nothing.
         await this.db.run(`DELETE FROM raw_uploads WHERE id = ?`, row.id);

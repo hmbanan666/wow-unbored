@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
 
+import { cleanSnapshot, DataStore } from "../src/data.ts";
+import { PostgresDb } from "../src/db.ts";
 import {
   cleanUploads,
   dropOldPartitions,
@@ -32,6 +35,45 @@ test("history keeps the 13 months before this one", () => {
   assert.equal(RETENTION.doneUploadDays, 7);
   assert.equal(RETENTION.failedUploadDays, 30);
 });
+
+pg(
+  "ingest after retention keeps old Section timestamps without using dropped partitions",
+  async () => {
+    const db = await testDatabase();
+    try {
+      const now = at(2026, 11, 15);
+      await runRetention(db.sql, now);
+      const snapshot = JSON.parse(
+        readFileSync(
+          new URL("../../../packages/contracts/fixtures/snapshot.json", import.meta.url),
+          "utf8",
+        ),
+      );
+      snapshot.savedAt = now;
+      snapshot.sections = {
+        bank: { v: 1, scope: "char", at: at(2025, 9, 15), src: "event", body: { items: [] } },
+        bags: { v: 1, scope: "char", at: at(2025, 10), src: "event", body: { items: [] } },
+        reagentBank: { v: 1, scope: "char", at: at(2030, 1), src: "event", body: { items: [] } },
+      };
+      const data = new DataStore(new PostgresDb(db.sql));
+      const result = await data.ingestSnapshot(cleanSnapshot(snapshot), undefined, now);
+      assert.deepEqual(result.stored.sort(), ["bags", "bank", "reagentBank"]);
+      const [character] = await data.characters();
+      assert.equal((await data.section("char", character!.id, "bank"))?.at, at(2025, 9, 15));
+      const history = await data.history({
+        owners: [{ kind: "char", id: character!.id }],
+        limit: 10,
+      });
+      assert.deepEqual(Object.fromEntries(history.map((row) => [row.section, row.at])), {
+        bank: now,
+        bags: at(2025, 10),
+        reagentBank: now,
+      });
+    } finally {
+      await db.drop();
+    }
+  },
+);
 
 pg("partitions are made for this month and the next two", async () => {
   const db = await testDatabase();
