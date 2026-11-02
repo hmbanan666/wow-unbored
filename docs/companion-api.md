@@ -149,7 +149,7 @@ An item request carries `item`: `itemID` is required; `link`, `name`, `bag`, `sl
             "name": "Hearthstone", "bag": 0, "slot": 3, "count": 1 } }
 ```
 
- `context` is optional and every field in it is optional; the game fills what it can read. Fields of the wrong type are dropped, and a context over 8,000 bytes is rejected. `x`/`y` are 0–1 fractions on `mapID`. `gold` is whole gold. `plan` describes the list that was active when the request was made. The same id posted again does not send another webhook.
+ `context` is optional and every field in it is optional; the game fills what it can read. Fields of the wrong type are dropped, and a context over 8,000 bytes is rejected. `x`/`y` are 0–1 fractions on `mapID`. `gold` is whole gold. `plan` describes the list that was active when the request was made. The same id posted again does not enqueue another job or send another webhook.
 
 Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`, keep the route in one zone unless the wish says otherwise, and use `hearth`, `skyriding`, and `canFly` to judge travel.
 
@@ -161,7 +161,9 @@ Plan from where the player stands: begin at or near `context.mapID` / `x` / `y`,
 
 `message` is text up to 1,000 bytes, shown in the bubble as written; it may carry [entity markup](../packages/contracts/markup.md) tokens, with `entities` beside it for npcs. `waypoints` is optional (the same route points as in a plan, up to 10); the game turns them into one step in front of the current plan. An answer may also come with a plan, which then starts as usual. The companion writes the answer into `UnboredExternalPlan.answer`, with `requestType`; see [plan-format.md](plan-format.md#companion-file).
 
-If `UNBORED_PLANNER_WEBHOOK_URL` is set, a new request also POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context }` to that URL (`budget` and `context` are `null` when the game sent none). `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`. If `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` names another header, that header is set to the key as well. An empty URL skips the webhook. A failed POST is retried twice more.
+With `UNBORED_PLANNER_ROUTE=webhook` (default) and `UNBORED_PLANNER_WEBHOOK_URL` set, a new Request POSTs `{ requestId, type, character, realm, mode, budget, wish, question, topic, item, context, lang, account }` to that URL. `budget` and `context` are `null` when absent. `UNBORED_PLANNER_WEBHOOK_KEY` is sent as `Authorization: Bearer <key>`; `UNBORED_PLANNER_WEBHOOK_KEY_HEADER`, when set, also carries the key. Failed deliveries use the Server's existing backoff (up to nine attempts).
+
+With `UNBORED_PLANNER_ROUTE=runner`, the Server queues the Request for a Plan runner ([ADR 0058](adr/0058-plan-runner.md)). The webhook is used only for unclaimed or exhausted jobs when its URL is configured. Without it, exhausted jobs fail with `planner_failed`. The Companion endpoints and polling behavior are unchanged; the runner API and scoped MCP access are documented in [the Server README](../apps/server/README.md#plan-runner).
 
 ## GET /v1/advice
 

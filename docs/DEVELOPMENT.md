@@ -490,7 +490,7 @@ Before the window:
      node --experimental-sqlite --experimental-strip-types scripts/sqlite-to-postgres.ts --dry-run
    ```
 
-   It prints one `table: N rows, checksum … ok` line per table and ends with `Dry run ok, rolled back: 17 tables, N rows verified`. Fix anything it reports before the window.
+   It prints one `table: N rows, checksum … ok` line per table and ends with `Dry run ok, rolled back: 18 tables, N rows verified`. Fix anything it reports before the window.
 
 The window (Companion saves fail meanwhile; unsent Sections stay unsent and go with the next save):
 
@@ -510,7 +510,7 @@ The window (Companion saves fail meanwhile; unsent Sections stay unsent and go w
      --experimental-sqlite --experimental-strip-types scripts/sqlite-to-postgres.ts
    ```
 
-   It must end with `Committed: 17 tables, N rows verified`, with the same counts as the dry run (plus whatever was written since). On `Transfer FAILED, nothing committed` the target is unchanged: start the Server again without `DATABASE_URL` and investigate.
+   It must end with `Committed: 18 tables, N rows verified`, with the same counts as the dry run (plus whatever was written since). On `Transfer FAILED, nothing committed` the target is unchanged: start the Server again without `DATABASE_URL` and investigate.
 9. Set `DATABASE_URL` (and `DATABASE_POOL_MAX` if not 10) in the Server's Dokploy environment, then Deploy.
 10. Verify:
     - The log has `Postgres schema ready (up to date); every table on Postgres, the SQLite file untouched` and `Upload inbox on`. A `Retention:` line on the first start is normal: it drops the empty month partitions older than 13 months.
@@ -541,3 +541,32 @@ These are choices, not silent guesses. Push back if one of them is wrong.
 - `Data/Rares.lua` has Huolon (Timeless Isle, daily tracking quest 33311 from the wowhead quest page). No other tracking quests are shipped.
 - Raid doors use the Wowhead entrance guide (guide 8974), converted from 0–100 to 0–1. Several of those figures are whole numbers.
 - This tree is checked against the API wiki and the two Lua test suites; the live-client checklist is [`TESTING.md`](../TESTING.md).
+
+## Plan runner
+
+[ADR 0058](adr/0058-plan-runner.md) adds an outside Plan runner using a runner token for claims and a short-lived lease token for MCP. Start a local Server with `UNBORED_PLANNER_ROUTE=runner`, `UNBORED_RUNNER_TOKEN` (at least 32 characters, distinct from the two existing tokens), the usual companion/planner tokens, and a writable `UNBORED_DATA_DIR`. Leave `UNBORED_PLANNER_WEBHOOK_URL` unset to test without fallback, or set it to a local webhook receiver. `UNBORED_RUNNER_FALLBACK_SECONDS` defaults to 90. Either storage backend supports the same API.
+
+Any runner can use this loop. Set `SERVER=http://localhost:3000` and load `RUNNER_TOKEN` from your local environment. Submit a Request through the Companion API, then claim:
+
+```sh
+curl -sS -X POST "$SERVER/v1/runner/claim?wait=25" \
+  -H "Authorization: Bearer $RUNNER_TOKEN"
+```
+
+Save the returned `leaseId` as `LEASE_ID` and `leaseToken` as `LEASE_TOKEN`. Follow `prompt.text`, beginning with `get_request`; the prompt version is stored on the job. Use the lease token for MCP, never the runner token:
+
+```sh
+curl -sS "$SERVER/mcp" \
+  -H "Authorization: Bearer $LEASE_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_request","arguments":{}}}'
+
+curl -sS -X POST "$SERVER/v1/runner/leases/$LEASE_ID/heartbeat" \
+  -H "Authorization: Bearer $RUNNER_TOKEN"
+
+curl -sS -X POST "$SERVER/v1/runner/leases/$LEASE_ID/finish" \
+  -H "Authorization: Bearer $RUNNER_TOKEN" -H 'Content-Type: application/json' \
+  --data '{"ok":false,"error":"The runner stopped before answering."}'
+```
+
+Heartbeat comfortably before 180 seconds; an attempt has a 15-minute hard cap. Answer via `put_plan`, `answer_request` or `fail_request` with the leased Request id. Fix validation warnings within that lease. A successful answer invalidates the lease token; finish can acknowledge it with `{"ok":true}`. An unanswered finish retries after 15 then 60 seconds, up to three attempts. See [the runner API](../apps/server/README.md#plan-runner) for responses and log formats. `runner.test.ts` exercises HTTP and MCP against both backends when `UNBORED_TEST_DATABASE_URL` is set.

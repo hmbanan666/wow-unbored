@@ -1,6 +1,6 @@
 # Unbored server
 
-A single container that holds one player's session plan and the progress the companion posts back. The planner (an AI chat, or any client with the planner token) writes the plan. Unbored Companion polls it and writes `Unbored_Plan` into the game. After `/reload`, the companion posts progress here and the planner reads it.
+A single container that holds one player's session plan and the progress the companion posts back. The planner (a Plan runner, or a client with the planner token) writes the plan. Unbored Companion polls it and writes `Unbored_Plan` into the game. After `/reload`, the companion posts progress here and the planner reads it.
 
 One player for now. Rows are stored with `player_key = self`, so a later token-to-player table does not have to reshape the plan and progress tables.
 
@@ -18,13 +18,16 @@ The process listens on `PORT` (default `3000`) and stores SQLite at `$UNBORED_DA
 | `UNBORED_PLANNER_TOKEN` | yes | Bearer token for putting plans, reading progress, and MCP. Must differ from the companion token. |
 | `PORT` | no | Listen port. Default `3000`. |
 | `UNBORED_DATA_DIR` | no | Directory for the SQLite file. Default `/data`. |
-| `UNBORED_PLANNER_WEBHOOK_URL` | no | Where a new in-game request is POSTed. Empty skips the webhook. |
+| `UNBORED_PLANNER_ROUTE` | no | `webhook` (default) or `runner`. |
+| `UNBORED_RUNNER_TOKEN` | with runner route | At least 32 characters; different from the companion and planner tokens. |
+| `UNBORED_RUNNER_FALLBACK_SECONDS` | no | Unclaimed-job fallback interval, default 90 seconds. |
+| `UNBORED_PLANNER_WEBHOOK_URL` | no | New Request destination in webhook route; fallback destination in runner route. Empty skips the webhook. |
 | `UNBORED_PLANNER_WEBHOOK_KEY` | no | Secret sent as `Authorization: Bearer <key>`. |
 | `UNBORED_PLANNER_WEBHOOK_KEY_HEADER` | no | Extra header name that also receives the key. |
 | `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET` | no | Blizzard Game Data API client. When both are set, `put_plan` and `answer_request` check that linked item, quest, achievement, spell and npc ids exist ([markup](../../packages/contracts/markup.md)); results are cached in SQLite. Unset: structure checks only. Never logged. |
 | `BLIZZARD_REGION` | no | `us` (default), `eu`, `kr` or `tw`. |
 
-`GET /health` needs no token and returns `{"ok":true,"webhook":"on"}`, or `"off"` when `UNBORED_PLANNER_WEBHOOK_URL` is empty. Every other route rejects a missing or wrong bearer token.
+`GET /health` needs no token and returns `{"ok":true,"planner":"webhook","webhook":"on"}`, or `"off"` when `UNBORED_PLANNER_WEBHOOK_URL` is empty. Every other route rejects a missing or wrong bearer token.
 
 ### Planner webhook
 
@@ -72,7 +75,7 @@ MCP tools `list_devices`, `approve_device`, and `revoke_device` use the planner 
 
 ## MCP
 
-Streamable HTTP at `/mcp`. Same planner bearer token (`Authorization` header). Tools:
+Streamable HTTP at `/mcp`. The planner bearer token (`Authorization` header) has the full tool set below. A live lease token has the scoped set described under Plan runner. Tools:
 
 - `put_plan` stores a plan and returns the `UNB1:` string. The tool description includes the task schema. With `requestId` it fulfils a plan request.
 - `list_requests` lists requests from the game, with their `type`.
@@ -108,3 +111,69 @@ pnpm exec vp test
 ```
 
 That covers auth, a plan put that the companion GET returns as `UNB1:`, decoding that string with the addon import code, a progress post, MCP `tools/list`, and typed item and question requests answered with `answer_request`.
+
+## Plan runner
+
+Select `UNBORED_PLANNER_ROUTE=runner` to queue each new Request in `runner_jobs`, in the same transaction. The default is `webhook`. Set `UNBORED_RUNNER_TOKEN` to at least 32 characters, different from the companion and planner tokens; the runner route refuses to start without it. `UNBORED_RUNNER_FALLBACK_SECONDS` is a non-negative whole number, default 90. The prompt comes from `packages/contracts/planner/prompt.md`, already copied by the Dockerfile; its first 12 sha256 hex characters identify the version on each claim.
+
+All three runner endpoints use `Authorization: Bearer <runner token>`. This token cannot use MCP or Companion routes. Runner endpoints return 404 when the route is `webhook` or no runner token is configured, and 401 for an incorrect token.
+
+```http
+POST /v1/runner/claim?wait=25
+Authorization: Bearer <runner token>
+```
+
+`wait` is optional, from 0 to 25 seconds (default 0). A new Request in this process wakes the poll; other processes' changes are checked every second. The oldest due pending Request returns 200:
+
+```json
+{
+  "leaseId": "9c154aab-5675-4ac6-b5bd-1738df51e900",
+  "leaseToken": "<lease token>",
+  "expiresAt": 1800000180,
+  "attempt": 1,
+  "request": {
+    "requestId": "req-1", "type": "plan", "question": null, "topic": "surprise",
+    "item": null, "character": "Mira", "realm": "Realm", "mode": "fun",
+    "budget": null, "wish": null, "context": null, "lang": "en", "account": "account-key"
+  },
+  "prompt": { "version": "<12 hex characters>", "text": "<planner prompt>" },
+  "mcpPath": "/mcp"
+}
+```
+
+The Request has the same shape as the webhook body. No due Request returns 204 with no body. An invalid `wait` returns 400. The lease lasts 180 seconds; only a sha256 hash of its 32 random bytes is stored. A reclaimed dead lease counts as a new attempt.
+
+```http
+POST /v1/runner/leases/9c154aab-5675-4ac6-b5bd-1738df51e900/heartbeat
+Authorization: Bearer <runner token>
+```
+
+A heartbeat returns `200 {"expiresAt":1800000280}` and extends the lease to now + 180 seconds, capped at 15 minutes from the attempt's start. A lost lease, answered Request or attempt at its hard cap returns 409.
+
+```http
+POST /v1/runner/leases/9c154aab-5675-4ac6-b5bd-1738df51e900/finish
+Authorization: Bearer <runner token>
+Content-Type: application/json
+
+{"ok":false,"error":"The runner could not finish."}
+```
+
+Finish returns `200 {"ok":true}`, or 409 for a lost lease. Malformed JSON or a missing boolean `ok` returns 400. `error` is optional and cut to 200 characters. Finishing without an answer, even with `ok:true`, requeues after 15 seconds, then 60 seconds. There are at most three attempts. Finishing after a successful tool answer confirms completion.
+
+Use the **lease token** as the bearer for `/mcp`. `get_request` returns the leased Request and context. Read tools default to its Account and refuse another Account or a Character outside it. `get_current_plan` only returns a Plan linked to that Account. `put_plan` requires the leased `requestId`; `answer_request` and `fail_request` also only accept that id. `put_item_advice` is limited to that Request's Character. Owner tools are absent. Plans pass the existing validation; warnings return without committing the answer so the runner can correct it. A successful answer ends the lease; subsequent MCP calls with it return 401. The planner token retains its full tool set.
+
+With `UNBORED_PLANNER_WEBHOOK_URL`, a job never claimed within the fallback interval, or one out of attempts, becomes `handed_off`. Only those Requests enter the existing webhook delivery/retry flow. Without that URL, exhausted jobs fail with `planner_failed` and a friendly reason in the Request's language. Maintenance runs every 30 seconds and before claims. Request expiry after one hour also ends live jobs. Forget erases jobs; Account migration preserves their Request links.
+
+`list_requests` adds `runner: { state, attempts, lastError, claimedAt, finishedAt }`, or `null` when no job exists. `/health` includes `planner: "webhook" | "runner"` and retains `webhook: "on" | "off"`. Runner logs use these forms, without tokens or bodies:
+
+```text
+runner req=req-1 type=plan attempt=1 claimed wait=2s
+runner req=req-1 attempt=1 done ms=12000
+runner req=req-2 attempt=1 failed no answer, retry in 15s
+runner req=req-2 attempt=2 failed lease expired, retry in 0s
+runner req=req-2 handed to webhook (attempts exhausted)
+runner req=req-3 handed to webhook (unclaimed)
+runner req=req-4 attempt=3 failed attempts exhausted, retry in 0s
+```
+
+A `retry in 0s` on lease expiry describes immediate reclaim; on exhausted attempts without a webhook it records the terminal failure. Runner-supplied error text stays in storage, never in logs.
