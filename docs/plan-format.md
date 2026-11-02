@@ -18,7 +18,7 @@ UNB1P:<base64>
 
 Version is the JSON field `v`, currently `1`. Unknown versions are rejected. There is no `loadstring`. A bad string is ignored and does not touch the current list.
 
-Limits: 40 tasks, step titles up to 240 bytes, notes up to 400 bytes, the whole string under 20,000 characters. The card fields have their own limits, below.
+Limits: 40 tasks, step titles up to 240 bytes, Step notes up to 1,000 bytes (the plan-level note stays at 400), the whole string at most 64,000 characters. The card fields have their own limits, below.
 
 ## Plan
 
@@ -72,6 +72,8 @@ All optional and added in 0.8; a plan without them works as before ([ADR 0038](a
 | `contains` | plan | added in 0.10: `{ "{item:ID}": ["{mount:ID}", ...] }`, what a container reward (cage, chest, bag) may hold. The key is one `{item:ID}` token that is in plan or step `rewards`; 1 to 6 values, each one token of kind `mount`, `toy`, `pet` or `item`; at most 2 containers; the values count toward the 12-token limit of `goal` plus `details`. A bad key or value is dropped with a warning ([ADR 0055](adr/0055-reward-contents.md)). |
 | `group` | task | added in 0.10: 1 to 24 characters `[a-z0-9-]`. Consecutive tasks with the same `group` are a Step group, done in any order. A group needs at least 2 tasks; a single-task group or a repeat that is not next to its group is dropped with a warning ([ADR 0056](adr/0056-step-groups.md)). |
 | `condition` | task | `{ "text": "If you have 5,000 {currency:1166}", "check": { "kind": "currency", "id": 1166, "atLeast": 5000 } }`; `kind` is `currency`, `item`, `level` (id is the level), `quest` or `ach`. The game checks it live: met shows Ready, unmet shows the count and Skip moves past it without counting it as skipped. |
+
+Long expanded details scroll within 180 pixels; the full Step list already scrolls within 260 pixels. Raid Plans can fit travel and all 13 bosses without squeezing several pulls into one Step (ADR 0060).
 
 The card is calm by default: closed it shows the title, the step with its `why`, the first reward, and Done and Skip. Show more opens the progress pips, `goal`, `details` (with the step `note`), the full step list, every reward and the footer.
 

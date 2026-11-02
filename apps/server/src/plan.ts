@@ -659,8 +659,8 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
   }
   let note: string | undefined;
   if (task.note !== undefined && task.note !== null) {
-    if (typeof task.note !== "string" || byteLength(task.note) > 400) {
-      throw new PlanError(`Task ${index} note must be a string of at most 400 bytes.`);
+    if (typeof task.note !== "string" || byteLength(task.note) > 1000) {
+      throw new PlanError(`Task ${index} note must be a string of at most 1000 bytes.`);
     }
     note = task.note;
   }
@@ -751,8 +751,8 @@ export function encodeUnb1(plan: Plan): string {
   }
   if (plan.entities !== undefined) payload.entities = plan.entities;
   const text = `UNB1:${Buffer.from(JSON.stringify(payload), "utf8").toString("base64")}`;
-  if (text.length > 20_000) {
-    throw new PlanError("The encoded plan is longer than 20000 characters.");
+  if (text.length > 64_000) {
+    throw new PlanError("The encoded plan is longer than 64000 characters.");
   }
   return text;
 }
