@@ -153,10 +153,16 @@ mod tests {
         input.connected_at = Some(0);
         assert_eq!(current(&input).phase, "thinking");
         input.ready = Some(("plan".into(), 900));
-        assert_eq!(current(&input).headline, "Your plan is ready in the game");
+        assert_eq!(
+            current(&input).headline,
+            "Your plan is ready: press Refresh by Bory in the game"
+        );
         assert!(current(&input).hint.contains("Refresh"));
         input.ready = Some(("item".into(), 900));
-        assert_eq!(current(&input).headline, "Your answer is ready in the game");
+        assert_eq!(
+            current(&input).headline,
+            "Your answer is ready: press Refresh by Bory in the game"
+        );
         input.addon_updated_at = Some(950);
         assert_eq!(
             current(&input).headline,
@@ -207,6 +213,13 @@ mod tests {
         let mood = current(&input);
         assert_eq!(mood.headline, "Жду разового одобрения");
         assert!(mood.hint.contains("GAMING-PC"));
-        assert_eq!(ready_text(Lang::Ru, "plan"), "Твой план ждёт в игре");
+        assert_eq!(
+            ready_text(Lang::Ru, "plan"),
+            "Твой план готов: нажми «Обновить» у Бори в игре"
+        );
+        assert_eq!(
+            ready_text(Lang::Ru, "item"),
+            "Твой ответ готов: нажми «Обновить» у Бори в игре"
+        );
     }
 }
