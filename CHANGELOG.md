@@ -2,6 +2,17 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## 0.11.0
+
+- Idea buttons say what they are: the kind (achievement, chain, mount, event, rare), how far along you are ("3/16") and one line of what to do. Hover for the full goal and the rewards.
+- Raid and dungeon plans go boss by boss in the Adventure Guide's order, with the floor and map point of each boss and what each one needs for the raid's meta achievement. Long step notes scroll inside the card.
+- Plans are sharper: every step names its target and when it is done, rewards are filled in, a cage or chest is the reward and its contents are what it may hold, and titles say plainly what you do or get.
+- Mount ideas name the right mounts and how to earn them: the boss and difficulty, or the achievement that gives it. Hellfire Citadel now offers Felsteel Annihilator and Infernal Direwolf (Glory of the Hellfire Raider).
+- After you send a request, Bory offers Refresh once the plan should be ready, so you no longer need /reload. The Companion says "press Refresh by Bory" when a plan is waiting.
+- Plans are prepared on the Server's own queue: a request is picked up, retried and handed on safely, so it no longer gets lost on the way.
+- Fixed: plans, answers, settings and game data stay safe when the Companion syncs, saves or uploads at the same time, after a disconnect, with very large data, or with game data read long ago.
+- Исправлено: Бори предлагает «Обновить», когда план должен быть готов, без /reload.
+
 ## 0.10.0
 
 - Bory knows what you can do right now: renown and paragon rewards you are close to, achievements you have almost finished, lockouts and Great Vault slots still open, currencies near their cap, events that are on. Ideas and plans start from there.
