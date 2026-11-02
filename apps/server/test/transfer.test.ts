@@ -58,6 +58,7 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
       VALUES (3, ${at(2024, 6, 1)}, 'A', 'Brozin', 'Gordunni', 'win', NULL, '{"old":true}'),
              (4, ${now}, 'A', 'Brozin', 'Gordunni', 'win', 'x', '[1,"two"]');
     INSERT INTO advice VALUES ('Brozin', 'Gordunni', 'A', 19019, '{"tip":"sell"}', ${now});
+    INSERT INTO runner_jobs (request_id, state, attempts, available_at, queued_at, finished_at) VALUES ('r1', 'done', 1, ${now}, ${now}, ${now});
     INSERT INTO webhook_deliveries VALUES ('r1', 1, ${now}, NULL, 200, NULL, ${now});
     INSERT INTO chain_progress VALUES ('c1', 5492, 3, ${now});
     INSERT INTO suggestions VALUES ('A', 'c1', ${now}, '{"list":[]}');
@@ -79,7 +80,7 @@ pg("every table is copied, JSON as jsonb objects, partitions back to the oldest 
     const lines: string[] = [];
     const report = await transfer({ sqlitePath: file, sql: db.sql, log: (l) => lines.push(l) });
     assert.equal(report.committed, true);
-    assert.equal(report.tables.length, 17);
+    assert.equal(report.tables.length, 18);
     assert.deepEqual(report.skipped, [
       { table: "profile_snapshots", rows: 0 },
       { table: "profiles", rows: 1 },
@@ -225,9 +226,9 @@ pg("the script runs under node as in the Docker image, URL from the environment 
       },
     );
     const dry = await node(["--sqlite", file, "--dry-run"], { DATABASE_URL: db.url });
-    assert.match(dry.stdout, /Dry run ok, rolled back: 17 tables, \d+ rows verified/);
+    assert.match(dry.stdout, /Dry run ok, rolled back: 18 tables, \d+ rows verified/);
     const real = await node([], { DATABASE_URL: db.url, UNBORED_DATA_DIR: path.dirname(file) });
-    assert.match(real.stdout, /Committed: 17 tables/);
+    assert.match(real.stdout, /Committed: 18 tables/);
     await assert.rejects(
       node(["--sqlite", file], { DATABASE_URL: db.url }),
       (error: { code: number; stderr: string }) => {

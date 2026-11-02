@@ -185,6 +185,22 @@ const SQLITE_SCHEMA = `
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (character_name, realm, item_id)
       );
+      CREATE TABLE IF NOT EXISTS runner_jobs (
+        request_id TEXT PRIMARY KEY,
+        state TEXT NOT NULL CHECK (state IN ('queued', 'leased', 'done', 'handed_off', 'failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        available_at BIGINT NOT NULL,
+        lease_id TEXT UNIQUE,
+        lease_token_hash TEXT UNIQUE,
+        leased_until BIGINT,
+        attempt_started_at BIGINT,
+        prompt_version TEXT,
+        last_error TEXT,
+        queued_at BIGINT NOT NULL,
+        claimed_at BIGINT,
+        finished_at BIGINT
+      );
+      CREATE INDEX IF NOT EXISTS runner_jobs_due ON runner_jobs (state, available_at, leased_until, queued_at);
       CREATE TABLE IF NOT EXISTS webhook_deliveries (
         request_id TEXT PRIMARY KEY,
         attempts INTEGER NOT NULL,
@@ -198,6 +214,9 @@ const SQLITE_SCHEMA = `
 
 export class Store {
   readonly db: Db;
+  readonly plannerRoute: "webhook" | "runner";
+  onRequestAdded?: () => void;
+  private readonly runnerNow: () => number;
   readonly data: DataStore;
   readonly suggestions: SuggestionStore;
   readonly gameIds: IdCache;
@@ -210,7 +229,17 @@ export class Store {
    * `dataDir`. With it (DATABASE_URL, ADR 0057) every table is in Postgres and
    * the SQLite file is not opened. The caller owns the pool.
    */
-  constructor(dataDir: string, options: { postgres?: Sql; log?: (line: string) => void } = {}) {
+  constructor(
+    dataDir: string,
+    options: {
+      postgres?: Sql;
+      log?: (line: string) => void;
+      plannerRoute?: "webhook" | "runner";
+      runnerNow?: () => number;
+    } = {},
+  ) {
+    this.plannerRoute = options.plannerRoute ?? "webhook";
+    this.runnerNow = options.runnerNow ?? (() => Math.floor(Date.now() / 1000));
     const pg = options.postgres;
     let inbox: UploadInbox | undefined;
     if (pg) {
@@ -325,6 +354,16 @@ export class Store {
       PLAYER,
     );
     return row ? planFromRow(row) : undefined;
+  }
+
+  /** Only Plans attached to Requests on this Account; direct Plans have no Account. */
+  async latestPlanForAccount(account: string): Promise<StoredPlan | undefined> {
+    const row = await this.db.get<{ id: number }>(
+      `SELECT p.id FROM plans p JOIN requests r ON r.id = p.request_id
+      WHERE r.account = ? ORDER BY p.created_at DESC, p.id DESC LIMIT 1`,
+      accountKey(account),
+    );
+    return row ? this.planById(Number(row.id)) : undefined;
   }
 
   /** Direct Plans plus Plans for this Device's Requests (ADR 0002). */
@@ -587,7 +626,7 @@ export class Store {
     suggestion?: RequestSuggestion | null;
     nowSeconds: number;
   }): Promise<{ created: boolean; request: PlanRequest }> {
-    return this.db.tx(async () => {
+    const result = await this.db.tx(async () => {
       const existing = await this.requestById(input.id);
       if (existing) {
         if (existing.deviceId !== input.deviceId)
@@ -621,6 +660,15 @@ export class Store {
         input.suggestionId ?? null,
         input.suggestion ? JSON.stringify(input.suggestion) : null,
       );
+      if (this.plannerRoute === "runner") {
+        const now = this.runnerNow();
+        await this.db.run(
+          `INSERT INTO runner_jobs (request_id, state, attempts, available_at, queued_at) VALUES (?, 'queued', 0, ?, ?)`,
+          input.id,
+          now,
+          now,
+        );
+      }
       const request = await this.requestById(input.id);
       if (!request) throw new Error("Could not store the request.");
       await this.historyFor(request, "request", {
@@ -636,6 +684,30 @@ export class Store {
       });
       return { created: true, request };
     });
+    if (result.created) this.onRequestAdded?.();
+    return result;
+  }
+
+  async runnerStatus(requestId: string) {
+    const row = await this.db.get<{
+      state: string;
+      attempts: number;
+      last_error: string | null;
+      claimed_at: number | null;
+      finished_at: number | null;
+    }>(
+      `SELECT state, attempts, last_error, claimed_at, finished_at FROM runner_jobs WHERE request_id = ?`,
+      requestId,
+    );
+    return row
+      ? {
+          state: row.state,
+          attempts: row.attempts,
+          lastError: row.last_error,
+          claimedAt: row.claimed_at,
+          finishedAt: row.finished_at,
+        }
+      : null;
   }
 
   async webhookDelivery(requestId: string): Promise<WebhookDelivery | undefined> {
@@ -683,7 +755,7 @@ export class Store {
   }): Promise<PlanRequest[]> {
     const rows = await this.db.all<{ id: string }>(
       `SELECT r.id FROM requests r LEFT JOIN webhook_deliveries w ON w.request_id = r.id
-       WHERE r.status = 'pending' AND r.created_at >= ? AND w.delivered_at IS NULL
+       WHERE r.status = 'pending' ${this.plannerRoute === "runner" ? "AND EXISTS (SELECT 1 FROM runner_jobs j WHERE j.request_id = r.id AND j.state = 'handed_off')" : ""} AND r.created_at >= ? AND w.delivered_at IS NULL
          AND COALESCE(w.attempts, 0) < ? AND COALESCE(w.next_at, 0) <= ?
        ORDER BY r.created_at ASC, r.id ASC LIMIT ?`,
       input.sinceSeconds,
@@ -823,10 +895,25 @@ export class Store {
       `SELECT id FROM requests WHERE status = 'pending' AND created_at <= ? ORDER BY created_at`,
       nowSeconds - REQUEST_TIMEOUT_SECONDS,
     );
+    const expired: string[] = [];
     for (const row of rows) {
-      await this.failRequest(row.id, "No plan came back within an hour.", nowSeconds, "timeout");
+      await this.db.tx(async () => {
+        if (
+          !(await this.lockRequest(row.id, "update")) ||
+          (await this.requestById(row.id))?.status !== "pending"
+        )
+          return;
+        await this.failRequest(row.id, "No plan came back within an hour.", nowSeconds, "timeout");
+        await this.db.run(
+          `UPDATE runner_jobs SET state = 'failed', finished_at = ?, lease_token_hash = NULL
+          WHERE request_id = ? AND state IN ('queued', 'leased')`,
+          nowSeconds,
+          row.id,
+        );
+        expired.push(row.id);
+      });
     }
-    return rows.map((row) => row.id);
+    return expired;
   }
 
   /** How long recent Plan Requests took (p50), for the game's ETA (D68). */
@@ -1232,6 +1319,7 @@ export class Store {
         id,
         row.plan_id,
       );
+      await this.db.run(`DELETE FROM runner_jobs WHERE request_id = ?`, id);
       await this.db.run(`DELETE FROM webhook_deliveries WHERE request_id = ?`, id);
       requests += await this.db.run(`DELETE FROM requests WHERE id = ?`, id);
     }

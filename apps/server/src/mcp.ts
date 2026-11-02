@@ -8,6 +8,7 @@ import { markupIds } from "@unbored/contracts";
 import type { BlizzardIds } from "./blizzard.ts";
 import { resolveCriteria } from "./criteria.ts";
 import { ID_KINDS, readable, changeSummary, type CharacterRow, type IdKind } from "./data.ts";
+import type { PlanRunner } from "./runner.ts";
 import { ANSWER_MAX_BYTES, cleanAnswer, PlanError, planMarkupIds } from "./plan.ts";
 import {
   accountKey,
@@ -139,20 +140,161 @@ const entitiesSchema = z
   })
   .strict();
 
+type McpOptions = {
+  settle?: boolean;
+  lease?: { runner: PlanRunner; token: string };
+};
+
+const LEASE_TOOLS = new Set([
+  "get_request",
+  "get_player_profile",
+  "get_player_history",
+  "get_account_overview",
+  "get_ready_now",
+  "get_suggestions",
+  "get_game_data",
+  "check_ids",
+  "get_data_changes",
+  "data_catalog",
+  "list_wins",
+  "get_progress",
+  "get_current_plan",
+  "resolve_criteria",
+  "put_plan",
+  "answer_request",
+  "fail_request",
+  "put_item_advice",
+]);
+const ANSWER_TOOLS = new Set(["put_plan", "answer_request", "fail_request"]);
+
+/** A warning leaves the scoped attempt open for a corrected answer. */
+class UnstoredReply extends Error {
+  readonly reply: ReturnType<typeof text>;
+  constructor(reply: ReturnType<typeof text>) {
+    super("The answer needs correction.");
+    this.reply = reply;
+  }
+}
+
 export function createMcpServer(
   store: Store,
   dataDir: string,
   gameIds?: BlizzardIds,
-  options: { settle?: boolean } = {},
+  options: McpOptions = {},
 ): McpServer {
   /** Read barrier (ADR 0057): uploads queued before this call are ingested first, up to 10 s. */
   const settle = async (account?: string) => {
-    if (options.settle) await store.settle(account ? accountKey(account) : undefined);
+    if (options.settle && !(options.lease && store.db.inTx))
+      await store.settle(account ? accountKey(account) : undefined);
   };
   const server = new McpServer({
     name: "unbored",
     version: "0.10.0",
   });
+
+  function registerTool<S extends z.ZodRawShape>(
+    name: string,
+    spec: { title: string; description: string; inputSchema?: S },
+    handler: (args: z.output<z.ZodObject<S>>) => Promise<ReturnType<typeof text>>,
+  ) {
+    const lease = options.lease;
+    if (lease && !LEASE_TOOLS.has(name)) return;
+    server.registerTool<z.ZodRawShape, z.ZodRawShape>(
+      name,
+      { ...spec, inputSchema: spec.inputSchema ?? ({} as S) },
+      async (args) => {
+        if (!lease) return handler(args as z.output<z.ZodObject<S>>);
+        try {
+          // Settle before the transaction: the inbox needs to write these same rows.
+          const current = await lease.runner.scope(lease.token);
+          if (current) await settle(current.account);
+          return await lease.runner.withLease(lease.token, async (request) => {
+            const scoped = { ...args } as Record<string, unknown>;
+            if (ANSWER_TOOLS.has(name) && scoped.requestId !== request.id)
+              throw new Error("Only the leased Request may be answered; requestId is required.");
+            if (scoped.requestId !== undefined && scoped.requestId !== request.id)
+              throw new Error("Only the leased Request is available.");
+            if (spec.inputSchema && "account" in spec.inputSchema) {
+              if (!request.account) throw new Error("This Request has no Account data yet.");
+              if (
+                scoped.account !== undefined &&
+                accountKey(String(scoped.account)) !== request.account
+              )
+                throw new Error("Only the Request's Account is available.");
+              scoped.account = request.account;
+            }
+            if (scoped.character !== undefined || scoped.realm !== undefined) {
+              const matches = (name: string, realm: string) =>
+                (scoped.character === undefined || scoped.character === name) &&
+                (scoped.realm === undefined || scoped.realm === realm);
+              const characters = await store.data.characters();
+              const own = characters.some(
+                (row) => row.accountId === request.account && matches(row.name, row.realm),
+              );
+              const requestOnly =
+                matches(request.character, request.realm) &&
+                !characters.some(
+                  (row) =>
+                    row.name === request.character &&
+                    row.realm === request.realm &&
+                    row.accountId !== request.account,
+                );
+              if (!own && !requestOnly)
+                throw new Error("That Character is not on the Request's Account.");
+            }
+            if (
+              name === "put_item_advice" &&
+              (scoped.character !== request.character || scoped.realm !== request.realm)
+            )
+              throw new Error("Advice may only be written for the leased Request's Character.");
+            if (name === "get_request")
+              return text({ ...publicRequest(request), context: request.context });
+            if (name === "get_current_plan") {
+              const stored = request.account
+                ? await store.latestPlanForAccount(request.account)
+                : undefined;
+              return text(
+                stored
+                  ? {
+                      id: stored.id,
+                      createdAt: stored.createdAt,
+                      plan: stored.unb1,
+                      stored: stored.plan,
+                    }
+                  : { plan: null },
+              );
+            }
+            const reply = await handler(scoped as z.output<z.ZodObject<S>>);
+            if (ANSWER_TOOLS.has(name)) {
+              const body = JSON.parse(reply.content[0]!.text) as { warnings?: string[] };
+              if (reply.isError) throw new UnstoredReply(reply);
+              if (body.warnings?.length)
+                throw new UnstoredReply(
+                  text({
+                    stored: false,
+                    warnings: body.warnings,
+                    next: `Nothing was stored. Fix every warning and call ${name} again with requestId ${request.id}.`,
+                  }),
+                );
+            }
+            return reply;
+          });
+        } catch (error) {
+          return error instanceof UnstoredReply ? error.reply : failure(error);
+        }
+      },
+    );
+  }
+
+  if (options.lease)
+    registerTool(
+      "get_request",
+      {
+        title: "Get the leased Request",
+        description: "The one Request this lease may answer, with its Player context.",
+      },
+      async () => text(null),
+    );
 
   const taskSchema = z
     .object({
@@ -221,7 +363,7 @@ export function createMcpServer(
     })
     .strict();
 
-  server.registerTool(
+  registerTool(
     "put_plan",
     {
       title: "Put a session plan",
@@ -268,10 +410,11 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "get_current_plan",
     {
       title: "Get the current plan",
+      ...(options.lease ? { inputSchema: { account: z.string().optional() } } : {}),
       description:
         "Return the latest stored plan as JSON and as the UNB1: string the companion writes into the game. Empty when nothing has been stored yet.",
     },
@@ -287,7 +430,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "get_progress",
     {
       title: "Get session progress",
@@ -317,7 +460,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "list_sessions",
     {
       title: "List stored plans",
@@ -339,7 +482,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "list_devices",
     {
       title: "List companion devices",
@@ -349,7 +492,7 @@ export function createMcpServer(
     async () => text({ devices: (await store.listDevices()).map(publicDevice) }),
   );
 
-  server.registerTool(
+  registerTool(
     "approve_device",
     {
       title: "Approve a companion device",
@@ -366,7 +509,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "revoke_device",
     {
       title: "Revoke a companion device",
@@ -383,7 +526,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "list_requests",
     {
       title: "List in-game plan requests",
@@ -402,6 +545,7 @@ export function createMcpServer(
         const delivery = await store.webhookDelivery(request.id);
         requests.push({
           ...publicRequest(request),
+          runner: await store.runnerStatus(request.id),
           webhook: delivery
             ? {
                 attempts: delivery.attempts,
@@ -415,7 +559,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "get_player_profile",
     {
       title: "Get the player profile",
@@ -453,7 +597,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "get_player_history",
     {
       title: "Get the player history",
@@ -517,7 +661,7 @@ export function createMcpServer(
     realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
   };
 
-  server.registerTool(
+  registerTool(
     "get_account_overview",
     {
       title: "Overview of an Account",
@@ -551,7 +695,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "get_ready_now",
     {
       title: "What the player can do now",
@@ -567,7 +711,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "list_errors",
     {
       title: "List addon error reports",
@@ -584,7 +728,7 @@ export function createMcpServer(
       text({ errors: await store.listErrors({ account, since, version, limit: limit ?? 50 }) }),
   );
 
-  server.registerTool(
+  registerTool(
     "list_failed_uploads",
     {
       title: "List failed uploads",
@@ -607,7 +751,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "list_wins",
     {
       title: "List wins",
@@ -624,7 +768,7 @@ export function createMcpServer(
       text(await store.listWins({ account, character, since, limit: limit ?? 100 })),
   );
 
-  server.registerTool(
+  registerTool(
     "get_suggestions",
     {
       title: "Get Bory's ideas",
@@ -647,7 +791,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "get_game_data",
     {
       title: "Read Game data Sections",
@@ -686,7 +830,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "check_ids",
     {
       title: "Check ids against the game data",
@@ -708,7 +852,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "get_data_changes",
     {
       title: "What changed in the game data",
@@ -751,7 +895,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "data_catalog",
     {
       title: "Data explorer",
@@ -762,7 +906,7 @@ export function createMcpServer(
     async ({ account }) => text(await data.catalog({ account })),
   );
 
-  server.registerTool(
+  registerTool(
     "delete_account_data",
     {
       title: "Delete an Account's data (owner only)",
@@ -786,13 +930,14 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "put_item_advice",
     {
       title: "Put personal item advice",
       description:
         'Store Personal advice for one character\'s items. The companion downloads it into the game, where it shows from the next natural load as the item tooltip line "Bory: <line>". Live game rules (quest items, uncollected mounts, toys, pets and looks, upgrades) still win; your advice replaces the generic keep, sell, junk, and reagent lines. Write line as a short action, at most 60 characters, in English, and lineRu in Russian: "Bank it: Alchemy reagent, skill 75", "Sell on the AH", "Send to Mira (Alchemy): mail". Base it on get_player_profile with the account, so items can go to the Alt who uses them: the warband bank for warbound items, mail otherwise. Never advise sending soulbound items, never say delete, and never say vendor for epic or bind-on-equip items. action is one of keep, sell, use, bank, send, disenchant, equip, open, turn_in, info; to names the Alt for send. replace drops this character\'s older advice first.',
       inputSchema: {
+        requestId: z.string().optional().describe("When set, the leased Request id."),
         character: z.string().max(80),
         realm: z.string().max(80),
         account: z.string().max(80).optional(),
@@ -824,7 +969,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "answer_request",
     {
       title: "Answer an in-game request",
@@ -871,7 +1016,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "fail_request",
     {
       title: "Fail an in-game request",
@@ -889,7 +1034,7 @@ export function createMcpServer(
     },
   );
 
-  server.registerTool(
+  registerTool(
     "resolve_criteria",
     {
       title: "Resolve a criteria tree id",
@@ -921,7 +1066,7 @@ export async function handleMcp(
   store: Store,
   dataDir: string,
   gameIds?: BlizzardIds,
-  options: { settle?: boolean } = {},
+  options: McpOptions = {},
 ): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,

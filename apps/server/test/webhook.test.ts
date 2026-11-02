@@ -90,14 +90,22 @@ test("webhook: logs say on or off without the URL path or key, and health shows 
   const on = build();
   try {
     assert.ok(on.lines.includes("webhook on: planner.example with key"));
-    assert.deepEqual(await (await on.app.request("/health")).json(), { ok: true, webhook: "on" });
+    assert.deepEqual(await (await on.app.request("/health")).json(), {
+      ok: true,
+      planner: "webhook",
+      webhook: "on",
+    });
   } finally {
     on.close();
   }
   const off = build({ url: "" });
   try {
     assert.ok(off.lines[0].startsWith("webhook off: UNBORED_PLANNER_WEBHOOK_URL is not set"));
-    assert.deepEqual(await (await off.app.request("/health")).json(), { ok: true, webhook: "off" });
+    assert.deepEqual(await (await off.app.request("/health")).json(), {
+      ok: true,
+      planner: "webhook",
+      webhook: "off",
+    });
     const question = requests.cases.find((entry) => entry.body.type === "question")!.body;
     assert.equal((await post(off.app, question)).status, 201);
     assert.equal(off.hits.length, 0);

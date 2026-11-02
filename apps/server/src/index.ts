@@ -21,7 +21,8 @@ if (config.databaseUrl) {
     `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); every table on Postgres, the SQLite file untouched`,
   );
 }
-const { app, webhook, inbox } = createApp({ ...config, database });
+const { app, webhook, inbox, runner } = createApp({ ...config, database });
+runner?.start();
 webhook.start();
 if (inbox) {
   // ADR 0057 step 4: snapshots answer 202 and this worker ingests them.
