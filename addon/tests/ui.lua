@@ -112,7 +112,7 @@ local methods = {
     return self.fontString
   end,
   GetStringWidth = function(self)
-    return #self.text * CHAR_WIDTH
+    return #(self.text:gsub("[\128-\191]", "")) * CHAR_WIDTH
   end,
   GetStringHeight = function(self)
     if self.text == "" then
@@ -121,7 +121,7 @@ local methods = {
     local width = self.width > 0 and self.width or 1000
     local lines = 0
     for line in (self.text .. "\n"):gmatch("([^\n]*)\n") do
-      lines = lines + math.max(1, math.ceil(#line * CHAR_WIDTH / width))
+      lines = lines + math.max(1, math.ceil(#(line:gsub("[\128-\191]", "")) * CHAR_WIDTH / width))
     end
     -- Like the client: a string with a fixed height reports at most that.
     if self.height > 0 then
@@ -1243,6 +1243,71 @@ check(mascot.surpriseChip:IsShown() and mascot.moreIdeas:IsShown() and surpriseA
 check(textOf(mascot.surpriseChip.label) == "Surprise me" and textOf(mascot.moreIdeas.label) == "More ideas",
   "with their labels")
 check(not mascot.chips[1]:IsShown(), "the presets wait behind More ideas")
+-- New payloads fit the same two-line chip and keep full details on hover.
+local oldIdeaHeight = mascot.ideaChips[1]:GetHeight()
+local firstIdea = UnboredSuggestions.characters["Area 52-Hero"][1]
+firstIdea.displayKind = "mount"
+firstIdea.progress = { done = 3, total = 16 }
+firstIdea.action = "Run it for a missing mount"
+firstIdea.why = "A reward you still lack"
+mascot:Refresh()
+check(textOf(mascot.ideaChips[1].meta) == "Mount · 3/16", "the button names its kind and progress")
+check(textOf(mascot.ideaChips[1].sub) == "Run it for a missing mount", "the second line says what to do")
+check(mascot.ideaChips[1]:GetHeight() <= oldIdeaHeight, "details keep the current button size")
+mascot.ideaChips[1]:GetScript("OnEnter")(mascot.ideaChips[1])
+local ideaTip = textOf(GameTooltip)
+check(ideaTip:find("You will get:", 1, true) and ideaTip:find("Hearthstone", 1, true)
+  and ideaTip:find("Run Tempest Keep for", 1, true) and ideaTip:find("A reward you still lack", 1, true),
+  "hover shows game-named rewards, full goal and why")
+local savedLanguage, savedStrings = ns.LANG, ns.L
+for _, language in ipairs({ "en", "ru" }) do
+  ns.LANG, ns.L = language, ns.Locales[language]
+  for _, kind in ipairs({ "event", "achievement", "chain", "rare", "collection", "mount" }) do
+    firstIdea.displayKind = kind
+    mascot:Refresh()
+    check(textOf(mascot.ideaChips[1].meta) == ns.T("IDEA_KIND_" .. kind) .. " · 3/16",
+      "each kind label and known progress fit in " .. language .. ": " .. kind)
+  end
+end
+firstIdea.displayKind = "mount"
+ns.LANG, ns.L = "ru", ns.Locales.ru
+firstIdea.action = "Пройди ради маунта"
+firstIdea.goal = "Получи {item:6948}."
+firstIdea.why = "У тебя этого ещё нет"
+local oldItemName = C_Item.GetItemNameByID
+local oldItemInfo = C_Item.GetItemInfo
+C_Item.GetItemNameByID = function(id) return id == 6948 and "Камень возвращения" or nil end
+C_Item.GetItemInfo = function(id)
+  if id == 6948 then return "Камень возвращения", "|Hitem:6948|h[Камень возвращения]|h" end
+end
+mascot:Refresh()
+check(textOf(mascot.ideaChips[1].meta) == "Маунт · 3/16", "kind and progress are localized in Russian")
+check(textOf(mascot.ideaChips[1].sub) == "Пройди ради маунта", "the Russian action is shown")
+mascot.ideaChips[1]:GetScript("OnEnter")(mascot.ideaChips[1])
+ideaTip = textOf(GameTooltip)
+check(ideaTip:find(ns.T("REWARDS"), 1, true) and ideaTip:find("Камень возвращения", 1, true)
+  and ideaTip:find("Получи", 1, true) and ideaTip:find("У тебя этого ещё нет", 1, true),
+  "Russian hover shows rewards, goal and why")
+firstIdea.action = string.rep("я ", 30)
+firstIdea.title = string.rep("Длинное название ", 8)
+mascot:Refresh()
+local shortAction = textOf(mascot.ideaChips[1].sub)
+check(shortAction:find("…", 1, true) and #shortAction < 60,
+  "a long Russian action fits one line with an ellipsis")
+local prefix = shortAction:gsub("…$", "")
+check(prefix:gsub("я", ""):gsub(" ", "") == "", "truncation leaves whole Russian letters")
+check(mascot.ideaChips[1].sub:GetStringWidth() <= mascot.ideaChips[1].sub:GetWidth()
+  and mascot.ideaChips[1]:GetHeight() <= oldIdeaHeight, "long Russian text stays inside the button")
+firstIdea.progress = { done = -1, total = 0 }
+mascot:Refresh()
+check(textOf(mascot.ideaChips[1].meta) == "Маунт", "malformed progress is omitted")
+ns.LANG, ns.L = savedLanguage, savedStrings
+C_Item.GetItemNameByID, C_Item.GetItemInfo = oldItemName, oldItemInfo
+firstIdea.title, firstIdea.goal = "Tempest Keep", "Run Tempest Keep for {item:6948}."
+firstIdea.displayKind, firstIdea.progress, firstIdea.action, firstIdea.why = nil, nil, nil, nil
+mascot:Refresh()
+check(not mascot.ideaChips[1].meta:IsShown(), "old payloads keep their previous layout")
+
 mascot.moreIdeas:Click()
 local presetsShown = 0
 for i = 1, #mascot.chips do

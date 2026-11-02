@@ -799,6 +799,9 @@ ns.Now = function() return UnboredSuggestions.computedAt end
 local ideas = ns.Suggestions.Read()
 check(#ideas == 6 and ideas[1].kind == "event" and ideas[2].kind == "chain" and ideas[4].id == "mount:183",
   "the Companion's ideas are read")
+check(ideas[1].action == "Complete the event activities" and ideas[4].displayKind == "mount",
+  "the shared fixture carries action and display kind")
+check(ideas[2].progress.done == 3 and ideas[2].progress.total == 8, "the shared fixture carries chain progress")
 check(ideas[2].chain.questLineID == 5678 and ideas[2].chain.nextQuestID == 79100, "a chain idea keeps its ids")
 check(ideas[4].rewards[1] == "{mount:183}" and ideas[4].mapID == 109, "an idea keeps its reward and map")
 check(ideas[1].wish ~= nil and ideas[1].quick == nil, "a Server idea has its wish and no Quick plan")
