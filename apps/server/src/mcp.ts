@@ -267,7 +267,15 @@ export function createMcpServer(
             const reply = await handler(scoped as z.output<z.ZodObject<S>>);
             if (ANSWER_TOOLS.has(name)) {
               const body = JSON.parse(reply.content[0]!.text) as { warnings?: string[] };
-              if (reply.isError || body.warnings?.length) throw new UnstoredReply(reply);
+              if (reply.isError) throw new UnstoredReply(reply);
+              if (body.warnings?.length)
+                throw new UnstoredReply(
+                  text({
+                    stored: false,
+                    warnings: body.warnings,
+                    next: `Nothing was stored. Fix every warning and call ${name} again with requestId ${request.id}.`,
+                  }),
+                );
             }
             return reply;
           });

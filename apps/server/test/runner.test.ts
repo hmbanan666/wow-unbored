@@ -260,6 +260,42 @@ for (const backend of BACKENDS) {
     }
   });
 
+  test(`runner hands a retry nobody claims to the webhook (${backend})`, async () => {
+    const app = build(backend, true);
+    try {
+      await app.add();
+      const lease = await (await app.claim()).json();
+      await app.post(`/v1/runner/leases/${lease.leaseId}/finish`, { ok: false, error: "boom" });
+      app.advance(15 + 89);
+      await app.runner!.tick();
+      assert.equal((await app.store.runnerStatus("runner-first"))?.state, "queued");
+      app.advance(1);
+      await app.runner!.tick();
+      await app.webhook.tick();
+      assert.equal((await app.store.runnerStatus("runner-first"))?.state, "handed_off");
+      assert.equal(app.hits.length, 1);
+      assert.ok(app.lines.some((line) => line.includes("handed to webhook (runner idle)")));
+    } finally {
+      app.close();
+    }
+  });
+
+  test(`runner hands a dead lease nobody reclaims to the webhook (${backend})`, async () => {
+    const app = build(backend, true);
+    try {
+      await app.add();
+      await app.claim();
+      app.advance(180 + 89);
+      await app.runner!.tick();
+      assert.equal((await app.store.runnerStatus("runner-first"))?.state, "leased");
+      app.advance(1);
+      await app.runner!.tick();
+      assert.equal((await app.store.runnerStatus("runner-first"))?.state, "handed_off");
+    } finally {
+      app.close();
+    }
+  });
+
   test(`expired final leases fail without another runner and use the Request language (${backend})`, async () => {
     const app = build(backend);
     try {
@@ -326,7 +362,10 @@ for (const backend of BACKENDS) {
           arguments: { requestId: "runner-first", plan },
         });
       const warning = await call({ ...plan, title: undefined });
-      assert.ok(JSON.parse(warning.body.result.content[0].text).warnings.length > 0);
+      const unstored = JSON.parse(warning.body.result.content[0].text);
+      assert.ok(unstored.warnings.length > 0);
+      assert.equal(unstored.stored, false);
+      assert.equal(unstored.plan, undefined);
       assert.equal((await app.store.requestById("runner-first"))?.status, "pending");
       assert.equal((await app.store.runnerStatus("runner-first"))?.state, "leased");
       assert.equal(await app.store.latestPlanForAccount("runner-account"), undefined);

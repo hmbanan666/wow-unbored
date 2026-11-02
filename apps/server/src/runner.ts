@@ -15,6 +15,7 @@ type Job = {
   state: string;
   attempts: number;
   queued_at: number;
+  available_at: number;
   last_error: string | null;
   lease_id: string | null;
   lease_token_hash: string | null;
@@ -104,6 +105,17 @@ export class PlanRunner {
       job.attempt_started_at !== null &&
       now < job.attempt_started_at + 900
     );
+  }
+
+  /** A retry that is due, or a dead lease, left unclaimed for the fallback interval. */
+  private stalled(job: Job, now = this.now()) {
+    const since =
+      job.state === "queued" && job.attempts > 0
+        ? job.available_at
+        : job.state === "leased" && job.attempts < 3
+          ? job.leased_until
+          : null;
+    return since !== null && since !== undefined && now >= since + this.fallback.seconds;
   }
 
   async scope(token: string): Promise<PlanRequest | undefined> {
@@ -245,7 +257,7 @@ export class PlanRunner {
         job.request_id,
       );
       this.log(
-        `runner req=${job.request_id} attempt=${job.attempts} failed attempts exhausted, retry in 0s`,
+        `runner req=${job.request_id} attempt=${job.attempts} failed attempts exhausted, request failed`,
       );
     }
   }
@@ -256,9 +268,13 @@ export class PlanRunner {
       `SELECT j.* FROM runner_jobs j JOIN requests r ON r.id = j.request_id
       WHERE j.state IN ('queued', 'leased') AND (r.status <> 'pending'
         OR (j.attempts >= 3 AND (j.state = 'queued' OR j.leased_until < ? OR j.attempt_started_at + 900 <= ?))
-        OR (j.attempts = 0 AND j.queued_at <= ?))`,
+        OR (j.attempts = 0 AND j.queued_at <= ?)
+        OR (j.state = 'queued' AND j.attempts > 0 AND j.available_at <= ?)
+        OR (j.state = 'leased' AND j.attempts < 3 AND j.leased_until <= ?))`,
       this.now(),
       this.now(),
+      this.fallback.enabled ? this.now() - this.fallback.seconds : -1,
+      this.fallback.enabled ? this.now() - this.fallback.seconds : -1,
       this.fallback.enabled ? this.now() - this.fallback.seconds : -1,
     );
     for (const row of rows) {
@@ -284,6 +300,9 @@ export class PlanRunner {
           this.now() >= job.queued_at + this.fallback.seconds
         )
           await this.handoff(job, "unclaimed");
+        else if (this.fallback.enabled && this.stalled(job))
+          // A retry or a dead lease nobody picked up again: the runner is gone.
+          await this.handoff(job, "runner idle");
       });
     }
   }
