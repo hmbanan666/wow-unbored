@@ -83,6 +83,23 @@ local function chain(raw)
   }
 end
 
+local function cleanProgress(raw)
+  if type(raw) ~= "table" then
+    return nil
+  end
+  local done, total = ns.AsNumber(raw.done), ns.AsNumber(raw.total)
+  if done and total and done >= 0 and total > 0 and done <= total and total < math.huge then
+    return { done = done, total = total }
+  end
+end
+
+local function action(raw)
+  local value = text(raw, 60)
+  if value and not value:find("[{}|\r\n]") then
+    return value
+  end
+end
+
 -- One idea as the Bubble may show it, or nil when a field is broken.
 function S.Clean(raw)
   if type(raw) ~= "table" or not S.KINDS[raw.kind] then
@@ -98,6 +115,9 @@ function S.Clean(raw)
   return {
     id = id,
     kind = raw.kind,
+    displayKind = (S.KINDS[raw.displayKind] or raw.displayKind == "mount") and raw.displayKind or nil,
+    action = action(raw.action),
+    progress = cleanProgress(raw.progress),
     title = title,
     titleToken = type(raw.titleToken) == "string" and #raw.titleToken <= 60
       and raw.titleToken:match(TOKEN) and raw.titleToken or nil,

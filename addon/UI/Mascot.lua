@@ -237,11 +237,28 @@ local function chip(parent, template, onClick)
   return button
 end
 
--- An idea: its title, a muted line under it, one reward picture on the right.
+-- Fit one plain-text line by rendered width, never splitting a UTF-8 character.
+-- Only called on layout, not from the per-frame update.
+local function fitIdeaLine(label, text, width)
+  label:SetWidth(0)
+  label:SetText(text)
+  if label:GetStringWidth() > width then
+    local suffix = ns.T("IDEA_ELLIPSIS")
+    repeat
+      text = ns.Utf8Truncate(text, #text - 1)
+      label:SetText(text .. suffix)
+    until text == "" or label:GetStringWidth() <= width
+  end
+  return ns.UI.Measure(label, width)
+end
+
+-- An idea: title and kind/progress above its action, with a reward picture.
 local function ideaChip(parent, onClick)
   local button = chip(parent, "GameFontHighlight", onClick)
   button.sub = font(button, "GameFontHighlightSmall")
   button.sub:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  button.meta = font(button, "GameFontHighlightSmall")
+  button.meta:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
   button.icon = button:CreateTexture(nil, "ARTWORK")
   button.icon:SetSize(IDEA_ICON, IDEA_ICON)
   button.icon:SetPoint("RIGHT", -8, 0)
@@ -252,8 +269,18 @@ local function ideaChip(parent, onClick)
       return ""
     end
     local lines = { ns.Suggestions.Title(idea), ns.Markup.Plain(idea.goal) }
+    local why = ns.Suggestions.Line(idea)
+    if why then
+      lines[#lines + 1] = why
+    end
+    if idea.why and idea.why ~= why then
+      lines[#lines + 1] = idea.why
+    end
+    if #idea.rewards > 0 then
+      lines[#lines + 1] = ns.T("REWARDS")
+    end
     for i = 1, #idea.rewards do
-      lines[#lines + 1] = "- " .. (ns.Markup.Plain(idea.rewards[i]) or "")
+      lines[#lines + 1] = ns.Markup.RenderReward(idea.rewards[i])
     end
     return table.concat(lines, "\n")
   end)
@@ -2024,13 +2051,34 @@ function ns.Mascot:Layout(view, right)
     button.sub:SetText(line or "")
     local icon = idea.rewards[1] and ns.Markup.RewardIcon(idea.rewards[1])
     local width = inner - 20 - (icon and IDEA_ICON + 6 or 0)
-    local height = ns.UI.Measure(button.label, width) + 10
+    local detailed = idea.action or idea.progress or idea.displayKind
+    button.meta:Hide()
+    local titleWidth = width
+    if detailed then
+      local meta = ns.T("IDEA_KIND_" .. (idea.displayKind or idea.kind))
+      if idea.progress then
+        meta = ns.T("IDEA_PROGRESS", meta, idea.progress.done, idea.progress.total)
+      end
+      button.meta:SetWidth(0)
+      button.meta:SetText(meta)
+      local metaWidth = math.min(button.meta:GetStringWidth(), width * 0.6)
+      fitIdeaLine(button.meta, meta, metaWidth)
+      button.meta:ClearAllPoints()
+      button.meta:SetPoint("TOPRIGHT", button, "TOPLEFT", 10 + width, -5)
+      button.meta:Show()
+      titleWidth = width - metaWidth - 6
+      line = idea.action or line
+      button.sub:SetText(line or "")
+    end
+    local height = (detailed and fitIdeaLine(button.label, ns.Suggestions.Title(idea), titleWidth)
+      or ns.UI.Measure(button.label, width)) + 10
     button.label:ClearAllPoints()
     button.label:SetPoint("TOPLEFT", 10, -5)
     button.sub:ClearAllPoints()
     if line then
       button.sub:SetPoint("TOPLEFT", button.label, "BOTTOMLEFT", 0, -2)
-      height = height + ns.UI.Measure(button.sub, width) + 2
+      height = height + (detailed and fitIdeaLine(button.sub, line, width)
+        or ns.UI.Measure(button.sub, width)) + 2
       button.sub:Show()
     else
       button.sub:Hide()
