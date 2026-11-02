@@ -665,21 +665,57 @@ check(menuRow("Cancel my request") ~= nil and menuRow("Refresh now") ~= nil, "Ca
 ui.menu:Hide()
 clock = clock + 15 * 60
 ns.Events.Pulse()
-check(not mascot.buttons.refresh:IsShown(), "no ETA offer while the file does not name the request")
+check(not mascot.buttons.refresh:IsShown(), "no ETA offer without Companion status or a matching request")
 clock = clock - 15 * 60
-UnboredExternalPlan = { v = 1, kind = "plan", requestId = req.id, requestStatus = "pending", eta = 300 }
+UnboredCompanionStatus = { seenAt = clock, pairing = "approved", online = true }
+ns.Session:RefreshUI()
+check(not mascot.buttons.refresh:IsShown(), "a live Companion still waits for the ETA after sending")
+mascot.collapse:Click()
+clock = req.sentAt + ns.Session.Eta() - 1
+ns.Events.Pulse()
+check(mascot.pill:IsShown(), "the Bubble stays collapsed before the ETA")
+clock = clock + 1
+ns.Events.Pulse()
+check(ns.Session.requestNote == "sending" and textOf(mascot.header) == "Should be ready. Refresh?",
+  "the send reload needs no matching id in the loaded file to offer Refresh")
+check(shownButtons() == "done,skip,refresh", "the sending request has one Refresh alongside the Quick plan")
+check(mascot.bubble:IsShown() and not mascot.pill:IsShown(), "the ETA opens the collapsed Bubble")
+check(mascot.mood == "happy" and not mascot.thinkingDots:IsShown(), "Bory shows the Refresh cue at the ETA")
+check(reloads == 1, "reaching the ETA never reloads by itself")
+mascot.collapse:Click()
+ns.Events.Pulse()
+check(mascot.pill:IsShown(), "the same ETA offer does not keep reopening the Bubble")
+mascot.pill:Click("LeftButton")
+mascot.buttons.refresh:Click()
+check(reloads == 2 and req.checks == 1, "the sending request counts the Refresh click")
+ns.Session:MarkLoaded()
 ns.Session:NoteRequest()
 ns.Session:RefreshUI()
-check(not mascot.buttons.refresh:IsShown(), "before the ETA: just the wait")
-clock = req.sentAt + 301
+check(textOf(mascot.header) == "Almost. Give me a couple more minutes.",
+  "still no matching id after Refresh: almost, with a way forward")
+clock = clock + ns.ETA_AGAIN_SECONDS - 1
+ns.Events.Pulse()
+check(not mascot.buttons.refresh:IsShown(), "a sending request waits two minutes after a check")
+clock = clock + 1
+ns.Events.Pulse()
+check(mascot.buttons.refresh:IsShown() and reloads == 2, "the next offer waits for another click")
+
+-- The same check resumes when the Companion now acknowledges the Request.
+UnboredExternalPlan = { v = 1, kind = "plan", requestId = req.id, requestStatus = "pending", eta = 300 }
+ns.Session:MarkLoaded()
+ns.Session:NoteRequest()
+ns.Session:RefreshUI()
+check(not mascot.buttons.refresh:IsShown(), "preparing after a check: just the wait")
+clock = clock + ns.ETA_AGAIN_SECONDS
 ns.Events.Pulse()
 check(textOf(mascot.header) == "Should be ready. Refresh?", "after the ETA: one Refresh offer")
 check(shownButtons() == "done,skip,refresh", "with Refresh: " .. shownButtons())
 mascot.buttons.refresh:Click()
-check(reloads == 2 and req.checks == 1, "Refresh reloads from the click")
+check(reloads == 3 and req.checks == 2, "Refresh reloads from the click")
 ns.Session:MarkLoaded()
 ns.Session:RefreshUI()
 check(textOf(mascot.header) == "Almost. Give me a couple more minutes.", "still pending: almost")
+UnboredCompanionStatus = nil
 
 -- The Full plan was in the file at the next load.
 UnboredExternalPlan = {
@@ -1079,12 +1115,22 @@ check(not bubbleText():find("isn't running", 1, true), "a long session alone doe
 clock = clock - 50 * 60
 ns.Session:RefreshUI()
 check(bubbleText():find("I'm on it.", 1, true), "all fine: on it, keep playing")
-check(not mascot.buttons.refresh:IsShown(), "no Refresh while the Companion file does not name it")
+check(not mascot.buttons.refresh:IsShown(), "no Refresh before the ETA")
 check(mascot.float.playing and mascot.glow.playing, "and Bory visibly thinks")
 check(mascot.art.texture:find("BoryThinking128", 1, true) ~= nil, "with his thinking face")
 local ringTexture = mascot.ring.texture
 check(mascot.thinkingDots:IsShown(), "with three dots by the name")
+local waitingSteps = ns.Session.state
+ns.Session.state = nil
+clock = clock + ns.Session.Eta()
+ns.Events.Pulse()
+check(mascot.view.kind == "waiting" and shownButtons() == "refresh"
+  and textOf(mascot.message) == "Should be ready. Refresh?", "without a Quick plan, the waiting Bubble offers Refresh")
+clock = clock - ns.Session.Eta()
+ns.Session.state = waitingSteps
+-- A check made after ten minutes keeps the slow line while the next ETA is pending.
 UnboredCharDB.request.sentAt = ns.Session.loadedAt - 11 * 60
+UnboredCharDB.request.checks = 1
 ns.Session:RefreshUI()
 check(bubbleText():find("taking long", 1, true), "a slow request is said")
 check(mascot.buttons.retry:IsShown(), "with Try again")
@@ -1114,7 +1160,7 @@ mascot.pill:Click("LeftButton")
 mascot.updateLater = nil
 ns.Session:RefreshUI()
 mascot.buttons.load:Click()
-check(reloads == 3 and UnboredCharDB.updateTried == "9.9.9", "Load reloads and remembers the try")
+check(reloads == 4 and UnboredCharDB.updateTried == "9.9.9", "Load reloads and remembers the try")
 ns.Session:RefreshUI()
 check(textOf(mascot.message):find("restart the game", 1, true), "still old after Load: restart once")
 mascot.buttons.ok:Click()
@@ -1640,7 +1686,7 @@ check(UnboredCharDB.profile == nil, "no 0.6 profile is saved")
 check(type(UnboredCharDB.data) == "table" and type(UnboredCharDB.data.sections) == "table",
   "the snapshot is saved with the game")
 
-check(reloads == 3, "only the Send now, Refresh and Load clicks ever reloaded: " .. reloads)
+check(reloads == 4, "only the Send now, Refresh and Load clicks ever reloaded: " .. reloads)
 ns.Now = realNow
 
 if fails > 0 then
