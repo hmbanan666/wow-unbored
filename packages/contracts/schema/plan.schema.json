@@ -79,7 +79,8 @@
           "title": {
             "type": "string",
             "minLength": 1,
-            "description": "May carry entity markup (markup.md)."
+            "description": "At most 240 UTF-8 bytes; may carry entity markup (markup.md).",
+            "maxLength": 240
           },
           "estMinutes": {
             "type": "integer"
@@ -95,11 +96,13 @@
           },
           "note": {
             "type": "string",
-            "description": "May carry entity markup (markup.md)."
+            "description": "At most 1000 UTF-8 bytes, in short paragraphs. Expanded details scroll (ADR 0061). May carry entity markup.",
+            "maxLength": 1000
           },
           "why": {
             "type": "string",
-            "description": "One short reason, at most 120 bytes. May carry entity markup."
+            "description": "One short reason, at most 120 bytes. May carry entity markup.",
+            "maxLength": 120
           },
           "rewards": {
             "type": "array",
@@ -147,7 +150,8 @@
             }
           }
         }
-      }
+      },
+      "maxItems": 40
     },
     "entities": {
       "type": "object",

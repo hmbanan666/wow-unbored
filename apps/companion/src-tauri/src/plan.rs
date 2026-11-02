@@ -1609,6 +1609,34 @@ mod tests {
     }
 
     #[test]
+    fn carries_a_full_raid_with_long_notes_into_the_addon() {
+        let raw: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/plan-instance.json"
+        ))
+        .unwrap();
+        let mut plan = plan_from_value(raw.clone()).unwrap();
+        assert_eq!(plan.tasks.len(), 15);
+        assert_eq!(
+            plan.tasks[1].note.as_deref(),
+            raw["tasks"][1]["note"].as_str()
+        );
+        for task in &mut plan.tasks[1..14] {
+            task.title = "я".repeat(120);
+            task.note = Some("я".repeat(500));
+        }
+        let lua = render_plan_lua(&plan);
+        let values = parse_saved_variables(&lua).unwrap();
+        let root = values.get("UnboredExternalPlan").unwrap();
+        let get = crate::savedvars::table_get;
+        let tasks = crate::savedvars::array_items(get(root, "tasks").unwrap());
+        assert_eq!(tasks.len(), 15);
+        assert_eq!(
+            get(tasks[13], "note").and_then(|v| v.as_str()),
+            Some("я".repeat(500).as_str())
+        );
+    }
+
+    #[test]
     fn writes_the_card_fields_the_addon_reads() {
         const CARD: &str = include_str!("../../../../packages/contracts/fixtures/plan-card.json");
         const CARD_LUA: &str =

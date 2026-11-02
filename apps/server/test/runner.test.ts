@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vite-plus/test";
@@ -18,10 +18,14 @@ function build(backend: Backend, fallback = false) {
   let now = Math.floor(Date.now() / 1000);
   const hits: unknown[] = [];
   const lines: string[] = [];
+  const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-runner-"));
+  cpSync(new URL("./fixtures/instances/", import.meta.url), path.join(dataDir, "wago"), {
+    recursive: true,
+  });
   const built = createApp({
     database: pg(backend),
     ingest: "inline",
-    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-runner-")),
+    dataDir,
     companionToken: "companion",
     plannerToken: "planner",
     plannerRoute: "runner",
@@ -185,6 +189,21 @@ for (const backend of BACKENDS) {
       assert.equal(listed.status, 200);
       const names = listed.body.result.tools.map((tool: { name: string }) => tool.name);
       assert.ok(names.includes("get_request"));
+      assert.ok(names.includes("get_instance_guide"));
+      const guideReply = await call("get_instance_guide", { achievementID: 10149 });
+      assert.equal(guideReply.body.result.isError, false);
+      const guide = JSON.parse(guideReply.body.result.content[0].text);
+      assert.equal(guide.instance.instanceID, 669);
+      assert.deepEqual(
+        guide.bosses.map((boss: { encounterID: number }) => boss.encounterID),
+        [1426, 1425, 1372],
+      );
+      const ownerGuide = await mcp(app, "planner", "tools/call", {
+        name: "get_instance_guide",
+        arguments: { instanceID: 669 },
+      });
+      assert.equal(ownerGuide.body.result.isError, false);
+      assert.equal((await call("get_instance_guide")).body.result.isError, true);
       for (const name of [
         "list_requests",
         "list_sessions",

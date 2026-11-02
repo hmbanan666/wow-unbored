@@ -740,7 +740,28 @@ function ns.Mascot:CreateBubble()
     self.peek = nil
     self:ToggleCard()
   end)
-  self.details = font(bubble, "GameFontHighlightSmall")
+  local detailsScroll = CreateFrame("ScrollFrame", nil, bubble)
+  detailsScroll.child = CreateFrame("Frame", nil, detailsScroll)
+  detailsScroll:SetScrollChild(detailsScroll.child)
+  detailsScroll.child:EnableMouse(true)
+  detailsScroll:EnableMouseWheel(true)
+  detailsScroll:SetScript("OnMouseWheel", function(frame, delta)
+    local range = ns.AsNumber(frame:GetVerticalScrollRange()) or 0
+    local at = (ns.AsNumber(frame:GetVerticalScroll()) or 0) - delta * 24
+    frame:SetVerticalScroll(math.max(0, math.min(range, at)))
+  end)
+  if detailsScroll.child.SetHyperlinksEnabled then
+    detailsScroll.child:SetHyperlinksEnabled(true)
+  end
+  detailsScroll.child:SetScript("OnHyperlinkEnter", function(frame, link, text)
+    ns.Markup.OnEnter(frame, link, text)
+  end)
+  detailsScroll.child:SetScript("OnHyperlinkLeave", function() ns.Markup.OnLeave() end)
+  detailsScroll.child:SetScript("OnHyperlinkClick", function(_, link, text, button)
+    ns.Markup.OnClick(link, text, button)
+  end)
+  self.detailsScroll = detailsScroll
+  self.details = font(detailsScroll.child, "GameFontHighlightSmall")
   self.details:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
   local okList, list = pcall(CreateFrame, "ScrollFrame", nil, bubble)
   if not okList or not list then
@@ -1876,7 +1897,7 @@ local function resetRegions(mascot)
     texts[i]:ClearAllPoints()
     texts[i]:Hide()
   end
-  for _, region in ipairs({ mascot.pipRow, mascot.list, mascot.cardToggle, mascot.groupRow }) do
+  for _, region in ipairs({ mascot.pipRow, mascot.list, mascot.detailsScroll, mascot.cardToggle, mascot.groupRow }) do
     region:ClearAllPoints()
     region:Hide()
   end
@@ -2189,7 +2210,20 @@ function ns.Mascot:LayoutCard(view, inner, place, put)
     place(self.pipRow, PIP, 8, 1)
   end
   put(self.goal, view.goal, 8)
-  put(self.details, view.details, 8)
+  if view.details and view.details ~= "" then
+    local scroll = self.detailsScroll
+    if scroll.text ~= view.details then
+      scroll:SetVerticalScroll(0)
+      scroll.text = view.details
+    end
+    self.details:SetText(view.details)
+    self.details:SetPoint("TOPLEFT", scroll.child, "TOPLEFT", 0, 0)
+    local height = ns.UI.Measure(self.details, inner)
+    self.details:Show()
+    scroll.child:SetSize(inner, height)
+    scroll:SetSize(inner, math.min(height, 180))
+    place(scroll, math.min(height, 180), 8)
+  end
   if view.all then
     local height = self:LayoutList(view.all, inner - 4)
     place(self.list, height, 8, 4)

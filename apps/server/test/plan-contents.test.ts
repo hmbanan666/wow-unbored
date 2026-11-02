@@ -194,3 +194,60 @@ test("a 0.9 plan and a 0.9 progress post are still accepted as before", async ()
     cleanProgress({ account: "a", realm: "r", character: "c", progress: { generatedAt: -1 } }),
   );
 });
+
+test("a full raid fits with travel, thirteen bosses and readable Russian instructions", () => {
+  const raw = fixture("plan-instance.json");
+  const { plan, warnings } = clean(raw);
+  assert.deepEqual(warnings, []);
+  assert.equal(plan.tasks.length, 15);
+  assert.equal(plan.tasks[1].note, (raw.tasks as { note?: string }[])[1].note);
+  assert.equal(planSchema.safeParse(raw).success, true);
+  const step = { id: "a", title: "я".repeat(120), note: "я".repeat(500), why: "я".repeat(60) };
+  assert.equal(clean(cagePlan({ tasks: [step] })).plan.tasks[0].note, step.note);
+  assert.equal(planSchema.safeParse({ ...raw, tasks: [step] }).success, true);
+  for (const field of ["title", "note", "why"] as const) {
+    assert.equal(
+      planSchema.safeParse({ ...raw, tasks: [{ ...step, [field]: step[field] + "я" }] }).success,
+      false,
+    );
+  }
+  const longWhy = clean(cagePlan({ tasks: [{ ...step, why: `${step.why} ещё` }] }));
+  assert.ok(longWhy.warnings.some((warning) => warning.includes("why")));
+  assert.throws(
+    () => clean(cagePlan({ tasks: [{ ...step, note: step.note + "я" }] })),
+    /1000 bytes/,
+  );
+  assert.throws(() => clean(cagePlan({ tasks: [{ ...step, title: step.title + "я" }] })), /title/);
+  assert.equal(
+    clean(cagePlan({ tasks: Array.from({ length: 40 }, (_, n) => ({ id: `s${n}`, title: "Go" })) }))
+      .plan.tasks.length,
+    40,
+  );
+  assert.throws(
+    () =>
+      clean(
+        cagePlan({ tasks: Array.from({ length: 41 }, (_, n) => ({ id: `s${n}`, title: "Go" })) }),
+      ),
+    /max 40/,
+  );
+});
+
+test("thirteen full boss notes survive encoding without exceeding the delivery cap", () => {
+  const raw = fixture("plan-instance.json");
+  for (const step of (raw.tasks as { note?: string; title: string; why?: string }[]).slice(1, 14)) {
+    step.title = "я".repeat(120);
+    step.note = "я".repeat(500);
+    step.why = "я".repeat(60);
+  }
+  const { plan } = clean(raw);
+  const encoded = encodeUnb1(plan);
+  assert.ok(encoded.length > 20_000 && encoded.length <= 64_000);
+  assert.throws(
+    () => encodeUnb1({ ...plan, tasks: Array.from({ length: 40 }, () => plan.tasks[1]) }),
+    /64000/,
+  );
+  assert.equal(
+    JSON.parse(Buffer.from(encoded.slice(5), "base64").toString()).tasks[13].note,
+    "я".repeat(500),
+  );
+});

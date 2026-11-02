@@ -1,0 +1,11 @@
+ID,Description_lang,Parent,Amount,Operator,CriteriaID,OrderIndex
+44494,,0,1,4,0,0
+44495,Nearly Indestructible,44494,1,0,28495,0
+44497,Turning the Tide,44494,1,0,28497,1
+44503,Get In My Belly!,44494,1,0,28503,2
+44059,,0,1,4,0,0
+44060,Kill 10 Hellfire Guardians and defeat Iron Reaver,44059,1,0,28199,0
+43556,,0,1,4,0,0
+43557,,43556,1,0,28004,0
+43821,,0,1,4,0,0
+43822,Keep Hellfire Cannons above 90% health,43821,1,0,28084,0

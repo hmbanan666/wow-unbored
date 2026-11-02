@@ -338,3 +338,11 @@ Uploads may send `account` as a 64-character hex hash instead of the WTF folder 
 ## Server in this repo
 
 `apps/server/` implements the two calls above. The companion sends `Authorization: Bearer <UNBORED_COMPANION_TOKEN>`. Putting a plan, reading progress, and the MCP endpoint `/mcp` use a different bearer, `UNBORED_PLANNER_TOKEN`. Setup, the volume mount, and the planner routes are in `apps/server/README.md`.
+
+## Planner instance guide
+
+MCP `get_instance_guide({ instanceID?, achievementID?, lang?: "en" | "ru" })` is available with the owner planner bearer and with a live Request lease. At least one id is required; passing both selects the instance while retaining the achievement's requirements. `instanceID` means the Adventure Guide journal id, not a lockout map id. Public game data does not read another Account, and the normal lease wrapper still rejects expired or revoked leases.
+
+The result contains `instance` (`instanceID`, lockout `mapID`, `name`), `bosses` in journal order (`encounterID`, `dungeonEncounterID`, `name`, optional `point: { uiMapID, x, y, name }`, and `criteria`), plus `unmapped`. Coordinates are already 0–1, and `point.name` is the localized floor name when present. Each criterion preserves its owning `achievementID`, `criteriaTreeID`, `criteriaID`, amount, description, typed asset, optional child `achievement` name/description, terminal `requirements` and mapping `evidence`. Use the owning achievement with `criteriaID` for completion; tree ids and asset ids are different namespaces.
+
+When an achievement does not identify exactly one instance, `instance` is null and `candidates` lists the known journals; choose one and repeat the call with both ids. Missing map points stay absent. `entrance` is null because these sources do not prove an entrance or doorway route. The cache, source links and mapping limitations are in [data sources](data-sources.md#instance-guides-adr-0061).
