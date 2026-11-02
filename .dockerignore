@@ -7,3 +7,5 @@ art
 docs
 Screenshots
 **/*.md
+# The planner prompt ships in the image (ADR 0058).
+!packages/contracts/planner/prompt.md
