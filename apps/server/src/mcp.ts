@@ -210,7 +210,8 @@ export function createMcpServer(
           // Settle before the transaction: the inbox needs to write these same rows.
           const current = await lease.runner.scope(lease.token);
           if (current) await settle(current.account);
-          return await lease.runner.withLease(lease.token, async (request) => {
+          const mode = ANSWER_TOOLS.has(name) || name === "put_item_advice" ? "write" : "read";
+          return await lease.runner.withLease(lease.token, mode, async (request) => {
             const scoped = { ...args } as Record<string, unknown>;
             if (ANSWER_TOOLS.has(name) && scoped.requestId !== request.id)
               throw new Error("Only the leased Request may be answered; requestId is required.");

@@ -143,23 +143,38 @@ export class PlanRunner {
     );
   }
 
-  async withLease<T>(token: string, work: (request: PlanRequest) => Promise<T>): Promise<T> {
+  /** Called inside a short read check or the transaction that stores an answer. */
+  private async requireLease(token: string) {
+    const found = await this.store.db.get<Job>(
+      `SELECT * FROM runner_jobs WHERE lease_token_hash = ?`,
+      sha256Hex(token),
+    );
+    const job = found?.lease_id ? await this.locked(found.lease_id) : undefined;
+    const request = job ? await this.store.requestById(job.request_id) : undefined;
+    if (
+      !job ||
+      !this.live(job) ||
+      job.lease_token_hash !== sha256Hex(token) ||
+      request?.status !== "pending"
+    )
+      throw new LostLease();
+    return { job, request };
+  }
+
+  async withLease<T>(
+    token: string,
+    mode: "read" | "write",
+    work: (request: PlanRequest) => Promise<T>,
+  ): Promise<T> {
+    if (mode === "read") {
+      const { request } = await this.store.tx(() => this.requireLease(token));
+      // Downloads and other slow reads must leave the lease free for heartbeats.
+      return work(request);
+    }
     return this.store.tx(async () => {
-      const found = await this.store.db.get<Job>(
-        `SELECT * FROM runner_jobs WHERE lease_token_hash = ?`,
-        sha256Hex(token),
-      );
-      const job = found?.lease_id ? await this.locked(found.lease_id) : undefined;
-      const request = job ? await this.store.requestById(job.request_id) : undefined;
-      if (
-        !job ||
-        !this.live(job) ||
-        job.lease_token_hash !== sha256Hex(token) ||
-        request?.status !== "pending"
-      )
-        throw new LostLease();
+      const { job, request } = await this.requireLease(token);
       const result = await work(request);
-      // Validation or reads may have taken time: never commit a stale answer.
+      // Validation may have taken time: never commit a stale answer.
       if (!this.live(job)) throw new LostLease();
       if ((await this.store.requestById(job.request_id))?.status !== "pending")
         await this.done(job);

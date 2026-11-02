@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 import { BACKENDS, postgresPerFile, type Backend } from "./postgres-db.ts";
 
@@ -171,6 +171,70 @@ const plan = {
   title: "A little adventure",
   tasks: [{ id: "step-one", title: "Explore the shore", estMinutes: 5 }],
 };
+for (const backend of BACKENDS) {
+  test(`a slow scoped read lets heartbeats keep the lease alive (${backend})`, async () => {
+    const app = build(backend);
+    let markStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const proceed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Russian CSVs are not cached by build(): pause their download at the
+    // network boundary, while exercising the real MCP read and lease wrapper.
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      markStarted();
+      await proceed;
+      const table = new URL(String(input)).pathname.split("/")[2];
+      return new Response(
+        readFileSync(new URL(`./fixtures/instances/${table}.csv`, import.meta.url)),
+      );
+    });
+    let read: ReturnType<typeof mcp> | undefined;
+    let heartbeat: Promise<Response> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await app.add();
+      const lease = await (await app.claim()).json();
+      read = mcp(app, lease.leaseToken, "tools/call", {
+        name: "get_instance_guide",
+        arguments: { achievementID: 10149, lang: "ru" },
+      });
+      await started;
+      app.advance(100);
+      heartbeat = Promise.resolve(app.post(`/v1/runner/leases/${lease.leaseId}/heartbeat`));
+      const response = await Promise.race([
+        heartbeat,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("slow read blocked the heartbeat")), 1000);
+        }),
+      ]);
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).expiresAt, app.now() + 180);
+      app.advance(100); // Past the original lease, inside the renewed lease.
+      release();
+      const result = await read;
+      assert.equal(result.body.result.isError, false);
+      assert.equal(JSON.parse(result.body.result.content[0].text).instance.instanceID, 669);
+      assert.equal((await app.post(`/v1/runner/leases/${lease.leaseId}/heartbeat`)).status, 200);
+      const answer = await mcp(app, lease.leaseToken, "tools/call", {
+        name: "put_plan",
+        arguments: { requestId: "runner-first", plan },
+      });
+      assert.equal(answer.body.result.isError, false);
+      assert.equal((await app.store.runnerStatus("runner-first"))?.state, "done");
+    } finally {
+      clearTimeout(timer);
+      release();
+      await read;
+      await heartbeat;
+      fetch.mockRestore();
+      app.close();
+    }
+  });
+}
 for (const backend of BACKENDS) {
   test(`lease MCP limits reads and answers to one Request and Account (${backend})`, async () => {
     const app = build(backend);
