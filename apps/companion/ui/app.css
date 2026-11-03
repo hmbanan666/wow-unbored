@@ -35,6 +35,10 @@ main {
   text-align: center;
 }
 
+#settings-notice {
+  overflow-wrap: anywhere;
+}
+
 .mascot {
   position: relative;
   width: 168px;

@@ -21,6 +21,7 @@ type UiState = {
   headline?: string;
   hint?: string;
   status?: string;
+  settingsNotice?: string | null;
   steps?: Step[];
   settings: { endpointUrl?: string; wowPath?: string; pollMinutes?: number };
   autostart?: boolean;
@@ -39,6 +40,7 @@ type UiState = {
 // The window's words come with every state; the English in index.html is
 // only what shows before the first one arrives.
 let words: Record<string, string> = {};
+let settingsNoticeDismissed = false;
 function say(key: string, ...args: (string | number)[]): string {
   const text = words[key] ?? key;
   return args.reduce<string>((out, arg, i) => out.split(`{${i}}`).join(String(arg)), text);
@@ -102,6 +104,10 @@ function translate(state: UiState) {
 
 function paint(state: UiState) {
   translate(state);
+  const notice = settingsNoticeDismissed ? "" : state.settingsNotice || "";
+  el("settings-notice").hidden = !notice;
+  const noticeText = el("settings-notice-text");
+  if (noticeText.textContent !== notice) noticeText.textContent = notice;
   const phase = state.phase || "idle";
   document.body.dataset.phase = phase;
   mascot.src = PICTURES[state.picture || "idle"] || boryIdle;
@@ -166,6 +172,14 @@ async function pickFolder() {
   return invoke("set_wow_path", { path: String(picked) });
 }
 
+el("dismiss-settings-notice").addEventListener("click", () =>
+  run(async () => {
+    const state = await invoke("dismiss_settings_notice");
+    // An older in-flight state response must not bring the dismissed notice back.
+    settingsNoticeDismissed = true;
+    return state;
+  }),
+);
 el("pick").addEventListener("click", () => run(pickFolder));
 el("detect").addEventListener("click", () => run(() => invoke("detect_wow")));
 el("use-path").addEventListener("click", () =>
