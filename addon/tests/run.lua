@@ -1203,6 +1203,43 @@ for line in tocText:gmatch("[^\r\n]+") do
 end
 check(table.concat(tocFiles, ",") == table.concat(files, ","), "the test loads the same files as the TOC")
 
+-- Outcome fields use the same numeric shapes and bounds as the Server contract.
+do
+  local targets = {
+    { kind = "renown", factionID = 2507, level = 5 }, { kind = "level", level = 80 },
+    { kind = "achievement", achievementID = 42 }, { kind = "currency", currencyID = 1166, amount = 5000 },
+  }
+  for standing = 1, 8 do targets[#targets + 1] = { kind = "rep", factionID = 970, standing = standing } end
+  for _, kind in ipairs({ "mount", "pet", "toy", "item" }) do targets[#targets + 1] = { kind = kind, id = 42 } end
+  for _, target in ipairs(targets) do
+    local delivered = assert(ns.ValidatePlan({ v = 1, kind = "plan", outcome = target,
+      tasks = { { id = "step", title = "Take the next step" } } }))
+    ns.Session:ApplyPlan(delivered, "companion", false)
+    local matches = type(ns.Session.state.outcome) == "table"
+    for field, value in pairs(target) do
+      matches = matches and ns.Session.state.outcome[field] == value
+    end
+    check(matches, target.kind .. ": Server target fields survive validation and ApplyPlan")
+  end
+  for _, tokens in ipairs({ { "{mount:781}", "{ach:42}", "{currency:1166}" },
+    { "{pet:42}", "{toy:42}", "{item:6948}" } }) do
+    local delivered = assert(ns.ValidatePlan({ v = 1, kind = "plan", bonus = tokens,
+      tasks = { { id = "step", title = "Take the next step" } } }))
+    ns.Session:ApplyPlan(delivered, "companion", false)
+    check(table.concat(ns.Session.state.bonus, ",") == table.concat(tokens, ","),
+      "every supported bonus token survives validation and ApplyPlan")
+  end
+  for _, target in ipairs({
+    { kind = "rep", factionID = 970, standing = "Honored" },
+    { kind = "rep", factionID = 970, standing = 0 }, { kind = "rep", factionID = 970, standing = 9 },
+    { kind = "level", level = 1.5 }, { kind = "renown", factionID = 0, level = 5 },
+    { kind = "achievement", id = 42 }, { kind = "currency", currencyID = 1166, quantity = 5000 },
+    { kind = "item", id = "42" }, { kind = "item", id = 2147483648 },
+  }) do
+    check(ns.CleanOutcome(target) == nil, "malformed outcome is ignored without breaking a legacy Plan")
+  end
+end
+
 -- Outcome targets survive delivery, and progress comes from the player's game.
 do
   local file = assert(io.open("../packages/contracts/fixtures/plan-outcome.json"))
@@ -1271,6 +1308,26 @@ do
   result = view({ kind = "achievement", achievementID = 42 })
   check(result.label == "Explorer" and result.progress == "2 / 3" and not result.done,
     "achievement counts completed criteria")
+  _G.GetAchievementNumCriteria = function() return 1 end
+  _G.GetAchievementCriteriaInfo = function() return "Defeat enemies", 0, false, 17, 50 end
+  result = view({ kind = "achievement", achievementID = 42 })
+  check(result.progress == "17 / 50" and not result.done,
+    "a single quantity criterion shows its quantity and required quantity")
+  for _, required in ipairs({ 0, -1, "unknown" }) do
+    _G.GetAchievementCriteriaInfo = function() return "Explore", 0, false, 0, required end
+    check(view({ kind = "achievement", achievementID = 42 }).progress == "0 / 1",
+      "a single criterion without a usable quantity falls back to the criterion count")
+  end
+  local secretQuantity = {}
+  _G.issecretvalue = function(value) return value == secretQuantity end
+  _G.GetAchievementCriteriaInfo = function() return "Explore", 0, false, secretQuantity, 50 end
+  check(view({ kind = "achievement", achievementID = 42 }).progress == "0 / 1",
+    "a secret achievement quantity is never displayed")
+  _G.issecretvalue = nil
+  _G.GetAchievementNumCriteria = function() return 3 end
+  _G.GetAchievementCriteriaInfo = function(_, criterion) return "Explore", 0, criterion < 3, 17, 50 end
+  check(view({ kind = "achievement", achievementID = 42 }).progress == "2 / 3",
+    "multiple criteria keep the criteria count even when they carry quantities")
   _G.GetAchievementInfo = function() return 42, "Explorer", 10, true end
   check(view({ kind = "achievement", achievementID = 42 }).done, "earned achievement is done")
   _G.C_CurrencyInfo = { GetCurrencyInfo = function() return { name = "Badges", quantity = 12 } end }

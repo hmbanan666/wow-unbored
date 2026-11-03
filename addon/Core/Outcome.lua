@@ -75,7 +75,12 @@ local function achievement(view, target)
   if not total or total <= 0 or total > 1000 then return end
   local have = 0
   for i = 1, total do
-    local _, _, completed = call(GetAchievementCriteriaInfo, target.achievementID, i)
+    local _, _, completed, quantity, required = call(GetAchievementCriteriaInfo, target.achievementID, i)
+    quantity, required = num(quantity), num(required)
+    if total == 1 and quantity and required and required > 0 then
+      bar(view, quantity, required)
+      return
+    end
     completed = bool(completed)
     if completed == nil then return end
     if completed then have = have + 1 end
@@ -141,9 +146,20 @@ local function read(target)
   return view
 end
 
+local function currentCard(target)
+  local mascot = ns.Mascot
+  local task = ns.Session and ns.Session:Current()
+  return mascot and mascot.view and mascot.view.card and task and mascot.view.key == task.id
+    and ns.Session.state.outcome == target and mascot.frame and mascot.frame:IsShown()
+end
+
+local function visibleCard(target)
+  return currentCard(target) and ns.Mascot.bubble and ns.Mascot.bubble:IsShown()
+end
+
 function O.View(target)
   if type(target) ~= "table" then return nil end
-  if O.target ~= target or O.dirty then
+  if O.target ~= target or O.dirty or not visibleCard(target) then
     O.target, O.view = target, read(target)
     O.dirty = ns.IsCombat()
   end
@@ -170,11 +186,14 @@ function O.OnEvent(event)
   if not target then return end
   if event ~= "PLAYER_REGEN_ENABLED" and event ~= "PLAYER_ENTERING_WORLD"
     and not (O.events[event] and O.events[event][target.kind]) then return end
+  if not currentCard(target) then return end
+  if ns.IsCombat() then O.dirty = true; return end
+  if not visibleCard(target) then return end
   O.dirty = true
-  if ns.IsCombat() or O.scheduled then return end
+  if O.scheduled then return end
   local function refresh()
     O.scheduled = nil
-    if not ns.IsCombat() then ns.Session.RefreshUI() end
+    if not ns.IsCombat() and visibleCard(target) then ns.Session.RefreshUI() end
   end
   O.scheduled = true
   if C_Timer and C_Timer.After then C_Timer.After(0.2, refresh) else refresh() end

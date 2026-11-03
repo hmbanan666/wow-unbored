@@ -1312,8 +1312,8 @@ local function stepView(mascot, session, task)
     expandable = many or goal ~= nil or state.details ~= nil or note ~= nil
       or task.why ~= nil or #rewards > 1 or (outcome ~= nil and #rewards > 0),
     open = open,
-    pips = { done = progress.step - 1, total = progress.steps },
-    stepCount = ns.T("STEP_OF", progress.step, progress.steps),
+    pips = many and { done = progress.step - 1, total = progress.steps } or nil,
+    stepCount = many and ns.T("STEP_OF", progress.step, progress.steps) or nil,
     pipTip = tip,
     goal = open and goal or nil,
     planDetails = open and render(state.details, state.npcs) or nil,
