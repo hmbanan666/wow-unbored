@@ -191,7 +191,7 @@ for (const backend of BACKENDS) {
       assert.equal(lease.attempt, 1);
       assert.equal(lease.expiresAt, app.now() + 180);
       assert.match(lease.leaseToken, /^[A-Za-z0-9_-]{43}$/);
-      assert.equal(lease.prompt.version, "205f5fc7ad52");
+      assert.equal(lease.prompt.version, "57fb9c9e787c");
       assert.match(lease.prompt.text, /^# Unbored planner\n/);
       assert.equal(lease.mcpPath, "/mcp");
       assert.equal((await app.claim()).status, 204);
@@ -279,7 +279,6 @@ async function mcp(app: ReturnType<typeof build>, token: string, method: string,
   return { status: response.status, body: await response.json() };
 }
 const plan = {
-  outcome: { kind: "achievement", achievementID: 964 },
   v: 1,
   kind: "plan",
   mode: "custom",
@@ -369,7 +368,6 @@ for (const backend of BACKENDS) {
       const names = listed.body.result.tools.map((tool: { name: string }) => tool.name);
       assert.ok(names.includes("get_request"));
       assert.ok(names.includes("get_instance_guide"));
-      assert.ok(names.includes("get_place"));
       const guideReply = await call("get_instance_guide", { achievementID: 10149 });
       assert.equal(guideReply.body.result.isError, false);
       const guide = JSON.parse(guideReply.body.result.content[0].text);
@@ -560,17 +558,6 @@ for (const backend of BACKENDS) {
           name: "put_plan",
           arguments: { requestId: "runner-first", plan },
         });
-      for (const outcome of [
-        undefined,
-        { kind: "achievement" },
-        { kind: "currency", currencyID: 1166, amount: 0 },
-      ]) {
-        const rejected = await call({ ...plan, outcome });
-        assert.equal(rejected.body.result.isError, true);
-        assert.match(rejected.body.result.content[0].text, /outcome/);
-        assert.equal((await app.store.requestById("runner-first"))?.status, "pending");
-        assert.equal(await app.store.latestPlan(), undefined);
-      }
       const warning = await call({ ...plan, title: undefined });
       const unstored = JSON.parse(warning.body.result.content[0].text);
       assert.ok(unstored.warnings.length > 0);
@@ -609,12 +596,12 @@ for (const backend of BACKENDS) {
       ]);
       const current = await call("get_current_plan", {});
       assert.equal(JSON.parse(current.body.result.content[0].text).plan, null);
-      // An unknown destination is corrected by omitting the point.
-      const corrected = await call("put_plan", { ...args, plan });
+      args.plan.tasks[0].x = 0.6;
+      const corrected = await call("put_plan", args);
       assert.equal(corrected.body.result.isError, false);
       const stored = JSON.parse(corrected.body.result.content[0].text);
       assert.deepEqual(stored.warnings, []);
-      assert.equal(stored.stored.tasks[0].x, undefined);
+      assert.equal(stored.stored.tasks[0].x, 0.6);
       assert.equal((await call("get_request", {})).status, 401);
     } finally {
       app.close();

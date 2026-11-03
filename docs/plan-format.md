@@ -18,7 +18,7 @@ UNB1P:<base64>
 
 Version is the JSON field `v`, currently `1`. Unknown versions are rejected. There is no `loadstring`. A bad string is ignored and does not touch the current list.
 
-Limits: 40 tasks, step titles up to 70 characters and 240 UTF-8 bytes, Step notes up to 400 bytes (the plan-level note stays at 400), the whole string at most 64,000 characters. The card fields have their own limits, below. Excess title, reason, Step note and details text is shortened with a warning, never rejected for length (ADR 0068).
+Limits: 40 tasks, step titles up to 240 bytes, Step notes up to 1,000 bytes (the plan-level note stays at 400), the whole string at most 64,000 characters. The card fields have their own limits, below.
 
 ## Plan
 
@@ -66,11 +66,9 @@ All optional and added in 0.8; a plan without them works as before ([ADR 0038](a
 | --- | --- | --- |
 | `title` | plan | 3 to 40 characters, a human name like a quest title, no tokens. Without it Bory shows the preset name, or "Your plan". |
 | `goal` | plan | one sentence, at most 160 bytes, may carry tokens |
-| `bonus` | plan | optional list of up to 3 chance reward tokens; also label the possible bonus in a Step note for older addons |
-| `outcome` | plan | one required near-guaranteed target on new planner submissions (optional for legacy delivery); [exact shapes and live comparisons](contract/README.md#plan-outcome-and-short-text) |
-| `details` | plan | facts and state, at most 200 bytes, may carry tokens |
+| `details` | plan | facts and state, at most 600 bytes, may carry tokens |
 | `rewards` | plan, task | up to 6 (plan) or 3 (task) strings, each one token of kind `mount`, `ach`, `item`, `toy`, `currency` or `pet` |
-| `why` | task | one short reason, at most 80 bytes, may carry tokens |
+| `why` | task | one short reason, at most 120 bytes, may carry tokens |
 | `contains` | plan | added in 0.10: `{ "{item:ID}": ["{mount:ID}", ...] }`, what a container reward (cage, chest, bag) may hold. The key is one `{item:ID}` token that is in plan or step `rewards`; 1 to 6 values, each one token of kind `mount`, `toy`, `pet` or `item`; at most 2 containers; the values count toward the 12-token limit of `goal` plus `details`. A bad key or value is dropped with a warning ([ADR 0055](adr/0055-reward-contents.md)). |
 | `group` | task | added in 0.10: 1 to 24 characters `[a-z0-9-]`. Consecutive tasks with the same `group` are a Step group, done in any order. A group needs at least 2 tasks; a single-task group or a repeat that is not next to its group is dropped with a warning ([ADR 0056](adr/0056-step-groups.md)). |
 | `condition` | task | `{ "text": "If you have 5,000 {currency:1166}", "check": { "kind": "currency", "id": 1166, "atLeast": 5000 } }`; `kind` is `currency`, `item`, `level` (id is the level), `quest` or `ach`. The game checks it live: met shows Ready, unmet shows the count and Skip moves past it without counting it as skipped. |

@@ -77,7 +77,7 @@ MCP tools `list_devices`, `approve_device`, and `revoke_device` use the planner 
 
 Streamable HTTP at `/mcp`. The planner bearer token (`Authorization` header) has the full tool set below. A live lease token has the scoped set described under Plan runner. Tools:
 
-- `put_plan` requires one valid, near-guaranteed `outcome`, rejects already-held targets from the Request snapshot, and returns nonblocking notes when evidence is absent. A rejection leaves the lease open for a corrected submission. It stores a plan and returns the `UNB1:` string. The tool description includes the task schema. With `requestId` it fulfils a plan request.
+- `put_plan` stores a plan and returns the `UNB1:` string. The tool description includes the task schema. With `requestId` it fulfils a plan request.
 - `list_requests` lists requests from the game, with their `type`.
 - `answer_request` answers a plan, question, or item request with a message, optional waypoints, and an optional plan.
 - `fail_request` marks a request failed with a reason.
