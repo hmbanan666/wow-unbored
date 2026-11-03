@@ -35,7 +35,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     services:
       # ADR 0057: each Postgres test file gets its own database from a migrated template.
       postgres:
@@ -54,7 +54,7 @@ jobs:
       UNBORED_REQUIRE_POSTGRES: "1"
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.16.1
       - uses: actions/setup-node@v7
