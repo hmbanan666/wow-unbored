@@ -9,6 +9,7 @@ import {
   unpackIds,
   unpackRows,
   type SectionScope,
+  type SnapshotIngestResult,
 } from "@unbored/contracts";
 
 import { fromJson, SqliteDb, type Db } from "./db.ts";
@@ -185,14 +186,10 @@ export type HistoryRow = {
   body: unknown;
 };
 
-export type SnapshotResult = {
+export type SnapshotResult = SnapshotIngestResult & {
   account: string;
   character: string;
   realm: string;
-  stored: string[];
-  unchanged: string[];
-  unknown: string[];
-  stale: boolean;
 };
 
 type Raw = Record<string, unknown>;
@@ -641,10 +638,20 @@ export class DataStore {
   /** The 0.6 backfill on SQLite; queries made meanwhile wait for its transaction. */
   readonly ready: Promise<void>;
 
-  constructor(db: Db) {
+  private readonly log: (line: string) => void;
+
+  constructor(db: Db, log: (line: string) => void = console.log) {
     this.db = db;
+    this.log = log;
     if (db instanceof SqliteDb) {
       db.raw.exec(SQLITE_SCHEMA);
+      // SQLite migrations use data_meta; Postgres uses numbered SQL files.
+      if (!db.raw.prepare("SELECT 1 FROM data_meta WHERE key = 'section_freshness'").get()) {
+        db.raw.exec(`BEGIN;
+          UPDATE sections_latest SET saved_at = at WHERE at IS NOT NULL;
+          INSERT INTO data_meta (key, value) VALUES ('section_freshness', '1');
+          COMMIT;`);
+      }
       this.ready = this.backfill(db.raw).catch((error: unknown) => {
         console.error(`Profile backfill failed: ${(error as Error).message}`);
       });
@@ -746,9 +753,10 @@ export class DataStore {
     changes?: SectionChange[];
   }): Promise<"stored" | "unchanged" | "stale"> {
     const previous = await this.section(input.ownerKind, input.ownerId, input.name);
-    if (previous?.savedAt && input.savedAt && input.savedAt < previous.savedAt) return "stale";
+    if (previous?.savedAt != null && input.savedAt !== null && input.savedAt < previous.savedAt)
+      return "stale";
     if (previous && previous.hash === input.hash && previous.v === input.v) {
-      // An unchanged upload still acknowledges a newer save. Without advancing
+      // An unchanged upload still acknowledges a newer freshness time. Without advancing
       // this watermark, an older, different body could overwrite the snapshot.
       if (
         input.savedAt !== null &&
@@ -942,6 +950,7 @@ export class DataStore {
         unchanged: [],
         unknown: [],
         stale: false,
+        sections: {},
       };
       for (const section of snapshot.sections) {
         const outcome = await this.putSection({
@@ -950,7 +959,7 @@ export class DataStore {
           name: section.name,
           v: section.v,
           at: section.at,
-          savedAt: snapshot.savedAt,
+          savedAt: section.at === null ? snapshot.savedAt : Math.min(section.at, now + 300),
           src: section.src,
           hash: section.hash,
           body: section.body,
@@ -971,7 +980,13 @@ export class DataStore {
         }
         if (outcome === "stored") result.stored.push(section.name);
         else if (outcome === "unchanged") result.unchanged.push(section.name);
-        else result.stale = true;
+        else {
+          result.stale = true;
+          this.log(
+            `Stale Section: ${section.scope}:${section.name} account=${account.slice(0, 8)}`,
+          );
+        }
+        result.sections[`${section.scope}:${section.name}`] = outcome;
         if (section.unknown) result.unknown.push(section.name);
       }
       return result;

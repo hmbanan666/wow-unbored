@@ -425,6 +425,20 @@ export const snapshotBodySchema = z
   })
   .passthrough();
 
+/** Shared fields of a synchronous snapshot answer and an async upload's result (ADR 0063). */
+export const snapshotResultSchema = z.object({
+  stored: z.array(z.string()),
+  unchanged: z.array(z.string()),
+  unknown: z.array(z.string()),
+  stale: z.boolean(),
+  sections: z.record(
+    z.string().regex(/^(char|account):[A-Za-z][A-Za-z0-9_]{0,39}$/),
+    z.enum(["stored", "unchanged", "stale"]),
+  ),
+});
+
+export type SnapshotIngestResult = z.infer<typeof snapshotResultSchema>;
+
 export const SUGGESTION_KINDS = ["event", "achievement", "rare", "collection", "chain"] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
 

@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import { characterId, cleanSnapshot, type CleanSnapshot, type SnapshotResult } from "./data.ts";
+import type { SnapshotIngestResult } from "@unbored/contracts";
+
+import { characterId, cleanSnapshot, type CleanSnapshot } from "./data.ts";
 import type { PostgresDb } from "./db.ts";
 import { PlanError } from "./plan.ts";
 import type { Sql } from "./postgres.ts";
@@ -34,7 +36,7 @@ const HOT_SECTIONS = new Set(["questLog", "bags"]);
 
 export type UploadState = "queued" | "done" | "failed";
 
-export type UploadResult = Pick<SnapshotResult, "stored" | "unchanged" | "unknown" | "stale">;
+export type UploadResult = SnapshotIngestResult;
 
 export type UploadStatus = {
   id: string;
@@ -360,6 +362,7 @@ export class UploadInbox {
       unchanged: result.unchanged,
       unknown: result.unknown,
       stale: result.stale,
+      sections: result.sections,
     };
   }
 }

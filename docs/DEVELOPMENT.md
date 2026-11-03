@@ -103,8 +103,8 @@ it does not promise FIFO ordering of waiting callers or a Server-wide snapshot.
 
 Generation invalidation discards results; it does not cancel blocking HTTP.
 Reconnect recovery after
-a lost response/local credential save and per-scope snapshot freshness still
-need the protocol work described in the audit reports.
+a lost response/local credential save still needs the protocol work described
+in the audit reports. Section freshness is resolved by [ADR 0063](adr/0063-section-freshness.md).
 
 Companion settings live in `settings.rs`. Saving writes `settings.json.tmp` in
 the same directory, syncs and closes it, then renames it over `settings.json`.
@@ -251,7 +251,7 @@ Reads happen at three moments, never in combat, and every value where `issecretv
 
 Sizes are from the worst-case test (`UNBORED_SIZES=1 lua5.1 addon/tests/data.lua`): the Character file is 306 KB with 3.2k literals, the Account file 50 KB with 0.5k literals. Targets are 400 KB and 300 KB, the hard cap 1 MB and fewer than 30k literals per file. Over the cap, the lowest-priority Sections are dropped first and listed in `data.dropped`. Sections with no size were not in the worst-case fixture and are well under 2 KB.
 
-Snapshot deduplication compares both the Section version and its body hash. The wire hash still covers only the canonical body; a version change is uploaded and stored as a full history entry, never a collection diff. Re-posting an identical version/body advances the Server's save watermark without adding history, so an older changed upload cannot replace it. A staged bank or profession read is discarded when its window closes, even if it reopens before the next frame. Achievement event payloads update ids immediately; their points API read waits for the settled worker outside combat.
+Snapshot deduplication compares both the Section version and its body hash. The wire hash still covers only the canonical body; a version change is uploaded and stored as a full history entry, never a collection diff. Re-posting an identical version/body advances the Section's freshness time without adding history, so an older changed upload cannot replace it. Per [ADR 0063](adr/0063-section-freshness.md), that time is the Section's integer `at`, clamped to Server time + 300 seconds, else the Snapshot `savedAt`, else no freshness check. `sections_latest.saved_at` and new `section_history.saved_at` values hold this Section time; a one-time migration resets existing latest rows to `at` where present, leaving history intact. The Character row still uses the file's `savedAt`. A staged bank or profession read is discarded when its window closes, even if it reopens before the next frame. Achievement event payloads update ids immediately; their points API read waits for the settled worker outside combat.
 
 Achievement progress requires readable boolean evidence: completion and guild
 flags must both be false, and every counted criterion must have a known done

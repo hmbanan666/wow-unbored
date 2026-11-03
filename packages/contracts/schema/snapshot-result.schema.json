@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unbored.kosarev.space/schema/snapshot-result.json",
+  "title": "Game data snapshot ingest result",
+  "description": "Shared fields of POST /v1/snapshot's synchronous answer and GET /v1/uploads/<id>'s completed result (ADR 0063). Unknown Sections also have an outcome; stale is true when any Section is stale.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["stored", "unchanged", "unknown", "stale", "sections"],
+  "properties": {
+    "stored": { "type": "array", "items": { "type": "string" } },
+    "unchanged": { "type": "array", "items": { "type": "string" } },
+    "unknown": { "type": "array", "items": { "type": "string" } },
+    "stale": { "type": "boolean" },
+    "sections": {
+      "type": "object",
+      "propertyNames": { "pattern": "^(char|account):[A-Za-z][A-Za-z0-9_]{0,39}$" },
+      "additionalProperties": { "enum": ["stored", "unchanged", "stale"] }
+    }
+  }
+}
