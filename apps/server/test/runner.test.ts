@@ -191,7 +191,7 @@ for (const backend of BACKENDS) {
       assert.equal(lease.attempt, 1);
       assert.equal(lease.expiresAt, app.now() + 180);
       assert.match(lease.leaseToken, /^[A-Za-z0-9_-]{43}$/);
-      assert.equal(lease.prompt.version, "05d04320da40");
+      assert.equal(lease.prompt.version, "d08d137c6019");
       assert.match(lease.prompt.text, /^# Unbored planner\n/);
       assert.equal(lease.mcpPath, "/mcp");
       assert.equal((await app.claim()).status, 204);
@@ -579,6 +579,12 @@ for (const backend of BACKENDS) {
       assert.equal((await app.store.requestById("runner-first"))?.status, "pending");
       assert.equal((await app.store.runnerStatus("runner-first"))?.state, "leased");
       assert.equal(await app.store.latestPlanForAccount("runner-account"), undefined);
+      const duplicate = await call({ ...plan, bonus: ["{ach:964|Chance reward}"] });
+      const conflict = JSON.parse(duplicate.body.result.content[0].text);
+      assert.equal(conflict.stored, false);
+      assert.match(conflict.warnings.join(" "), /remove.*bonus/i);
+      assert.equal((await app.store.runnerStatus("runner-first"))?.state, "leased");
+      assert.equal(await app.store.latestPlanForAccount("runner-account"), undefined);
       assert.equal((await call(plan)).body.result.isError, false);
       assert.equal((await app.store.runnerStatus("runner-first"))?.state, "done");
     } finally {
@@ -613,7 +619,9 @@ for (const backend of BACKENDS) {
           arguments: {},
         });
         assert.equal(JSON.parse(current.body.result.content[0].text).plan, null);
-        const corrected = await call("Head to the arena and defeat Malygos.");
+        const corrected = await call(
+          "Collect the tool. Надень инструмент. Ready now for adventure.",
+        );
         assert.equal(corrected.body.result.isError, false);
         assert.deepEqual(JSON.parse(corrected.body.result.content[0].text).warnings, []);
         assert.equal((await mcp(app, lease.leaseToken, "tools/list", {})).status, 401);

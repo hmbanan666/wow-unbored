@@ -173,3 +173,98 @@ test("a new outcome survives storage, MCP and delivery to the 0.11 addon", async
     rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+for (const text of [
+  "Collect the tool",
+  "Надень инструмент",
+  "Работай инструментами",
+  "Ready now for adventure",
+  "Loot the toolbox by the stool",
+  "Возьми инструментальный ящик",
+  "Use {item:40768}",
+  "Read {item:40768|Snapshot}",
+  "Read {item:40768|get_ready_now}",
+  "Read {item:40768|Недоступные данные}",
+]) {
+  test(`ordinary game text and link tokens do not need a rewrite: ${text}`, () => {
+    const warnings: string[] = [];
+    const plan = cleanPlan({ ...base, goal: text, tasks: [{ id: "collect", title: text }] }, 1, {
+      warnings,
+    });
+    assert.equal(plan.tasks[0].title, text);
+    assert.deepEqual(warnings, []);
+  });
+}
+
+test("planner wording outside a link still needs a rewrite", () => {
+  const warnings: string[] = [];
+  cleanPlan({ ...base, goal: "According to {item:40768|Snapshot}" }, 1, { warnings });
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Plan goal: planner wording "According to"/);
+});
+
+for (const kind of ["mount", "pet", "toy", "item", "achievement"]) {
+  const tokenKind = kind === "achievement" ? "ach" : kind;
+  test(`a ${kind} cannot be both the outcome and a chance bonus`, () => {
+    const warnings: string[] = [];
+    cleanPlan(
+      {
+        ...base,
+        outcome: kind === "achievement" ? { kind, achievementID: 183 } : { kind, id: 183 },
+        bonus: [`{${tokenKind}:183|Chance reward}`],
+      },
+      1,
+      { warnings },
+    );
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /remove.*bonus.*different outcome/i);
+  });
+}
+
+for (const scope of ["Plan", "Step"]) {
+  for (const kind of ["mount", "pet", "toy", "item", "ach", "currency"]) {
+    test(`${scope} rewards and chance bonuses cannot promise the same ${kind} with different labels`, () => {
+      const warnings: string[] = [];
+      const rewards = [`{${kind}:183|Guaranteed reward}`];
+      cleanPlan(
+        {
+          ...base,
+          ...(scope === "Plan" ? { rewards } : { tasks: [{ ...base.tasks[0], rewards }] }),
+          bonus: [`{${kind}:183|Chance reward}`],
+        },
+        1,
+        { warnings },
+      );
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /remove.*bonus/i);
+    });
+  }
+}
+
+test("distinct bonus kinds and ids remain separate from promised rewards after cleaning", () => {
+  const warnings: string[] = [];
+  const plan = cleanPlan(
+    {
+      ...base,
+      outcome: { kind: "mount", id: 183 },
+      rewards: ["{pet:183}"],
+      tasks: [{ ...base.tasks[0], rewards: ["{toy:183}"] }],
+      bonus: ["{mount:184}", "{item:183}", "{ach:183}"],
+    },
+    1,
+    { warnings },
+  );
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(plan.bonus, ["{mount:184}", "{item:183}", "{ach:183}"]);
+});
+
+test("a dropped reward does not conflict with a kept bonus", () => {
+  const warnings: string[] = [];
+  const plan = cleanPlan({ ...base, rewards: ["Chance {mount:183}"], bonus: ["{mount:183}"] }, 1, {
+    warnings,
+  });
+  assert.equal(plan.rewards, undefined);
+  assert.deepEqual(plan.bonus, ["{mount:183}"]);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Plan reward 1: must be one link token/);
+});

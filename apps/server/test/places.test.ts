@@ -61,8 +61,7 @@ test("quest points correct distant Steps, unsupported travel points disappear, s
           { id: "quest", title: "Finish {quest:9726}", mapID: 102, x: 0.8, y: 0.8 },
           {
             id: "near",
-            title: "Finish the quest",
-            condition: { text: "If ready", check: { kind: "quest", id: 9726 } },
+            title: "Finish {quest:9726}",
             mapID: 102,
             x: 0.22,
             y: 0.4,
@@ -521,3 +520,80 @@ test("quests nested in completion conditions correct both destination and proxim
     { kind: "proximity", mapID: 102, x: 0.2, y: 0.4, radiusYards: 40 },
   ]);
 });
+
+for (const reference of ["condition check", "condition text", "Step text"]) {
+  test(`a verified flight destination wins over a quest in ${reference}`, () => {
+    const warnings: string[] = [];
+    const destination = { mapID: 102, x: 0.8, y: 0.8 };
+    const plan = cleanPlan(
+      {
+        title: "Reach the flight master",
+        tasks: [
+          {
+            id: "flight",
+            title: "Reach the flight master",
+            ...destination,
+            ...(reference === "condition check"
+              ? { condition: { text: "If ready", check: { kind: "quest", id: 9726 } } }
+              : reference === "condition text"
+                ? { condition: { text: "After {quest:9726}" } }
+                : { note: "Then accept {quest:9726}" }),
+            complete: { kind: "proximity", mapID: 102, x: 0.2, y: 0.4 },
+          },
+        ],
+      },
+      1,
+      {
+        warnings,
+        places: {
+          questPoints: [{ questID: 9726, mapID: 102, x: 0.2, y: 0.4 }],
+          knownPoints: [destination],
+        },
+      },
+    );
+    assert.equal(plan.tasks[0].x, 0.8);
+    assert.equal(plan.tasks[0].y, 0.8);
+    assert.deepEqual(plan.tasks[0].complete, {
+      kind: "proximity",
+      ...destination,
+      radiusYards: 40,
+    });
+    assert.deepEqual(warnings, []);
+  });
+}
+
+for (const condition of [
+  { text: "If ready", check: { kind: "quest", id: 9726 } },
+  { text: "After {quest:9726}" },
+]) {
+  test(`a prerequisite alone cannot verify a destination: ${condition.text}`, () => {
+    const warnings: string[] = [];
+    const plan = cleanPlan(
+      {
+        tasks: [
+          {
+            id: "flight",
+            title: "Reach the flight master",
+            condition,
+            mapID: 102,
+            x: 0.8,
+            y: 0.8,
+            complete: { kind: "proximity", mapID: 102, x: 0.8, y: 0.8 },
+          },
+        ],
+      },
+      1,
+      {
+        warnings,
+        places: {
+          questPoints: [{ questID: 9726, mapID: 102, x: 0.2, y: 0.4 }],
+          knownPoints: [],
+        },
+      },
+    );
+    assert.equal(plan.tasks[0].mapID, undefined);
+    assert.deepEqual(plan.tasks[0].complete, { kind: "manual" });
+    assert.ok(warnings.some((warning) => warning.includes("unsupported travel point")));
+    assert.ok(!warnings.some((warning) => warning.includes("replaced")));
+  });
+}
