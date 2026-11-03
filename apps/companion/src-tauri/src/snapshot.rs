@@ -223,9 +223,9 @@ pub fn build_upload(
     if sections.is_empty() {
         return None;
     }
-    // TODO(audit): Character and Account files can have different save stamps.
-    // The contract needs per-scope freshness; splitting uploads also changes
-    // cross-Section item-move detection on the Server (see docs/audits/2026-11-01.md).
+    // Section freshness is resolved on the Server by ADR 0063 using each Section's at.
+    // TODO(audit): Splitting uploads would still change cross-Section item-move
+    // detection on the Server (see docs/audits/2026-11-01.md).
     let saved_at = char_file
         .and_then(|file| file.saved_at)
         .or_else(|| account_file.and_then(|file| file.saved_at));

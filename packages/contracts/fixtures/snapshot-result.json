@@ -1,0 +1,12 @@
+{
+  "stored": ["mounts", "futureThing"],
+  "unchanged": ["char"],
+  "unknown": ["futureThing"],
+  "stale": true,
+  "sections": {
+    "account:mounts": "stored",
+    "char:futureThing": "stored",
+    "char:char": "unchanged",
+    "account:toys": "stale"
+  }
+}

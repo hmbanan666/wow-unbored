@@ -28,7 +28,7 @@ const fixture = JSON.parse(
   character: string;
   realm: string;
   savedAt: number;
-  sections: Record<string, { hash: string; body: Record<string, unknown> }>;
+  sections: Record<string, { at: number; hash: string; body: Record<string, unknown> }>;
 };
 
 type App = ReturnType<typeof createApp>["app"];
@@ -105,7 +105,7 @@ async function mcpCall(app: App, name: string, args: Record<string, unknown>) {
 function withSection(name: string, body: Record<string, unknown>, savedAt: number) {
   const next = structuredClone(fixture);
   next.savedAt = savedAt;
-  next.sections[name] = { ...next.sections[name], body, hash: sectionHash(body) };
+  next.sections[name] = { ...next.sections[name], at: savedAt, body, hash: sectionHash(body) };
   return next;
 }
 
@@ -165,11 +165,11 @@ test("an unchanged Section body still advances its schema version", async () => 
   }
 });
 
-test("an unchanged newer save prevents an older changed Section from replacing it", async () => {
+test("an unchanged newer read prevents an older changed Section from replacing it", async () => {
   const { app, store, close } = build();
   try {
     assert.equal((await post(app, fixture)).status, 200);
-    const newer = { ...fixture, savedAt: fixture.savedAt + 200 };
+    const newer = withSection("mounts", fixture.sections.mounts.body, fixture.savedAt + 200);
     const initial = (await store.data.lastChange("account", "111111", "mounts"))!;
     assert.deepEqual((await json(await post(app, newer))).stored, []);
     const older = withSection("mounts", { ids: packIds([999]), count: 1 }, fixture.savedAt + 100);

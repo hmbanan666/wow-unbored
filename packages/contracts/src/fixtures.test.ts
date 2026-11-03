@@ -17,6 +17,7 @@ import {
   requestBodySchema,
   sectionHash,
   snapshotBodySchema,
+  snapshotResultSchema,
   suggestionsBodySchema,
   unpackIds,
   unpackRows,
@@ -198,5 +199,14 @@ test("every farm mount has exactly one sourced acquisition method", () => {
         }
       }
     }
+  }
+});
+
+test("snapshot results describe each Section in sync and async answers", () => {
+  const fixture = read("snapshot-result.json") as Record<string, unknown>;
+  expect(snapshotResultSchema.safeParse(fixture).success).toBe(true);
+  expect(snapshotResultSchema.safeParse({ ...fixture, sections: {} }).success).toBe(true);
+  for (const sections of [undefined, { mounts: "stored" }, { "account:mounts": "unknown" }]) {
+    expect(snapshotResultSchema.safeParse({ ...fixture, sections }).success).toBe(false);
   }
 });
