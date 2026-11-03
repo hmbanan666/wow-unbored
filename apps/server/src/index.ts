@@ -1,9 +1,11 @@
 import { serve } from "@hono/node-server";
+import { createServer, type Server } from "node:http";
 
 import { createApp } from "./app.ts";
 import { configFromEnv } from "./config.ts";
 import { connectPostgres, migrate, type Sql } from "./postgres.ts";
 import { ensurePartitions, RetentionJob } from "./retention.ts";
+import { createShutdown } from "./shutdown.ts";
 
 const config = configFromEnv();
 let database: Sql | undefined;
@@ -21,7 +23,7 @@ if (config.databaseUrl) {
     `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); every table on Postgres, the SQLite file untouched`,
   );
 }
-const { app, webhook, inbox, runner } = createApp({ ...config, database });
+const { app, webhook, inbox, runner, store } = createApp({ ...config, database });
 runner?.start();
 webhook.start();
 if (inbox) {
@@ -30,6 +32,13 @@ if (inbox) {
   console.log("Upload inbox on: snapshots are queued and ingested by the worker");
 }
 
-serve({ fetch: app.fetch, hostname: "0.0.0.0", port: config.port }, (info) => {
-  console.log(`Unbored server listening on ${info.port}`);
-});
+const server = serve(
+  { fetch: app.fetch, createServer, hostname: "0.0.0.0", port: config.port },
+  (info) => {
+    console.log(`Unbored server listening on ${info.port}`);
+  },
+) as Server;
+
+const shutdown = createShutdown({ server, runner, webhook, inbox, store, log: console.log });
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
