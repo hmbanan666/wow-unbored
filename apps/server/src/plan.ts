@@ -132,6 +132,7 @@ export function cleanTitle(raw: unknown, check: MarkupCheck = {}): string | unde
     return undefined;
   }
   if (typeof raw !== "string") throw new PlanError("The plan title must be a string.");
+  warnPlannerTalk(raw, check, "Plan title");
   let title = raw.replace(/\s+/g, " ").trim();
   if (title.includes("{")) {
     warn("no link tokens in the title; they were made plain. Put links in goal or rewards");
@@ -168,6 +169,19 @@ export function cleanTitle(raw: unknown, check: MarkupCheck = {}): string | unde
   return title;
 }
 
+// Unicode word boundaries also cover Russian; a substring in a game name is not a hit.
+const PLANNER_TALK =
+  /(?<![\p{L}\p{N}_])(?:unavailable|not\s+available|no\s+data|tool|according\s+to|the\s+data\s+shows|snapshot|get_place|get_instance_guide|check_ids|ready\s+now|недоступн\p{L}*|нет\s+данных|по\s+данным|инструмент(?:а|у|ом|е|ы|ов|ам|ами|ах)?)(?![\p{L}\p{N}_])/iu;
+
+function warnPlannerTalk(text: string, check: MarkupCheck, where: string): void {
+  const match = PLANNER_TALK.exec(text);
+  if (match) {
+    check.warnings?.push(
+      `${where}: planner wording "${match[0]}"; rewrite as a direct player action. Omit unavailable information and points without explaining tools, sources or missing data.`,
+    );
+  }
+}
+
 /** Optional short text with tokens; over the limit it is cut at a word with a warning. */
 function cardText(
   raw: unknown,
@@ -178,6 +192,7 @@ function cardText(
 ): string | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== "string") throw new PlanError(`${where} must be a string.`);
+  warnPlannerTalk(raw, scope.check, where);
   let text = raw.trim();
   if (!text) return undefined;
   if (byteLength(text) > max) {
@@ -491,6 +506,7 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
     if (byteLength(body.note) > 400) {
       throw new PlanError("The plan note is longer than 400 bytes.");
     }
+    warnPlannerTalk(body.note, check, "Plan note");
     note = cleanText(body.note, scope, "Plan note", { count: 0 }) || undefined;
   }
   if (!Array.isArray(body.tasks) || body.tasks.length < 1) {
@@ -712,6 +728,7 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
     );
   }
   const used = { count: 0 };
+  warnPlannerTalk(task.title, scope.check, `Task ${index} title`);
   let rawTitle = task.title.trim().replace(/\s+/g, " ");
   if ([...rawTitle].length > CARD_LIMITS.stepTitle || byteLength(rawTitle) > 240) {
     scope.check.warnings?.push(

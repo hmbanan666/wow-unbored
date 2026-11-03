@@ -21,7 +21,7 @@ async function setup() {
     companionToken: "companion",
     log: () => {},
   });
-  const call = async (value: unknown, requestId?: string) => {
+  const call = async (value: unknown, requestId?: string, tool = "put_plan") => {
     const res = await app.app.request("/mcp", {
       method: "POST",
       headers: {
@@ -33,7 +33,14 @@ async function setup() {
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "put_plan", arguments: { plan: value, requestId } },
+        params: {
+          name: tool,
+          arguments: {
+            plan: value,
+            requestId,
+            ...(tool === "answer_request" ? { message: "Your next adventure awaits." } : {}),
+          },
+        },
       }),
     });
     const { result } = (await res.json()) as {
@@ -327,3 +334,100 @@ test("put_plan bounds work when shortening long unbroken text", async () => {
     await app.close();
   }
 });
+
+for (const tool of ["put_plan", "answer_request"]) {
+  test(`${tool} warns about planner wording in every player-facing Plan field`, async () => {
+    const app = await setup();
+    try {
+      await app.store.addRequest({
+        id: "player-text",
+        deviceId: "pc",
+        character: "Mira",
+        realm: "Realm",
+        mode: "fun",
+        budget: null,
+        wish: null,
+        nowSeconds: 1790000000,
+      });
+      for (const phrase of [
+        "UNAVAILABLE",
+        "Not Available",
+        "no data",
+        "tool",
+        "According To",
+        "the data shows",
+        "SNAPSHOT",
+        "get_place",
+        "GET_INSTANCE_GUIDE",
+        "check_ids",
+        "Ready now",
+        "недоступно",
+        "НЕДОСТУПНЫ",
+        "нет данных",
+        "ПО ДАННЫМ",
+        "инструмент",
+        "инструментами",
+      ]) {
+        const result = await app.call(
+          {
+            title: phrase,
+            goal: phrase,
+            details: phrase,
+            note: phrase,
+            outcome: { kind: "achievement", achievementID: 1658 },
+            tasks: [
+              {
+                id: "finish",
+                title: phrase,
+                note: phrase,
+                why: phrase,
+                condition: { text: phrase },
+              },
+            ],
+          },
+          "player-text",
+          tool,
+        );
+        assert.equal(result.isError, false, result.text);
+        const warnings: string[] = JSON.parse(result.text).warnings;
+        for (const field of [
+          "Plan title",
+          "Plan goal",
+          "Plan details",
+          "Plan note",
+          "Task 1 title",
+          "Task 1 note",
+          "Task 1 why",
+          "Task 1 condition",
+        ]) {
+          assert.ok(
+            warnings.some((warning) => warning.startsWith(`${field}:`) && /rewrite/i.test(warning)),
+            `${phrase}: missing rewrite warning for ${field}`,
+          );
+        }
+      }
+      const result = await app.call(
+        {
+          ...plan,
+          outcome: { kind: "achievement", achievementID: 1658 },
+          goal: "Head to the arena and defeat Malygos.",
+          details: "Возьми инструментальный ящик.",
+          tasks: [
+            {
+              id: "tool_snapshot",
+              title: "Loot the toolbox by the stool",
+              note: "Use {item:40768}.",
+              condition: { text: "If you have a Gnomish Army Knife" },
+            },
+          ],
+        },
+        "player-text",
+        tool,
+      );
+      assert.equal(result.isError, false, result.text);
+      assert.deepEqual(JSON.parse(result.text).warnings, []);
+    } finally {
+      await app.close();
+    }
+  });
+}

@@ -191,7 +191,7 @@ for (const backend of BACKENDS) {
       assert.equal(lease.attempt, 1);
       assert.equal(lease.expiresAt, app.now() + 180);
       assert.match(lease.leaseToken, /^[A-Za-z0-9_-]{43}$/);
-      assert.equal(lease.prompt.version, "205f5fc7ad52");
+      assert.equal(lease.prompt.version, "05d04320da40");
       assert.match(lease.prompt.text, /^# Unbored planner\n/);
       assert.equal(lease.mcpPath, "/mcp");
       assert.equal((await app.claim()).status, 204);
@@ -585,6 +585,43 @@ for (const backend of BACKENDS) {
       app.close();
     }
   });
+
+  for (const tool of ["put_plan", "answer_request"]) {
+    test(`${tool} warns about missing directions and accepts a rewrite in the same lease (${backend})`, async () => {
+      const app = build(backend);
+      try {
+        await app.add();
+        const lease = await (await app.claim()).json();
+        const call = (note: string) =>
+          mcp(app, lease.leaseToken, "tools/call", {
+            name: tool,
+            arguments: {
+              requestId: "runner-first",
+              ...(tool === "answer_request" ? { message: "Your next adventure awaits." } : {}),
+              plan: { ...plan, tasks: [{ ...plan.tasks[0], note }] },
+            },
+          });
+        const reply = await call(
+          "Exact entrance-to-arena directions are unavailable; head to the marked arena on The Eye of Eternity floor.",
+        );
+        assert.equal(reply.body.result.isError, false);
+        const warning = JSON.parse(reply.body.result.content[0].text);
+        assert.equal(warning.stored, false);
+        assert.match(warning.warnings.join(" "), /Task 1 note.*rewrite/i);
+        const current = await mcp(app, lease.leaseToken, "tools/call", {
+          name: "get_current_plan",
+          arguments: {},
+        });
+        assert.equal(JSON.parse(current.body.result.content[0].text).plan, null);
+        const corrected = await call("Head to the arena and defeat Malygos.");
+        assert.equal(corrected.body.result.isError, false);
+        assert.deepEqual(JSON.parse(corrected.body.result.content[0].text).warnings, []);
+        assert.equal((await mcp(app, lease.leaseToken, "tools/list", {})).status, 401);
+      } finally {
+        await app.close();
+      }
+    });
+  }
 
   test(`a copied starting point can be corrected within the lease (${backend})`, async () => {
     const app = build(backend);
