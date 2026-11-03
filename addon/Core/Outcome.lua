@@ -40,11 +40,6 @@ local function reputation(view, target)
   local label = ns.T("OUTCOME_STANDING_" .. target.standing)
   factionLabel(view, label, str(data.name))
   if standing then view.done = standing >= target.standing end
-  -- A paragon faction has already reached every standard standing target.
-  if C_Reputation and bool(call(C_Reputation.IsFactionParagon, target.factionID)) then
-    view.done = true
-    return
-  end
   local friend = info(C_GossipInfo, "GetFriendshipReputation", target.factionID)
   if (num(friend.friendshipFactionID) or 0) > 0 then
     view.status = str(friend.reaction)
@@ -102,7 +97,7 @@ local function collection(view, target)
     if target.kind == "toy" then
       owned = bool(call(PlayerHasToy, target.id))
     else
-      local count = num(call(C_Item and C_Item.GetItemCount, target.id, true))
+      local count = num(call(C_Item and C_Item.GetItemCount, target.id, true, false, true, true))
       if count then owned = count > 0 end
     end
   end
@@ -175,6 +170,7 @@ O.events = {
   CRITERIA_COMPLETE = { achievement = true },
   CURRENCY_DISPLAY_UPDATE = { currency = true }, BAG_UPDATE_DELAYED = { item = true },
   BANKFRAME_OPENED = { item = true }, PLAYERBANKSLOTS_CHANGED = { item = true },
+  PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED = { item = true }, BANK_TABS_CHANGED = { item = true },
   NEW_MOUNT_ADDED = { mount = true }, MOUNT_JOURNAL_SEARCH_UPDATED = { mount = true },
   NEW_PET_ADDED = { pet = true }, PET_JOURNAL_LIST_UPDATE = { pet = true },
   NEW_TOY_ADDED = { toy = true }, TOYS_UPDATED = { toy = true },
