@@ -319,6 +319,7 @@ end
 -- Thinking (D88): loops made once, each step there and back again, so every
 -- loop starts and ends at rest. They stop with Finish() at the end of a loop,
 -- never with Stop(), which snaps the portrait back mid-move.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): Finish() on a REPEAT group in 12.x.
 local LOOP_SECONDS = 1.2
 local FINISH_CAP = LOOP_SECONDS * 2
@@ -370,6 +371,7 @@ local function glow(region)
 end
 
 -- Three dots that light up in turn while Bory waits (D89).
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): Animation:SetTarget on a child font string.
 local DOT_ALPHA = 0.25
 local DOT_SECONDS = 0.4
@@ -2409,6 +2411,18 @@ function ns.Mascot:SettingsTree()
       text = ns.T("MENU_TOOLTIP_LINES"),
       checked = function() return ns.DB.tooltipLines ~= false end,
       func = function() ns.DB.tooltipLines = ns.DB.tooltipLines == false end,
+    },
+    {
+      text = ns.T("SELF_CHECK"),
+      func = function()
+        local report = ns.SelfCheck.Run()
+        if report then
+          self:Echo(ns.T("SELF_CHECK_DONE", report.ok, report.failed))
+          self:Refresh()
+        else
+          ns.Print(ns.T("SELF_CHECK_COMBAT"))
+        end
+      end,
     },
     { text = ns.T("MENU_HIDE_MASCOT"), func = function() self:Hide() end },
     { text = ns.T("MENU_KEYBINDS"), func = function() ns.Print(ns.T("KEYBIND_INFO")) end },

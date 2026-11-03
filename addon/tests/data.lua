@@ -1159,6 +1159,176 @@ do
   ns.errorShown = shownBefore
 end
 
+-- A self-check calls read-only APIs once and reaches the existing upload Section.
+do
+  local calls = 0
+  local saved = C_WeeklyRewards.GetActivities
+  C_WeeklyRewards.GetActivities = function()
+    calls = calls + 1
+    return { { type = 1, progress = 3, name = "private player text" } }
+  end
+  _G.GetBuildInfo = function() return "12.0.1", "65432", "date", 120001 end
+  assert(loadfile("Core/SelfCheck.lua"))("Unbored", ns)
+  UnboredDB.errors = {}
+  local result = ns.SelfCheck.Run()
+  check(calls == 1, "self-check calls GetActivities exactly once")
+  check(result and result.ok > 0, "self-check returns a completion count")
+  local rows = S.Body("errors").rows
+  check(#rows == 1 and rows[1].where == "selfcheck", "one diagnostic reaches the upload Section")
+  check(rows[1].text:find("65432", 1, true), "the diagnostic includes the game build")
+  check(rows[1].stack:find("C_WeeklyRewards.GetActivities ok", 1, true), "the API and status are recorded")
+  check(rows[1].stack:find("progress", 1, true), "the shape includes known first-entry keys")
+  check(not rows[1].stack:find("private player text", 1, true), "values never enter the report")
+  C_WeeklyRewards.GetActivities = saved
+end
+
+-- All probes succeed, one throws, and one disappears. Stubs sit at game APIs;
+-- assertions read the public completion and the real errors upload Section.
+do
+  local restore, counts = {}, {}
+  for _, probe in ipairs(ns.SelfCheck.checks) do
+    if not probe.prepare then
+      local parent, key = probe.api:match("^(.*)%.([^.]+)$")
+      local owner = parent and _G[parent] or _G
+      if not owner then
+        restore[#restore + 1] = { _G, parent, nil }
+        owner = {}
+        _G[parent] = owner
+      end
+      key = key or probe.api
+      restore[#restore + 1] = { owner, key, owner[key] }
+      local name = probe.api
+      owner[key] = function()
+        counts[name] = (counts[name] or 0) + 1
+        return { { progress = 1, level = 2, name = "private text", ["private key"] = true } }
+      end
+    end
+  end
+  local oldLines = S.Body("questLines")
+  S.Write("questLines", { lines = { { questLineID = 4321, campaignID = 123 } } }, "event")
+  C_QuestLine.GetQuestLineQuests = function(id)
+    counts["C_QuestLine.GetQuestLineQuests"] = (counts["C_QuestLine.GetQuestLineQuests"] or 0) + 1
+    check(id == 4321, "quest-line probe uses an already collected own-character chain")
+    return { 123, 456 }
+  end
+  C_CampaignInfo.GetCampaignChapterInfo = function(id)
+    counts["C_CampaignInfo.GetCampaignChapterInfo"] = (counts["C_CampaignInfo.GetCampaignChapterInfo"] or 0) + 1
+    check(id == 4321, "chapter probe uses the saved campaign chapter")
+    return { name = "private chapter name" }
+  end
+  local oldCreate, oldStack = _G.CreateFrame, _G.debugstack
+  local finishes, targets, frames = 0, 0, 0
+  _G.CreateFrame = function()
+    frames = frames + 1
+    local label = {}
+    return {
+      Hide = function() end,
+      CreateFontString = function() return label end,
+      CreateAnimationGroup = function()
+        return {
+          SetLooping = function(_, mode) check(mode == "REPEAT", "probe uses a REPEAT group") end,
+          Finish = function() finishes = finishes + 1 end,
+          CreateAnimation = function()
+            return {
+              SetDuration = function() end,
+              SetTarget = function(_, target)
+                check(target == label, "animation targets its own font string")
+                targets = targets + 1
+              end,
+            }
+          end,
+        }
+      end,
+    }
+  end
+  _G.debugstack = function(co)
+    check(coroutine.status(co) == "dead", "stack probe uses a failed coroutine")
+    return "private stack contents"
+  end
+  UnboredDB.errors = {}
+  local result = ns.SelfCheck.Run()
+  check(result.ok == 18 and result.failed == 0 and result.manual == 11, "all safe probes succeed")
+  for name, count in pairs(counts) do check(count == 1, name .. " is called once") end
+  for _, probe in ipairs(ns.SelfCheck.checks) do
+    if probe.manual then check(counts[probe.api] == nil, probe.api .. " is never invoked by the check") end
+  end
+  check(finishes == 1 and targets == 1 and frames == 1, "animation probes reuse one isolated object")
+  local detail = S.Body("errors").rows[1].stack
+  check(not detail:find("private", 1, true), "no returned values, arbitrary keys or stacks escape")
+  check(detail:find("EncounterJournal_OpenJournal manual", 1, true), "unsafe calls are explicit manual checks")
+  check(#detail < 8000 and detail:find("C_Calendar.GetDayEvent manual", 1, true), "the last check fits the cap")
+
+  C_WeeklyRewards.GetActivities = function() error("private exception text") end
+  result = ns.SelfCheck.Run()
+  check(result.ok == 17 and result.failed == 1, "one thrown API is counted as failed")
+  detail = S.Body("errors").rows[2].stack
+  check(detail:find("C_WeeklyRewards.GetActivities error call%-or%-shape")
+    and not detail:find("private exception", 1, true), "exceptions are recorded without values")
+  C_WeeklyRewards.GetActivities = nil
+  result = ns.SelfCheck.Run()
+  check(result.ok == 17 and result.failed == 1, "one absent API is counted as failed")
+  check(#UnboredDB.errors == 2 and UnboredDB.errors[2].count == 2
+    and S.Body("errors").rows[2].stack:find("C_WeeklyRewards.GetActivities error missing", 1, true),
+    "repeated counts replace the report details with the latest missing API")
+
+  C_WeeklyRewards.GetActivities = function()
+    return { [SECRET] = "private", progress = SECRET, [1] = { level = SECRET, progress = 1 } }, nil, SECRET
+  end
+  result = ns.SelfCheck.Run()
+  detail = S.Body("errors").rows[1].stack
+  local secretShape = "returns=3 table count=1 first={table count=1 keys=progress:number}; nil; omitted"
+  check(result.failed == 0 and detail:find(secretShape, 1, true),
+    "secret keys and values are dropped, nil returns keep their positions")
+
+  C_WeeklyRewards.GetActivities = function()
+    local huge = {}
+    for i = 1, 200 do
+      huge[i] = { bestRunDurationMS = 1, challengeModeID = 1, currentSeasonScore = 1, finishedSuccess = true }
+    end
+    return huge, huge, huge, huge, huge, huge, huge, huge
+  end
+  ns.SelfCheck.Run()
+  detail = S.Body("errors").rows[1].stack
+  check(#detail <= 8000 and detail:find("count=64+", 1, true)
+    and detail:find("C_Calendar.GetDayEvent manual", 1, true),
+    "large shapes are bounded without losing the final API")
+
+  combat = true
+  local beforeCheck = UnboredDB.errors[1].count
+  check(ns.SelfCheck.Run() == nil and UnboredDB.errors[1].count == beforeCheck,
+    "combat prevents all probes and writes")
+  combat = false
+  UnboredDB.shareData = false
+  UnboredDB.data.sections.errors = nil
+  ns.SelfCheck.Run()
+  check(S.Body("errors") == nil and UnboredDB.errors[1].count == beforeCheck + 1,
+    "sharing off keeps self-checks local")
+  UnboredDB.shareData = true
+  for i = #restore, 1, -1 do
+    local item = restore[i]
+    item[1][item[2]] = item[3]
+  end
+  _G.CreateFrame, _G.debugstack = oldCreate, oldStack
+  if oldLines then S.Write("questLines", oldLines, "event") end
+  UnboredDB.errors = {}
+  UnboredDB.data.sections.errors = nil
+end
+
+-- Shared transport fixture: every byte, including the last probe, survives.
+do
+  -- Diagnostic strings exceed the Plan decoder's 2,000-byte string cap.
+  local row = jsonFixture("../packages/contracts/fixtures/selfcheck.json")
+  UnboredDB.errors = {}
+  ns.RecordSelfCheck(row.text, row.stack)
+  local saved = S.Body("errors").rows[1]
+  check(saved.where == row.where and saved.text == row.text and saved.stack == row.stack,
+    "the shared self-check fixture reaches the account upload Section unchanged")
+  ns.RecordSelfCheck("bounded", string.rep("s", 9000))
+  check(#S.Body("errors").rows[2].stack == 8000, "self-check details have a local byte cap")
+  UnboredDB.errors = {}
+  UnboredDB.data.sections.errors = nil
+end
+
 -- Every Section survives a staged read where every S.Yield() yields (D170).
 -- A new Section without a mock here fails: add a mock for it above.
 do

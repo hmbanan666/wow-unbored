@@ -227,6 +227,7 @@ local resolvers = {
     end
     return name, link, ns.Flag(collected)
   end,
+  -- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
   -- TODO(verify-in-game): C_ToyBox.GetToyLink in 12.x.
   toy = function(id)
     local link = C_ToyBox and C_ToyBox.GetToyLink and ns.Call(C_ToyBox.GetToyLink, id)
@@ -541,6 +542,7 @@ function M.OnEnter(owner, link, text)
 end
 
 -- Our tooltip for the links the game has no hyperlink for (D98).
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): the pet tooltip; BattlePetTooltip is not used.
 function M.OwnTooltip(own, label)
   local name = (resolvers[own.type](own.id)) or label or ns.MASCOT_NAME
@@ -572,6 +574,7 @@ function M.OwnTooltip(own, label)
 end
 
 -- The Adventure Guide on one instance. It is a load-on-demand addon.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): EncounterJournal_OpenJournal(difficulty, instanceID).
 local function openGuide(id)
   if type(EncounterJournal_OpenJournal) ~= "function" then

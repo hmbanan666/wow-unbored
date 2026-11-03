@@ -236,6 +236,24 @@ function ns.ReportError(err, where, stack)
   end
 end
 
+-- Only SelfCheck's bounded, value-free report uses this path, never raw errors.
+function ns.RecordSelfCheck(summary, details)
+  local now = ns.Now()
+  local list = errorList()
+  -- A repeat with the same counts/build updates the details instead of keeping
+  -- an old shape. The ordinary error deduplication and ten-row cap still apply.
+  for _, row in ipairs(list) do
+    if row.where == "selfcheck" and row.text == summary and row.version == ns.VERSION then
+      row.stack = details:sub(1, 8000)
+    end
+  end
+  addRow(list, {
+    at = now, lastAt = now, count = 1, version = ns.VERSION,
+    where = "selfcheck", text = summary:sub(1, ns.ERROR_TEXT_MAX), stack = details:sub(1, 8000),
+  })
+  ns.WriteErrors()
+end
+
 -- The xpcall handler: runs before the stack unwinds, so it can read it.
 -- Level 2 is the function that raised the error.
 local handlers = {}
@@ -251,6 +269,7 @@ function ns.ErrorHandler(where)
 end
 
 -- The stack of a coroutine that failed (a staged read).
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): debugstack on a dead coroutine returns its frames.
 function ns.CoroutineStack(co)
   if type(debugstack) ~= "function" or not co then

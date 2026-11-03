@@ -89,6 +89,7 @@ S.Register({
 -- Progress toward achievements nobody on the Account has finished (D182):
 -- a staged walk once a day per Character, a minute after the login pass.
 -- Rows at least half done, best first; the Server's Ready now lists >= 0.7.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): one pass stays under ~60 s of staged frames on a big
 -- Account.
 S.ACH_MIN_RATIO = 0.5
@@ -251,6 +252,7 @@ S.Register({
 -- client has GetOwnedPetIDs; otherwise the journal is walked with the
 -- collected filter forced on and restored, and a count that disagrees with
 -- the journal total is treated as doubt and skipped.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): GetOwnedPetIDs exists on 12.x; the filter fallback
 -- leaves the player's Pet Journal filters as they were.
 local function petEntries()
@@ -360,6 +362,7 @@ S.Register({
 -- Toys: the Toy Box list is filtered, so the filters are forced open for the
 -- read and restored; skipped while the Toy Box is shown. The search text is
 -- never touched; a mismatch with the learned count is treated as doubt.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): the Toy Box filters are restored exactly.
 S.Register({
   name = "toys",

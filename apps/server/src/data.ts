@@ -862,7 +862,7 @@ export class DataStore {
         version,
         where,
         text,
-        short(row.stack, 800),
+        short(row.stack, where === "selfcheck" ? 8000 : 800),
         Math.max(1, whole(row.count)),
         whole(row.at) || lastAt,
         lastAt,
