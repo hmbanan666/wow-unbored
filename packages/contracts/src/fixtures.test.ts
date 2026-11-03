@@ -13,6 +13,7 @@ import {
   parseMarkup,
   plainText,
   planSchema,
+  planSubmissionSchema,
   playerProfileSchema,
   requestBodySchema,
   sectionHash,
@@ -77,6 +78,7 @@ test("idea button fields are optional and enforce text and progress limits", () 
 test("plan and player profile fixtures match the shared schema", () => {
   expect(planSchema.safeParse(read("plan.json")).success).toBe(true);
   expect(planSchema.safeParse(read("plan-instance.json")).success).toBe(true);
+  expect(planSchema.safeParse(read("plan-outcome.json")).success).toBe(true);
   expect(playerProfileSchema.safeParse(read("profile.json")).success).toBe(true);
 });
 
@@ -209,4 +211,11 @@ test("snapshot results describe each Section in sync and async answers", () => {
   for (const sections of [undefined, { mounts: "stored" }, { "account:mounts": "unknown" }]) {
     expect(snapshotResultSchema.safeParse({ ...fixture, sections }).success).toBe(false);
   }
+});
+
+test("planner submissions require an outcome while legacy delivery remains valid", () => {
+  expect(planSubmissionSchema.safeParse(read("plan.json")).success).toBe(false);
+  expect(planSchema.safeParse(read("plan.json")).success).toBe(true);
+  expect(planSubmissionSchema.safeParse(read("plan-currency.json")).success).toBe(true);
+  expect(planSubmissionSchema.safeParse(read("plan-outcome.json")).success).toBe(true);
 });

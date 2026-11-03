@@ -1,3 +1,4 @@
+import { getPlace } from "./places.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { Context } from "hono";
@@ -5,6 +6,7 @@ import { z } from "zod";
 
 import { markupIds } from "@unbored/contracts";
 
+import { OUTCOME_KINDS, checkOutcome } from "./outcome.ts";
 import type { BlizzardIds } from "./blizzard.ts";
 import { getInstanceGuide } from "./instances.ts";
 import { resolveCriteria } from "./criteria.ts";
@@ -20,7 +22,7 @@ import {
   type Store,
 } from "./store.ts";
 
-const PLAN_SCOPE = `Plan the whole goal. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
+const PLAN_SCOPE = `Plan the whole goal. Every Plan, including Surprise me and fun, promises one near-guaranteed result this sitting: an incomplete achievement, a reachable reputation/renown/level threshold, guaranteed item or collectible, or currency amount. The title names it; the last Step completes it. Chance drops are bonuses only. Surprise me chooses qualifying get_ready_now candidates; verify prerequisites, sources and costs through the existing tools. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
 
 const MARKUP = `Links (step title, note, why, condition text, plan goal, details and rewards, the plan note, answer messages): every game object you name is a token when you have its id from a tool; otherwise plain text. Bory shows a token as a native link with the game's own name and tooltip. Kinds, each with an optional |label:
 - {item:ID} an item, e.g. {item:6948|Hearthstone}
@@ -46,23 +48,25 @@ Required shape:
 - budget: optional, whole minutes from 5 to 240. Leave it out unless the request carried one.
 - tasks: 1 to 40 objects
 
-The card (all optional, but a plan without a title gets a warning):
+The card (outcome required; a plan without a title gets a warning):
 - title: 3 to 40 characters, a human, catchy name like a quest title. No tokens, no ids, at most one number, no "you have". State facts go in details.
   Good: "Badges for a Timereaver", "Hallow's End in one evening". Bad: "Warlords Timewalking: you have 3200 currency", "Plan for request mode surprise".
+- outcome: exactly one REQUIRED near-guaranteed target, including for Surprise me and fun; rep uses factionID and standing (1-8, Honored = 6), renown uses factionID and level, level uses level, achievement uses achievementID, mount/pet/toy/item use id (same ids as tokens), currency uses currencyID and amount (target total held). Never send current progress numbers. Missing, invalid or already-owned targets are tool errors: correct and retry in the same session. Missing snapshot data is accepted with an informational note.
+- bonus: up to 3 chance reward tokens, separate from the goal and rewards. Add a short "may also drop" bonus line to a Step note for older addons.
 - goal: one sentence, at most 160 bytes: what the player does and why it is worth it. May carry tokens.
-- details: at most 600 bytes of facts and state (currency counts, what Alts already did). May carry tokens.
+- details: at most 200 bytes of facts and state (currency counts, what Alts already did). May carry tokens.
 - rewards: up to 6 strings, each exactly one token of kind mount, ach, item, toy, currency or pet, e.g. ["{mount:183}", "{ach:964}"].
 - contains: optional reward contents, { "<item reward token>": ["<token>", ...] }. A container (cage, chest, bag) that drops is the reward; what it may hold goes in \`contains\`. Never list the possible contents as rewards themselves. The key is one {item:ID} that is also in rewards or a step's rewards; the list is 1 to 6 single tokens of kind mount, toy, pet or item; at most 2 containers; the contents count toward the 12 tokens of goal plus details. Bory shows "[cage] · may contain 1 of 3 mounts" and leaves out what the player already has.
 Bory shows a calm card: closed it is only the title, the step, its why and the first reward; everything else opens on "Show more". So keep every text short: a step title is one line of what to do, why is one short reason, and long text belongs in note or details. No walls of text.
 
 Each task:
 - id: 1-80 characters, letters, digits, colon, dot, underscore, hyphen (example mentor:ashes)
-- title: non-empty, at most 240 bytes
+- title: non-empty, at most 70 characters and 240 UTF-8 bytes
 - estMinutes: 1 to 240 (default 15), a rough guess the player sees as information only
 - mapID: optional ui map id
 - x and y: optional, both required together, fractions of the map from 0 to 1. Wowhead 0-100 coordinates must be divided by 100.
-- why: optional, at most 120 bytes, one short reason shown under the step. May carry tokens.
-- note: optional, at most 1000 bytes. At most two short sentences saying where to go and what to do.
+- why: optional, at most 80 bytes, one short reason shown under the step. May carry tokens.
+- note: optional, at most 400 bytes. At most two short sentences saying where to go and what to do.
 - rewards: optional, up to 3 single tokens this step gives, same kinds as the plan rewards.
 - condition: optional { text, check }. text (at most 160 bytes) is shown before the step, e.g. "If you have 5,000 {currency:1166}". check = { kind: currency | item | level | quest | ach, id, atLeast? } is evaluated live in the game: met shows Ready; unmet shows the live count and Skip moves past without counting it as skipped. For level, id is the level. Never guess the player's numbers; let the check read them.
 - waypoints: optional, 1 to 10 points [{ mapID, x, y, label }] in route order. x and y are 0 to 1, label at most 80 bytes. The addon sets the native waypoint arrow (and TomTom when installed) on point 1 and moves to the next point when the player comes within about 30 yards. Use it for a multi-stop task. Without waypoints the task's own mapID, x, y is the single point.
@@ -164,6 +168,7 @@ const LEASE_TOOLS = new Set([
   "get_current_plan",
   "resolve_criteria",
   "get_instance_guide",
+  "get_place",
   "put_plan",
   "answer_request",
   "fail_request",
@@ -310,7 +315,7 @@ export function createMcpServer(
       x: z.number().optional(),
       y: z.number().optional(),
       note: z.string().optional(),
-      why: z.string().optional().describe("One short reason, at most 120 bytes"),
+      why: z.string().optional().describe("One short reason, at most 80 bytes"),
       rewards: z.array(z.string()).max(3).optional().describe("Up to 3 single link tokens"),
       condition: z
         .object({
@@ -347,8 +352,23 @@ export function createMcpServer(
       budget: z.number().optional(),
       note: z.string().optional(),
       title: z.string().optional().describe("3 to 40 characters, like a quest title"),
+      outcome: z
+        .unknown()
+        .nonoptional({
+          error: `Plan outcome is required. Allowed kinds: ${OUTCOME_KINDS}. Supply one near-guaranteed target and retry put_plan in this session.`,
+        })
+        .describe(
+          "Required target: {kind: rep, factionID, standing: 1-8}, {kind: renown, factionID, level}, {kind: level, level}, {kind: achievement, achievementID}, {kind: currency, currencyID, amount}, or {kind: mount|pet|toy|item, id}. Chance rewards belong only in bonus.",
+        ),
+      bonus: z
+        .array(z.string())
+        .max(3)
+        .optional()
+        .describe(
+          "Up to three chance reward tokens; also describe them as a possible bonus in a Step note.",
+        ),
       goal: z.string().optional().describe("One sentence, at most 160 bytes"),
-      details: z.string().optional().describe("Facts and state, at most 600 bytes"),
+      details: z.string().optional().describe("Facts and state, at most 200 bytes"),
       rewards: z
         .array(z.string())
         .max(6)
@@ -387,6 +407,8 @@ export function createMcpServer(
         if (requestId && !asked) {
           return failure(new Error("No request with that id."));
         }
+        await settle(asked?.account);
+        const notes = await checkOutcome(plan.outcome, store.data, asked);
         const warnings: string[] = [];
         const missing = gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
         // One transaction: Forget my data cannot erase the Request between the two.
@@ -394,7 +416,12 @@ export function createMcpServer(
           const stored = await store.putPlan(
             plan,
             undefined,
-            { missing, warnings, wish: asked?.wish, context: asked?.context },
+            {
+              missing,
+              warnings,
+              wish: asked?.wish,
+              context: asked?.context,
+            },
             requestId,
           );
           const request = requestId ? await store.fulfillRequest(requestId, stored.id) : undefined;
@@ -406,6 +433,7 @@ export function createMcpServer(
           plan: stored.unb1,
           stored: stored.plan,
           request: request ? publicRequest(request) : null,
+          notes,
           warnings,
         });
       } catch (error) {
@@ -997,6 +1025,8 @@ export function createMcpServer(
       try {
         const asked = await store.requestById(requestId);
         if (!asked) return failure(new Error("No request with that id."));
+        await settle(asked.account);
+        const notes = plan ? await checkOutcome(plan.outcome, store.data, asked) : [];
         const warnings: string[] = [];
         const ids = [...markupIds(message), ...(plan ? planMarkupIds(plan) : [])];
         const missing = gameIds ? await gameIds.missing(ids) : undefined;
@@ -1005,7 +1035,17 @@ export function createMcpServer(
         // One transaction: Forget my data cannot erase the Request between the two.
         const { stored, request } = await store.tx(async () => {
           const stored = plan
-            ? await store.putPlan(plan, now, { missing, warnings, wish: asked.wish }, requestId)
+            ? await store.putPlan(
+                plan,
+                now,
+                {
+                  missing,
+                  warnings,
+                  wish: asked.wish,
+                  context: asked.context,
+                },
+                requestId,
+              )
             : undefined;
           const request = await store.answerRequest(requestId, answer, stored?.id ?? null);
           return { stored, request };
@@ -1013,6 +1053,7 @@ export function createMcpServer(
         return text({
           request: request ? publicRequest(request) : null,
           plan: stored ? { id: stored.id, plan: stored.unb1 } : null,
+          notes,
           warnings,
         });
       } catch (error) {
@@ -1036,6 +1077,28 @@ export function createMcpServer(
       const request = await store.failRequest(requestId, reason.slice(0, 400));
       if (!request) return failure(new Error("No request with that id."));
       return text({ request: publicRequest(request) });
+    },
+  );
+
+  registerTool(
+    "get_place",
+    {
+      title: "Look up a place",
+      description:
+        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name and parent continent, cached single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Tables use a 24-hour runtime cache with the same 20 MB cap, source and downloader as instance guides.",
+      inputSchema: {
+        mapID: z.number().int().positive(),
+        questID: z.number().int().positive().optional(),
+        npcID: z.number().int().positive().optional(),
+        lang: z.enum(["en", "ru"]).default("en"),
+      },
+    },
+    async (query) => {
+      try {
+        return text(await getPlace(dataDir, query));
+      } catch (error) {
+        return failure(error);
+      }
     },
   );
 
@@ -1087,6 +1150,10 @@ export function createMcpServer(
   return server;
 }
 
+// Stateless transports construct schemas per call. Admit one setup per timer turn so a
+// burst of tool calls cannot starve health checks before asynchronous handlers even run.
+let setupTurn = Promise.resolve();
+
 export async function handleMcp(
   c: Context,
   store: Store,
@@ -1097,7 +1164,15 @@ export async function handleMcp(
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
   });
-  const server = createMcpServer(store, dataDir, gameIds, options);
+  const setup = setupTurn.then(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    return createMcpServer(store, dataDir, gameIds, options);
+  });
+  setupTurn = setup.then(
+    () => {},
+    () => {},
+  );
+  const server = await setup;
   await server.connect(transport);
   return transport.handleRequest(c.req.raw);
 }

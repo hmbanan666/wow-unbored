@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unbored.kosarev.space/schema/plan-submission.json",
+  "title": "New planner submission",
+  "allOf": [
+    {
+      "$ref": "plan.schema.json"
+    },
+    {
+      "type": "object",
+      "required": ["outcome"]
+    }
+  ]
+}
