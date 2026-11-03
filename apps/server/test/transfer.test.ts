@@ -53,7 +53,7 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
       VALUES (2, 'p', ${now}, 'A', 'Gordunni', 'Brozin', NULL, '{"done":[1]}');
     INSERT INTO requests (id, device_id, character_name, realm, mode, budget, status, plan_id, created_at, updated_at, context_json, item_json)
       VALUES ('r1', 'd1', 'Brozin', 'Gordunni', 'surprise', 60, 'done', 7, ${now}, ${now}, '{"wish":"x"}', NULL);
-    INSERT INTO devices VALUES ('d1', 'PC', 'secret-hash', 'active', ${now}, NULL, 0);
+    INSERT INTO devices VALUES ('d1', 'PC', 'secret-hash', 'active', ${now}, NULL, 0, NULL);
     INSERT INTO history (id, at, account, character_name, realm, kind, ref, body_json)
       VALUES (3, ${at(2024, 6, 1)}, 'A', 'Brozin', 'Gordunni', 'win', NULL, '{"old":true}'),
              (4, ${now}, 'A', 'Brozin', 'Gordunni', 'win', 'x', '[1,"two"]');

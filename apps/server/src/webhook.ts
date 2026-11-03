@@ -141,10 +141,11 @@ export class PlannerWebhook {
     }
   }
 
-  /** Retries every pending request whose next attempt is due. */
+  /** Cleans abandoned reconnects, then retries Requests whose next attempt is due. */
   async tick(): Promise<void> {
-    if (!this.enabled) return;
     const now = this.now();
+    await this.store.expireReconnects(now);
+    if (!this.enabled) return;
     const due = await this.store.webhookDue({
       nowSeconds: now,
       sinceSeconds: now - RETRY_WINDOW_SECONDS,
@@ -156,7 +157,8 @@ export class PlannerWebhook {
   }
 
   start(intervalMs = 30_000): void {
-    if (this.timer || !this.enabled) return;
+    // Device cleanup runs on both backends, even when webhook delivery is off.
+    if (this.timer) return;
     const run = () => {
       this.tick().catch((error: unknown) =>
         this.log(`webhook retry loop failed: ${errorCode(error)}`),

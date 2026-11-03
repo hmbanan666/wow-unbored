@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vite-plus/test";
@@ -46,7 +46,7 @@ function reconnect(
   });
 }
 
-test("Connect again mints a new approved device and the old secret stops working", async () => {
+test("a 0.11 Companion saves after the reply and confirms on its next poll", async () => {
   const built = setup();
   try {
     await register(built, "forget-pc", "old-secret-value-1");
@@ -82,6 +82,17 @@ test("Connect again mints a new approved device and the old secret stops working
     assert.equal(body.id, "forget-pc-2");
     assert.equal(body.status, "approved");
     assert.equal((await built.store.deviceById("forget-pc"))?.status, "revoked");
+    assert.equal((await built.store.deviceById("forget-pc"))?.forgetRevoked, true);
+    const retry = await reconnect(built, "old-secret-value-1", {
+      deviceId: "forget-pc-2",
+      secret: "new-secret-value-2",
+    });
+    assert.equal(retry.status, 201, "a lost reply can be retried before the first poll");
+    assert.deepEqual(await retry.json(), body);
+    const newMe = await built.app.request("/v1/devices/me", {
+      headers: { authorization: "Bearer new-secret-value-2" },
+    });
+    assert.equal(newMe.status, 200);
     assert.equal((await built.store.deviceById("forget-pc"))?.forgetRevoked, false);
 
     const oldMe = await built.app.request("/v1/devices/me", {
@@ -161,6 +172,223 @@ test("an owner revoke and a device that was never approved cannot connect again"
       secret: "same-id-secret-new",
     });
     assert.equal(same.status, 400);
+  } finally {
+    built.close();
+  }
+});
+
+async function forgotten(built: ReturnType<typeof setup>) {
+  await register(built, "forgotten-pc", "forgotten-secret-value");
+  await built.store.setDeviceStatus("forgotten-pc", "approved");
+  await built.store.forgetDevice("forgotten-pc");
+}
+
+const next = { deviceId: "replacement-pc", secret: "replacement-secret-value" };
+const another = { deviceId: "another-pc", secret: "another-secret-value" };
+const me = (built: ReturnType<typeof setup>, secret: string) =>
+  built.app.request("/v1/devices/me", { headers: { authorization: `Bearer ${secret}` } });
+
+test("a lost reply can be replaced; collisions do not discard the pending Device", async () => {
+  const built = setup();
+  try {
+    await forgotten(built);
+    assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
+    assert.equal(
+      (await reconnect(built, "forgotten-secret-value", { ...next, secret: another.secret }))
+        .status,
+      409,
+    );
+    await register(built, another.deviceId, another.secret);
+    assert.equal((await reconnect(built, "forgotten-secret-value", another)).status, 409);
+    assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
+    const replacement = { deviceId: "replacement-2", secret: "replacement-secret-2" };
+    assert.equal((await reconnect(built, "forgotten-secret-value", replacement)).status, 201);
+    assert.equal((await me(built, next.secret)).status, 401);
+    assert.equal((await me(built, replacement.secret)).status, 200);
+    assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 403);
+  } finally {
+    built.close();
+  }
+});
+
+test("a different replacement id may reuse its own unconfirmed secret", async () => {
+  const built = setup();
+  try {
+    await forgotten(built);
+    assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
+    const replacement = { ...another, secret: next.secret };
+    assert.equal((await reconnect(built, "forgotten-secret-value", replacement)).status, 201);
+    const active = await me(built, next.secret);
+    assert.equal(active.status, 200);
+    assert.equal(((await active.json()) as { id: string }).id, another.deviceId);
+  } finally {
+    built.close();
+  }
+});
+
+for (const route of ["/v1/progress", "/v1/requests", "/v1/snapshot"]) {
+  test(`the first authenticated ${route} confirms Connect again`, async () => {
+    const built = setup();
+    try {
+      await forgotten(built);
+      assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
+      const body =
+        route === "/v1/progress"
+          ? { account: "test", character: "Mira", realm: "Realm", progress: { done: [] } }
+          : {
+              id: "reconnected-request",
+              character: "Mira",
+              realm: "Realm",
+              mode: "farm",
+              wish: "Find a mount",
+            };
+      const upload =
+        route === "/v1/snapshot"
+          ? JSON.parse(
+              readFileSync(
+                new URL("../../../packages/contracts/fixtures/snapshot.json", import.meta.url),
+                "utf8",
+              ),
+            )
+          : body;
+      const response = await built.app.request(route, {
+        method: "POST",
+        headers: { authorization: `Bearer ${next.secret}`, "content-type": "application/json" },
+        body: JSON.stringify(upload),
+      });
+      assert.equal(response.ok, true, await response.text());
+      assert.equal((await reconnect(built, "forgotten-secret-value", another)).status, 403);
+    } finally {
+      built.close();
+    }
+  });
+}
+
+for (const side of ["forgotten-pc", next.deviceId]) {
+  for (const action of ["owner revoke", "Forget"]) {
+    test(`${action} on ${side} revokes the unconfirmed partner`, async () => {
+      const built = setup();
+      try {
+        await forgotten(built);
+        assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
+        if (action === "owner revoke") await built.store.setDeviceStatus(side, "revoked");
+        else {
+          const response = await built.app.request("/v1/devices/me/forget", {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${side === next.deviceId ? next.secret : "forgotten-secret-value"}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ confirm: true }),
+          });
+          assert.equal(response.status, 200);
+        }
+        for (const secret of ["forgotten-secret-value", next.secret]) {
+          assert.equal(
+            ((await (await me(built, secret)).json()) as { status: string }).status,
+            "revoked",
+          );
+        }
+        const allowed = action === "Forget";
+        assert.equal(
+          (
+            await reconnect(
+              built,
+              side === next.deviceId ? next.secret : "forgotten-secret-value",
+              another,
+            )
+          ).status,
+          allowed ? 201 : 403,
+        );
+        const partnerSecret = side === next.deviceId ? "forgotten-secret-value" : next.secret;
+        assert.equal(
+          (
+            await reconnect(built, partnerSecret, {
+              deviceId: "partner-new-pc",
+              secret: "partner-new-secret-value",
+            })
+          ).status,
+          403,
+        );
+      } finally {
+        built.close();
+      }
+    });
+  }
+}
+
+test("periodic cleanup expires only unconfirmed replacements after 24 hours and logs ids only", async () => {
+  const logs: string[] = [];
+  const now = Math.floor(Date.now() / 1000);
+  let clock = now;
+  const built = createApp({
+    ...storage(),
+    companionToken: companion,
+    plannerToken: planner,
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-expire-reconnect-")),
+    log: (line) => logs.push(line),
+    webhookNow: () => clock,
+  });
+  try {
+    await forgotten(built);
+    assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
+    const pending = await reconnect(built, "forgotten-secret-value", next);
+    clock = ((await pending.json()) as { createdAt: number }).createdAt + 24 * 60 * 60;
+    await built.webhook.tick();
+    assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
+    clock += 2;
+    await built.webhook.tick();
+    assert.equal((await me(built, next.secret)).status, 401);
+    assert.equal((await reconnect(built, "forgotten-secret-value", another)).status, 201);
+    assert.equal((await me(built, another.secret)).status, 200);
+    clock += 24 * 60 * 60;
+    await built.webhook.tick();
+    assert.equal((await me(built, another.secret)).status, 200);
+    assert.deepEqual(
+      logs.filter((line) => line.startsWith("device reconnect")),
+      [
+        "device reconnect old=forgotte new=replacem pending",
+        "device reconnect old=forgotte new=replacem expired",
+        "device reconnect old=forgotte new=another- pending",
+        "device reconnect old=forgotte new=another- confirmed",
+      ],
+    );
+  } finally {
+    built.close();
+  }
+});
+
+test("concurrent retries and confirmation leave one usable replacement", async () => {
+  const built = setup();
+  try {
+    await forgotten(built);
+    const replies = await Promise.all([
+      reconnect(built, "forgotten-secret-value", next),
+      reconnect(built, "forgotten-secret-value", next),
+    ]);
+    assert.deepEqual(
+      replies.map((r) => r.status),
+      [201, 201],
+    );
+    const [confirmed, replaced] = await Promise.all([
+      me(built, next.secret),
+      reconnect(built, "forgotten-secret-value", another),
+    ]);
+    assert.ok(
+      (confirmed.status === 200 && replaced.status === 403) ||
+        (confirmed.status === 401 && replaced.status === 201),
+    );
+    const survivor = replaced.status === 201 ? another : next;
+    assert.equal((await me(built, survivor.secret)).status, 200);
+    assert.equal(
+      (
+        await reconnect(built, "forgotten-secret-value", {
+          deviceId: "third-new-pc",
+          secret: "third-new-secret-value",
+        })
+      ).status,
+      403,
+    );
   } finally {
     built.close();
   }
