@@ -1,5 +1,6 @@
 import { encodeUnb1 } from "./plan.ts";
 import type { StoredPlan } from "./store.ts";
+import type { SectionRow } from "./data.ts";
 
 /** Keep whole UTF-8 characters, counting the ellipsis within the byte budget. */
 export function truncateUtf8(text: string, maxBytes: number): string {
@@ -28,10 +29,37 @@ function supportsFullNotes(version: string | undefined): boolean {
 }
 
 /** Adapt a delivery copy; the original Plan remains available after an upgrade. */
-export function planForAddon(stored: StoredPlan, version: string | undefined): string {
-  if (supportsFullNotes(version)) return stored.unb1;
+export async function planForAddon(
+  stored: StoredPlan,
+  version: string | undefined,
+  latestCurrencies: () => Promise<Pick<SectionRow, "v" | "body"> | undefined>,
+): Promise<string> {
   if (!stored.plan.tasks.some((task) => task.note && Buffer.byteLength(task.note) > 400)) {
     return stored.unb1;
+  }
+  if (version !== undefined) {
+    if (supportsFullNotes(version)) return stored.unb1;
+  } else {
+    const section = await latestCurrencies();
+    // 0.11 added currency row names; an empty or unfamiliar shape proves nothing.
+    const rows = section?.body.list;
+    const older =
+      section?.v === 1 &&
+      Array.isArray(rows) &&
+      rows.length > 0 &&
+      rows.every((row: unknown) => {
+        if (!row || typeof row !== "object") return false;
+        const currency = row as Record<string, unknown>;
+        return (
+          Number.isInteger(currency.id) &&
+          Number(currency.id) > 0 &&
+          typeof currency.quantity === "number" &&
+          Number.isFinite(currency.quantity) &&
+          currency.quantity >= 0 &&
+          !("name" in currency)
+        );
+      });
+    if (!older) return stored.unb1;
   }
   return encodeUnb1({
     ...stored.plan,

@@ -5,8 +5,8 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
-import type { Plan } from "../src/plan.ts";
-import { truncateUtf8 } from "../src/plan-delivery.ts";
+import { cleanPlan, encodeUnb1, type Plan } from "../src/plan.ts";
+import { planForAddon, truncateUtf8 } from "../src/plan-delivery.ts";
 import { storage } from "./backend.ts";
 
 test("all Companion plan reads adapt notes to the addon without changing the stored Plan", async () => {
@@ -53,7 +53,7 @@ test("all Companion plan reads adapt notes to the addon without changing the sto
     };
     for (const [version, full] of [
       ["0.10.0", false],
-      [undefined, false],
+      [undefined, true],
       ["", false],
       ["unknown", false],
       ["0.11", false],
@@ -99,6 +99,164 @@ test("all Companion plan reads adapt notes to the addon without changing the sto
   } finally {
     close();
   }
+});
+
+test("missing headers use the Device's latest currency data, with full notes when evidence is absent", async () => {
+  const { app, store, close } = createApp({
+    ...storage(),
+    companionToken: "companion-test-token",
+    plannerToken: "planner-test-token",
+    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-note-evidence-")),
+    log: () => {},
+  });
+  const secret = "notes-device-secret";
+  const other = "other-device-secret";
+  const note = "я".repeat(300);
+  const call = (url: string, bearer: string, body: unknown, method = "POST") =>
+    app.request(url, {
+      method,
+      headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const upload = async (
+    savedAt: number,
+    body: unknown,
+    options: { bearer?: string; character?: string; v?: number } = {},
+  ) => {
+    const response = await call("/v1/snapshot", options.bearer ?? secret, {
+      schema: 2,
+      account: "notes-account",
+      character: options.character ?? "Hero",
+      realm: "Realm",
+      savedAt,
+      sections: {
+        currencies: { scope: "char", v: options.v ?? 1, at: savedAt, body },
+      },
+    });
+    assert.equal(response.status, 200);
+  };
+  const expectNotes = async (full: boolean, version?: string) => {
+    for (const endpoint of ["/v1/plan", "/v1/requests/latest", "/v1/requests/req-evidence"]) {
+      const headers: Record<string, string> = { authorization: `Bearer ${secret}` };
+      if (version !== undefined) headers["X-Unbored-Addon-Version"] = version;
+      const response = await app.request(endpoint, { headers });
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as { plan: string };
+      const plan = JSON.parse(
+        new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(body.plan.slice(5), "base64")),
+      ) as Plan;
+      assert.equal(plan.tasks[0].note, full ? note : "я".repeat(198) + "…", endpoint);
+    }
+  };
+  try {
+    for (const [deviceId, bearer] of [
+      ["notes-device", secret],
+      ["other-device", other],
+    ]) {
+      assert.equal(
+        (await call("/v1/devices/register", bearer, { deviceId, secret: bearer })).status,
+        201,
+      );
+      await store.setDeviceStatus(deviceId, "approved");
+    }
+    assert.equal(
+      (
+        await call("/v1/requests", secret, {
+          id: "req-evidence",
+          character: "Hero",
+          realm: "Realm",
+          mode: "fun",
+        })
+      ).status,
+      201,
+    );
+    assert.equal(
+      (
+        await call(
+          "/v1/plan",
+          "planner-test-token",
+          {
+            requestId: "req-evidence",
+            tasks: [{ id: "one", title: "Go", note }],
+          },
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+
+    await expectNotes(true); // No data must preserve today's full notes.
+    const old = { list: [{ id: 3008, quantity: 1 }] };
+    const modern = { list: [{ id: 3008, quantity: 1, name: "Камни" }] };
+    await upload(100, old, { bearer: other, character: "Other" });
+    await expectNotes(true); // Another Device's data is not evidence.
+    await upload(100, old);
+    await expectNotes(false);
+    await expectNotes(true, "0.11.0"); // Header wins over old data.
+    await upload(200, modern);
+    await expectNotes(true);
+    await expectNotes(false, "0.10.0"); // Header wins over modern data.
+    await expectNotes(false, "unknown"); // Present malformed headers keep the safe cap.
+    await upload(150, old);
+    await expectNotes(true); // A delayed stale upload cannot undo the upgrade.
+    await upload(300, old);
+    await expectNotes(false); // A later downgrade is respected.
+    await upload(400, modern, { character: "Alt" });
+    await expectNotes(true); // Use the latest Character on this Device.
+    await upload(500, { list: [] }, { character: "Alt" });
+    await expectNotes(true); // Empty data is not evidence of an older addon.
+    await upload(600, { list: [{ unexpected: true }] }, { character: "Alt" });
+    await expectNotes(true);
+    await upload(700, old, { character: "Alt", v: 2 });
+    await expectNotes(true); // Unknown future Section shapes are not older addons.
+    await upload(800, old, { character: "Alt" });
+    await expectNotes(false);
+    assert.equal(
+      (
+        await call("/v1/snapshot", secret, {
+          schema: 2,
+          account: "notes-account",
+          character: "New",
+          realm: "Realm",
+          savedAt: 900,
+          sections: { char: { scope: "char", v: 1, at: 900, body: { level: 80 } } },
+        })
+      ).status,
+      200,
+    );
+    await expectNotes(true); // A newer Character with no marker must not inherit old evidence.
+    await upload(1000, old, { bearer: other, character: "Shared" });
+    assert.equal(
+      (
+        await call("/v1/snapshot", secret, {
+          schema: 2,
+          account: "notes-account",
+          character: "Shared",
+          realm: "Realm",
+          savedAt: 1100,
+          sections: { char: { scope: "char", v: 1, at: 1100, body: { level: 80 } } },
+        })
+      ).status,
+      200,
+    );
+    await expectNotes(true); // A Device switch does not inherit another PC's currency evidence.
+  } finally {
+    close();
+  }
+});
+
+test("explicit versions and short notes do not read Game data", async () => {
+  const noRead = async (): Promise<never> => {
+    throw new Error("This delivery must not query currency evidence");
+  };
+  const plan = cleanPlan({ tasks: [{ id: "one", title: "Go", note: "я".repeat(300) }] }, 1);
+  const stored = { id: 1, createdAt: 1, plan, unb1: encodeUnb1(plan) };
+  assert.equal(await planForAddon(stored, "0.11.0", noRead), stored.unb1);
+  assert.notEqual(await planForAddon(stored, "0.10.0", noRead), stored.unb1);
+  assert.notEqual(await planForAddon(stored, "unknown", noRead), stored.unb1);
+  const short = cleanPlan({ tasks: [{ id: "one", title: "Go", note: "Коротко" }] }, 1);
+  const shortStored = { ...stored, plan: short, unb1: encodeUnb1(short) };
+  assert.equal(await planForAddon(shortStored, undefined, noRead), shortStored.unb1);
 });
 
 test("UTF-8 truncation respects one-, two-, three- and four-byte boundaries", () => {

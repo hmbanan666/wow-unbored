@@ -167,7 +167,11 @@ export function createApp(
     const plan = request.planId ? await store.planById(request.planId) : undefined;
     return {
       ...publicRequest(request),
-      plan: plan ? planForAddon(plan, addonVersion) : null,
+      plan: plan
+        ? await planForAddon(plan, addonVersion, () =>
+            store.data.latestCurrenciesForDevice(request.deviceId),
+          )
+        : null,
       eta: await store.planEta(),
     };
   };
@@ -420,7 +424,9 @@ export function createApp(
     return c.json({
       id: stored.id,
       createdAt: stored.createdAt,
-      plan: planForAddon(stored, c.req.header("X-Unbored-Addon-Version")),
+      plan: await planForAddon(stored, c.req.header("X-Unbored-Addon-Version"), () =>
+        store.data.latestCurrenciesForDevice(access.deviceId),
+      ),
     });
   });
 
