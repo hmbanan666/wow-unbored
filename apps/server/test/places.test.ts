@@ -81,7 +81,7 @@ test("quest points correct distant Steps, unsupported travel points disappear, s
     assert.equal(plan.tasks[2].mapID, undefined);
     assert.equal(plan.tasks[3].x, 0.21);
     assert.equal(plan.tasks[4].mapID, undefined);
-    assert.equal(plan.tasks[5].x, 0.8);
+    assert.equal(plan.tasks[5].x, undefined);
     assert.ok(warnings.some((w) => w.includes("quest point")));
     assert.ok(warnings.some((w) => w.includes("unsupported")));
     assert.ok(warnings.some((w) => w.includes("own position")));
@@ -237,6 +237,19 @@ test("MCP looks up places and validates submitted quest and travel points before
     assert.equal(result.stored.tasks[1].x, undefined);
     assert.equal(result.warnings.length, 2);
     assert.equal((await store.latestPlan())!.plan.tasks[0].y, 0.4);
+    const http = await app.request("/v1/plan", {
+      method: "PUT",
+      headers: { authorization: "Bearer planner-test-token", "content-type": "application/json" },
+      body: JSON.stringify(plan),
+    });
+    assert.equal(http.status, 200);
+    const viaHttp = (await http.json()) as {
+      stored: { tasks: { x?: number }[] };
+      warnings: string[];
+    };
+    assert.equal(viaHttp.stored.tasks[0].x, 0.2);
+    assert.equal(viaHttp.stored.tasks[1].x, undefined);
+    assert.equal(viaHttp.warnings.length, 2);
     const request = await app.request("/v1/requests", {
       method: "POST",
       headers: { authorization: "Bearer companion-test-token", "content-type": "application/json" },
@@ -260,4 +273,55 @@ test("MCP looks up places and validates submitted quest and travel points before
     await close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("mixed quest geometry and missing join ids never become authoritative quest points", async () => {
+  const { dir, write } = cache();
+  try {
+    write(
+      "QuestPOIBlob",
+      "ID,QuestID,UiMapID,MapID,NumPoints\n1,9726,102,530,1\n2,9726,102,530,2\n",
+    );
+    write("QuestPOIPoint", "ID,QuestPOIBlobID,X,Y\n1,1,600,800\n2,2,100,100\n3,2,200,200\n");
+    assert.deepEqual((await getPlace(dir, { mapID: 102, questID: 9726 })).questPoints, []);
+    write("QuestPOIBlob", "ID,QuestID,UiMapID,MapID,NumPoints\n,9726,102,530,1\n");
+    write("QuestPOIPoint", "ID,QuestPOIBlobID,X,Y\n1,,600,800\n");
+    assert.deepEqual((await getPlace(dir, { mapID: 102, questID: 9726 })).questPoints, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a quest reference cannot source a travel point and nested completion cannot keep it", () => {
+  const warnings: string[] = [];
+  const plan = cleanPlan(
+    {
+      title: "Find the quest",
+      tasks: [
+        {
+          id: "travel",
+          title: "Go to {quest:1}",
+          mapID: 81,
+          x: 0.8,
+          y: 0.8,
+          complete: {
+            kind: "any",
+            any: [
+              { kind: "proximity", mapID: 81, x: 0.4, y: 0.4 },
+              { kind: "quest", questID: 1 },
+            ],
+          },
+        },
+      ],
+    },
+    1,
+    {
+      places: { knownPoints: [], questPoints: [] },
+      warnings,
+      context: { mapID: 81, x: 0.4, y: 0.4 },
+    },
+  );
+  assert.equal(plan.tasks[0].x, undefined);
+  assert.deepEqual(plan.tasks[0].complete, { kind: "any", any: [{ kind: "quest", questID: 1 }] });
+  assert.equal(warnings.length, 2);
 });

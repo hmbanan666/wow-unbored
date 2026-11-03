@@ -502,6 +502,7 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
   if (contains !== undefined) plan.contains = contains;
   const entities = usedEntities(scope);
   if (entities) plan.entities = entities;
+  cleanPlanPlaces(plan, check);
   return plan;
 }
 
@@ -750,8 +751,12 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
         `Task ${index} group: 1 to 24 lowercase letters, digits or hyphens; dropped`,
       );
   }
-  validateTaskPlaces(cleaned, index, scope.check);
   return cleaned;
+}
+
+/** Shared by every submission path; unknown points never become stored destinations. */
+export function cleanPlanPlaces(plan: Plan, check: MarkupCheck): void {
+  plan.tasks.forEach((task, index) => validateTaskPlaces(task, index + 1, check));
 }
 
 function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void {
@@ -787,7 +792,7 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
       const { mapID, x, y } = candidates[0];
       return validate({ mapID, x, y });
     }
-    if (!route && quests.size) return point;
+    if (!route && candidates.length === 1) return point;
     if (
       check.places!.knownPoints.some((p) => p.mapID === point.mapID && distance(p, point) <= 0.005)
     )
@@ -807,10 +812,21 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
       task.complete = point ? { ...task.complete, ...point } : { kind: "manual" };
     }
   }
-  if (task.complete?.kind === "proximity") {
-    const point = validate(task.complete as Waypoint);
-    task.complete = point ? { ...task.complete, ...point } : { kind: "manual" };
-  }
+  const completion = (raw: Record<string, unknown>): Record<string, unknown> | undefined => {
+    if (raw.kind === "proximity") {
+      const point = validate(raw as Waypoint);
+      return point ? { ...raw, ...point } : undefined;
+    }
+    if (raw.kind === "any" && Array.isArray(raw.any)) {
+      const any = raw.any.flatMap((child: Record<string, unknown>) => {
+        const kept = completion(child);
+        return kept ? [kept] : [];
+      });
+      return any.length ? { kind: "any", any } : undefined;
+    }
+    return raw;
+  };
+  if (task.complete) task.complete = completion(task.complete) ?? { kind: "manual" };
   if (task.waypoints) {
     const points = task.waypoints.flatMap((point) => {
       const kept = validate(point, true);

@@ -1,4 +1,4 @@
-import { getPlace, readPlaceData } from "./places.ts";
+import { getPlace } from "./places.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { Context } from "hono";
@@ -408,14 +408,6 @@ export function createMcpServer(
               warnings,
               wish: asked?.wish,
               context: asked?.context,
-              places: readPlaceData(
-                dataDir,
-                plan.tasks.flatMap((t) =>
-                  [t.mapID, ...(t.waypoints ?? []).map((p) => p.mapID)].filter(
-                    (id): id is number => id !== undefined,
-                  ),
-                ),
-              ),
             },
             requestId,
           );
@@ -1035,14 +1027,6 @@ export function createMcpServer(
                   warnings,
                   wish: asked.wish,
                   context: asked.context,
-                  places: readPlaceData(
-                    dataDir,
-                    plan.tasks.flatMap((t) =>
-                      [t.mapID, ...(t.waypoints ?? []).map((p) => p.mapID)].filter(
-                        (id): id is number => id !== undefined,
-                      ),
-                    ),
-                  ),
                 },
                 requestId,
               )

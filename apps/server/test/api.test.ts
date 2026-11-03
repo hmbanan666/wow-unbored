@@ -132,7 +132,7 @@ test("put plan, companion get, addon decodes UNB1", async () => {
     assert.equal(decoded[0], "mentor:fall");
     assert.equal(decoded[1], "Going Down?");
     assert.equal(decoded[2], "просто упади");
-    assert.equal(decoded[3], "109");
+    assert.equal(decoded[3], "", "an unsourced destination is omitted");
     assert.equal(decoded[4], "60");
   } finally {
     close();
@@ -1004,7 +1004,7 @@ test("a request keeps the player context for the webhook and list_requests", asy
   }
 });
 
-test("plans accept a waypoint route and reject bad points", async () => {
+test("plans drop unsourced routes and reject malformed points", async () => {
   const { app, close } = build();
   try {
     const route = {
@@ -1030,13 +1030,17 @@ test("plans accept a waypoint route and reject bad points", async () => {
     });
     assert.equal(put.status, 200);
     const stored = await json(put);
-    const task = (stored.stored as { tasks: { waypoints: unknown[] }[] }).tasks[0];
-    assert.equal(task.waypoints.length, 3);
+    const task = (stored.stored as { tasks: { waypoints?: unknown[] }[] }).tasks[0];
+    assert.equal(task.waypoints, undefined);
     const decoded = JSON.parse(
       Buffer.from(String(stored.plan).slice(5), "base64").toString("utf8"),
     );
-    assert.equal(decoded.tasks[0].waypoints[0].label, "Cliff chest");
-    assert.equal("label" in decoded.tasks[0].waypoints[1], false);
+    assert.equal(decoded.tasks[0].waypoints, undefined);
+    assert.equal(
+      (stored.warnings as string[]).filter((line) => line.includes("unsupported travel point"))
+        .length,
+      3,
+    );
 
     const viaMcp = await mcpCall(app, "put_plan", { plan: route });
     assert.equal(viaMcp.isError, false);

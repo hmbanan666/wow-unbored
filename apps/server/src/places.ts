@@ -64,7 +64,15 @@ function project(
 ): Waypoint | undefined {
   const points: Waypoint[] = [];
   for (const row of assignments) {
-    if (number(row.UiMapID) !== mapID || number(row.MapID) !== worldMapID) continue;
+    if (
+      !positive(number(row.ID)) ||
+      !positive(mapID) ||
+      !Number.isInteger(worldMapID) ||
+      worldMapID < 0 ||
+      number(row.UiMapID) !== mapID ||
+      number(row.MapID) !== worldMapID
+    )
+      continue;
     const x0 = number(row.Region_0),
       y0 = number(row.Region_1);
     const x1 = number(row.Region_3),
@@ -100,24 +108,42 @@ function load(dataDir: string, lang: "en" | "ru", coordinateOnly = false) {
   const byBlob = new Map<number, Row[]>();
   for (const point of points) {
     const id = number(point.QuestPOIBlobID);
+    if (!positive(id) || !positive(number(point.ID))) continue;
     const group = byBlob.get(id) ?? [];
     group.push(point);
     byBlob.set(id, group);
   }
+  const uncertain = new Set<string>();
+  const key = (questID: number, mapID: number) => `${questID}:${mapID}`;
   for (const blob of blobs) {
-    // An area polygon is not a quest giver or a single destination.
-    const group = byBlob.get(number(blob.ID));
-    if (number(blob.NumPoints) !== 1 || group?.length !== 1 || !positive(number(blob.QuestID)))
+    const questID = number(blob.QuestID),
+      mapID = number(blob.UiMapID);
+    if (!positive(questID) || !positive(mapID)) continue;
+    const blobID = number(blob.ID);
+    const group = positive(blobID) ? byBlob.get(blobID) : undefined;
+    // Keep ambiguity before filtering: a turn-in point does not locate another objective area.
+    if (
+      number(blob.NumPoints) !== 1 ||
+      group?.length !== 1 ||
+      !Number.isInteger(number(blob.MapID)) ||
+      number(blob.MapID) < 0
+    ) {
+      uncertain.add(key(questID, mapID));
       continue;
+    }
     const point = project(
       assignments,
-      number(blob.UiMapID),
+      mapID,
       number(blob.MapID),
       number(group[0].X),
       number(group[0].Y),
     );
-    if (point) questPoints.push({ ...point, questID: number(blob.QuestID) });
+    if (point) questPoints.push({ ...point, questID });
+    else uncertain.add(key(questID, mapID));
   }
+  const certainPoints = questPoints.filter(
+    (point) => !uncertain.has(key(point.questID, point.mapID)),
+  );
   const flights = (mapID: number): FlightPoint[] =>
     taxis.flatMap((row) => {
       if (!positive(number(row.ID)) || !row.Name_lang || !(number(row.Flags) & 3)) return [];
@@ -130,7 +156,7 @@ function load(dataDir: string, lang: "en" | "ru", coordinateOnly = false) {
       );
       return point ? [{ ...point, id: number(row.ID), name: row.Name_lang }] : [];
     });
-  return { maps, questPoints, flights, unavailable };
+  return { maps, questPoints: certainPoints, flights, unavailable };
 }
 
 /** Validation never downloads or trusts coordinates supplied by the Planner as evidence. */

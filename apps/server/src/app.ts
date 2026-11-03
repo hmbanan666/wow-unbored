@@ -556,7 +556,8 @@ export function createApp(
     }
     try {
       const requestId = requestIdOf(body);
-      if (requestId && !(await store.requestById(requestId))) {
+      const asked = requestId ? await store.requestById(requestId) : undefined;
+      if (requestId && !asked) {
         return c.json({ error: "No request with that id." }, 404);
       }
       const plan = stripRequestId(body);
@@ -564,7 +565,12 @@ export function createApp(
       const missing = await gameIds.missing(planMarkupIds(plan));
       // One transaction: Forget my data cannot erase the Request between the two.
       const { stored, request } = await store.tx(async () => {
-        const stored = await store.putPlan(plan, undefined, { missing, warnings }, requestId);
+        const stored = await store.putPlan(
+          plan,
+          undefined,
+          { missing, warnings, context: asked?.context, wish: asked?.wish },
+          requestId,
+        );
         const request = requestId ? await store.fulfillRequest(requestId, stored.id) : undefined;
         return { stored, request };
       });
