@@ -17,6 +17,7 @@ const fixture = JSON.parse(
     "utf8",
   ),
 ) as { plan: Record<string, unknown> };
+fixture.plan.outcome = { kind: "achievement", achievementID: 964 };
 
 type Built = ReturnType<typeof createApp>;
 
@@ -125,7 +126,11 @@ for (const scenario of pointCases) {
       };
       const { isError, value } = await mcpCall(app, "put_plan", {
         ...(scenario.withoutRequest ? {} : { requestId: "travel" }),
-        plan: { title: "Sporeggar to Honored", tasks: [prepare, task] },
+        plan: {
+          outcome: { kind: "rep", factionID: 970, standing: 6 },
+          title: "Sporeggar to Honored",
+          tasks: [prepare, task],
+        },
       });
       assert.equal(isError, false);
       const stored = value.stored as { tasks: Record<string, unknown>[] };
@@ -278,6 +283,7 @@ test("with Blizzard credentials, ids that do not exist lose their link; answers 
     assert.ok(!calls.some((url) => url.includes("/currency/")));
     await mcpCall(app, "put_plan", {
       plan: {
+        outcome: { kind: "achievement", achievementID: 964 },
         title: "Mounts and pets",
         tasks: [{ id: "m", title: "Ride {mount:183} with {pet:39}" }],
       },

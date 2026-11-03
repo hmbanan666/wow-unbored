@@ -192,7 +192,7 @@
       }
     },
     "outcome": {
-      "description": "One target; live progress comes from game APIs, never Server numbers. Collectible ids use the entity token conventions. ADR 0068.",
+      "description": "One near-guaranteed target; required on planner submission, optional only for legacy delivery. ADR 0068.",
       "oneOf": [
         {
           "type": "object",
@@ -323,8 +323,36 @@
               "maximum": 2147483647
             }
           }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "currencyID", "amount"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "currency"
+            },
+            "currencyID": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
         }
       ]
+    },
+    "bonus": {
+      "description": "Up to three chance reward tokens, never the goal; describe as possible bonuses in a Step note for 0.11.",
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string"
+      }
     }
   }
 }

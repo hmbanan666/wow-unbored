@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { markupIds } from "@unbored/contracts";
 
+import { OUTCOME_KINDS, checkOutcome } from "./outcome.ts";
 import type { BlizzardIds } from "./blizzard.ts";
 import { getInstanceGuide } from "./instances.ts";
 import { resolveCriteria } from "./criteria.ts";
@@ -21,7 +22,7 @@ import {
   type Store,
 } from "./store.ts";
 
-const PLAN_SCOPE = `Plan the whole goal. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
+const PLAN_SCOPE = `Plan the whole goal. Every Plan, including Surprise me and fun, promises one near-guaranteed result this sitting: an incomplete achievement, a reachable reputation/renown/level threshold, guaranteed item or collectible, or currency amount. The title names it; the last Step completes it. Chance drops are bonuses only. Surprise me chooses qualifying get_ready_now candidates; verify prerequisites, sources and costs through the existing tools. A plan covers everything the request asks for (every criterion of an achievement, every piece of a set), never cut to fit a time. When the goal is long, split it into ordered steps and include all of them (up to 40), grouping small criteria that sit close together into one step when that reads better; an open request such as a preset with no single goal is usually 3 to 7 steps. estMinutes is shown to the player as information only. Requests have no time budget; budget is set only when the player typed minutes into the custom Something else form, and even then it is a hint about this sitting, never a reason to leave steps out.`;
 
 const MARKUP = `Links (step title, note, why, condition text, plan goal, details and rewards, the plan note, answer messages): every game object you name is a token when you have its id from a tool; otherwise plain text. Bory shows a token as a native link with the game's own name and tooltip. Kinds, each with an optional |label:
 - {item:ID} an item, e.g. {item:6948|Hearthstone}
@@ -47,10 +48,11 @@ Required shape:
 - budget: optional, whole minutes from 5 to 240. Leave it out unless the request carried one.
 - tasks: 1 to 40 objects
 
-The card (all optional, but a plan without a title gets a warning):
+The card (outcome required; a plan without a title gets a warning):
 - title: 3 to 40 characters, a human, catchy name like a quest title. No tokens, no ids, at most one number, no "you have". State facts go in details.
   Good: "Badges for a Timereaver", "Hallow's End in one evening". Bad: "Warlords Timewalking: you have 3200 currency", "Plan for request mode surprise".
-- outcome: one optional structured target; rep uses factionID and standing (1-8, Honored = 6), renown uses factionID and level, level uses level, achievement uses achievementID, mount/pet/toy/item use id (same ids as tokens). Never send current progress numbers.
+- outcome: exactly one REQUIRED near-guaranteed target, including for Surprise me and fun; rep uses factionID and standing (1-8, Honored = 6), renown uses factionID and level, level uses level, achievement uses achievementID, mount/pet/toy/item use id (same ids as tokens), currency uses currencyID and amount (target total held). Never send current progress numbers. Missing, invalid or already-owned targets are tool errors: correct and retry in the same session. Missing snapshot data is accepted with an informational note.
+- bonus: up to 3 chance reward tokens, separate from the goal and rewards. Add a short "may also drop" bonus line to a Step note for older addons.
 - goal: one sentence, at most 160 bytes: what the player does and why it is worth it. May carry tokens.
 - details: at most 200 bytes of facts and state (currency counts, what Alts already did). May carry tokens.
 - rewards: up to 6 strings, each exactly one token of kind mount, ach, item, toy, currency or pet, e.g. ["{mount:183}", "{ach:964}"].
@@ -352,9 +354,18 @@ export function createMcpServer(
       title: z.string().optional().describe("3 to 40 characters, like a quest title"),
       outcome: z
         .unknown()
+        .nonoptional({
+          error: `Plan outcome is required. Allowed kinds: ${OUTCOME_KINDS}. Supply one near-guaranteed target and retry put_plan in this session.`,
+        })
+        .describe(
+          "Required target: {kind: rep, factionID, standing: 1-8}, {kind: renown, factionID, level}, {kind: level, level}, {kind: achievement, achievementID}, {kind: currency, currencyID, amount}, or {kind: mount|pet|toy|item, id}. Chance rewards belong only in bonus.",
+        ),
+      bonus: z
+        .array(z.string())
+        .max(3)
         .optional()
         .describe(
-          "One target: {kind: rep, factionID, standing: 1-8}, {kind: renown, factionID, level}, {kind: level, level}, {kind: achievement, achievementID}, or {kind: mount|pet|toy|item, id}. No progress counts. Invalid targets are dropped with a warning.",
+          "Up to three chance reward tokens; also describe them as a possible bonus in a Step note.",
         ),
       goal: z.string().optional().describe("One sentence, at most 160 bytes"),
       details: z.string().optional().describe("Facts and state, at most 200 bytes"),
@@ -396,6 +407,8 @@ export function createMcpServer(
         if (requestId && !asked) {
           return failure(new Error("No request with that id."));
         }
+        await settle(asked?.account);
+        const notes = await checkOutcome(plan.outcome, store.data, asked);
         const warnings: string[] = [];
         const missing = gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
         // One transaction: Forget my data cannot erase the Request between the two.
@@ -420,6 +433,7 @@ export function createMcpServer(
           plan: stored.unb1,
           stored: stored.plan,
           request: request ? publicRequest(request) : null,
+          notes,
           warnings,
         });
       } catch (error) {
@@ -1011,6 +1025,8 @@ export function createMcpServer(
       try {
         const asked = await store.requestById(requestId);
         if (!asked) return failure(new Error("No request with that id."));
+        await settle(asked.account);
+        const notes = plan ? await checkOutcome(plan.outcome, store.data, asked) : [];
         const warnings: string[] = [];
         const ids = [...markupIds(message), ...(plan ? planMarkupIds(plan) : [])];
         const missing = gameIds ? await gameIds.missing(ids) : undefined;
@@ -1037,6 +1053,7 @@ export function createMcpServer(
         return text({
           request: request ? publicRequest(request) : null,
           plan: stored ? { id: stored.id, plan: stored.unb1 } : null,
+          notes,
           warnings,
         });
       } catch (error) {
@@ -1068,7 +1085,7 @@ export function createMcpServer(
     {
       title: "Look up a place",
       description:
-        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name and parent continent, cached single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Tables use a 24-hour cache with a 2 MB cap each.",
+        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name and parent continent, cached single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Tables use a 24-hour runtime cache with the same 20 MB cap, source and downloader as instance guides.",
       inputSchema: {
         mapID: z.number().int().positive(),
         questID: z.number().int().positive().optional(),

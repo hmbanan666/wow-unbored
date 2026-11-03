@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { cachedCsv, parseCsv } from "./criteria.ts";
+import { cachedCsv, CSV_MAX_BYTES, parseCsv } from "./criteria.ts";
 import type { Waypoint } from "@unbored/contracts";
 
 export type PlaceQuery = { mapID: number; questID?: number; npcID?: number; lang?: "en" | "ru" };
@@ -8,7 +8,7 @@ type Row = Record<string, string>;
 type QuestPoint = Waypoint & { questID: number };
 type FlightPoint = Waypoint & { id: number; name: string };
 export type PlaceData = { questPoints: QuestPoint[]; knownPoints: Waypoint[] };
-const MAX_PLACE_BYTES = 2_000_000;
+const MAX_PLACE_BYTES = CSV_MAX_BYTES;
 const TABLES = {
   JournalEncounter: ["ID", "UiMapID", "Map_0", "Map_1"],
   UiMap: ["ID", "Name_lang", "ParentUiMapID", "Type"],
@@ -179,7 +179,7 @@ export function readPlaceData(dataDir: string, mapIDs: number[] = []): PlaceData
   };
 }
 
-/** Small tables only, using the same 24-hour CSV cache as instance guides. */
+/** Runtime download, source, request headers and size cap are shared with instance guides. */
 export async function getPlace(
   dataDir: string,
   query: PlaceQuery,

@@ -49,7 +49,13 @@ async function setup(blizzardFetch?: GameDataFetch) {
 }
 
 const request = { id: "audit-request", character: "Mira", realm: "Realm", mode: "farm" };
-const plan = { v: 1, kind: "plan", mode: "farm", tasks: [{ id: "one", title: "One step" }] };
+const plan = {
+  outcome: { kind: "achievement", achievementID: 964 },
+  v: 1,
+  kind: "plan",
+  mode: "farm",
+  tasks: [{ id: "one", title: "One step" }],
+};
 
 for (const endpoint of ["http", "put_plan", "answer_request"]) {
   test(`${endpoint} cannot publish a Plan after Forget erases its Request during validation`, async () => {

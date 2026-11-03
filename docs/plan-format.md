@@ -66,7 +66,8 @@ All optional and added in 0.8; a plan without them works as before ([ADR 0038](a
 | --- | --- | --- |
 | `title` | plan | 3 to 40 characters, a human name like a quest title, no tokens. Without it Bory shows the preset name, or "Your plan". |
 | `goal` | plan | one sentence, at most 160 bytes, may carry tokens |
-| `outcome` | plan | one optional game target; [exact shapes and live comparisons](contract/README.md#plan-outcome-and-short-text) |
+| `bonus` | plan | optional list of up to 3 chance reward tokens; also label the possible bonus in a Step note for older addons |
+| `outcome` | plan | one required near-guaranteed target on new planner submissions (optional for legacy delivery); [exact shapes and live comparisons](contract/README.md#plan-outcome-and-short-text) |
 | `details` | plan | facts and state, at most 200 bytes, may carry tokens |
 | `rewards` | plan, task | up to 6 (plan) or 3 (task) strings, each one token of kind `mount`, `ach`, `item`, `toy`, `currency` or `pet` |
 | `why` | task | one short reason, at most 80 bytes, may carry tokens |

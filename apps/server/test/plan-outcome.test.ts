@@ -14,6 +14,7 @@ test("outcomes carry game targets through validation and encoding without progre
     { kind: "rep", factionID: 970, standing: 6 },
     { kind: "renown", factionID: 2507, level: 10 },
     { kind: "level", level: 80 },
+    { kind: "currency", currencyID: 1166, amount: 5000 },
     { kind: "achievement", achievementID: 964 },
     ...["mount", "pet", "toy", "item"].map((kind) => ({ kind, id: 183 })),
   ]) {
@@ -29,7 +30,7 @@ test("outcomes carry game targets through validation and encoding without progre
   }
 });
 
-test("invalid outcomes are dropped with a warning and keep every Step", () => {
+test("invalid outcomes are rejected rather than silently dropping the goal", () => {
   for (const outcome of [
     null,
     [],
@@ -44,14 +45,7 @@ test("invalid outcomes are dropped with a warning and keep every Step", () => {
     { kind: "achievement", achievementID: "964" },
     { kind: "unknown", id: 1 },
   ]) {
-    const warnings: string[] = [];
-    const plan = cleanPlan({ ...base, outcome }, 1, { warnings });
-    assert.equal(plan.outcome, undefined);
-    assert.equal(plan.tasks.length, 1);
-    assert.ok(
-      warnings.some((w) => w.includes("outcome")),
-      JSON.stringify(outcome),
-    );
+    assert.throws(() => cleanPlan({ ...base, outcome }, 1), /Plan outcome is invalid/);
   }
 });
 
@@ -155,13 +149,24 @@ test("a new outcome survives storage, MCP and delivery to the 0.11 addon", async
       { encoding: "utf8" },
     );
     assert.ok(decoded.startsWith("sporeggar:travel\nReach Sporeggar"));
-    const invalid = await call({
-      ...fixture,
-      outcome: { kind: "rep", factionID: -1, standing: 9 },
-    });
-    assert.equal(invalid.stored.outcome, undefined);
-    assert.ok(invalid.warnings.some((warning: string) => warning.includes("outcome")));
-    assert.equal(invalid.stored.tasks.length, 4);
+    const currency = JSON.parse(
+      readFileSync(
+        new URL("../../../packages/contracts/fixtures/plan-currency.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const bonus = await call(currency);
+    assert.deepEqual(bonus.stored.bonus, ["{mount:781}"]);
+    const legacy = execFileSync(
+      "lua5.1",
+      [
+        path.join(import.meta.dirname, "decode.lua"),
+        bonus.plan,
+        path.resolve(import.meta.dirname, "../../../addon"),
+      ],
+      { encoding: "utf8" },
+    );
+    assert.ok(legacy.includes("Bonus: the Infinite Timereaver may also drop."));
   } finally {
     await close();
     const { rmSync } = await import("node:fs");

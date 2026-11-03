@@ -191,7 +191,7 @@ for (const backend of BACKENDS) {
       assert.equal(lease.attempt, 1);
       assert.equal(lease.expiresAt, app.now() + 180);
       assert.match(lease.leaseToken, /^[A-Za-z0-9_-]{43}$/);
-      assert.equal(lease.prompt.version, "8d899a149eac");
+      assert.equal(lease.prompt.version, "205f5fc7ad52");
       assert.match(lease.prompt.text, /^# Unbored planner\n/);
       assert.equal(lease.mcpPath, "/mcp");
       assert.equal((await app.claim()).status, 204);
@@ -279,6 +279,7 @@ async function mcp(app: ReturnType<typeof build>, token: string, method: string,
   return { status: response.status, body: await response.json() };
 }
 const plan = {
+  outcome: { kind: "achievement", achievementID: 964 },
   v: 1,
   kind: "plan",
   mode: "custom",
@@ -559,6 +560,17 @@ for (const backend of BACKENDS) {
           name: "put_plan",
           arguments: { requestId: "runner-first", plan },
         });
+      for (const outcome of [
+        undefined,
+        { kind: "achievement" },
+        { kind: "currency", currencyID: 1166, amount: 0 },
+      ]) {
+        const rejected = await call({ ...plan, outcome });
+        assert.equal(rejected.body.result.isError, true);
+        assert.match(rejected.body.result.content[0].text, /outcome/);
+        assert.equal((await app.store.requestById("runner-first"))?.status, "pending");
+        assert.equal(await app.store.latestPlan(), undefined);
+      }
       const warning = await call({ ...plan, title: undefined });
       const unstored = JSON.parse(warning.body.result.content[0].text);
       assert.ok(unstored.warnings.length > 0);

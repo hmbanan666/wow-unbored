@@ -15,6 +15,7 @@ export const planOutcomeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("renown"), factionID: outcomeID, level: outcomeID }),
   z.object({ kind: z.literal("level"), level: outcomeID }),
   z.object({ kind: z.literal("achievement"), achievementID: outcomeID }),
+  z.object({ kind: z.literal("currency"), currencyID: outcomeID, amount: outcomeID }),
   ...(["mount", "pet", "toy", "item"] as const).map((kind) =>
     z.object({ kind: z.literal(kind), id: outcomeID }),
   ),
@@ -33,7 +34,10 @@ export type Plan = {
   title?: string;
   /** One sentence: what you do and why it is worth it; may carry tokens. */
   goal?: string;
+  /** Required for new planner submissions; optional only for legacy delivery. */
   outcome?: PlanOutcome;
+  /** Up to three chance rewards; never the promised outcome. */
+  bonus?: string[];
   /** Facts and state ("you have 3,200 badges"); shown under Show more. */
   details?: string;
   /** Up to 6 single link tokens, such as "{mount:183}". */
@@ -252,6 +256,7 @@ export const planSchema = z
     title: z.string().optional(),
     goal: z.string().optional(),
     outcome: planOutcomeSchema.optional(),
+    bonus: z.array(z.string()).max(3).optional(),
     details: z
       .string()
       .refine((text) => new TextEncoder().encode(text).length <= 200)
@@ -302,6 +307,9 @@ export const planSchema = z
       .max(40),
   })
   .passthrough();
+
+/** New planner submissions require a target; delivery still accepts older Plans. */
+export const planSubmissionSchema = planSchema.extend({ outcome: planOutcomeSchema });
 
 export const playerProfileSchema = z
   .object({

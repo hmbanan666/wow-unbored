@@ -1,7 +1,7 @@
+import { requireOutcome } from "./outcome.ts";
 import { distance, type PlaceData } from "./places.ts";
 import {
   CONDITION_KINDS,
-  planOutcomeSchema,
   cleanEntities,
   cleanMarkup,
   markupIds,
@@ -421,7 +421,13 @@ export function planMarkupIds(raw: unknown): string[] {
   if (typeof raw !== "object" || raw === null) return [];
   const body = raw as Record<string, unknown>;
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
-  const texts: unknown[] = [body.note, body.goal, body.details, ...list(body.rewards)];
+  const texts: unknown[] = [
+    body.note,
+    body.goal,
+    body.details,
+    ...list(body.rewards),
+    ...list(body.bonus),
+  ];
   if (typeof body.contains === "object" && body.contains !== null) {
     for (const [key, values] of Object.entries(body.contains)) texts.push(key, ...list(values));
   }
@@ -478,6 +484,7 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
     count: 0,
   });
   const rewards = cleanRewards(body.rewards, CARD_LIMITS.rewards, scope, "Plan reward");
+  const bonus = cleanRewards(body.bonus, 3, scope, "Plan bonus");
   const tasks = cleanGroups(
     body.tasks.map((item, index) => cleanTask(item, index + 1, scope)),
     check,
@@ -489,16 +496,21 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
   if (generatedAt === undefined) {
     throw new PlanError("generatedAt must be a unix timestamp.");
   }
-  const outcome =
-    body.outcome === undefined ? undefined : planOutcomeSchema.safeParse(body.outcome);
-  if (outcome && !outcome.success) check.warnings?.push("Plan outcome: invalid target; dropped");
   const plan: Plan = { v: 1, kind: "plan", mode, note, generatedAt, tasks };
-  if (outcome?.success) plan.outcome = outcome.data;
+  // Legacy Plans may omit a target; a supplied target must never silently disappear.
+  if (body.outcome !== undefined) {
+    try {
+      plan.outcome = requireOutcome(body.outcome);
+    } catch (error) {
+      throw new PlanError((error as Error).message);
+    }
+  }
   if (budget !== undefined) plan.budget = budget;
   if (title !== undefined) plan.title = title;
   if (goal !== undefined) plan.goal = goal;
   if (details !== undefined) plan.details = details;
   if (rewards !== undefined) plan.rewards = rewards;
+  if (bonus !== undefined) plan.bonus = bonus;
   if (contains !== undefined) plan.contains = contains;
   const entities = usedEntities(scope);
   if (entities) plan.entities = entities;
@@ -879,7 +891,15 @@ export function encodeUnb1(plan: Plan): string {
   };
   if (plan.budget !== undefined) payload.budget = plan.budget;
   if (plan.note !== undefined) payload.note = plan.note;
-  for (const key of ["title", "goal", "details", "rewards", "contains", "outcome"] as const) {
+  for (const key of [
+    "title",
+    "goal",
+    "details",
+    "rewards",
+    "contains",
+    "outcome",
+    "bonus",
+  ] as const) {
     if (plan[key] !== undefined) payload[key] = plan[key];
   }
   if (plan.entities !== undefined) payload.entities = plan.entities;

@@ -17,6 +17,7 @@ const companion = "companion-test-token";
 const planner = "planner-test-token";
 
 const sample = {
+  outcome: { kind: "achievement", achievementID: 964 },
   v: 1,
   kind: "plan",
   mode: "custom",
@@ -1226,7 +1227,10 @@ test("item and question requests are typed, webhooked, and answered", async () =
     const withPlan = await mcpCall(app, "answer_request", {
       requestId: "ask-item-1",
       message: "Your hearthstone takes you home. Keep it.",
-      plan: { tasks: [{ id: "go-home", title: "Use your hearthstone" }] },
+      plan: {
+        outcome: { kind: "level", level: 81 },
+        tasks: [{ id: "go-home", title: "Use your hearthstone" }],
+      },
     });
     assert.equal(withPlan.isError, false, JSON.stringify(withPlan.value));
     const fulfilled = await mcpCall(app, "list_requests", { status: "fulfilled" });

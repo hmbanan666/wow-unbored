@@ -19,7 +19,7 @@ type TreeNode = {
 
 const TREE_URL = "https://wago.tools/db2/CriteriaTree/csv";
 const ACH_URL = "https://wago.tools/db2/Achievement/csv";
-const MAX_BYTES = 20_000_000;
+export const CSV_MAX_BYTES = 20_000_000;
 
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -151,7 +151,7 @@ export async function cachedCsv(
   name: string,
   url: string,
   fetchImpl: typeof fetch = fetch,
-  maxBytes = MAX_BYTES,
+  maxBytes = CSV_MAX_BYTES,
 ): Promise<string> {
   mkdirSync(dir, { recursive: true });
   const file = path.join(dir, name);

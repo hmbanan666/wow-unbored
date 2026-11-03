@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { test } from "vite-plus/test";
 import { getPlace, readPlaceData } from "../src/places.ts";
@@ -99,7 +99,7 @@ test("missing, oversized and malformed tables return unknown facts without inven
         return new Response(
           "ID,Name_lang,ParentUiMapID,Type\n111,Shattrath City,101,3\n101,Outland,0,2\n",
         );
-      if (table === "TaxiNodes") return new Response("x".repeat(2_000_001));
+      if (table === "TaxiNodes") return new Response("x".repeat(20_000_001));
       if (table === "UiMapAssignment") return new Response("ID,WrongColumn\n1,2\n");
       return new Response("unavailable", { status: 403 });
     };
@@ -324,4 +324,68 @@ test("a quest reference cannot source a travel point and nested completion canno
   assert.equal(plan.tasks[0].x, undefined);
   assert.deepEqual(plan.tasks[0].complete, { kind: "any", any: [{ kind: "quest", questID: 1 }] });
   assert.equal(warnings.length, 2);
+});
+
+test("a production-style cold cache downloads every place table and reuses it without a network", async () => {
+  const source = cache();
+  const dir = mkdtempSync(path.join(import.meta.dirname, ".places-"));
+  const fetched: string[] = [];
+  try {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      assert.equal(url.origin, "https://wago.tools");
+      assert.ok(init?.signal, "the shared downloader bounds the runtime wait");
+      const table = url.pathname.split("/")[2];
+      fetched.push(table);
+      let csv = readFileSync(path.join(source.dir, "wago", `${table}.csv`), "utf8");
+      // A valid table larger than the old 2 MB place-only cap must be usable.
+      if (table === "QuestPOIPoint") csv += "0,0," + " ".repeat(2_000_001) + ",0\n";
+      return new Response(csv);
+    };
+    const place = await getPlace(dir, { mapID: 102, questID: 9726 }, { fetchImpl });
+    assert.deepEqual(fetched.sort(), [
+      "QuestPOIBlob",
+      "QuestPOIPoint",
+      "TaxiNodes",
+      "UiMap",
+      "UiMapAssignment",
+    ]);
+    assert.equal(place.label, "Zangarmarsh (Outland)");
+    assert.equal(place.questPoints.length, 1);
+    assert.equal(place.nearestFlightPoint?.id, 9);
+    const cached = await getPlace(
+      dir,
+      { mapID: 102, questID: 9726 },
+      {
+        fetchImpl: async () => {
+          throw new Error("offline");
+        },
+      },
+    );
+    assert.deepEqual(cached, place);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(source.dir, { recursive: true, force: true });
+  }
+});
+
+test("a runtime 403 or network failure reports unavailable rather than crashing", async () => {
+  for (const fetchImpl of [
+    async () => new Response("Forbidden", { status: 403 }),
+    async () => {
+      throw new Error("offline");
+    },
+  ]) {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".places-"));
+    try {
+      const place = await getPlace(dir, { mapID: 102, questID: 9726 }, { fetchImpl });
+      for (const name of ["UiMap", "UiMapAssignment", "QuestPOIBlob", "QuestPOIPoint", "TaxiNodes"])
+        assert.ok(place.unavailable.includes(name));
+      assert.equal(place.label, null);
+      assert.deepEqual(place.questPoints, []);
+      assert.equal(place.nearestFlightPoint, null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
 });
