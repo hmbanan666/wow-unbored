@@ -959,7 +959,10 @@ export class DataStore {
           name: section.name,
           v: section.v,
           at: section.at,
-          savedAt: section.at === null ? snapshot.savedAt : Math.min(section.at, now + 300),
+          savedAt:
+            section.at !== null && section.at > 0
+              ? Math.min(section.at, now + 300)
+              : snapshot.savedAt,
           src: section.src,
           hash: section.hash,
           body: section.body,
