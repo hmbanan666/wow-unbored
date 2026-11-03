@@ -589,8 +589,26 @@ for i = 1, #(settings and settings.children or {}) do
   names[i] = settings.children[i].text
 end
 check(table.concat(names, "|") == "Bory size|Bubble size|Lock position|Share game data to make Bory smarter"
-  .. "|Bory lines in tooltips|Hide|Keybinds|More",
+  .. "|Bory lines in tooltips|Self-check|Hide|Keybinds|More",
   "Settings: " .. table.concat(names, "|"))
+local selfCheck = entry(settings.children, "Self-check")
+check(selfCheck and type(selfCheck.fn) == "function", "Self-check is a settings button")
+if selfCheck then
+  local before = #(UnboredDB.errors or {})
+  selfCheck.fn()
+  check(#UnboredDB.errors == before + 1 and UnboredDB.errors[#UnboredDB.errors].where == "selfcheck",
+    "the settings button records one diagnostic")
+  check(textOf(mascot.echoFrames[1].text):find("Self%-check done:"), "Bory shows the completion counts")
+  InCombatLockdown = function() return true end
+  local rows = #UnboredDB.errors
+  selfCheck.fn()
+  check(#UnboredDB.errors == rows and printed[#printed]:find("after the fight", 1, true),
+    "in combat the button gives a way forward without a diagnostic")
+  InCombatLockdown = nil
+  UnboredDB.errors = {}
+  mascot.echoes = {}
+  mascot:Refresh()
+end
 local borySize = entry(settings.children, "Bory size")
 local bubbleSize = entry(settings.children, "Bubble size")
 check(#borySize.children == 4 and borySize.children[2].isSelected(), "Bory size: 100% by default")

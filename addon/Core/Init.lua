@@ -67,6 +67,7 @@ ns.CALENDAR_ASK_DELAY = 5
 
 -- A call during loading never returns (D127), so the calendar is asked
 -- again once the world is up, and later if that moment was a fight.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): CALENDAR_UPDATE_EVENT_LIST fires after this call.
 function ns.AskCalendarLater(tries)
   tries = tries or 3

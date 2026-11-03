@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
 
 import { KNOWN_SECTIONS } from "../src/data.ts";
@@ -182,6 +183,45 @@ test("data_catalog and the overview list missing Sections with a reason", async 
     };
     assert.ok(overview.missing.some((m) => m.section === "bank" && m.reason === "window"));
     assert.ok(overview.missing.some((m) => m.section === "toys" && m.scope === "account"));
+  } finally {
+    store.close();
+  }
+});
+
+test("a self-check reaches the owner errors list with every probe and a bounded report", async () => {
+  const diagnostic = JSON.parse(
+    readFileSync(
+      new URL("../../../packages/contracts/fixtures/selfcheck.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const store = makeStore();
+  try {
+    await store.putSnapshot(snapshot({ errors: { body: { rows: [diagnostic] } } }), "pc-1", NOW);
+    let listed = await store.listErrors({ limit: 50 });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]!.where, "selfcheck");
+    assert.equal(listed[0]!.text, diagnostic.text);
+    assert.equal(listed[0]!.stack, diagnostic.stack);
+    assert.ok(diagnostic.stack.length > 800, "the report exercises the old stack limit");
+    await store.putSnapshot(
+      snapshot({
+        errors: {
+          body: {
+            rows: [
+              { ...diagnostic, stack: "s".repeat(9000), count: 2, lastAt: NOW + 1 },
+              row({ stack: "e".repeat(9000) }),
+            ],
+          },
+        },
+      }),
+      "pc-1",
+      NOW + 1,
+    );
+    listed = await store.listErrors({ limit: 50 });
+    assert.equal(listed.find((r) => r.where === "selfcheck")!.stack.length, 8000);
+    assert.equal(listed.find((r) => r.where === "selfcheck")!.count, 2);
+    assert.equal(listed.find((r) => r.where === "section:bags")!.stack.length, 800);
   } finally {
     store.close();
   }

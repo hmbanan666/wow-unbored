@@ -26,6 +26,8 @@ The answer depends on where the Server stores data ([ADR 0057](../adr/0057-postg
 
 `GET /v1/uploads/<id>` with the same device bearer returns `{ "id", "state": "queued" | "done" | "failed", "receivedAt", "processedAt", "attempts", "result", "error" }`. `result` (when `done`) holds `stored`, `unchanged`, `unknown` and `stale`; `error` is the last failure. Another device's id, an unknown id, or a Server on SQLite answers `404`. A new Request (`POST /v1/requests`) and the planner's data tools wait up to 10 s for that Account's queued uploads, so they read the save that came just before.
 
+Self-check diagnostics reuse the account `errors` Section, v1, and its existing row fields (see [`selfcheck.json`](../../packages/contracts/fixtures/selfcheck.json)). `where` is `selfcheck`; `text` holds the game build and counts (300 characters maximum), and `stack` holds value-free API names, statuses and shapes (8,000 bytes in the addon, 8,000 characters on the Server). Ordinary error stacks keep their 800-character cap. The Companion forwards the Section unchanged; `list_errors` exposes the complete report without a new record kind or database migration.
+
 ## Packed id sets
 
 A big list of ids is stored as a few strings instead of thousands of numeric literals, so SavedVariables stay small and far from the game's 262,144 unique literal limit.

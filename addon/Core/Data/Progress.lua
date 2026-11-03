@@ -68,6 +68,7 @@ S.Register({
 })
 
 -- M+ data may be empty early in the login; one retry 5 s later.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): RequestMapInfo is needed before the rating summary.
 local mplusRetried = false
 
@@ -116,6 +117,7 @@ S.Register({
   end,
 })
 
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): GetActivities returns data without opening the vault UI.
 S.Register({
   name = "vault",

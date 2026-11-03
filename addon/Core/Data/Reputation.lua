@@ -2,6 +2,7 @@
 -- v2 (D181) adds the next renown rewards, max renown and paragon progress.
 -- Collapsed headers hide their factions, so they are opened for the read and
 -- closed again in the same frame; skipped while the reputation tab is shown.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): ExpandAllFactionHeaders + CollapseFactionHeader keep
 -- the player's headers exactly as they were.
 
@@ -70,6 +71,7 @@ local function nextRewards(api, factionID, level)
   return #out > 0 and out or nil
 end
 
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): HasMaximumRenown exists on 12.x; left out when absent.
 local function atMax(api, factionID)
   if not api.HasMaximumRenown or not factionID then
@@ -79,6 +81,7 @@ local function atMax(api, factionID)
 end
 
 -- currentValue carries the earned cycles too: value % threshold is the bar.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): IsFactionParagon exists on 12.x; left out when absent.
 local function paragon(factionID)
   local api = C_Reputation

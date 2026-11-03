@@ -58,6 +58,7 @@ local function skipped(info)
 end
 
 -- done, total and the first open quest, in the order the client lists them.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): GetQuestLineQuests order is the chain order, and
 -- whether it holds optional side quests.
 function Q.Progress(questLineID)
@@ -174,6 +175,7 @@ local function campaignRows(add)
     if (state == inProgress or state == stalled) and chapterID then
       local chapter = api.GetCampaignChapterInfo and call(api.GetCampaignChapterInfo, chapterID)
       local campaign = api.GetCampaignInfo and call(api.GetCampaignInfo, campaignID)
+      -- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
       -- TODO(verify-in-game): a campaign chapter id is its quest line id.
       add({
         questLineID = chapterID,

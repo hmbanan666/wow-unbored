@@ -35,6 +35,7 @@ local files = {
   "Core/Data/Collections.lua",
   "Core/Data/Progress.lua",
   "Core/Data/World.lua",
+  "Core/SelfCheck.lua",
   "Core/Markup.lua",
   "Core/Intents.lua",
   "Core/Advice.lua",

@@ -66,5 +66,6 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0064. Damaged Companion settings](0064-damaged-companion-settings.md)
 - [0065. Friendly Plans and destination points](0065-plan-presentation.md)
 - [0066. Safe Step notes for older addons](0066-older-addon-step-notes.md)
+- [0067. In-game self-check](0067-addon-self-check.md)
 
 The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md), v0.8 (D83-D121) in [`docs/decisions-v0.8.md`](../decisions-v0.8.md), v0.9 (D122-D167) in [`docs/decisions-v0.9.md`](../decisions-v0.9.md), and v0.10 (D168-D223) in [`docs/decisions-v0.10.md`](../decisions-v0.10.md).

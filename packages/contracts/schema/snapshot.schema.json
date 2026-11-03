@@ -20,6 +20,10 @@
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/section" },
       "properties": {
+        "errors": {
+          "$ref": "#/$defs/section",
+          "description": "Account diagnostic rows retain the existing error fields. A row with where=selfcheck carries the game build and counts in text (300 characters), and value-free API result shapes in stack (8000 characters; ordinary errors remain capped at 800)."
+        },
         "questsDone": { "$ref": "#/$defs/idSection" },
         "mounts": { "$ref": "#/$defs/idSection" },
         "toys": { "$ref": "#/$defs/idSection" },

@@ -161,6 +161,7 @@ S.Register({
 -- /played prints to chat. Our own request is silenced by wrapping the chat
 -- display for that one answer; when no known display function exists we skip
 -- the read rather than spam the player's chat.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): the wrap must not taint chat; ChatFrame_DisplayTimePlayed
 -- may move in 12.x.
 local played = { waiting = false }

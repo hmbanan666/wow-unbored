@@ -122,6 +122,7 @@ end)
 
 -- Collapsed headers hide their currencies, so they are opened for the read
 -- and closed again in the same frame. Skipped while the currency tab is shown.
+-- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): ExpandCurrencyList restores the player's headers.
 local function currencyTabShown()
   local frame = rawget(_G, "TokenFrame")

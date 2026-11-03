@@ -355,6 +355,37 @@ mod tests {
     }
 
     #[test]
+    fn uploads_the_shared_self_check_without_truncating_probe_details() {
+        let row: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/selfcheck.json"
+        ))
+        .unwrap();
+        let (char_file, mut account_file) = fixture_files();
+        account_file.sections.insert(
+            "errors".into(),
+            Section {
+                v: 1,
+                at: Some(1761830400),
+                src: Some("event".into()),
+                body: serde_json::json!({ "rows": [row.clone()] }),
+            },
+        );
+        let (body, _) = build_upload(
+            "111111#1",
+            "Mira",
+            "Silvermoon",
+            Some(&char_file),
+            Some(&account_file),
+            &HashMap::new(),
+        )
+        .unwrap();
+        assert_eq!(body["sections"]["errors"]["body"]["rows"][0], row);
+        assert_eq!(body["sections"]["errors"]["scope"], "account");
+        let schema: Value = serde_json::from_str(SNAPSHOT_SCHEMA).unwrap();
+        assert!(jsonschema::validator_for(&schema).unwrap().is_valid(&body));
+    }
+
+    #[test]
     fn uploads_only_changed_sections() {
         let (mut char_file, account_file) = fixture_files();
         let (_, remember) = build_upload(
