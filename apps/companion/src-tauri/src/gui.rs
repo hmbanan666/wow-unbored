@@ -27,7 +27,7 @@ use crate::plan::{
 };
 use crate::request::{self, request_status_path, PostedRequests, RequestUpload};
 use crate::savedvars::{profile_from_saved_variables, request_from_saved_variables};
-use crate::settings::Settings;
+use crate::settings::{Settings, SettingsRecovery};
 use crate::snapshot::{
     build_upload, character_identity, data_from_saved_variables, gzip, DataFile, SentSections,
     MAX_COMPRESSED_BYTES,
@@ -54,6 +54,7 @@ struct ProgressView {
 
 struct Model {
     settings: Settings,
+    settings_notice: Option<SettingsRecovery>,
     status: String,
     installs: Vec<String>,
     accounts: Vec<String>,
@@ -195,13 +196,6 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|err| err.to_string())?;
     fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir.join("settings.json"))
-}
-
-fn load_settings(app: &AppHandle) -> Settings {
-    let Ok(path) = settings_path(app) else {
-        return Settings::default();
-    };
-    Settings::load(&path)
 }
 
 fn save_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
@@ -400,6 +394,7 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
 #[serde(rename_all = "camelCase")]
 struct UiState {
     settings: Settings,
+    settings_notice: Option<String>,
     installs: Vec<String>,
     accounts: Vec<String>,
     progress: Vec<ProgressView>,
@@ -462,6 +457,10 @@ fn snapshot(app: &AppHandle, model: &Model) -> UiState {
     let mood = model.mood();
     UiState {
         settings: model.settings.clone(),
+        settings_notice: model
+            .settings_notice
+            .as_ref()
+            .map(|notice| notice.message(i18n::current())),
         installs: model.installs.clone(),
         accounts: model.accounts.clone(),
         progress: model.progress.clone(),
@@ -492,6 +491,13 @@ fn refresh_autostart(app: &AppHandle) -> bool {
 #[tauri::command]
 fn get_state(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
     let model = state.inner.lock().map_err(|err| err.to_string())?;
+    Ok(snapshot(&app, &model))
+}
+
+#[tauri::command]
+fn dismiss_settings_notice(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
+    let mut model = state.inner.lock().map_err(|err| err.to_string())?;
+    model.settings_notice = None;
     Ok(snapshot(&app, &model))
 }
 
@@ -1732,7 +1738,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let settings = load_settings(app.handle());
+            let (settings, settings_notice) =
+                Settings::load(&app.path().app_config_dir()?.join("settings.json"));
+            let has_settings_notice = settings_notice.is_some();
             let installs = detect_installs()
                 .into_iter()
                 .map(|path| path.display().to_string())
@@ -1756,6 +1764,7 @@ pub fn run() {
                 inner: SyncState::new(Model {
                     forget_cleanup_pending: settings.forgotten_at.is_some(),
                     settings,
+                    settings_notice,
                     status: String::new(),
                     installs,
                     accounts,
@@ -1817,7 +1826,7 @@ pub fn run() {
                 .map(|marker| fs::remove_file(marker).is_ok())
                 .unwrap_or(false);
             let hidden = after_update || std::env::args().any(|arg| arg == "--hidden");
-            if !hidden || needs_wow_path {
+            if !hidden || needs_wow_path || has_settings_notice {
                 show_main(app.handle());
             }
             spawn_updater(app.handle().clone());
@@ -1831,6 +1840,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_state,
+            dismiss_settings_notice,
             detect_wow,
             set_wow_path,
             set_account,
