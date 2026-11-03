@@ -95,12 +95,29 @@ pub struct RecoveredDevice {
     pub status: String,
 }
 
+/// Confirm the replacement on the Server before giving up the old credential.
+pub fn confirm_reconnect(
+    path: &Path,
+    pending: DeviceCredential,
+    probe: impl FnOnce(&str) -> Result<(u16, String), String>,
+) -> Result<RecoveredDevice, String> {
+    let (code, status) = probe(&pending.secret)?;
+    if code != 200 || status == "revoked" {
+        return Err(crate::i18n::code("RECONNECT_FAILED", &[]));
+    }
+    adopt_pending(path, &pending)?;
+    Ok(RecoveredDevice {
+        device: pending,
+        status,
+    })
+}
+
 /// Startup recovery. Transport failures keep both files intact for the next attempt.
 /// The callbacks return HTTP status and pairing status, without exposing credentials in errors.
 pub fn recover_reconnect(
     path: &Path,
     old: &DeviceCredential,
-    probe: impl FnOnce(&str) -> Result<(u16, String), String>,
+    mut probe: impl FnMut(&str) -> Result<(u16, String), String>,
     reconnect: impl FnOnce(&str, &DeviceCredential) -> Result<(u16, String), String>,
 ) -> Result<Option<RecoveredDevice>, String> {
     let Some(pending) = load_pending(path)? else {
@@ -117,13 +134,9 @@ pub fn recover_reconnect(
     if code != 401 && code != 403 && !(code == 200 && status == "revoked") {
         return Err(crate::i18n::code("RECONNECT_FAILED", &[]));
     }
-    let (code, status) = reconnect(&old.secret, &pending)?;
+    let (code, _) = reconnect(&old.secret, &pending)?;
     if code == 201 {
-        adopt_pending(path, &pending)?;
-        return Ok(Some(RecoveredDevice {
-            device: pending,
-            status,
-        }));
+        return confirm_reconnect(path, pending, probe).map(Some);
     }
     if code == 403 {
         // Both sides have been revoked. Start normal pairing with a fresh Device.
@@ -317,16 +330,22 @@ mod tests {
         let pending = prepare_reconnect(&path, &old).unwrap();
         assert_eq!(load_or_create(&path).unwrap(), old);
         assert_eq!(prepare_reconnect(&path, &old).unwrap(), pending);
+        let registered = std::cell::Cell::new(false);
         let recovered = recover_reconnect(
             &path,
             &old,
             |secret| {
                 assert_eq!(secret, pending.secret);
-                Ok((401, String::new()))
+                if registered.get() {
+                    Ok((200, "approved".into()))
+                } else {
+                    Ok((401, String::new()))
+                }
             },
             |secret, next| {
                 assert_eq!(secret, old.secret);
                 assert_eq!(next, &pending);
+                registered.set(true);
                 Ok((201, "approved".into()))
             },
         )
@@ -376,6 +395,145 @@ mod tests {
             .is_none());
             let _ = fs::remove_dir_all(dir);
         }
+    }
+
+    #[test]
+    fn restart_after_lost_confirmation_response_adopts_the_confirmed_pending_device() {
+        let dir =
+            std::env::temp_dir().join(format!("unbored-confirm-retry-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("device.json");
+        let old = load_or_create(&path).unwrap();
+        let pending = prepare_reconnect(&path, &old).unwrap();
+        let active_bytes = fs::read(&path).unwrap();
+        let pending_bytes = fs::read(pending_path(&path)).unwrap();
+        let registered = std::cell::Cell::new(false);
+        let confirmed = std::cell::Cell::new(false);
+        let result = recover_reconnect(
+            &path,
+            &old,
+            |secret| {
+                assert_eq!(secret, pending.secret);
+                if registered.get() {
+                    confirmed.set(true);
+                    Err("lost confirmation response".into())
+                } else {
+                    Ok((401, String::new()))
+                }
+            },
+            |secret, next| {
+                assert_eq!(secret, old.secret);
+                assert_eq!(next, &pending);
+                registered.set(true);
+                Ok((201, "approved".into()))
+            },
+        );
+        assert!(result.is_err());
+        assert!(confirmed.get());
+        assert_eq!(fs::read(&path).unwrap(), active_bytes);
+        assert_eq!(fs::read(pending_path(&path)).unwrap(), pending_bytes);
+        let restarted = load_or_create(&path).unwrap();
+        let recovered = recover_reconnect(
+            &path,
+            &restarted,
+            |secret| {
+                assert_eq!(secret, pending.secret);
+                Ok((200, "approved".into()))
+            },
+            |_, _| panic!("the old key is no longer eligible after confirmation"),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(recovered.device, pending);
+        assert_eq!(recovered.status, "approved");
+        assert_eq!(load_or_create(&path).unwrap(), pending);
+        assert!(!pending_path(&path).exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn confirmation_keeps_both_files_until_the_pending_key_is_accepted() {
+        let dir = std::env::temp_dir().join(format!("unbored-confirm-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("device.json");
+        let old = load_or_create(&path).unwrap();
+        let pending = prepare_reconnect(&path, &old).unwrap();
+        let active_bytes = fs::read(&path).unwrap();
+        let pending_bytes = fs::read(pending_path(&path)).unwrap();
+        for response in [
+            Err("offline".into()),
+            Ok((500, String::new())),
+            Ok((503, String::new())),
+            Ok((401, String::new())),
+            Ok((403, String::new())),
+            Ok((200, "revoked".into())),
+            Ok((201, "approved".into())),
+        ] {
+            assert!(confirm_reconnect(&path, pending.clone(), |secret| {
+                assert_eq!(secret, pending.secret);
+                response
+            })
+            .is_err());
+            assert_eq!(fs::read(&path).unwrap(), active_bytes);
+            assert_eq!(fs::read(pending_path(&path)).unwrap(), pending_bytes);
+        }
+        let confirmed = confirm_reconnect(&path, pending.clone(), |secret| {
+            assert_eq!(secret, pending.secret);
+            assert_eq!(fs::read(&path).unwrap(), active_bytes);
+            assert_eq!(fs::read(pending_path(&path)).unwrap(), pending_bytes);
+            Ok((200, "approved".into()))
+        })
+        .unwrap();
+        assert_eq!(confirmed.device, pending);
+        assert_eq!(confirmed.status, "approved");
+        assert_eq!(load_or_create(&path).unwrap(), pending);
+        assert!(!pending_path(&path).exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn restart_after_replacement_expiry_reconnects_with_the_old_key_and_confirms_again() {
+        let dir = std::env::temp_dir().join(format!("unbored-expired-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("device.json");
+        let old = load_or_create(&path).unwrap();
+        let pending = prepare_reconnect(&path, &old).unwrap();
+        // Reconnect returned 201, but confirmation never reached the Server.
+        assert!(confirm_reconnect(&path, pending.clone(), |_| Err("offline".into())).is_err());
+        // After 24 hours the Server removes only the unconfirmed replacement.
+        let restarted = load_or_create(&path).unwrap();
+        assert_eq!(restarted, old);
+        let mut probes = 0;
+        let registered = std::cell::Cell::new(false);
+        let recovered = recover_reconnect(
+            &path,
+            &restarted,
+            |secret| {
+                probes += 1;
+                assert_eq!(secret, pending.secret);
+                assert_eq!(load_or_create(&path).unwrap(), old);
+                assert_eq!(load_pending(&path).unwrap(), Some(pending.clone()));
+                if registered.get() {
+                    Ok((200, "approved".into()))
+                } else {
+                    Ok((401, String::new()))
+                }
+            },
+            |secret, next| {
+                assert_eq!(secret, old.secret);
+                assert_eq!(next, &pending);
+                registered.set(true);
+                Ok((201, "pending".into()))
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(probes, 2);
+        assert_eq!(recovered.device, pending);
+        assert_eq!(recovered.status, "approved");
+        assert_eq!(load_or_create(&path).unwrap(), pending);
+        assert!(!pending_path(&path).exists());
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
