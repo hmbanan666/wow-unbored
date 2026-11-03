@@ -819,6 +819,14 @@ fn apply_reconnected(
 
 /// Runs before capturing a sync session, and retries after offline or disk errors.
 fn recover_connect_again(app: &AppHandle) -> Result<(), String> {
+    let path = settings_path(app)?.with_file_name("device.json");
+    if !path
+        .with_file_name("device.pending.json")
+        .try_exists()
+        .map_err(|err| err.to_string())?
+    {
+        return Ok(());
+    }
     let state = app.state::<AppState>();
     let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let (settings, old) = {
@@ -826,7 +834,6 @@ fn recover_connect_again(app: &AppHandle) -> Result<(), String> {
         let device = state.device.lock().map_err(|err| err.to_string())?;
         (model.settings.clone(), device.clone())
     };
-    let path = settings_path(app)?.with_file_name("device.json");
     let url = effective_url(&settings);
     validate_endpoint(&url)?;
     if let Some(recovered) = device::recover_reconnect(
