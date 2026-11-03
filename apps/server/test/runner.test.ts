@@ -141,7 +141,7 @@ for (const backend of BACKENDS) {
       assert.equal(lease.attempt, 1);
       assert.equal(lease.expiresAt, app.now() + 180);
       assert.match(lease.leaseToken, /^[A-Za-z0-9_-]{43}$/);
-      assert.equal(lease.prompt.version, "b1d636b08ba8");
+      assert.equal(lease.prompt.version, "57fb9c9e787c");
       assert.match(lease.prompt.text, /^# Unbored planner\n/);
       assert.equal(lease.mcpPath, "/mcp");
       assert.equal((await app.claim()).status, 204);
