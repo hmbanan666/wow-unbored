@@ -686,6 +686,9 @@ fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Sho
     let session = SyncSession::capture(&state)?;
     let url = effective_url(&session.settings);
     validate_endpoint(&url)?;
+    // Cancel recovery before Forget, so a failed removal cannot reconnect an
+    // unsent pending credential after the player has erased their data.
+    device::discard_pending(&settings_path(&app)?.with_file_name("device.json"))?;
     let erased = forget_on_planner(&url, &session.device.secret)?;
     session
         .apply(&app, |model| -> Result<(), String> {
@@ -732,7 +735,7 @@ fn reconnect_on_planner(
     url: &str,
     old_secret: &str,
     device: &DeviceCredential,
-) -> Result<String, String> {
+) -> Result<(u16, String), String> {
     let client = http_client(Duration::from_secs(20))?;
     let response = client
         .post(join_url(url, "v1/devices/me/reconnect"))
@@ -742,7 +745,10 @@ fn reconnect_on_planner(
         .map_err(|_| tr("RECONNECT_OFFLINE"))?;
     let status_code = response.status();
     let body: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
-    if !status_code.is_success() {
+    if status_code.as_u16() == 403 {
+        return Ok((403, String::new()));
+    }
+    if status_code.as_u16() != 201 {
         let why = body
             .get("error")
             .and_then(|value| value.as_str())
@@ -750,11 +756,13 @@ fn reconnect_on_planner(
             .unwrap_or_else(|| tr("RECONNECT_FAILED"));
         return Err(why);
     }
-    Ok(body
-        .get("status")
-        .and_then(|value| value.as_str())
-        .unwrap_or("approved")
-        .to_string())
+    Ok((
+        201,
+        body.get("status")
+            .and_then(|value| value.as_str())
+            .unwrap_or("approved")
+            .to_string(),
+    ))
 }
 
 #[tauri::command]
@@ -770,32 +778,66 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Show
     };
     let url = effective_url(&settings);
     validate_endpoint(&url)?;
-    let fresh = old.rotate_keeping_salt()?;
-    // TODO(audit): make reconnect recoverable when the response or local write
-    // is lost; the Server consumes the old credential before this save.
-    let status = reconnect_on_planner(&url, &old.secret, &fresh)?;
     let path = settings_path(&app)?.with_file_name("device.json");
-    device::save(&path, &fresh)?;
+    let fresh = device::prepare_reconnect(&path, &old)?;
+    let (code, status) = reconnect_on_planner(&url, &old.secret, &fresh)?;
+    if code != 201 {
+        return Err(tr("RECONNECT_FAILED").into());
+    }
+    device::adopt_pending(&path, &fresh)?;
+    apply_reconnected(&app, &state, fresh, status).map_err(Shown::from)
+}
+
+fn apply_reconnected(
+    app: &AppHandle,
+    state: &AppState,
+    fresh: DeviceCredential,
+    status: String,
+) -> Result<UiState, String> {
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     model.invalidate();
     *state.device.lock().map_err(|err| err.to_string())? = fresh;
     model.pairing = status.clone();
     model.approved = status == "approved";
+    model.error = false;
     model.settings.forgotten_at = None;
     model.forget_cleanup_pending = false;
     if model.approved {
         model.connected_at = Some(now_secs());
     }
-    let _ = save_settings(&app, &model.settings);
+    let _ = save_settings(app, &model.settings);
     model.status = if model.approved {
         tr("RECONNECTED")
     } else {
         pairing_message(&status, model.needs_wow_path)
     };
     if model.approved {
-        notify(&app, &tr("CONNECTED_TOAST"));
+        notify(app, &tr("CONNECTED_TOAST"));
     }
-    Ok(snapshot(&app, &model))
+    Ok(snapshot(app, &model))
+}
+
+/// Runs before capturing a sync session, and retries after offline or disk errors.
+fn recover_connect_again(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let _change = state.device_change.lock().map_err(|err| err.to_string())?;
+    let (settings, old) = {
+        let model = state.inner.lock().map_err(|err| err.to_string())?;
+        let device = state.device.lock().map_err(|err| err.to_string())?;
+        (model.settings.clone(), device.clone())
+    };
+    let path = settings_path(app)?.with_file_name("device.json");
+    let url = effective_url(&settings);
+    validate_endpoint(&url)?;
+    if let Some(recovered) = device::recover_reconnect(
+        &path,
+        &old,
+        |secret| probe_device(&url, secret),
+        |secret, pending| reconnect_on_planner(&url, secret, pending),
+    )? {
+        apply_reconnected(app, &state, recovered.device, recovered.status)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1333,24 +1375,38 @@ fn register_device(url: &str, device: &DeviceCredential) -> Result<String, Strin
         .to_string())
 }
 
-fn device_status(url: &str, secret: &str) -> Result<String, String> {
+fn probe_device(url: &str, secret: &str) -> Result<(u16, String), String> {
     let client = http_client(Duration::from_secs(20))?;
     let response = client
         .get(join_url(url, "v1/devices/me"))
         .bearer_auth(secret)
         .send()
         .map_err(offline)?;
+    let code = response.status().as_u16();
+    if code == 401 || code == 403 {
+        return Ok((code, String::new()));
+    }
     if !response.status().is_success() {
         return Err(trf("PLANNER_RETURNED", &[response.status().as_str()]));
     }
     let body: serde_json::Value = response
         .json()
         .map_err(|_| i18n::code("ERR_PLANNER_ANSWER", &[]))?;
-    Ok(body
-        .get("status")
-        .and_then(|value| value.as_str())
-        .unwrap_or("pending")
-        .to_string())
+    Ok((
+        code,
+        body.get("status")
+            .and_then(|value| value.as_str())
+            .unwrap_or("pending")
+            .to_string(),
+    ))
+}
+
+fn device_status(url: &str, secret: &str) -> Result<String, String> {
+    let (code, status) = probe_device(url, secret)?;
+    if code != 200 {
+        return Err(trf("PLANNER_RETURNED", &[&code.to_string()]));
+    }
+    Ok(status)
 }
 
 fn pairing_message(status: &str, needs_path: bool) -> String {
@@ -1636,6 +1692,15 @@ fn sync_planner(app: &AppHandle, session: &SyncSession) -> Result<(), String> {
 fn sync_loop(app: AppHandle) {
     let mut addon_checked = None;
     loop {
+        if let Err(err) = recover_connect_again(&app) {
+            if let Ok(mut model) = app.state::<AppState>().inner.lock() {
+                model.error = true;
+                model.status = err;
+            }
+            refresh_view(&app);
+            wait_for_wake(&app, Duration::from_secs(30));
+            continue;
+        }
         match SyncSession::capture(&app.state::<AppState>()) {
             Ok(session) => {
                 // Planner outcomes were applied while holding the Prefetch
