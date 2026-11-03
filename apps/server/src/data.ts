@@ -1131,6 +1131,24 @@ export class DataStore {
     return row ? sectionFromRow(row) : undefined;
   }
 
+  /** One currency primary-key lookup for the Device's latest accepted Character save. */
+  async latestCurrenciesForDevice(
+    deviceId: string,
+  ): Promise<Pick<SectionRow, "v" | "body"> | undefined> {
+    const row = await this.db.get<{ v: number; body_json: unknown }>(
+      `SELECT s.v, s.${this.db.body} AS body_json
+       FROM (SELECT id, saved_at FROM characters WHERE device_id = ?
+             ORDER BY COALESCE(saved_at, last_seen) DESC, id LIMIT 1) c
+       JOIN sections_latest s
+         ON s.owner_kind = 'char' AND s.owner_id = c.id AND s.section = 'currencies'
+       WHERE s.saved_at = c.saved_at`,
+      deviceId,
+    );
+    if (!row) return undefined;
+    const body = fromJson<Raw>(row.body_json);
+    return body ? { v: row.v, body } : undefined;
+  }
+
   async sections(
     ownerKind: SectionScope,
     ownerId: string,

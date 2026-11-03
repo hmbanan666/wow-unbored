@@ -946,12 +946,13 @@ fn get_json(
     client: &reqwest::blocking::Client,
     url: &str,
     secret: &str,
+    addon_version: Option<&str>,
 ) -> Result<Option<serde_json::Value>, String> {
-    let response = client
-        .get(url)
-        .bearer_auth(secret)
-        .send()
-        .map_err(offline)?;
+    let mut request = client.get(url).bearer_auth(secret);
+    if let Some(version) = addon_version {
+        request = request.header("X-Unbored-Addon-Version", version);
+    }
+    let response = request.send().map_err(offline)?;
     if response.status().as_u16() == 404 {
         return Ok(None);
     }
@@ -972,8 +973,14 @@ fn planner_state(
     let url = effective_url(settings);
     validate_endpoint(&url)?;
     let client = http_client(Duration::from_secs(20))?;
+    let addon_version = retail_path(settings).and_then(|retail| installed_version(&retail));
     let mut state = PlannerState::default();
-    if let Some(body) = get_json(&client, &join_url(&url, "v1/plan"), secret)? {
+    if let Some(body) = get_json(
+        &client,
+        &join_url(&url, "v1/plan"),
+        secret,
+        addon_version.as_deref(),
+    )? {
         if let Some(plan) = decode_plan_field(&body["plan"])? {
             let id = body.get("id").and_then(|value| value.as_u64()).unwrap_or(0);
             state.latest_plan = Some((id, plan));
@@ -984,6 +991,7 @@ fn planner_state(
         &client,
         &join_url(&url, &request_status_path(waiting)),
         secret,
+        addon_version.as_deref(),
     )? {
         if let Some(id) = body.get("id").and_then(|value| value.as_str()) {
             state.request = Some(RequestState {
@@ -1195,7 +1203,7 @@ fn post_profiles(
 fn sync_advice(app: &AppHandle, session: &SyncSession, retail: &Path) -> Result<bool, String> {
     let client = http_client(Duration::from_secs(20))?;
     let url = join_url(&effective_url(&session.settings), "v1/advice");
-    let Some(body) = get_json(&client, &url, &session.device.secret)? else {
+    let Some(body) = get_json(&client, &url, &session.device.secret, None)? else {
         return Ok(false);
     };
     session
@@ -1210,7 +1218,7 @@ fn sync_advice(app: &AppHandle, session: &SyncSession, retail: &Path) -> Result<
 fn sync_suggestions(app: &AppHandle, session: &SyncSession, retail: &Path) -> Result<bool, String> {
     let client = http_client(Duration::from_secs(20))?;
     let url = join_url(&effective_url(&session.settings), "v1/suggestions");
-    let Some(body) = get_json(&client, &url, &session.device.secret)? else {
+    let Some(body) = get_json(&client, &url, &session.device.secret, None)? else {
         return Ok(false);
     };
     session

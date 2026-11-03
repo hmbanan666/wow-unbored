@@ -12,6 +12,40 @@ Companion 0.1.1 does not ask for a token. On first launch it registers a device 
 
 Latest session for this player.
 
+Plan reads (`GET /v1/plan`, `GET /v1/requests/latest`, and `GET /v1/requests/{id}`)
+accept the optional `X-Unbored-Addon-Version` header, for example `0.11.0`.
+The Companion reads it from the installed `Unbored.toc` on each poll, including
+manual installs; it is the addon version, not the Companion version. Existing
+snapshots, Requests and Device records have no reliable addon version field;
+error reports alone cannot identify the currently installed version.
+
+For versions below 0.11.0, or a present but malformed header, the Server trims
+each Step note to at most 400 UTF-8 bytes without splitting a character. An
+ellipsis is included within that limit. Known versions 0.11.0 and newer receive
+notes untouched (a `v` prefix and build metadata are accepted; a 0.11.0
+prerelease is below the cutoff). A present header always wins over Game data.
+
+Today's 0.10 and 0.11 Companions both omit this header. Without it, the Server
+uses the Device's latest accepted Character save and its `currencies` Section,
+only when the Section's `saved_at` matches that save. In v1, a nonempty `list`
+of rows with positive integer `id`, nonnegative numeric `quantity`, and no
+`name` field on any row is evidence of an older addon and receives the safe
+trim. Addon 0.11 added currency row names (documented in DEVELOPMENT.md);
+currencies refresh at login and on currency events, unlike the daily
+`achProgress` scan. Named rows, no data, empty or malformed lists, a future
+Section version, or currency data left over from an earlier save leave notes
+full. Another Device's data is not used. This is an inference from the saved
+shape, not an exact version: a modern addon whose game API omits every currency
+name can look old until it uploads names or sends the explicit version header.
+
+Only headerless deliveries with a Step note over 400 bytes perform the extra
+query: select the Device's latest Character metadata, then look up its currency
+Section through the existing `(owner_kind, owner_id, section)` primary key.
+Short notes and explicit headers need no evidence query. There is no schema
+migration or persistent version cache to become stale after an upgrade.
+Only the delivery copy changes: stored Plans, ids, timestamps, and owner/Planner
+reads stay intact ([ADR 0066](adr/0066-older-addon-step-notes.md)).
+
 ```
 GET {base}/v1/plan
 Accept: application/json
