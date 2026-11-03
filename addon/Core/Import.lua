@@ -256,6 +256,24 @@ function ns.CleanRewards(raw, max)
   return #out > 0 and out or nil
 end
 
+-- Unknown or incomplete targets are ignored so older Plans remain usable.
+function ns.CleanOutcome(raw)
+  if type(raw) ~= "table" then return nil end
+  local fields = {
+    rep = { "factionID", "standing" }, renown = { "factionID", "level" }, level = { "level" },
+    achievement = { "achievementID" }, currency = { "currencyID", "amount" },
+    mount = { "id" }, pet = { "id" }, toy = { "id" }, item = { "id" },
+  }
+  local names = fields[raw.kind]
+  if not names then return nil end
+  local out = { kind = raw.kind }
+  for _, name in ipairs(names) do
+    out[name] = whole(raw[name], 1, name == "standing" and 8 or 2147483647)
+    if not out[name] then return nil end
+  end
+  return out
+end
+
 -- { text, check = { kind, id, atLeast } }, checked live by ns.ConditionState.
 function ns.CleanCondition(raw)
   raw = plain(raw)
@@ -549,6 +567,8 @@ function ns.ValidatePlan(raw, loose)
     title = title ~= "" and title or nil,
     goal = goal,
     details = details,
+    outcome = ns.CleanOutcome(raw.outcome),
+    bonus = ns.CleanRewards(raw.bonus, 3),
     rewards = rewards,
     npcs = npcs and ns.Markup.NpcsFor(npcs, goal, details) or nil,
     tasks = cleanTasks,
@@ -594,6 +614,8 @@ function ns.EncodePlan(plan)
     title = clean.title,
     goal = clean.goal,
     details = clean.details,
+    outcome = clean.outcome,
+    bonus = clean.bonus,
     rewards = clean.rewards,
     contains = clean.contains,
     tasks = tasks,

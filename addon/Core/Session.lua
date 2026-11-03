@@ -345,6 +345,8 @@ function ns.Session:ApplyPlan(plan, source, reveal)
   self.state.title = plan.title
   self.state.goal = plan.goal
   self.state.details = plan.details
+  self.state.outcome = ns.CleanOutcome(plan.outcome)
+  self.state.bonus = ns.CleanRewards(plan.bonus, 3)
   self.state.rewards = plan.rewards and ns.DeepCopy(plan.rewards, 0) or nil
   self.state.contains = plan.contains and ns.DeepCopy(plan.contains) or nil
   self.state.generatedAt = tonumber(plan.generatedAt)
@@ -1464,5 +1466,6 @@ function ns.Session:OnEvent(event, ...)
     self:CheckCurrent()
   elseif event == "ZONE_CHANGED_NEW_AREA" or event == "ZONE_CHANGED" then
     self:CheckCurrent()
+    self:RefreshUI()
   end
 end

@@ -734,6 +734,31 @@ function ns.Mascot:CreateBubble()
   self.pipRow = pipRow(bubble)
   self.goal = font(bubble, "GameFontHighlightSmall")
   self.goal:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
+  self.outcomeChip = framed(bubble)
+  self.outcomeChip:EnableMouse(false)
+  self.outcomeChip.label = font(self.outcomeChip, "GameFontHighlightSmall")
+  self.outcomeChip.label:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
+  self.outcomeChip.label:SetPoint("TOPLEFT", 8, -6)
+  self.outcomeChip.bar = CreateFrame("StatusBar", nil, self.outcomeChip)
+  self.outcomeChip.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+  self.outcomeChip.bar:SetStatusBarColor(GOLD[1], GOLD[2], GOLD[3])
+  self.outcomeChip.bar:SetPoint("BOTTOMLEFT", 8, 6)
+  self.outcomeChip.bar.back = self.outcomeChip.bar:CreateTexture(nil, "BACKGROUND")
+  self.outcomeChip.bar.back:SetAllPoints()
+  self.outcomeChip.bar.back:SetColorTexture(MUTED[1], MUTED[2], MUTED[3], 0.25)
+  self.bonus = font(bubble, "GameFontHighlightSmall")
+  self.bonus:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  self.route = font(bubble, "GameFontHighlightSmall")
+  self.route:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  self.planDetails = font(bubble, "GameFontHighlightSmall")
+  self.planDetails:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  self.stepCount = font(bubble, "GameFontHighlightSmall")
+  self.stepCount:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+  self.noteToggle = textToggle(bubble, function()
+    local task = ns.Session:Current()
+    self.noteTask = task and self.noteTask ~= task and task or nil
+    self:Refresh()
+  end)
   self.condition = font(bubble, "GameFontHighlightSmall")
   self.condition:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
   self.why = font(bubble, "GameFontHighlightSmall")
@@ -1249,11 +1274,18 @@ local function stepView(mascot, session, task)
   if progressText and not check.met then
     details[#details + 1] = progressText
   end
-  details[#details + 1] = render(task.note, task.npcs)
-  details[#details + 1] = render(state.details, state.npcs)
+  local note = render(task.note, task.npcs)
+  if mascot.noteTask == task then
+    details[#details + 1] = note
+  end
   local goal = render(state.goal, state.npcs)
   local rewards = rewardLines(state, task, open)
   local closedReward = rewardLines(state, task, false)[1]
+  local outcome = ns.Outcome.View(state.outcome)
+  local bonus = {}
+  for _, token in ipairs(state.bonus or {}) do
+    bonus[#bonus + 1] = ns.Markup.RenderReward(token, relink)
+  end
   local where = ns.Steps.Footer(task)
   local many = progress.steps > 1
   local tip = ns.T("STEP_OF", progress.step, progress.steps)
@@ -1271,19 +1303,27 @@ local function stepView(mascot, session, task)
     condition = conditionLine(task, check),
     notYet = check ~= nil and not check.met,
     message = ns.Markup.Render(task.title or "", task.npcs, relink),
-    why = render(task.why, task.npcs),
-    reward = closedReward,
+    why = open and render(task.why, task.npcs) or nil,
+    reward = not outcome and closedReward or nil,
+    outcome = outcome,
+    bonus = #bonus > 0 and ns.T("OUTCOME_BONUS", table.concat(bonus, ", ")) or nil,
     group = session:GroupInfo(),
-    -- Everything below sits behind the one toggle.
-    expandable = many or goal ~= nil or #details > 0 or #rewards > 1 or where ~= nil,
+    -- Explanations and the full Step list open in place.
+    expandable = many or goal ~= nil or state.details ~= nil or note ~= nil
+      or task.why ~= nil or #rewards > 1,
     open = open,
-    pips = open and many and { done = progress.step - 1, total = progress.steps } or nil,
+    pips = { done = progress.step - 1, total = progress.steps },
+    stepCount = ns.T("STEP_OF", progress.step, progress.steps),
     pipTip = tip,
     goal = open and goal or nil,
+    planDetails = open and render(state.details, state.npcs) or nil,
+    hasNote = open and note ~= nil,
+    noteOpen = mascot.noteTask == task,
     details = open and #details > 0 and table.concat(details, "\n\n") or nil,
     all = open and many and allRows(state, mascot) or nil,
-    rewards = open and rewards or {},
-    where = open and where or nil,
+    rewards = open and not outcome and rewards or {},
+    where = where,
+    route = ns.Waypoint.RouteHint(task),
     npcs = merged(task.npcs, state.npcs),
     buttons = { "done", "skip" },
   }
@@ -1780,13 +1820,18 @@ function ns.Mascot:SetBubbleScale(percent)
   end
 end
 
--- The card opens and closes as a whole; the choice is kept for the Account.
+-- Expansion belongs to this Plan, never to the next one.
 function ns.Mascot.CardOpen()
-  return db().cardOpen == true
+  local state = ns.Session and ns.Session.state
+  return state and state.cardOpen == true or false
 end
 
 function ns.Mascot:ToggleCard()
-  db().cardOpen = not self.CardOpen() or nil
+  local state = ns.Session and ns.Session.state
+  if state then
+    state.cardOpen = not self.CardOpen() or nil
+    ns.Session:Save()
+  end
   self:Refresh()
 end
 
@@ -1886,11 +1931,12 @@ local function clearBubble(mascot)
 end
 
 -- Every text and region Layout may place (D165). All of them are hidden and
--- emptied before a view is laid out, so a region a view skips (the footer of
--- a closed card) can never stay on screen at an old anchor.
+-- emptied before a view is laid out, so hidden details never stay on screen
+-- at an old anchor.
 local function resetRegions(mascot)
   local texts = { mascot.meta, mascot.header, mascot.title, mascot.condition, mascot.message, mascot.why,
-    mascot.sub, mascot.where, mascot.goal, mascot.details, mascot.rewardsHeader }
+    mascot.sub, mascot.where, mascot.goal, mascot.details, mascot.rewardsHeader,
+    mascot.planDetails, mascot.stepCount, mascot.bonus, mascot.route }
   for i = 1, #mascot.rewardLines do
     texts[#texts + 1] = mascot.rewardLines[i]
   end
@@ -1899,7 +1945,8 @@ local function resetRegions(mascot)
     texts[i]:ClearAllPoints()
     texts[i]:Hide()
   end
-  for _, region in ipairs({ mascot.pipRow, mascot.list, mascot.detailsScroll, mascot.cardToggle, mascot.groupRow }) do
+  for _, region in ipairs({ mascot.pipRow, mascot.list, mascot.detailsScroll, mascot.cardToggle, mascot.groupRow,
+    mascot.noteToggle, mascot.outcomeChip }) do
     region:ClearAllPoints()
     region:Hide()
   end
@@ -2182,10 +2229,14 @@ function ns.Mascot:Layout(view, right)
   self:LayoutEchoes(right)
 end
 
--- The card below its title row. Closed, it is only what to do now: the
--- step, why, and the main reward. "Show more" opens the rest in place.
--- place(region, height, gap, x) puts a region at the cursor; put(fs, text, gap) a string.
+-- The current action and progress stay visible; explanations open in place.
 function ns.Mascot:LayoutCard(view, inner, place, put)
+  if view.pips then
+    drawPips(self.pipRow, view.pips.done, view.pips.total)
+    self.pipRow.tip = view.pipTip
+    place(self.pipRow, PIP, 4, 1)
+  end
+  put(self.stepCount, view.stepCount, 6)
   if view.group then
     local row = self.groupRow
     row.text:SetText(ns.T("GROUP_OF", view.group.index, view.group.count))
@@ -2196,8 +2247,35 @@ function ns.Mascot:LayoutCard(view, inner, place, put)
   put(self.condition, view.condition, 3)
   put(self.message, view.message, 4)
   put(self.why, view.why, 8)
+  if view.outcome then
+    local chipView, region = view.outcome, self.outcomeChip
+    local parts = { chipView.label, chipView.status, chipView.progress }
+    local lines = { chipView.label }
+    for i = 2, 3 do
+      if parts[i] then lines[#lines + 1] = parts[i] end
+    end
+    region.label:SetText(table.concat(lines, "  ·  "))
+    local height = ns.UI.Measure(region.label, inner - 16) + 12
+    region.label:Show()
+    region.bar:Hide()
+    if chipView.have and chipView.need then
+      region.bar:SetSize(inner - 16, 4)
+      region.bar:SetMinMaxValues(0, chipView.need)
+      region.bar:SetValue(math.min(chipView.have, chipView.need))
+      region.bar:Show()
+      height = height + 10
+    end
+    region:SetSize(inner, height)
+    place(region, height, 6)
+  end
+  put(self.bonus, view.bonus, 6)
+  put(self.route, view.route, 6)
   if view.reward and not view.open then
     put(self.rewardLines[1], view.reward, 8)
+  end
+  if view.where then
+    self.where:SetJustifyH("RIGHT")
+    put(self.where, view.where, 4)
   end
   if view.expandable then
     self.cardToggle:SetOpen(view.open and ns.T("LESS") or ns.T("CARD_MORE"), view.open)
@@ -2206,12 +2284,12 @@ function ns.Mascot:LayoutCard(view, inner, place, put)
   if not view.open then
     return
   end
-  if view.pips and view.pips.total > 1 then
-    drawPips(self.pipRow, view.pips.done, view.pips.total)
-    self.pipRow.tip = view.pipTip
-    place(self.pipRow, PIP, 8, 1)
-  end
   put(self.goal, view.goal, 8)
+  put(self.planDetails, view.planDetails, 8)
+  if view.hasNote then
+    self.noteToggle:SetOpen(ns.T(view.noteOpen and "LESS" or "NOTE_MORE"), view.noteOpen)
+    place(self.noteToggle, 16, 8)
+  end
   if view.details and view.details ~= "" then
     local scroll = self.detailsScroll
     if scroll.text ~= view.details then
@@ -2235,10 +2313,6 @@ function ns.Mascot:LayoutCard(view, inner, place, put)
     for i = 1, #self.rewardLines do
       put(self.rewardLines[i], view.rewards[i], 3)
     end
-  end
-  if view.where then
-    self.where:SetJustifyH("RIGHT")
-    put(self.where, view.where, 4)
   end
 end
 
