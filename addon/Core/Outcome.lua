@@ -193,7 +193,8 @@ function O.OnEvent(event)
   if O.scheduled then return end
   local function refresh()
     O.scheduled = nil
-    if not ns.IsCombat() and visibleCard(target) then ns.Session.RefreshUI() end
+    local current = ns.Session and ns.Session.state and ns.Session.state.outcome
+    if not ns.IsCombat() and current and visibleCard(current) then ns.Session.RefreshUI() end
   end
   O.scheduled = true
   if C_Timer and C_Timer.After then C_Timer.After(0.2, refresh) else refresh() end

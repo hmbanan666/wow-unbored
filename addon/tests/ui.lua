@@ -2006,11 +2006,17 @@ do
   for _, fn in ipairs(callbacks) do fn() end
   callbacks = {}
   check(reads > readsBefore, "progress catches up when combat ends")
+  ns.Outcome.OnEvent("CRITERIA_UPDATE")
+  local oldCount, owned = C_Item.GetItemCount, 0
+  C_Item.GetItemCount = function() return owned end
   ns.Session:ApplyPlan({ title = "Find treasure", outcome = { kind = "item", id = 6948 },
     tasks = { { id = "treasure", title = "Find the treasure" } } }, "companion", true)
+  owned = 1
   for _ = 1, 10 do ns.Outcome.OnEvent("GET_ITEM_INFO_RECEIVED") end
   check(#callbacks == 1, "item information bursts also settle into one refresh")
   for _, fn in ipairs(callbacks) do fn() end
+  check(textOf(mascot.outcomeChip.label):find("Done", 1, true),
+    "a Plan replaced during debounce still receives its own progress update")
   callbacks = {}
   mascot.forceChoice = true
   mascot:Refresh()
@@ -2020,6 +2026,7 @@ do
   mascot.forceChoice = nil
   mascot:Reveal()
   C_Timer.After, GetAchievementInfo = oldAfter, oldInfo
+  C_Item.GetItemCount = oldCount
 end
 
 -- Contract delivery reaches the visible card, including older reward-only Plans.
