@@ -1,54 +1,21 @@
-import { readFileSync, statSync } from "node:fs";
-import path from "node:path";
-import { cachedCsv, CSV_MAX_BYTES, parseCsv } from "./criteria.ts";
+import { setImmediate as yieldTurn } from "node:timers/promises";
+import {
+  bounded,
+  placeTable,
+  PLACE_LIMIT,
+  PLACE_TABLES,
+  type PlaceTable,
+  type Row,
+  type Table,
+} from "./place-tables.ts";
 import type { Waypoint } from "@unbored/contracts";
 
 export type PlaceQuery = { mapID: number; questID?: number; npcID?: number; lang?: "en" | "ru" };
-type Row = Record<string, string>;
 type QuestPoint = Waypoint & { questID: number };
 type FlightPoint = Waypoint & { id: number; name: string };
 export type PlaceData = { questPoints: QuestPoint[]; knownPoints: Waypoint[] };
-const MAX_PLACE_BYTES = CSV_MAX_BYTES;
-const TABLES = {
-  JournalEncounter: ["ID", "UiMapID", "Map_0", "Map_1"],
-  UiMap: ["ID", "Name_lang", "ParentUiMapID", "Type"],
-  UiMapAssignment: [
-    "ID",
-    "UiMapID",
-    "MapID",
-    "Region_0",
-    "Region_1",
-    "Region_3",
-    "Region_4",
-    "UiMin_0",
-    "UiMin_1",
-    "UiMax_0",
-    "UiMax_1",
-  ],
-  QuestPOIBlob: ["ID", "QuestID", "UiMapID", "MapID", "NumPoints"],
-  QuestPOIPoint: ["ID", "QuestPOIBlobID", "X", "Y"],
-  TaxiNodes: ["ID", "Name_lang", "ContinentID", "Pos_0", "Pos_1", "Flags"],
-} as const;
-type Table = keyof typeof TABLES;
-const localized = (table: Table) =>
-  table === "UiMap" || table === "TaxiNodes" || table === "JournalEncounter";
-function filename(table: Table, lang: "en" | "ru") {
-  return `${table}${localized(table) && lang === "ru" ? ".ruRU" : ""}.csv`;
-}
-function readTable(dataDir: string, table: Table, lang: "en" | "ru"): Row[] | undefined {
-  try {
-    const file = path.join(dataDir, "wago", filename(table, lang));
-    const stat = statSync(file);
-    if (stat.size > MAX_PLACE_BYTES || Date.now() - stat.mtimeMs >= 86_400_000) return;
-    const [header = [], ...body] = parseCsv(readFileSync(file, "utf8"));
-    if (!TABLES[table].every((field) => header.includes(field))) return;
-    return body.map((row) => Object.fromEntries(header.map((field, i) => [field, row[i] ?? ""])));
-  } catch {
-    return;
-  }
-}
-function number(value: string | undefined): number {
-  return value?.trim() ? Number(value) : NaN;
+function number(value: string | number | undefined): number {
+  return typeof value === "number" ? value : value?.trim() ? Number(value) : NaN;
 }
 function positive(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
@@ -56,7 +23,7 @@ function positive(value: number): boolean {
 
 /** UiMapAssignment world axes are swapped and reversed. Ambiguous mappings stay unknown. */
 function project(
-  assignments: Row[],
+  assignments: readonly Row[],
   mapID: number,
   worldMapID: number,
   worldX: number,
@@ -90,96 +57,133 @@ function project(
   }
   return points.length === 1 ? points[0] : undefined;
 }
-function load(dataDir: string, lang: "en" | "ru", coordinateOnly = false) {
+async function load(
+  dataDir: string,
+  lang: "en" | "ru",
+  download?: typeof fetch,
+  coordinateOnly = false,
+) {
   const unavailable: string[] = [];
-  const read = (table: Table) => {
-    const rows =
-      readTable(dataDir, table, lang) ??
-      (coordinateOnly ? readTable(dataDir, table, "ru") : undefined);
-    if (!rows) unavailable.push(table);
-    return rows ?? [];
-  };
-  const maps = read("UiMap"),
-    assignments = read("UiMapAssignment");
-  const blobs = read("QuestPOIBlob"),
-    points = read("QuestPOIPoint"),
-    taxis = read("TaxiNodes");
-  const questPoints: QuestPoint[] = [];
-  const byBlob = new Map<number, Row[]>();
-  for (const point of points) {
-    const id = number(point.QuestPOIBlobID);
-    if (!positive(id) || !positive(number(point.ID))) continue;
-    const group = byBlob.get(id) ?? [];
-    group.push(point);
-    byBlob.set(id, group);
-  }
-  const uncertain = new Set<string>();
-  const key = (questID: number, mapID: number) => `${questID}:${mapID}`;
-  for (const blob of blobs) {
-    const questID = number(blob.QuestID),
-      mapID = number(blob.UiMapID);
-    if (!positive(questID) || !positive(mapID)) continue;
-    const blobID = number(blob.ID);
-    const group = positive(blobID) ? byBlob.get(blobID) : undefined;
-    // Keep ambiguity before filtering: a turn-in point does not locate another objective area.
-    if (
-      number(blob.NumPoints) !== 1 ||
-      group?.length !== 1 ||
-      !Number.isInteger(number(blob.MapID)) ||
-      number(blob.MapID) < 0
-    ) {
-      uncertain.add(key(questID, mapID));
-      continue;
-    }
-    const point = project(
-      assignments,
-      mapID,
-      number(blob.MapID),
-      number(group[0].X),
-      number(group[0].Y),
-    );
-    if (point) questPoints.push({ ...point, questID });
-    else uncertain.add(key(questID, mapID));
-  }
-  const certainPoints = questPoints.filter(
-    (point) => !uncertain.has(key(point.questID, point.mapID)),
-  );
-  const flights = (mapID: number): FlightPoint[] =>
-    taxis.flatMap((row) => {
-      if (!positive(number(row.ID)) || !row.Name_lang || !(number(row.Flags) & 3)) return [];
-      const point = project(
-        assignments,
-        mapID,
-        number(row.ContinentID),
-        number(row.Pos_0),
-        number(row.Pos_1),
+  const tables = new Map<Table, PlaceTable>();
+  await Promise.all(
+    PLACE_TABLES.map(async (table) => {
+      if (table === "JournalEncounter" && !coordinateOnly) return;
+      const rows = await bounded(
+        (async () =>
+          (await placeTable(
+            dataDir,
+            table,
+            lang,
+            table === "JournalEncounter" ? undefined : download,
+          )) ?? (coordinateOnly ? await placeTable(dataDir, table, "ru") : undefined))(),
+        undefined,
       );
-      return point ? [{ ...point, id: number(row.ID), name: row.Name_lang }] : [];
-    });
-  return { maps, questPoints: certainPoints, flights, unavailable };
-}
-
-/** Validation never downloads or trusts coordinates supplied by the Planner as evidence. */
-export function readPlaceData(dataDir: string, mapIDs: number[] = []): PlaceData {
-  const data = load(dataDir, "en", true);
-  const encounters =
-    readTable(dataDir, "JournalEncounter", "en") ??
-    readTable(dataDir, "JournalEncounter", "ru") ??
-    [];
-  const bosses = encounters.flatMap((row) => {
-    const mapID = number(row.UiMapID),
-      x = number(row.Map_0),
-      y = number(row.Map_1);
-    return positive(mapID) && x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [{ mapID, x, y }] : [];
-  });
-  const maps = new Set(mapIDs.length ? mapIDs : data.questPoints.map((point) => point.mapID));
-  return {
-    questPoints: data.questPoints,
-    knownPoints: [...bosses, ...data.questPoints, ...[...maps].flatMap(data.flights)],
+      if (rows) tables.set(table, rows);
+      else unavailable.push(table);
+    }),
+  );
+  const rows = (table: Table, key: string | number) => {
+    const source = tables.get(table);
+    const limit = `${table}: result limit`;
+    if (source?.limited(String(key)) && !unavailable.includes(limit)) unavailable.push(limit);
+    return source?.get(String(key)) ?? [];
   };
+  const questPoints = async (mapID: number, questID?: number): Promise<QuestPoint[]> => {
+    const points: QuestPoint[] = [];
+    const uncertain = new Set<number>();
+    const blobs = rows("QuestPOIBlob", questID === undefined ? mapID : `${mapID}:${questID}`);
+    let count = 0;
+    for (const blob of blobs) {
+      if (++count % 16 === 0) await yieldTurn();
+      const id = number(blob.QuestID),
+        worldMapID = number(blob.MapID);
+      if (!positive(id) || !positive(mapID)) continue;
+      const group = rows("QuestPOIPoint", blob.ID);
+      const point =
+        number(blob.NumPoints) === 1 && group.length === 1
+          ? project(
+              rows("UiMapAssignment", `${mapID}:${worldMapID}`),
+              mapID,
+              worldMapID,
+              number(group[0].X),
+              number(group[0].Y),
+            )
+          : undefined;
+      if (point) points.push({ ...point, questID: id });
+      else uncertain.add(id);
+    }
+    return points.filter((point) => !uncertain.has(point.questID));
+  };
+  const flights = async (mapID: number): Promise<FlightPoint[]> => {
+    const result: FlightPoint[] = [];
+    const worlds = new Set(rows("UiMapAssignment", mapID).map((row) => number(row.MapID)));
+    for (const world of worlds) {
+      await yieldTurn();
+      for (const row of rows("TaxiNodes", world)) {
+        if (!row.Name_lang || !(number(row.Flags) & 3)) continue;
+        const point = project(
+          rows("UiMapAssignment", `${mapID}:${world}`),
+          mapID,
+          world,
+          number(row.Pos_0),
+          number(row.Pos_1),
+        );
+        if (point) result.push({ ...point, id: number(row.ID), name: String(row.Name_lang) });
+        if (result.length === PLACE_LIMIT) return result;
+      }
+    }
+    return result;
+  };
+  return { rows, questPoints, flights, unavailable };
 }
 
-/** Runtime download, source, request headers and size cap are shared with instance guides. */
+/** Validation never downloads or trusts coordinates supplied by the Planner as evidence.
+ * An empty selection means no work, never all the quest points in the game.
+ */
+export async function readPlaceData(
+  dataDir: string,
+  mapIDs: number[] = [],
+  questIDs: number[] = [],
+): Promise<PlaceData> {
+  if (!mapIDs.length) return { questPoints: [], knownPoints: [] };
+  const data = await load(dataDir, "en", undefined, true);
+  const questPoints: QuestPoint[] = [],
+    knownPoints: Waypoint[] = [];
+  for (const mapID of new Set(mapIDs.slice(0, PLACE_LIMIT))) {
+    await yieldTurn();
+    const quests: QuestPoint[] = [];
+    // Prioritize the Plan's own quests, even on a map with thousands of other quests.
+    for (const questID of new Set(questIDs.slice(0, PLACE_LIMIT))) {
+      const group = await data.questPoints(mapID, questID);
+      if (quests.length + group.length <= PLACE_LIMIT) quests.push(...group);
+    }
+    const requested = new Set(questIDs);
+    const others = (await data.questPoints(mapID)).filter((point) => !requested.has(point.questID));
+    if (quests.length + others.length <= PLACE_LIMIT) quests.push(...others);
+    // Keep each quest/map group whole: a cap must not manufacture a unique destination.
+    if (questPoints.length + quests.length <= PLACE_LIMIT) questPoints.push(...quests);
+    for (const row of data.rows("JournalEncounter", mapID)) {
+      const x = number(row.Map_0),
+        y = number(row.Map_1);
+      if (
+        positive(mapID) &&
+        x >= 0 &&
+        x <= 1 &&
+        y >= 0 &&
+        y <= 1 &&
+        knownPoints.length < PLACE_LIMIT
+      )
+        knownPoints.push({ mapID, x, y });
+    }
+    for (const point of [...quests, ...(await data.flights(mapID))]) {
+      if (knownPoints.length === PLACE_LIMIT) break;
+      knownPoints.push(point);
+    }
+  }
+  return { questPoints, knownPoints };
+}
+
+/** Tables are shared across concurrent requests and only requested geometry is projected. */
 export async function getPlace(
   dataDir: string,
   query: PlaceQuery,
@@ -187,45 +191,26 @@ export async function getPlace(
 ) {
   if (![query.mapID, query.questID, query.npcID].every((id) => id === undefined || positive(id)))
     throw new Error("Ids must be positive integers.");
-  const lang = query.lang ?? "en";
-  await Promise.all(
-    (Object.keys(TABLES) as Table[]).map(async (table) => {
-      if (table === "JournalEncounter" || readTable(dataDir, table, lang)) return;
-      try {
-        await cachedCsv(
-          path.join(dataDir, "wago"),
-          filename(table, lang),
-          `https://wago.tools/db2/${table}/csv${localized(table) && lang === "ru" ? "?locale=ruRU" : ""}`,
-          options.fetchImpl,
-          MAX_PLACE_BYTES,
-        );
-      } catch {
-        /* A missing or large table is unknown, never a guessed place. */
-      }
-    }),
-  );
-  const data = load(dataDir, lang);
-  const byID = new Map(data.maps.map((row) => [number(row.ID), row]));
-  const map = byID.get(query.mapID);
-  let ancestor = map;
+  const data = await load(dataDir, query.lang ?? "en", options.fetchImpl ?? fetch);
+  const map = data.rows("UiMap", query.mapID)[0];
+  let ancestor: Row | undefined = map;
   const seen = new Set<number>();
   while (ancestor && number(ancestor.Type) !== 2) {
     const id = number(ancestor.ID);
-    if (seen.has(id)) {
+    if (seen.has(id) || seen.size >= PLACE_LIMIT) {
       ancestor = undefined;
       break;
     }
     seen.add(id);
-    ancestor = byID.get(number(ancestor.ParentUiMapID));
+    ancestor = data.rows("UiMap", number(ancestor.ParentUiMapID))[0];
   }
   const continent = ancestor?.Name_lang
     ? { mapID: number(ancestor.ID), name: ancestor.Name_lang }
     : null;
   const name = map?.Name_lang || null;
-  const questPoints = data.questPoints.filter(
-    (point) => point.mapID === query.mapID && point.questID === query.questID,
-  );
-  const flightPoints = data.flights(query.mapID);
+  const questPoints =
+    query.questID === undefined ? [] : await data.questPoints(query.mapID, query.questID);
+  const flightPoints = await data.flights(query.mapID);
   const anchor = questPoints.length === 1 ? questPoints[0] : undefined;
   const nearestFlightPoint = anchor
     ? ([...flightPoints].sort((a, b) => distance(a, anchor) - distance(b, anchor))[0] ?? null)

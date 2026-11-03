@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { mkdir, readFile, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 export type CriteriaHit = {
@@ -153,12 +153,12 @@ export async function cachedCsv(
   fetchImpl: typeof fetch = fetch,
   maxBytes = CSV_MAX_BYTES,
 ): Promise<string> {
-  mkdirSync(dir, { recursive: true });
+  await mkdir(dir, { recursive: true });
   const file = path.join(dir, name);
   try {
-    const stat = statSync(file);
-    if (Date.now() - stat.mtimeMs < 24 * 60 * 60 * 1000 && stat.size > 0 && stat.size <= maxBytes) {
-      return readFileSync(file, "utf8");
+    const info = await stat(file);
+    if (Date.now() - info.mtimeMs < 24 * 60 * 60 * 1000 && info.size > 0 && info.size <= maxBytes) {
+      return await readFile(file, "utf8");
     }
   } catch {
     // download
@@ -181,7 +181,7 @@ export async function cachedCsv(
     await reader.cancel();
   }
   const text = Buffer.concat(chunks).toString("utf8");
-  writeFileSync(file, text);
+  await writeFile(file, text);
   return text;
 }
 

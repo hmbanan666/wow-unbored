@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: ["apps/server/test/**/*.test.ts", "packages/contracts/src/**/*.test.ts"],
     environment: "node",
+    maxWorkers: 2,
     execArgv: ["--experimental-sqlite"],
   },
   lint: {

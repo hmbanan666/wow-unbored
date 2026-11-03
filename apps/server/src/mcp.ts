@@ -1150,6 +1150,10 @@ export function createMcpServer(
   return server;
 }
 
+// Stateless transports construct schemas per call. Admit one setup per timer turn so a
+// burst of tool calls cannot starve health checks before asynchronous handlers even run.
+let setupTurn = Promise.resolve();
+
 export async function handleMcp(
   c: Context,
   store: Store,
@@ -1160,7 +1164,15 @@ export async function handleMcp(
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
   });
-  const server = createMcpServer(store, dataDir, gameIds, options);
+  const setup = setupTurn.then(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    return createMcpServer(store, dataDir, gameIds, options);
+  });
+  setupTurn = setup.then(
+    () => {},
+    () => {},
+  );
+  const server = await setup;
   await server.connect(transport);
   return transport.handleRequest(c.req.raw);
 }

@@ -5,6 +5,7 @@ import { sqlitePath } from "./config.ts";
 import {
   cleanPlan,
   cleanPlanPlaces,
+  taskQuestIds,
   cleanProgress,
   encodeUnb1,
   PlanError,
@@ -327,7 +328,14 @@ export class Store {
       ])
       .filter((id): id is number => id !== undefined);
     if (!check.places && maps.length)
-      cleanPlanPlaces(plan, { ...check, places: readPlaceData(this.placeDataDir, maps) });
+      cleanPlanPlaces(plan, {
+        ...check,
+        places: await readPlaceData(
+          this.placeDataDir,
+          maps,
+          plan.tasks.flatMap((task) => [...taskQuestIds(task)]),
+        ),
+      });
     const unb1 = encodeUnb1(plan);
     const createdAt = nowSeconds;
     return this.db.tx(async () => {

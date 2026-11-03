@@ -777,9 +777,8 @@ export function cleanPlanPlaces(plan: Plan, check: MarkupCheck): void {
   plan.tasks.forEach((task, index) => validateTaskPlaces(task, index + 1, check));
 }
 
-function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void {
-  if (!check.places) return;
-  const quests = new Set(
+export function taskQuestIds(task: Task): Set<number> {
+  const quests = new Set<number>(
     planMarkupIds({ tasks: [task] })
       .filter((id) => id.startsWith("quest:"))
       .map((id) => Number(id.slice(6))),
@@ -787,6 +786,12 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
   if (task.condition?.check?.kind === "quest") quests.add(task.condition.check.id);
   if (task.complete?.kind === "quest" && typeof task.complete.questID === "number")
     quests.add(task.complete.questID);
+  return quests;
+}
+
+function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void {
+  if (!check.places) return;
+  const quests = taskQuestIds(task);
   const validate = (point: Waypoint, route = false): Waypoint | undefined => {
     if (atPlayerPosition(point, check.context)) {
       check.warnings?.push(`Step ${index} point is the player's own position; dropped`);

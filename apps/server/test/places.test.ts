@@ -52,7 +52,7 @@ test("place lookup returns cached names and only mapped quest and flight points"
 test("quest points correct distant Steps, unsupported travel points disappear, starting points still disappear", async () => {
   const { dir } = cache();
   try {
-    const places = readPlaceData(dir);
+    const places = await readPlaceData(dir, [102, 81]);
     const warnings: string[] = [];
     const plan = cleanPlan(
       {
@@ -115,7 +115,7 @@ test("missing, oversized and malformed tables return unknown facts without inven
         tasks: [{ id: "travel", title: "Travel", mapID: 111, x: 0.5, y: 0.5 }],
       },
       1,
-      { places: readPlaceData(dir, [111]) },
+      { places: await readPlaceData(dir, [111]) },
     );
     assert.equal(plan.tasks[0].x, undefined);
   } finally {
@@ -146,7 +146,7 @@ test("quest polygons, ambiguous assignments and different maps never supply corr
   }
 });
 
-test("journal boss points stay usable and proximity completion cannot keep a dropped point", () => {
+test("journal boss points stay usable and proximity completion cannot keep a dropped point", async () => {
   const { dir, write } = cache();
   try {
     write("JournalEncounter", "ID,UiMapID,Map_0,Map_1\n1,661,0.3,0.6\n");
@@ -176,7 +176,7 @@ test("journal boss points stay usable and proximity completion cannot keep a dro
       },
       1,
       {
-        places: readPlaceData(dir, [102, 661]),
+        places: await readPlaceData(dir, [102, 661]),
         warnings,
         context: { mapID: 81, x: 0.42, y: 0.42 },
       },
@@ -387,5 +387,106 @@ test("a runtime 403 or network failure reports unavailable rather than crashing"
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  }
+});
+
+test("dense maps keep requested quest evidence without unbounded internal results", async () => {
+  const { dir, write } = cache();
+  try {
+    write(
+      "QuestPOIBlob",
+      "ID,QuestID,UiMapID,MapID,NumPoints\n" +
+        Array.from({ length: 600 }, (_, i) => `${i + 1},${i + 1},102,530,1\n`).join(""),
+    );
+    write(
+      "QuestPOIPoint",
+      "ID,QuestPOIBlobID,X,Y\n" +
+        Array.from({ length: 600 }, (_, i) => `${i + 1},${i + 1},600,800\n`).join(""),
+    );
+    assert.equal((await getPlace(dir, { mapID: 102, questID: 600 })).questPoints[0]?.x, 0.2);
+    const { store, close } = createApp({
+      ...storage(),
+      dataDir: dir,
+      companionToken: "companion-test-token",
+      plannerToken: "planner-test-token",
+      log: () => {},
+    });
+    try {
+      const stored = await store.putPlan({
+        title: "Earn a level",
+        tasks: [{ id: "quest", title: "Finish {quest:600}", mapID: 102, x: 0.8, y: 0.8 }],
+      });
+      assert.equal(stored.plan.tasks[0].x, 0.2);
+    } finally {
+      await close();
+    }
+    const places = await readPlaceData(dir, [102]);
+    assert.ok(places.questPoints.length <= 256 && places.knownPoints.length <= 256);
+    assert.deepEqual(await readPlaceData(dir), { questPoints: [], knownPoints: [] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test(
+  "a stalled download returns unavailable by the place load deadline",
+  { timeout: 5_000 },
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".places-"));
+    try {
+      const start = performance.now();
+      const result = await getPlace(
+        dir,
+        { mapID: 102 },
+        { fetchImpl: () => new Promise(() => {}) },
+      );
+      assert.ok(performance.now() - start < 4_000);
+      assert.equal(result.name, null);
+      assert.ok(result.unavailable.includes("UiMap"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("large flight lists are capped and truncated quest geometry never looks unique", async () => {
+  const { dir, write } = cache();
+  try {
+    write(
+      "TaxiNodes",
+      "ID,Name_lang,ContinentID,Pos_0,Pos_1,Flags\n" +
+        Array.from({ length: 600 }, (_, i) => `${i + 1},Flight ${i},530,600,790,3\n`).join(""),
+    );
+    let place = await getPlace(dir, { mapID: 102, questID: 9726 });
+    assert.equal(place.flightPoints.length, 256);
+    assert.ok(place.unavailable.some((value) => value.includes("limit")));
+    write(
+      "QuestPOIBlob",
+      "ID,QuestID,UiMapID,MapID,NumPoints\n" +
+        Array.from({ length: 600 }, (_, i) => `${i + 1},9726,102,530,1\n`).join(""),
+    );
+    place = await getPlace(dir, { mapID: 102, questID: 9726 });
+    assert.deepEqual(place.questPoints, []);
+    assert.equal(place.nearestFlightPoint, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("cached file versions refresh names and preserve quoted CSV cells", async () => {
+  const { dir, write } = cache();
+  try {
+    assert.equal((await getPlace(dir, { mapID: 102 })).name, "Zangarmarsh");
+    write(
+      "UiMap",
+      'ID,Name_lang,ParentUiMapID,Type\r\n101,Outland,0,2\r\n102,"A, ""quoted""\nplace",101,3\r\n',
+    );
+    assert.equal((await getPlace(dir, { mapID: 102 })).name, 'A, "quoted"\nplace');
+    write("UiMap", 'ID,Name_lang,ParentUiMapID,Type\n102,"Unclosed,101,3\n');
+    const place = await getPlace(dir, { mapID: 102 });
+    assert.equal(place.name, null);
+    assert.ok(place.unavailable.includes("UiMap"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
