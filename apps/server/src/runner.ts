@@ -32,6 +32,7 @@ export class LostLease extends Error {
 export class PlanRunner {
   private timer: ReturnType<typeof setInterval> | undefined;
   private stopped = false;
+  private shuttingDown = false;
   private readonly waiters = new Set<() => void>();
   private readonly store: Store;
   private readonly log: (line: string) => void;
@@ -65,6 +66,11 @@ export class PlanRunner {
     this.timer.unref();
   }
 
+  beginShutdown() {
+    this.shuttingDown = true;
+    this.wake();
+  }
+
   stop() {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
@@ -74,7 +80,7 @@ export class PlanRunner {
 
   async poll(wait: number, signal?: AbortSignal) {
     const end = Date.now() + wait * 1000;
-    while (!this.stopped && !signal?.aborted) {
+    while (!this.stopped && !this.shuttingDown && !signal?.aborted) {
       // Subscribe before checking, so an insertion cannot slip between check and wait.
       let release!: () => void;
       const changed = new Promise<void>((resolve) => {
@@ -323,9 +329,11 @@ export class PlanRunner {
   }
 
   async claim() {
+    if (this.stopped || this.shuttingDown) return undefined;
     await this.tick();
     const db = this.store.db;
-    return db.tx(async () => {
+    const cancelled = new Error("Claim cancelled during shutdown");
+    const claiming = db.tx(async () => {
       const now = this.now();
       const job = await db.get<Job>(
         `SELECT j.* FROM runner_jobs j JOIN requests r ON r.id = j.request_id
@@ -335,7 +343,7 @@ export class PlanRunner {
         now,
         now,
       );
-      if (!job) return undefined;
+      if (!job || this.stopped || this.shuttingDown) return undefined;
       const leaseId = randomUUID();
       const leaseToken = randomBytes(32).toString("base64url");
       const attempt = job.attempts + 1;
@@ -354,6 +362,8 @@ export class PlanRunner {
         job.request_id,
       );
       const request = (await this.store.requestById(job.request_id))!;
+      // Roll back a lease whose database write overlapped the shutdown signal.
+      if (this.stopped || this.shuttingDown) throw cancelled;
       if (job.state === "leased")
         this.log(
           `runner req=${request.id} attempt=${job.attempts} failed lease expired, retry in 0s`,
@@ -370,6 +380,10 @@ export class PlanRunner {
         prompt,
         mcpPath: "/mcp",
       };
+    });
+    return claiming.catch((error: unknown) => {
+      if (error !== cancelled) throw error;
+      return undefined;
     });
   }
 }

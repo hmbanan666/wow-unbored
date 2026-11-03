@@ -456,6 +456,10 @@ A farm run. `instanceID` is the 14th return of `GetSavedInstanceInfo`. `mounts` 
 
 Each mode is a provider in `Providers/` with `Build(ctx)` returning tasks `{ id, title, mapID, x, y, estMinutes, note, complete }`. `complete.kind` is documented in the plan format.
 
+## Server deploys
+
+On SIGTERM or SIGINT, the Server refuses new Plan runner leases and releases waiting claims with the usual 204 answer, so they can poll the new copy during a start-first rolling deploy. It stops accepting HTTP connections, closes idle keep-alive connections, and lets in-flight requests finish before stopping the runner, webhook and upload inbox worker, then closing the store last. Shutdown logs its start and finish and exits within 20 seconds even if draining or cleanup stalls; a second signal exits immediately, so configure the container stop grace period to exceed 20 seconds.
+
 ## Postgres cutover
 
 The one-off move of the hk Server from `/data/unbored.sqlite` to PostgreSQL ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md), rollout step 6). The transfer is `apps/server/scripts/sqlite-to-postgres.ts` (logic in `apps/server/src/transfer.ts`). It ships in the Server image and runs with the image's `node`:

@@ -66,6 +66,56 @@ function build(backend: Backend, fallback = false) {
 }
 
 for (const backend of BACKENDS) {
+  test(`shutdown during a claim leaves the Request available (${backend})`, async () => {
+    const app = build(backend);
+    const run = app.store.db.run.bind(app.store.db);
+    const write = vi.spyOn(app.store.db, "run").mockImplementation(async (sql, ...params) => {
+      const result = await run(sql, ...params);
+      if (sql.includes("SET state = 'leased'")) app.runner!.beginShutdown();
+      return result;
+    });
+    try {
+      await app.add();
+      assert.equal((await app.claim()).status, 204);
+      assert.equal((await app.store.runnerStatus("runner-first"))?.state, "queued");
+    } finally {
+      write.mockRestore();
+      app.close();
+    }
+  });
+
+  test(`shutdown releases waiting claims and refuses new leases (${backend})`, async () => {
+    const app = build(backend);
+    const waiting = Promise.all([
+      app.post("/v1/runner/claim?wait=25"),
+      app.post("/v1/runner/claim?wait=25"),
+    ]);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      app.runner!.beginShutdown();
+      const responses = await Promise.race([
+        waiting,
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new Error("claims did not drain promptly")), 500);
+        }),
+      ]);
+      assert.deepEqual(
+        responses.map((response) => response.status),
+        [204, 204],
+      );
+      await app.add();
+      assert.equal((await app.post("/v1/runner/claim?wait=25")).status, 204);
+      assert.equal(await app.runner!.claim(), undefined);
+      assert.equal((await app.store.runnerStatus("runner-first"))?.state, "queued");
+    } finally {
+      clearTimeout(deadline);
+      app.runner!.stop();
+      await waiting;
+      app.close();
+    }
+  });
+
   test(`empty runner claims stay out of request logs (${backend})`, async () => {
     const app = build(backend);
     try {
