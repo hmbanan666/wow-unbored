@@ -1943,6 +1943,32 @@ do
   C_Map, C_Timer.After = oldMap, oldAfter
 end
 
+-- Bank changes refresh a visible item outcome after the event burst settles.
+do
+  local oldAfter, oldCount = C_Timer.After, C_Item.GetItemCount
+  local owned, reads = 0, 0
+  C_Item.GetItemCount = function() reads = reads + 1; return owned end
+  C_Timer.After = function(_, fn) fn() end
+  ns.Session:ApplyPlan({ title = "Find treasure", outcome = { kind = "item", id = 6948 },
+    tasks = { { id = "treasure", title = "Find the treasure" } } }, "companion", true)
+  mascot.forceChoice = nil
+  mascot:Reveal()
+  local callbacks = {}
+  C_Timer.After = function(_, fn) callbacks[#callbacks + 1] = fn end
+  for _, event in ipairs({ "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED", "BANK_TABS_CHANGED",
+    "PLAYERBANKSLOTS_CHANGED", "BAG_UPDATE_DELAYED" }) do
+    owned = 1 - owned
+    local readsBefore = reads
+    for _ = 1, 3 do ns.Outcome.OnEvent(event) end
+    check(reads == readsBefore and #callbacks == 1, event .. " waits for one settled outcome refresh")
+    for _, fn in ipairs(callbacks) do fn() end
+    callbacks = {}
+    check(reads == readsBefore + 1 and ns.Outcome.View(ns.Session.state.outcome).done == (owned == 1),
+      event .. " refreshes cached ownership when an item enters or leaves the bank")
+  end
+  C_Timer.After, C_Item.GetItemCount = oldAfter, oldCount
+end
+
 -- Progress bursts should cost nothing when the card is not on screen.
 do
   local oldAfter, oldInfo = C_Timer.After, GetAchievementInfo

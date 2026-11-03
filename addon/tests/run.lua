@@ -1277,10 +1277,12 @@ do
   check(result.done and not result.progress, "max friendship is done without an invalid bar")
   _G.C_GossipInfo = nil
   _G.C_Reputation.IsFactionParagon = function() return true end
-  result = view(rep)
-  check(result.done and not result.progress, "paragon has already reached a standard standing target")
-  _G.C_Reputation.IsFactionParagon = nil
+  local revered = { kind = "rep", factionID = 970, standing = 7 }
+  result = view(revered)
+  check(result.done == false, "a Friendly player has not reached Revered even with a paragon track")
   _G.C_Reputation.GetFactionDataByID = function() return { name = "Friends", reaction = 8 } end
+  check(view(revered).done, "Exalted completes Revered for a faction with a paragon track")
+  _G.C_Reputation.IsFactionParagon = nil
   check(view(rep).done, "max standard reputation completes the target")
   _G.C_MajorFactions = { GetMajorFactionData = function()
     return { name = "Dragons", renownLevel = 4, renownReputationEarned = 1200, renownLevelThreshold = 2500 }
@@ -1348,6 +1350,18 @@ do
       check(result.done == collected and result.status == (collected and "Done"
         or (kind == "item" and "Not owned yet" or "Not collected yet")), kind .. " shows live ownership")
     end
+  end
+  for _, location in ipairs({ "bags", "bank", "reagent", "warband", "absent" }) do
+    _G.C_Item.GetItemCount = function(_, includeBank, includeUses, includeReagentBank, includeAccountBank)
+      if includeUses then return 10 end
+      if location == "bags" or (location == "bank" and includeBank)
+        or (location == "reagent" and includeReagentBank) or (location == "warband" and includeAccountBank) then
+        return 1
+      end
+      return 0
+    end
+    result = view({ kind = "item", id = 42 })
+    check(result.done == (location ~= "absent"), "item ownership counts " .. location .. " without item uses")
   end
   local apis = { "C_Reputation", "C_GossipInfo", "C_MajorFactions", "UnitLevel", "UnitXP", "UnitXPMax",
     "GetAchievementInfo", "GetAchievementNumCriteria", "GetAchievementCriteriaInfo", "C_CurrencyInfo",

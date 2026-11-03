@@ -780,12 +780,12 @@ fn connect_again(app: AppHandle, state: State<AppState>) -> Result<UiState, Show
     validate_endpoint(&url)?;
     let path = settings_path(&app)?.with_file_name("device.json");
     let fresh = device::prepare_reconnect(&path, &old)?;
-    let (code, status) = reconnect_on_planner(&url, &old.secret, &fresh)?;
+    let (code, _) = reconnect_on_planner(&url, &old.secret, &fresh)?;
     if code != 201 {
         return Err(tr("RECONNECT_FAILED").into());
     }
-    device::adopt_pending(&path, &fresh)?;
-    apply_reconnected(&app, &state, fresh, status).map_err(Shown::from)
+    let confirmed = device::confirm_reconnect(&path, fresh, |secret| probe_device(&url, secret))?;
+    apply_reconnected(&app, &state, confirmed.device, confirmed.status).map_err(Shown::from)
 }
 
 fn apply_reconnected(

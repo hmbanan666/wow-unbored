@@ -19,7 +19,7 @@ Connect again ([0045](0045-connect-again.md)) becomes safe to repeat. The Compan
 - Companion, Connect again:
   1. Mint the new credential (`rotate_keeping_salt`) and write `device.pending.json` next to `device.json` (same permissions, atomic write). If that write fails, stop; nothing was sent.
   2. Call reconnect with the old secret.
-  3. On `201`: atomically replace `device.json` with the pending credential, then delete `device.pending.json`. Any later poll confirms it on the Server.
+  3. On `201`: confirm the pending secret with `GET /v1/devices/me`; only `200` with a non-revoked status permits atomically replacing `device.json`, updating Credential Manager and deleting `device.pending.json`. A transport failure or `5xx` leaves both files untouched for startup recovery; this also applies after recovery repeats reconnect.
 - Companion, start: if `device.pending.json` exists, try its secret with `GET /v1/devices/me`. `200`: adopt it (replace `device.json`, delete pending). `401`: repeat step 2 with the old secret (idempotent), then step 3. A `403` on the old secret too: delete pending and show the normal pairing screen.
 - Logs: `device reconnect old=<id8> new=<id8> pending`, `... confirmed`, `... expired`. Never secrets or hashes.
 
