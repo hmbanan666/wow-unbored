@@ -42,10 +42,12 @@ export class PlanError extends Error {}
 export type MarkupCheck = {
   /** `type:id` the Blizzard Game Data API says do not exist. */
   missing?: ReadonlySet<string>;
-  /** Filled with one line per token or entity that was changed. */
+  /** Filled with one line per correction to the plan or answer. */
   warnings?: string[];
   /** The Request's wish, so a title that only repeats it is flagged. */
   wish?: string | null;
+  /** The Request's position, so a copied starting point can be dropped. */
+  context?: PlayerContext | null;
 };
 
 /** Card limits (ADR 0038): short on purpose, the card is for casual players. */
@@ -656,6 +658,26 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
     if (x === undefined || y === undefined) {
       throw new PlanError(`Task ${index} coordinates must be fractions from 0 to 1, not 0 to 100.`);
     }
+  }
+  const start = scope.check.context;
+  if (
+    mapID !== undefined &&
+    mapID === start?.mapID &&
+    x !== undefined &&
+    y !== undefined &&
+    start.x !== undefined &&
+    start.y !== undefined &&
+    x >= start.x - 0.005 &&
+    x <= start.x + 0.005 &&
+    y >= start.y - 0.005 &&
+    y <= start.y + 0.005
+  ) {
+    mapID = undefined;
+    x = undefined;
+    y = undefined;
+    scope.check.warnings?.push(
+      `Step ${index} point is the player's own position; use the destination or leave the point out.`,
+    );
   }
   let note: string | undefined;
   if (task.note !== undefined && task.note !== null) {

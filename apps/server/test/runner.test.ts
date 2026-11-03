@@ -141,7 +141,7 @@ for (const backend of BACKENDS) {
       assert.equal(lease.attempt, 1);
       assert.equal(lease.expiresAt, app.now() + 180);
       assert.match(lease.leaseToken, /^[A-Za-z0-9_-]{43}$/);
-      assert.match(lease.prompt.version, /^[a-f0-9]{12}$/);
+      assert.equal(lease.prompt.version, "57fb9c9e787c");
       assert.match(lease.prompt.text, /^# Unbored planner\n/);
       assert.equal(lease.mcpPath, "/mcp");
       assert.equal((await app.claim()).status, 204);
@@ -518,6 +518,41 @@ for (const backend of BACKENDS) {
       assert.equal(await app.store.latestPlanForAccount("runner-account"), undefined);
       assert.equal((await call(plan)).body.result.isError, false);
       assert.equal((await app.store.runnerStatus("runner-first"))?.state, "done");
+    } finally {
+      app.close();
+    }
+  });
+
+  test(`a copied starting point can be corrected within the lease (${backend})`, async () => {
+    const app = build(backend);
+    try {
+      const context = { mapID: 85, x: 0.5, y: 0.4 };
+      await app.add("runner-first", { context });
+      const lease = await (await app.claim()).json();
+      assert.deepEqual(lease.request.context, context);
+      const call = (name: string, args: Record<string, unknown>) =>
+        mcp(app, lease.leaseToken, "tools/call", { name, arguments: args });
+      const request = await call("get_request", {});
+      assert.deepEqual(JSON.parse(request.body.result.content[0].text).context, context);
+      const args = {
+        requestId: "runner-first",
+        plan: { ...plan, tasks: [{ ...plan.tasks[0], ...context }] },
+      };
+      const warning = await call("put_plan", args);
+      const unstored = JSON.parse(warning.body.result.content[0].text);
+      assert.equal(unstored.stored, false);
+      assert.deepEqual(unstored.warnings, [
+        "Step 1 point is the player's own position; use the destination or leave the point out.",
+      ]);
+      const current = await call("get_current_plan", {});
+      assert.equal(JSON.parse(current.body.result.content[0].text).plan, null);
+      args.plan.tasks[0].x = 0.6;
+      const corrected = await call("put_plan", args);
+      assert.equal(corrected.body.result.isError, false);
+      const stored = JSON.parse(corrected.body.result.content[0].text);
+      assert.deepEqual(stored.warnings, []);
+      assert.equal(stored.stored.tasks[0].x, 0.6);
+      assert.equal((await call("get_request", {})).status, 401);
     } finally {
       app.close();
     }

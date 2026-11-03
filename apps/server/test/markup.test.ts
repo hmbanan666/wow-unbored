@@ -6,7 +6,7 @@ import { test } from "vite-plus/test";
 
 import type { GameDataFetch } from "../src/blizzard.ts";
 import { createApp } from "../src/app.ts";
-import { cleanPlan } from "../src/plan.ts";
+import { cleanPlan, type PlayerContext } from "../src/plan.ts";
 import { storage } from "./backend.ts";
 
 const companion = "companion-test-token";
@@ -64,6 +64,87 @@ function decode(unb1: unknown): Record<string, unknown> {
     string,
     unknown
   >;
+}
+
+const startPosition = { mapID: 85, x: 0.5, y: 0.4 };
+const pointCases: {
+  name: string;
+  point: typeof startPosition;
+  context?: PlayerContext | null;
+  withoutRequest?: boolean;
+  dropped: boolean;
+}[] = [
+  { name: "equal to start", point: startPosition, dropped: true },
+  { name: "within tolerance", point: { mapID: 85, x: 0.504, y: 0.397 }, dropped: true },
+  { name: "at upper tolerance", point: { mapID: 85, x: 0.505, y: 0.405 }, dropped: true },
+  { name: "at lower tolerance", point: { mapID: 85, x: 0.495, y: 0.395 }, dropped: true },
+  { name: "different x", point: { mapID: 85, x: 0.5051, y: 0.4 }, dropped: false },
+  { name: "different y", point: { mapID: 85, x: 0.5, y: 0.3949 }, dropped: false },
+  { name: "different map", point: { mapID: 84, x: 0.5, y: 0.4 }, dropped: false },
+  { name: "no context", point: startPosition, context: null, dropped: false },
+  { name: "partial context", point: startPosition, context: { mapID: 85, x: 0.5 }, dropped: false },
+  { name: "no Request", point: startPosition, withoutRequest: true, dropped: false },
+];
+
+for (const scenario of pointCases) {
+  test(`put_plan checks the Request's starting position: ${scenario.name}`, async () => {
+    const { app, close } = build();
+    try {
+      if (!scenario.withoutRequest) {
+        const response = await app.request("/v1/requests", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${companion}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            id: "travel",
+            character: "Mira",
+            mode: "farm",
+            context: scenario.context === undefined ? startPosition : scenario.context,
+          }),
+        });
+        assert.equal(response.status, 201);
+      }
+      const prepare = { id: "prepare", title: "Use your hearthstone" };
+      const task = {
+        id: "travel",
+        title: "Travel to Sporeggar (Outland)",
+        ...scenario.point,
+        waypoints: [{ mapID: 102, x: 0.2, y: 0.5 }],
+        complete: { kind: "proximity", ...scenario.point, radiusYards: 40 },
+      };
+      const { isError, value } = await mcpCall(app, "put_plan", {
+        ...(scenario.withoutRequest ? {} : { requestId: "travel" }),
+        plan: { title: "Sporeggar to Honored", tasks: [prepare, task] },
+      });
+      assert.equal(isError, false);
+      const stored = value.stored as { tasks: Record<string, unknown>[] };
+      const expectedTask: Record<string, unknown> = { ...task, estMinutes: 15 };
+      if (scenario.dropped) {
+        delete expectedTask.mapID;
+        delete expectedTask.x;
+        delete expectedTask.y;
+      }
+      assert.deepEqual(stored.tasks, [
+        { ...prepare, estMinutes: 15, complete: { kind: "manual" } },
+        expectedTask,
+      ]);
+      assert.deepEqual(
+        value.warnings,
+        scenario.dropped
+          ? [
+              "Step 2 point is the player's own position; use the destination or leave the point out.",
+            ]
+          : [],
+      );
+      assert.deepEqual(decode(value.plan).tasks, stored.tasks);
+      const current = await mcpCall(app, "get_current_plan", {});
+      assert.deepEqual(decode(current.value.plan).tasks, stored.tasks);
+    } finally {
+      close();
+    }
+  });
 }
 
 test("put_plan keeps good links and the npcs they use, and warns about the rest", async () => {
