@@ -652,6 +652,13 @@ export class DataStore {
           INSERT INTO data_meta (key, value) VALUES ('section_freshness', '1');
           COMMIT;`);
       }
+      if (!db.raw.prepare("SELECT 1 FROM data_meta WHERE key = 'section_future_freshness'").get()) {
+        db.raw.exec(`BEGIN;
+          UPDATE sections_latest SET saved_at = unixepoch() + 300
+          WHERE saved_at > unixepoch() + 300;
+          INSERT INTO data_meta (key, value) VALUES ('section_future_freshness', '1');
+          COMMIT;`);
+      }
       this.ready = this.backfill(db.raw).catch((error: unknown) => {
         console.error(`Profile backfill failed: ${(error as Error).message}`);
       });

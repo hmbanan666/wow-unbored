@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
@@ -254,6 +254,80 @@ for (const backend of BACKENDS) {
       assert.equal((await store.data.section("account", account, "mounts"))!.savedAt, NOW + 100);
     } finally {
       store.close();
+    }
+  });
+}
+
+for (const backend of BACKENDS) {
+  test(`future Section freshness is repaired once after the original migration (${backend})`, async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "unbored-future-freshness-"));
+    const sql = pg(backend);
+    let store = new Store(dir, { postgres: sql });
+    const now = Math.floor(Date.now() / 1000);
+    const future = now + 86_400;
+    try {
+      await store.putSnapshot(
+        cleanSnapshot({
+          schema: 2,
+          account,
+          character: "Mira",
+          realm: "Realm",
+          savedAt: now,
+          sections: {
+            mounts: { scope: "account", v: 1, at: future, body: { count: 1 } },
+            toys: { scope: "account", v: 1, at: now + 100, body: { count: 1 } },
+            pets: { scope: "account", v: 1, at: now - 100, body: { count: 1 } },
+            bags: { scope: "char", v: 1, body: {} },
+          },
+        }),
+        "pc-1",
+        now,
+      );
+      // The applied 0004 migration copied an unclamped read time into the freshness key.
+      await store.db.run("UPDATE sections_latest SET saved_at = at");
+      const history = await store.data.lastChange("account", account, "mounts");
+      if (sql) await store.db.run("DELETE FROM schema_migrations WHERE version = 6");
+      else await store.db.run("DELETE FROM data_meta WHERE key = 'section_future_freshness'");
+      store.close();
+      const before = Math.floor(Date.now() / 1000);
+      if (sql) await migrate(sql);
+      store = new Store(dir, { postgres: sql });
+      const after = Math.floor(Date.now() / 1000);
+      const repaired = (await store.data.section("account", account, "mounts"))!;
+      assert.ok(repaired.savedAt! >= before + 300 && repaired.savedAt! <= after + 300);
+      assert.equal(repaired.at, future);
+      assert.deepEqual(repaired.body, { count: 1 });
+      assert.equal((await store.data.section("account", account, "toys"))!.savedAt, now + 100);
+      assert.equal((await store.data.section("account", account, "pets"))!.savedAt, now - 100);
+      const character = (await store.data.character("Mira", "Realm"))!;
+      assert.equal(character.savedAt, now);
+      assert.equal((await store.data.section("char", character.id, "bags"))!.savedAt, null);
+      assert.deepEqual(await store.data.lastChange("account", account, "mounts"), history);
+      // A subsequent fresh upload is accepted; reopening must not run the repair again.
+      const next = after + 400;
+      const result = await store.putSnapshot(
+        cleanSnapshot({
+          schema: 2,
+          account,
+          character: "Mira",
+          realm: "Realm",
+          savedAt: next,
+          sections: { mounts: { scope: "account", v: 1, at: next, body: { count: 2 } } },
+        }),
+        "pc-1",
+        next,
+      );
+      assert.deepEqual(result.stored, ["mounts"]);
+      store.close();
+      if (sql) assert.deepEqual(await migrate(sql), []);
+      store = new Store(dir, { postgres: sql });
+      assert.equal((await store.data.section("account", account, "mounts"))!.savedAt, next);
+      assert.deepEqual((await store.data.section("account", account, "mounts"))!.body, {
+        count: 2,
+      });
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 }
