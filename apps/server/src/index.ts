@@ -23,9 +23,13 @@ if (config.databaseUrl) {
     `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); every table on Postgres, the SQLite file untouched`,
   );
 }
-const { app, webhook, inbox, runner, store } = createApp({ ...config, database });
+const { app, webhook, inbox, runner, startReconnectCleanup, close } = createApp({
+  ...config,
+  database,
+});
 runner?.start();
 webhook.start();
+startReconnectCleanup();
 if (inbox) {
   // ADR 0057 step 4: snapshots answer 202 and this worker ingests them.
   await inbox.start();
@@ -39,6 +43,6 @@ const server = serve(
   },
 ) as Server;
 
-const shutdown = createShutdown({ server, runner, webhook, inbox, store, log: console.log });
+const shutdown = createShutdown({ server, runner, webhook, inbox, close, log: console.log });
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

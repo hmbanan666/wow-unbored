@@ -155,7 +155,7 @@ export function createApp(
     const presented = presentedBearer(c.req.header("authorization"));
     if (!presented) return c.json({ error: "Unauthorized" }, 401);
     if (tokenMatches(presented, tokens.companion)) return { deviceId: "legacy" };
-    const device = await store.findDeviceBySecretHash(sha256Hex(presented));
+    const device = await store.authenticateDevice(sha256Hex(presented));
     if (!device || device.status !== "approved") return c.json({ error: "Unauthorized" }, 401);
     await store.touchDevice(device.id);
     return { deviceId: device.id };
@@ -294,10 +294,10 @@ export function createApp(
   app.get("/v1/devices/me", async (c) => {
     const presented = presentedBearer(c.req.header("authorization"));
     if (!presented) return c.json({ error: "Unauthorized" }, 401);
-    const device = await store.findDeviceBySecretHash(sha256Hex(presented));
+    const device = await store.authenticateDevice(sha256Hex(presented));
     if (!device) return c.json({ error: "Unauthorized" }, 401);
     await store.touchDevice(device.id);
-    const fresh = (await store.findDeviceBySecretHash(sha256Hex(presented))) ?? device;
+    const fresh = (await store.authenticateDevice(sha256Hex(presented))) ?? device;
     return c.json(publicDevice(fresh));
   });
 
@@ -619,16 +619,38 @@ export function createApp(
     });
   });
 
+  let reconnectTimer: ReturnType<typeof setInterval> | undefined;
+  let reconnectCleanup: Promise<void> | undefined;
+  const startReconnectCleanup = () => {
+    if (reconnectTimer) return;
+    const tick = () => {
+      if (reconnectCleanup) return;
+      reconnectCleanup = store
+        .expireReconnects()
+        .catch(() => log("device reconnect cleanup failed"))
+        .finally(() => {
+          reconnectCleanup = undefined;
+        });
+    };
+    reconnectTimer = setInterval(tick, 10 * 60_000);
+    reconnectTimer.unref();
+    tick();
+  };
+
   return {
     app,
     store,
     webhook,
     runner,
+    startReconnectCleanup,
     /** The upload worker; index.ts starts it. Undefined on SQLite or inline ingest. */
     inbox,
     close: () => {
+      clearInterval(reconnectTimer);
+      reconnectTimer = undefined;
       runner?.stop();
       webhook.stop();
+      if (reconnectCleanup) return reconnectCleanup.then(() => store.close());
       store.close();
     },
   };

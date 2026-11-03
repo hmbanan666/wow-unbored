@@ -216,6 +216,7 @@ export class Store {
   readonly db: Db;
   readonly plannerRoute: "webhook" | "runner";
   onRequestAdded?: () => void;
+  private readonly log: (line: string) => void;
   private readonly runnerNow: () => number;
   readonly data: DataStore;
   readonly suggestions: SuggestionStore;
@@ -238,6 +239,7 @@ export class Store {
       runnerNow?: () => number;
     } = {},
   ) {
+    this.log = options.log ?? (() => {});
     this.plannerRoute = options.plannerRoute ?? "webhook";
     this.runnerNow = options.runnerNow ?? (() => Math.floor(Date.now() / 1000));
     const pg = options.postgres;
@@ -518,13 +520,44 @@ export class Store {
     return this.deviceByHash(secretHash);
   }
 
+  /** Resolve a bearer and confirm a replacement only after its own secret is used. */
+  async authenticateDevice(secretHash: string): Promise<Device | undefined> {
+    const found = await this.deviceByHash(secretHash);
+    if (!found?.reconnectFrom) return found;
+    return this.db.tx(async () => {
+      const device = await this.lockDevicePair(found.id);
+      if (!device || device.secretHash !== secretHash) return undefined;
+      if (device.status === "approved" && device.reconnectFrom) {
+        await this.db.run(
+          `UPDATE devices SET forget_revoked = 0 WHERE id = ?`,
+          device.reconnectFrom,
+        );
+        await this.db.run(`UPDATE devices SET reconnect_from = NULL WHERE id = ?`, device.id);
+        this.logReconnect(device.reconnectFrom, device.id, "confirmed");
+        device.reconnectFrom = null;
+      }
+      return device;
+    });
+  }
+
+  /** Always lock the old row first, including confirmation, Forget and owner revoke. */
+  private async lockDevicePair(id: string): Promise<Device | undefined> {
+    const found = await this.deviceById(id);
+    if (found?.reconnectFrom) await this.deviceById(found.reconnectFrom, "update");
+    return this.deviceById(id, "update");
+  }
+
+  private logReconnect(oldId: string, newId: string, state: "pending" | "confirmed" | "expired") {
+    this.log(`device reconnect old=${oldId.slice(0, 8)} new=${newId.slice(0, 8)} ${state}`);
+  }
+
   async touchDevice(id: string, nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
     await this.db.run(`UPDATE devices SET last_seen_at = ? WHERE id = ?`, nowSeconds, id);
   }
 
   async listDevices(): Promise<Device[]> {
     const rows = await this.db.all<DeviceRow>(
-      `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked
+      `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked, reconnect_from
        FROM devices ORDER BY created_at DESC, id ASC`,
     );
     return rows.map(deviceFromRow);
@@ -536,8 +569,9 @@ export class Store {
     nowSeconds = Math.floor(Date.now() / 1000),
   ): Promise<Device | undefined> {
     return this.db.tx(async () => {
-      const current = await this.deviceById(id, "update");
+      const current = await this.lockDevicePair(id);
       if (!current) return undefined;
+      if (status === "revoked") await this.revokeReconnectPartner(current, nowSeconds);
       await this.db.run(
         `UPDATE devices SET status = ?, last_seen_at = ?, forget_revoked = 0 WHERE id = ?`,
         status,
@@ -577,22 +611,33 @@ export class Store {
         if (input.secretHash === old.secretHash) {
           return { ok: false, status: 400, error: "Connect again needs a new device secret." };
         }
-        if (await this.deviceById(input.id)) {
+        const existing = await this.deviceById(input.id);
+        if (existing) {
+          if (
+            existing.reconnectFrom === old.id &&
+            existing.secretHash === input.secretHash &&
+            existing.status === "approved"
+          ) {
+            return { ok: true, device: existing };
+          }
           return { ok: false, status: 409, error: "This device id is already registered." };
         }
-        if (await this.deviceByHash(input.secretHash)) {
+        const hashOwner = await this.deviceByHash(input.secretHash);
+        if (hashOwner && hashOwner.reconnectFrom !== old.id) {
           return { ok: false, status: 409, error: "This device secret is already registered." };
         }
+        await this.db.run(`DELETE FROM devices WHERE reconnect_from = ?`, old.id);
         await this.db.run(
-          `INSERT INTO devices (id, name, secret_hash, status, created_at, last_seen_at, forget_revoked)
-           VALUES (?, ?, ?, 'approved', ?, ?, 0)`,
+          `INSERT INTO devices (id, name, secret_hash, status, created_at, last_seen_at, forget_revoked, reconnect_from)
+           VALUES (?, ?, ?, 'approved', ?, ?, 0, ?)`,
           input.id,
           input.name,
           input.secretHash,
           input.nowSeconds,
           input.nowSeconds,
+          old.id,
         );
-        await this.db.run(`UPDATE devices SET forget_revoked = 0 WHERE id = ?`, old.id);
+        this.logReconnect(old.id, input.id, "pending");
         const device = await this.deviceById(input.id);
         if (!device) return { ok: false, status: 500, error: "Could not store the device." };
         return { ok: true, device };
@@ -602,6 +647,33 @@ export class Store {
         return { ok: false, status: 409, error: "This device is already registered." };
       }
       throw error;
+    }
+  }
+
+  /** Caller holds the pair's old row; a revoked partner cannot reconnect itself. */
+  private async revokeReconnectPartner(device: Device, nowSeconds: number): Promise<void> {
+    await this.db.run(
+      `UPDATE devices SET status = 'revoked', forget_revoked = 0, reconnect_from = NULL, last_seen_at = ?
+       WHERE reconnect_from = ? OR id = ?`,
+      nowSeconds,
+      device.id,
+      device.reconnectFrom,
+    );
+    await this.db.run(`UPDATE devices SET reconnect_from = NULL WHERE id = ?`, device.id);
+  }
+
+  async expireReconnects(nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
+    const rows = await this.db.all<{ id: string }>(
+      `SELECT id FROM devices WHERE reconnect_from IS NOT NULL AND created_at < ?`,
+      nowSeconds - 24 * 60 * 60,
+    );
+    for (const row of rows) {
+      await this.db.tx(async () => {
+        const device = await this.lockDevicePair(row.id);
+        if (!device?.reconnectFrom || device.createdAt >= nowSeconds - 24 * 60 * 60) return;
+        await this.db.run(`DELETE FROM devices WHERE id = ?`, device.id);
+        this.logReconnect(device.reconnectFrom, device.id, "expired");
+      });
     }
   }
 
@@ -1335,7 +1407,8 @@ export class Store {
    */
   async forgetDevice(deviceId: string, nowSeconds = Math.floor(Date.now() / 1000)) {
     return this.db.tx(async () => {
-      const current = await this.deviceById(deviceId, "update");
+      const current = await this.lockDevicePair(deviceId);
+      if (current) await this.revokeReconnectPartner(current, nowSeconds);
       const accounts = new Set<string>();
       for (const row of await this.data.characters()) {
         if (row.deviceId === deviceId && row.accountId) accounts.add(row.accountId);
@@ -1763,7 +1836,7 @@ export class Store {
   /** One device; `update` holds its row until the transaction ends (Postgres). */
   async deviceById(id: string, lock?: "update"): Promise<Device | undefined> {
     const row = await this.db.get<DeviceRow>(
-      `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked
+      `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked, reconnect_from
        FROM devices WHERE id = ?${lock && this.db.pg ? " FOR UPDATE" : ""}`,
       id,
     );
@@ -1772,7 +1845,7 @@ export class Store {
 
   private async deviceByHash(secretHash: string): Promise<Device | undefined> {
     const row = await this.db.get<DeviceRow>(
-      `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked
+      `SELECT id, name, secret_hash, status, created_at, last_seen_at, forget_revoked, reconnect_from
        FROM devices WHERE secret_hash = ?`,
       secretHash,
     );
@@ -1815,7 +1888,11 @@ function prepareSqlite(db: DatabaseSync): void {
     ["suggestion_id", "TEXT"],
     ["suggestion_json", "TEXT"],
   ]);
-  addColumns(db, "devices", [["forget_revoked", "INTEGER NOT NULL DEFAULT 0"]]);
+  addColumns(db, "devices", [
+    ["forget_revoked", "INTEGER NOT NULL DEFAULT 0"],
+    ["reconnect_from", "TEXT"],
+  ]);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS devices_reconnect_from ON devices (reconnect_from)`);
   addColumns(db, "plans", [["generated_at", "INTEGER"]]);
   migratePlanRequests(db);
   // D190: progress names its plan by generatedAt; plans stored before 0.10 get theirs from the body.
@@ -1902,6 +1979,7 @@ export type Device = {
   lastSeenAt: number | null;
   /** This PC used Forget my data while approved, so Connect again is allowed once. */
   forgetRevoked: boolean;
+  reconnectFrom: string | null;
 };
 
 export type RegisterDeviceResult =
@@ -1920,6 +1998,7 @@ type DeviceRow = {
   created_at: number;
   last_seen_at: number | null;
   forget_revoked: number | null;
+  reconnect_from: string | null;
 };
 
 function deviceFromRow(row: DeviceRow): Device {
@@ -1933,6 +2012,7 @@ function deviceFromRow(row: DeviceRow): Device {
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
     forgetRevoked: row.forget_revoked === 1,
+    reconnectFrom: row.reconnect_from,
   };
 }
 
