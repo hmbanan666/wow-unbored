@@ -1863,12 +1863,18 @@ do
   end }
   C_Timer.After = function(_, fn) callbacks[#callbacks + 1] = fn end
   ns.Session:ApplyPlan({ title = "Gather badges", outcome = { kind = "currency", currencyID = 42, amount = 20 },
-    bonus = { "{item:6948|Hearthstone}" }, tasks = { { id = "badges", title = "Complete the quest" } } }, "companion")
+    bonus = { "{item:6948|Hearthstone}" }, tasks = { { id = "badges", title = "Complete the quest",
+      rewards = { "{item:6948|Hearthstone}" } } } }, "companion")
   mascot.forceChoice, mascot.item, mascot.answer = nil, nil, nil
   mascot:Refresh()
   check(mascot.outcomeChip:IsShown() and mascot.outcomeChip.bar:IsShown(), "closed card has an outcome bar")
   check(textOf(mascot.outcomeChip.label):find("12 / 20", 1, true), "outcome chip shows owned currency")
   check(textOf(mascot.bonus):find("Possible bonus:", 1, true), "bonus is explicitly uncertain")
+  check(mascot.cardToggle:IsShown(), "a sole Step reward makes the outcome card expandable")
+  mascot.cardToggle:Click()
+  check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
+    "expanded outcome card keeps Step rewards")
+  mascot.cardToggle:Click()
   local readsBefore = reads
   mascot:Refresh()
   mascot:UpdateDistance()
@@ -1889,6 +1895,12 @@ do
   ns.Events.OnEvent("PLAYER_REGEN_ENABLED")
   for _, fn in ipairs(callbacks) do fn() end
   check(reads > readsBefore, "deferred progress refreshes after combat")
+  callbacks = {}
+  quantity = 10
+  driver.scripts.OnEvent(driver, "PLAYER_ENTERING_WORLD", false, false)
+  for _, fn in ipairs(callbacks) do fn() end
+  check(textOf(mascot.outcomeChip.label):find("10 / 20", 1, true),
+    "entering the world refreshes outcome data missed during a loading screen")
   C_CurrencyInfo, C_Timer.After = oldCurrency, oldAfter
 end
 

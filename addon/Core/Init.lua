@@ -127,6 +127,7 @@ function ns.OnEnteringWorld(initialLogin)
   if ns.Session and ns.Session.Start then
     ns.Guard("init", ns.Session.Start, ns.Session, initialLogin == true)
   end
+  ns.Outcome.OnEvent("PLAYER_ENTERING_WORLD")
 end
 
 local function slash(message)

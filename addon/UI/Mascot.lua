@@ -1310,7 +1310,7 @@ local function stepView(mascot, session, task)
     group = session:GroupInfo(),
     -- Explanations and the full Step list open in place.
     expandable = many or goal ~= nil or state.details ~= nil or note ~= nil
-      or task.why ~= nil or #rewards > 1,
+      or task.why ~= nil or #rewards > 1 or (outcome ~= nil and #rewards > 0),
     open = open,
     pips = { done = progress.step - 1, total = progress.steps },
     stepCount = ns.T("STEP_OF", progress.step, progress.steps),
@@ -1321,7 +1321,7 @@ local function stepView(mascot, session, task)
     noteOpen = mascot.noteTask == task,
     details = open and #details > 0 and table.concat(details, "\n\n") or nil,
     all = open and many and allRows(state, mascot) or nil,
-    rewards = open and not outcome and rewards or {},
+    rewards = open and rewards or {},
     where = where,
     route = ns.Waypoint.RouteHint(task),
     npcs = merged(task.npcs, state.npcs),
