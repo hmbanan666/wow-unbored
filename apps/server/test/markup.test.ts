@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vite-plus/test";
 
 import type { GameDataFetch } from "../src/blizzard.ts";
 import { createApp } from "../src/app.ts";
-import { cleanPlan, type PlayerContext } from "../src/plan.ts";
+import { cleanPlan, type Waypoint, type PlayerContext } from "../src/plan.ts";
 import { storage } from "./backend.ts";
 
 const companion = "companion-test-token";
@@ -17,15 +17,25 @@ const fixture = JSON.parse(
     "utf8",
   ),
 ) as { plan: Record<string, unknown> };
+fixture.plan.outcome = { kind: "achievement", achievementID: 964 };
 
 type Built = ReturnType<typeof createApp>;
 
-function build(options: { blizzardFetch?: GameDataFetch } = {}): Built {
+function build(options: { blizzardFetch?: GameDataFetch; points?: Waypoint[] } = {}): Built {
+  const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-markup-"));
+  if (options.points) {
+    mkdirSync(path.join(dataDir, "wago"));
+    writeFileSync(
+      path.join(dataDir, "wago", "JournalEncounter.csv"),
+      "ID,UiMapID,Map_0,Map_1\n" +
+        options.points.map((p, i) => `${i + 1},${p.mapID},${p.x},${p.y}`).join("\n"),
+    );
+  }
   return createApp({
     ...storage(),
     companionToken: companion,
     plannerToken: planner,
-    dataDir: mkdtempSync(path.join(tmpdir(), "unbored-markup-")),
+    dataDir,
     log: () => {},
     blizzard: options.blizzardFetch
       ? { clientId: "client-id", clientSecret: "client-secret", region: "eu" }
@@ -88,7 +98,7 @@ const pointCases: {
 
 for (const scenario of pointCases) {
   test(`put_plan checks the Request's starting position: ${scenario.name}`, async () => {
-    const { app, close } = build();
+    const { app, close } = build({ points: [scenario.point, { mapID: 102, x: 0.2, y: 0.5 }] });
     try {
       if (!scenario.withoutRequest) {
         const response = await app.request("/v1/requests", {
@@ -116,7 +126,11 @@ for (const scenario of pointCases) {
       };
       const { isError, value } = await mcpCall(app, "put_plan", {
         ...(scenario.withoutRequest ? {} : { requestId: "travel" }),
-        plan: { title: "Sporeggar to Honored", tasks: [prepare, task] },
+        plan: {
+          outcome: { kind: "rep", factionID: 970, standing: 6 },
+          title: "Sporeggar to Honored",
+          tasks: [prepare, task],
+        },
       });
       assert.equal(isError, false);
       const stored = value.stored as { tasks: Record<string, unknown>[] };
@@ -125,6 +139,7 @@ for (const scenario of pointCases) {
         delete expectedTask.mapID;
         delete expectedTask.x;
         delete expectedTask.y;
+        expectedTask.complete = { kind: "manual" };
       }
       assert.deepEqual(stored.tasks, [
         { ...prepare, estMinutes: 15, complete: { kind: "manual" } },
@@ -135,6 +150,7 @@ for (const scenario of pointCases) {
         scenario.dropped
           ? [
               "Step 2 point is the player's own position; use the destination or leave the point out.",
+              "Step 2 point is the player's own position; dropped",
             ]
           : [],
       );
@@ -267,6 +283,7 @@ test("with Blizzard credentials, ids that do not exist lose their link; answers 
     assert.ok(!calls.some((url) => url.includes("/currency/")));
     await mcpCall(app, "put_plan", {
       plan: {
+        outcome: { kind: "achievement", achievementID: 964 },
         title: "Mounts and pets",
         tasks: [{ id: "m", title: "Ride {mount:183} with {pet:39}" }],
       },

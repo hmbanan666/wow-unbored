@@ -46,6 +46,12 @@ pub struct Plan {
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub goal: Option<String>,
+    /// Structured target (ADR 0068); progress is read by the addon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<Value>,
+    /// Chance rewards, separate from the guaranteed goal (ADR 0068).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bonus: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1071,6 +1077,12 @@ fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
             push_pair(&mut out, 1, key, &Value::String(text.clone()));
         }
     }
+    if let Some(outcome) = plan.outcome.as_ref().filter(|value| value.is_object()) {
+        push_pair(&mut out, 1, "outcome", outcome);
+    }
+    if let Some(bonus) = &plan.bonus {
+        push_pair(&mut out, 1, "bonus", &Value::from(bonus.clone()));
+    }
     if let Some(rewards) = &plan.rewards {
         push_pair(&mut out, 1, "rewards", &Value::from(rewards.clone()));
     }
@@ -1674,6 +1686,30 @@ mod tests {
         const OLD: &str = include_str!("../../../../packages/contracts/fixtures/plan.json");
         let old = render_plan_lua(&plan_from_value(serde_json::from_str(OLD).unwrap()).unwrap());
         assert!(!old.contains("\n  [\"title\"]") && !old.contains("[\"rewards\"]"));
+    }
+
+    #[test]
+    fn writes_currency_outcome_and_bonus_for_older_addons() {
+        let plan = plan_from_value(
+            serde_json::from_str(include_str!(
+                "../../../../packages/contracts/fixtures/plan-currency.json"
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let lua = render_plan_lua(&plan);
+        let values = parse_saved_variables(&lua).unwrap();
+        let root = values.get("UnboredExternalPlan").unwrap();
+        let get = crate::savedvars::table_get;
+        assert_eq!(
+            get(get(root, "outcome").unwrap(), "kind").and_then(|v| v.as_str()),
+            Some("currency")
+        );
+        assert_eq!(
+            crate::savedvars::array_items(get(root, "bonus").unwrap()).len(),
+            1
+        );
+        assert!(lua.contains("Bonus: the Infinite Timereaver may also drop."));
     }
 
     #[test]

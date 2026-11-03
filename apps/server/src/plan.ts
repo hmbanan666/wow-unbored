@@ -1,3 +1,5 @@
+import { requireOutcome } from "./outcome.ts";
+import { distance, type PlaceData } from "./places.ts";
 import {
   CONDITION_KINDS,
   cleanEntities,
@@ -48,16 +50,38 @@ export type MarkupCheck = {
   wish?: string | null;
   /** The Request's position, so a copied starting point can be dropped. */
   context?: PlayerContext | null;
+  /** Only points read from cached game tables, never Planner claims. */
+  places?: PlaceData;
 };
+
+function atPlayerPosition(
+  point: Partial<Waypoint>,
+  start: PlayerContext | null | undefined,
+): boolean {
+  return (
+    point.mapID !== undefined &&
+    point.mapID === start?.mapID &&
+    point.x !== undefined &&
+    point.y !== undefined &&
+    start.x !== undefined &&
+    start.y !== undefined &&
+    point.x >= start.x - 0.005 &&
+    point.x <= start.x + 0.005 &&
+    point.y >= start.y - 0.005 &&
+    point.y <= start.y + 0.005
+  );
+}
 
 /** Card limits (ADR 0038): short on purpose, the card is for casual players. */
 export const CARD_LIMITS = {
   titleMin: 3,
   titleMax: 40,
   goal: 160,
-  details: 600,
+  details: 200,
   rewards: 6,
-  why: 120,
+  why: 80,
+  stepTitle: 70,
+  stepNote: 400,
   stepRewards: 3,
   condition: 160,
 } as const;
@@ -92,7 +116,7 @@ function cutWords(text: string, fits: (value: string) => boolean): string {
   }
   if (!out) {
     out = text;
-    while (out && !fits(out)) out = out.slice(0, -1);
+    while (out && !fits(out)) out = [...out].slice(0, -1).join("");
   }
   return out.replace(/[\s,;:.-]+$/, "");
 }
@@ -415,7 +439,13 @@ export function planMarkupIds(raw: unknown): string[] {
   if (typeof raw !== "object" || raw === null) return [];
   const body = raw as Record<string, unknown>;
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
-  const texts: unknown[] = [body.note, body.goal, body.details, ...list(body.rewards)];
+  const texts: unknown[] = [
+    body.note,
+    body.goal,
+    body.details,
+    ...list(body.rewards),
+    ...list(body.bonus),
+  ];
   if (typeof body.contains === "object" && body.contains !== null) {
     for (const [key, values] of Object.entries(body.contains)) texts.push(key, ...list(values));
   }
@@ -472,6 +502,7 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
     count: 0,
   });
   const rewards = cleanRewards(body.rewards, CARD_LIMITS.rewards, scope, "Plan reward");
+  const bonus = cleanRewards(body.bonus, 3, scope, "Plan bonus");
   const tasks = cleanGroups(
     body.tasks.map((item, index) => cleanTask(item, index + 1, scope)),
     check,
@@ -484,14 +515,24 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
     throw new PlanError("generatedAt must be a unix timestamp.");
   }
   const plan: Plan = { v: 1, kind: "plan", mode, note, generatedAt, tasks };
+  // Legacy Plans may omit a target; a supplied target must never silently disappear.
+  if (body.outcome !== undefined) {
+    try {
+      plan.outcome = requireOutcome(body.outcome);
+    } catch (error) {
+      throw new PlanError((error as Error).message);
+    }
+  }
   if (budget !== undefined) plan.budget = budget;
   if (title !== undefined) plan.title = title;
   if (goal !== undefined) plan.goal = goal;
   if (details !== undefined) plan.details = details;
   if (rewards !== undefined) plan.rewards = rewards;
+  if (bonus !== undefined) plan.bonus = bonus;
   if (contains !== undefined) plan.contains = contains;
   const entities = usedEntities(scope);
   if (entities) plan.entities = entities;
+  cleanPlanPlaces(plan, check);
   return plan;
 }
 
@@ -638,7 +679,7 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
   if (!/^[A-Za-z0-9:._-]+$/.test(task.id)) {
     throw new PlanError(`Task ${index} has a bad id.`);
   }
-  if (typeof task.title !== "string" || task.title.trim() === "" || byteLength(task.title) > 240) {
+  if (typeof task.title !== "string" || task.title.trim() === "") {
     throw new PlanError(`Task ${index} needs a title.`);
   }
   const estMinutes = task.estMinutes === undefined ? 15 : integer(task.estMinutes, 1, 240);
@@ -659,19 +700,7 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
       throw new PlanError(`Task ${index} coordinates must be fractions from 0 to 1, not 0 to 100.`);
     }
   }
-  const start = scope.check.context;
-  if (
-    mapID !== undefined &&
-    mapID === start?.mapID &&
-    x !== undefined &&
-    y !== undefined &&
-    start.x !== undefined &&
-    start.y !== undefined &&
-    x >= start.x - 0.005 &&
-    x <= start.x + 0.005 &&
-    y >= start.y - 0.005 &&
-    y <= start.y + 0.005
-  ) {
+  if (atPlayerPosition({ mapID, x, y }, scope.check.context)) {
     mapID = undefined;
     x = undefined;
     y = undefined;
@@ -679,17 +708,34 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
       `Step ${index} point is the player's own position; use the destination or leave the point out.`,
     );
   }
-  let note: string | undefined;
-  if (task.note !== undefined && task.note !== null) {
-    if (typeof task.note !== "string" || byteLength(task.note) > 1000) {
-      throw new PlanError(`Task ${index} note must be a string of at most 1000 bytes.`);
-    }
-    note = task.note;
-  }
   const used = { count: 0 };
-  const title = cleanText(task.title.trim(), scope, `Task ${index} title`, used);
-  if (!title) throw new PlanError(`Task ${index} needs a title.`);
-  if (note !== undefined) note = cleanText(note, scope, `Task ${index} note`, used) || undefined;
+  let rawTitle = task.title.trim().replace(/\s+/g, " ");
+  if ([...rawTitle].length > CARD_LIMITS.stepTitle || byteLength(rawTitle) > 240) {
+    scope.check.warnings?.push(
+      `Task ${index} title: longer than 70 characters or 240 bytes; cut at a word`,
+    );
+    rawTitle = cutWords(
+      rawTitle,
+      (value) =>
+        [...value].length <= CARD_LIMITS.stepTitle &&
+        byteLength(value) <= 240 &&
+        !/\{[^}]*$/.test(value),
+    );
+  }
+  let title = cleanText(rawTitle, scope, `Task ${index} title`, used);
+  if (!title && rawTitle) throw new PlanError(`Task ${index} needs a title.`);
+  if (!title) {
+    // A single overlong token may leave no whole token; retain its readable label.
+    const label = parseMarkup(task.title)
+      .map((part) => (typeof part === "string" ? part : (part.label ?? "")))
+      .join("");
+    title =
+      cutWords(
+        label,
+        (value) => [...value].length <= CARD_LIMITS.stepTitle && byteLength(value) <= 240,
+      ) || "…";
+  }
+  const note = cardText(task.note, CARD_LIMITS.stepNote, scope, `Task ${index} note`, used);
   const why = cardText(task.why, CARD_LIMITS.why, scope, `Task ${index} why`, used);
   const condition = cleanCondition(task.condition, index, scope, used);
   const rewards = cleanRewards(
@@ -724,6 +770,80 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
       );
   }
   return cleaned;
+}
+
+/** Shared by every submission path; unknown points never become stored destinations. */
+export function cleanPlanPlaces(plan: Plan, check: MarkupCheck): void {
+  plan.tasks.forEach((task, index) => validateTaskPlaces(task, index + 1, check));
+}
+
+function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void {
+  if (!check.places) return;
+  const quests = new Set(
+    planMarkupIds({ tasks: [task] })
+      .filter((id) => id.startsWith("quest:"))
+      .map((id) => Number(id.slice(6))),
+  );
+  if (task.condition?.check?.kind === "quest") quests.add(task.condition.check.id);
+  if (task.complete?.kind === "quest" && typeof task.complete.questID === "number")
+    quests.add(task.complete.questID);
+  const validate = (point: Waypoint, route = false): Waypoint | undefined => {
+    if (atPlayerPosition(point, check.context)) {
+      check.warnings?.push(`Step ${index} point is the player's own position; dropped`);
+      return;
+    }
+    const candidates = check.places!.questPoints.filter(
+      (p) => quests.has(p.questID) && p.mapID === point.mapID,
+    );
+    // Multiple quest destinations or objective areas cannot prove which one this Step means.
+    if (!route && candidates.length === 1 && distance(point, candidates[0]) > 0.05) {
+      check.warnings?.push(`Step ${index} point replaced with the known quest point on this map`);
+      const { mapID, x, y } = candidates[0];
+      return validate({ mapID, x, y });
+    }
+    if (!route && candidates.length === 1) return point;
+    if (
+      check.places!.knownPoints.some((p) => p.mapID === point.mapID && distance(p, point) <= 0.005)
+    )
+      return point;
+    check.warnings?.push(
+      `Step ${index} unsupported travel point dropped; use a known destination or omit it`,
+    );
+    return;
+  };
+  if (task.mapID !== undefined && task.x !== undefined && task.y !== undefined) {
+    const point = validate({ mapID: task.mapID, x: task.x, y: task.y });
+    delete task.mapID;
+    delete task.x;
+    delete task.y;
+    if (point) Object.assign(task, point);
+    if (task.complete?.kind === "proximity") {
+      task.complete = point ? { ...task.complete, ...point } : { kind: "manual" };
+    }
+  }
+  const completion = (raw: Record<string, unknown>): Record<string, unknown> | undefined => {
+    if (raw.kind === "proximity") {
+      const point = validate(raw as Waypoint);
+      return point ? { ...raw, ...point } : undefined;
+    }
+    if (raw.kind === "any" && Array.isArray(raw.any)) {
+      const any = raw.any.flatMap((child: Record<string, unknown>) => {
+        const kept = completion(child);
+        return kept ? [kept] : [];
+      });
+      return any.length ? { kind: "any", any } : undefined;
+    }
+    return raw;
+  };
+  if (task.complete) task.complete = completion(task.complete) ?? { kind: "manual" };
+  if (task.waypoints) {
+    const points = task.waypoints.flatMap((point) => {
+      const kept = validate(point, true);
+      return kept ? [kept] : [];
+    });
+    if (points.length) task.waypoints = points;
+    else delete task.waypoints;
+  }
 }
 
 export function cleanWaypoints(raw: unknown, index: number | string): Waypoint[] | undefined {
@@ -768,7 +888,15 @@ export function encodeUnb1(plan: Plan): string {
   };
   if (plan.budget !== undefined) payload.budget = plan.budget;
   if (plan.note !== undefined) payload.note = plan.note;
-  for (const key of ["title", "goal", "details", "rewards", "contains"] as const) {
+  for (const key of [
+    "title",
+    "goal",
+    "details",
+    "rewards",
+    "contains",
+    "outcome",
+    "bonus",
+  ] as const) {
     if (plan[key] !== undefined) payload[key] = plan[key];
   }
   if (plan.entities !== undefined) payload.entities = plan.entities;
@@ -902,7 +1030,7 @@ function shortText(value: unknown, max = 120): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   let out = trimmed;
-  while (byteLength(out) > max) out = out.slice(0, -1);
+  while (byteLength(out) > max) out = [...out].slice(0, -1).join("");
   return out;
 }
 

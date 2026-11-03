@@ -47,3 +47,31 @@ One packer in the addon ([`addon/Core/Pack.lua`](../../addon/Core/Pack.lua)), un
 ## Entity markup
 
 Plan text may carry Entity tokens such as `{item:ID}`; see [`packages/contracts/markup.md`](../../packages/contracts/markup.md).
+
+## Plan outcome and short text
+
+[ADR 0068](../adr/0068-plan-outcome.md) requires exactly one `outcome` on `put_plan`, `answer_request.plan` and HTTP `PUT /v1/plan`. Stored/delivered Plan v1 keeps it optional for older Plans; `planSubmissionSchema` and `schema/plan-submission.schema.json` describe new submissions:
+
+| Kind | Fields | Live comparison |
+| --- | --- | --- |
+| `rep` | `factionID`, `standing` (integer 1–8) | `C_Reputation.GetFactionDataByID`: `reaction >= standing`; 6 is Honored. Use `currentStanding`, `currentReactionThreshold`, `nextReactionThreshold` for progress within the current standing. |
+| `renown` | `factionID`, `level` | `C_MajorFactions.GetMajorFactionData`: `renownLevel >= level`; current level progress comes from its earned reputation and threshold. |
+| `level` | `level` | `UnitLevel("player") >= level` |
+| `achievement` | `achievementID` | Achievement completion from the game |
+| `mount` | `id` | Mount id, as `{mount:ID}`, collected in the mount journal |
+| `pet` | `id` | Species id, as `{pet:ID}`, owned in the pet journal |
+| `toy` | `id` | Item id, as `{toy:ID}`, owned in the toy box |
+| `item` | `id` | Item id, as `{item:ID}`, at least one currently held |
+| `currency` | `currencyID`, `amount` | Target total quantity held, not an increment |
+
+Every id, level and currency amount is a positive integer up to 2,147,483,647. There are no current counts, percentages or Server-supplied thresholds. Reputation targets describe ordinary faction standing, not friendship ranks or paragon cycles. `outcome` does not auto-complete Steps. Missing or invalid submission outcomes are tool errors listing allowed kinds and invalid/missing fields; the planner retries in the same session. Targets already held are rejected with the kind, id and reached value. Ownership uses the Request's Character and Account Sections: achievements/achievementsMine, mounts, pets (species ids), toys, reputation (reaction or renown level), the highest known level from char and Request context, currencies (quantity), and item holdings in bags/bank/reagentBank/warband or equipped gear. An absent kind or target row is accepted with a `notes` entry, not a blocking warning; direct submissions without a Request use the latest Character, like the profile tools. Extra outcome fields are stripped. The 0.11 addon already ignores unknown Plan fields in `CleanPlan`, so new Plans remain readable; this part adds no progress chip yet. Optional `bonus: string[]` holds at most three existing reward tokens for chance rewards; these never go in the outcome or guaranteed rewards. The planner also writes a short, explicitly uncertain bonus line in a Step note, visible on 0.11 even though it ignores `bonus`. The Companion preserves both fields. ADR 0066 still adapts long notes in previously stored Plans for older addons.
+
+Step titles: 70 Unicode characters, with a 240-byte compatibility ceiling. Optional `why`: 80 UTF-8 bytes; Step `note`: 400 bytes; Plan `details`: 200 bytes. Server validation shortens excess text at a word with a warning, without splitting Unicode or entity tokens. These are output limits, not rejection rules for submissions. See the four-Step [Sporeggar fixture](../../packages/contracts/fixtures/plan-outcome.json). Reputation Conditions are deferred; existing Condition kinds are unchanged.
+
+### Place lookup
+
+`get_place({mapID, questID?, npcID?, lang?: "en" | "ru"})` takes a **UiMap** id. It returns `{mapID, name, continent: {mapID, name} | null, expansion, label, questPoints, flightPoints, nearestFlightPoint, unavailable}`. Names, labels and the nearest point can be null. Quest points contain `{mapID, x, y, questID}`; flight points contain `{mapID, x, y, id, name}`. Coordinates are fractions. The label includes the parent continent, for example `Shattrath City (Outland)`; expansion labels and NPC positions are currently unknown. Nearest means map distance from one unambiguous quest point, not travel distance, faction access or an unlocked flight.
+
+The Server reuses `UiMap` and the Wago CSV cache, adding bounded reads of `UiMapAssignment`, `QuestPOIBlob`, `QuestPOIPoint` and `TaxiNodes` (24 hours, 20 MB per table, the same cap as instance guides). Missing, malformed or oversized tables stay unavailable. Quest polygons, ambiguous map assignments, instance entrances and portal paths stay unknown. No numeric id coincidence supplies a place. Field definitions: [game table definitions](https://github.com/wowdev/WoWDBDefs/tree/master/definitions); world-to-map axes follow [DB2 map projection](https://github.com/TrinityCore/TrinityCore/blob/master/src/server/game/DataStores/DB2Stores.cpp).
+
+Plan submission reads only fresh cached points, with no network wait. A unique single-point quest POI on the same map replaces a point more than 0.05 map distance away, with a warning. Quest references come from entity tokens, Conditions and quest completion. Ambiguous or unavailable quest POIs never justify moving a Step to a guessed location; unsupported points are omitted. A quest reference alone is not coordinate evidence. Unreferenced points and route stops must match a known quest POI, flight point or cached journal encounter point within 0.005; unsupported points are dropped with warnings. Starting-position points are still dropped, including corrected points, route stops and nested proximity completion checks. The same grounding applies to MCP and HTTP submissions before storage. Planner-supplied NPC side tables are not evidence.
