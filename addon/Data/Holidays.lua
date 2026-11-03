@@ -157,8 +157,9 @@ ns.Data.Holidays = {
   -- =587 Cataclysm, =643 Mists of Pandaria, =1056 Warlords of Draenor,
   -- =1263 Legion; the page text names the expansion). Every week is titled
   -- "Timewalking Dungeon Event", so titles cannot tell them apart and are not
+  -- used.
   -- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
-  -- used. TODO(verify-in-game): that CalendarDayEvent.eventID carries these
+  -- TODO(verify-in-game): that CalendarDayEvent.eventID carries these
   -- ids; the calendar Section (v2) records iconTexture to add textures later.
   -- Left out, not sourced: the weekly "five dungeons" quest ids (wowhead lists
   -- several level versions per week), vendor prices (so no currency
