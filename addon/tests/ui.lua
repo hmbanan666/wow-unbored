@@ -787,13 +787,13 @@ mascot.buttons.use:Click()
 check(ns.Session.state.source == "companion" and #ns.Session.state.tasks == 3, "Switch starts the Full plan")
 check(mascot.view.kind == "step" and textOf(mascot.message):find("Fly to Dalaran", 1, true) == 1, "the step as written")
 check(textOf(mascot.title) == "Ride to Dalaran", "the card is titled by the plan: " .. textOf(mascot.title))
--- Closed by default (casual first): title, what to do, why, the main reward, Done and Skip.
+-- Closed: title, progress, action, reward and distance; explanation stays inside.
 check(not ns.Mascot.CardOpen(), "the card starts closed")
-check(textOf(mascot.why) == "Dalaran has the portal you need", "the Step says why")
+check(not mascot.why:IsShown(), "closed: no extra explanation")
 check(mascot.message.height >= 2 * LINE_HEIGHT, "a long step wraps")
 check(mascot.rewardLines[1]:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true)
   and not mascot.rewardsHeader:IsShown(), "closed: the main reward, no header: " .. textOf(mascot.rewardLines[1]))
-for _, region in ipairs({ "pipRow", "goal", "details", "list", "where" }) do
+for _, region in ipairs({ "goal", "details", "list" }) do
   check(not mascot[region]:IsShown(), "closed: no " .. region)
 end
 check(mascot.cardToggle:IsShown() and textOf(mascot.cardToggle.label) == "Show more", "one Show more toggle")
@@ -821,14 +821,17 @@ rowFits("a step card")
 local closedHeight = mascot.bubble.height
 
 mascot.cardToggle:Click()
-check(ns.Mascot.CardOpen() and UnboredDB.mascot.cardOpen == true, "Show more opens the card and is remembered")
+check(ns.Mascot.CardOpen() and ns.Session.state.cardOpen == true, "Show more is remembered on this Plan")
 check(textOf(mascot.cardToggle.label) == "Show less", "the toggle now says Show less")
 check(mascot.view.pips and mascot.view.pips.done == 1 and mascot.view.pips.total == 4, "open: the pips, 1 of 4 done")
 check(mascot.pipRow:IsShown(), "the pip row is on the card")
 check(textOf(mascot.goal) == "Get to Dalaran and set your hearth there", "open: the goal")
-check(mascot.details:IsShown() and textOf(mascot.details):find("portal room", 1, true), "open: the plan details")
-check(textOf(mascot.details):find("never be cut", 1, true) and mascot.details.height >= 4 * LINE_HEIGHT,
-  "the Step note is in Details and wraps")
+check(mascot.planDetails:IsShown() and textOf(mascot.planDetails):find("portal room", 1, true),
+  "open: Plan details in the header only")
+check(not mascot.details:IsShown(), "open: the Step note stays behind More")
+mascot.noteToggle:Click()
+check(textOf(mascot.details):find("never be cut", 1, true)
+  and not textOf(mascot.details):find("portal room", 1, true), "More shows only the Step note")
 check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
   "open: the rewards with their header")
 check(textOf(mascot.where):find("Point 1/2: Gate", 1, true), "open: the route point: " .. textOf(mascot.where))
@@ -848,10 +851,10 @@ mascot.cardToggle:Click()
 check(not ns.Mascot.CardOpen() and not mascot.list:IsShown() and mascot.bubble.height == closedHeight,
   "Show less closes it again")
 -- D165: the open card had a footer; closed, nothing of the open card is left on screen.
-for _, region in ipairs({ "where", "goal", "details", "list", "pipRow", "rewardsHeader" }) do
+for _, region in ipairs({ "goal", "details", "list", "rewardsHeader" }) do
   check(not mascot[region]:IsShown(), "closed after open: no " .. region)
 end
-check(textOf(mascot.where) == "", "closed: the footer time is emptied too")
+check(mascot.where:IsShown() and mascot.pipRow:IsShown(), "closed: footer and progress stay visible")
 for i = 2, #mascot.rewardLines do
   check(not mascot.rewardLines[i]:IsShown(), "closed after open: no reward line " .. i)
 end
@@ -861,6 +864,15 @@ check(mascot.cardToggle.chevron.rotation == math.pi / 2, "closed again: the chev
 mascot.cardToggle:Click()
 check(mascot.cardToggle.chevron.rotation == -math.pi / 2, "open: the chevron points up")
 mascot.cardToggle:Click()
+
+-- A new Plan starts collapsed even if the previous one was expanded.
+mascot.cardToggle:Click()
+local previousCardPlan = ns.Session.state
+ns.Session:ApplyPlan(UnboredExternalPlan, "companion")
+check(not mascot.CardOpen(), "replacing a Plan resets expansion")
+ns.Session.state = previousCardPlan
+ns.Session:RefreshUI()
+mascot:ToggleCard()
 
 -- Welcome back on login.
 ns.Session.welcomeBack = true
@@ -1431,15 +1443,15 @@ check(reEncoded.title == card.title and reEncoded.tasks[2].condition.text == car
 local old = assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan.json"), false))
 check(old.title == nil and old.rewards == nil and #old.tasks == 2, "a 0.7 plan still loads, with no card fields")
 
--- New goal fields are optional to older addons; Steps and the explicit bonus note remain usable.
+-- Shared Server fixtures keep their targets, bonuses and completable Steps.
 local currencyRaw = readJson("../packages/contracts/fixtures/plan-currency.json")
 local currencyPlan = assert(ns.ValidatePlan(currencyRaw, false))
 check(#currencyPlan.tasks == 1 and currencyPlan.tasks[1].complete.kind == "currency"
   and currencyPlan.tasks[1].complete.minQuantity == 5000,
   "the shared currency outcome fixture keeps its completable Step")
-check(currencyPlan.outcome == nil and currencyPlan.bonus == nil
+check(currencyPlan.outcome.amount == 5000 and currencyPlan.bonus[1] == "{mount:781}"
   and currencyPlan.tasks[1].note == currencyRaw.tasks[1].note,
-  "older addons ignore new goal fields while keeping the bonus note")
+  "currency target is a total amount and its bonus survives validation")
 local goalPlan = assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan-outcome.json"), false))
 check(#goalPlan.tasks == 4 and goalPlan.tasks[4].complete.kind == "quest",
   "the shared reputation outcome fixture keeps every Step")
@@ -1457,6 +1469,7 @@ ns.Session:ApplyPlan(raid, "companion", true)
 ns.Session:Done()
 if not ns.Mascot.CardOpen() then mascot.cardToggle:Click() end
 mascot:Refresh()
+mascot.noteToggle:Click()
 check(mascot.detailsScroll ~= nil, "long raid details have their own scroll area")
 if mascot.detailsScroll then
   check(mascot.detailsScroll:GetHeight() <= 180, "expanded instructions stay within 180 pixels")
@@ -1498,6 +1511,7 @@ check(textOf(mascot.message) == "Talk to |cffffd100|Haddon:Unbored:npc:12345|h[F
 if not ns.Mascot.CardOpen() then
   mascot.cardToggle:Click()
 end
+mascot.noteToggle:Click()
 check(textOf(mascot.details):find("|Hitem:6948|h[Hearthstone]|h", 1, true) ~= nil, "an item link with the game's name")
 check(textOf(mascot.details):find("|Haddon:Unbored:pin:2339:52.1:47.3|h[the forge]|h", 1, true) ~= nil, "a pin link")
 check(ns.Markup.Plain(linked.tasks[1].title, linked.tasks[1].npcs) == "Talk to Fixer Kev", "plain text for the tracker")
@@ -1839,6 +1853,224 @@ check(type(UnboredCharDB.data) == "table" and type(UnboredCharDB.data.sections) 
 
 check(reloads == 4, "only the Send now, Refresh and Load clicks ever reloaded: " .. reloads)
 ns.Now = realNow
+
+do
+  local oldCurrency, oldAfter = C_CurrencyInfo, C_Timer.After
+  local quantity, reads, callbacks = 12, 0, {}
+  C_CurrencyInfo = { GetCurrencyInfo = function()
+    reads = reads + 1
+    return { name = "Badges", quantity = quantity }
+  end }
+  C_Timer.After = function(_, fn) callbacks[#callbacks + 1] = fn end
+  ns.Session:ApplyPlan({ title = "Gather badges", outcome = { kind = "currency", currencyID = 42, amount = 20 },
+    bonus = { "{item:6948|Hearthstone}" }, tasks = { { id = "badges", title = "Complete the quest",
+      rewards = { "{item:6948|Hearthstone}" } } } }, "companion")
+  mascot.forceChoice, mascot.item, mascot.answer = nil, nil, nil
+  mascot:Refresh()
+  check(mascot.outcomeChip:IsShown() and mascot.outcomeChip.bar:IsShown(), "closed card has an outcome bar")
+  check(textOf(mascot.outcomeChip.label):find("12 / 20", 1, true), "outcome chip shows owned currency")
+  check(textOf(mascot.bonus):find("Possible bonus:", 1, true), "bonus is explicitly uncertain")
+  check(mascot.cardToggle:IsShown(), "a sole Step reward makes the outcome card expandable")
+  mascot.cardToggle:Click()
+  check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
+    "expanded outcome card keeps Step rewards")
+  mascot.cardToggle:Click()
+  local readsBefore = reads
+  mascot:Refresh()
+  mascot:UpdateDistance()
+  check(reads == readsBefore, "redraws and distance updates do not poll outcome APIs")
+  quantity = 20
+  ns.Events.OnEvent("CURRENCY_DISPLAY_UPDATE", 42)
+  ns.Events.OnEvent("CURRENCY_DISPLAY_UPDATE", 42)
+  check(#callbacks == 1, "outcome event bursts settle into one redraw")
+  table.remove(callbacks, 1)()
+  check(textOf(mascot.outcomeChip.label):find("Done", 1, true) and not mascot.outcomeChip.bar:IsShown(),
+    "currency event completes the chip without a reload")
+  InCombatLockdown = function() return true end
+  readsBefore = reads
+  ns.Events.OnEvent("CURRENCY_DISPLAY_UPDATE", 42)
+  mascot:Refresh()
+  check(reads == readsBefore, "outcome events never read in combat")
+  InCombatLockdown = nil
+  ns.Events.OnEvent("PLAYER_REGEN_ENABLED")
+  for _, fn in ipairs(callbacks) do fn() end
+  check(reads > readsBefore, "deferred progress refreshes after combat")
+  callbacks = {}
+  quantity = 10
+  driver.scripts.OnEvent(driver, "PLAYER_ENTERING_WORLD", false, false)
+  for _, fn in ipairs(callbacks) do fn() end
+  check(textOf(mascot.outcomeChip.label):find("10 / 20", 1, true),
+    "entering the world refreshes outcome data missed during a loading screen")
+  C_CurrencyInfo, C_Timer.After = oldCurrency, oldAfter
+end
+
+do
+  local oldMap, oldAfter = C_Map, C_Timer.After
+  local playerMap, pins = 81, 0
+  local maps = {
+    [81] = { mapID = 81, name = "Silithus", mapType = 3, parentMapID = 12 },
+    [12] = { mapID = 12, name = "Kalimdor", mapType = 2, parentMapID = 947 },
+    [102] = { mapID = 102, name = "Zangarmarsh", mapType = 3, parentMapID = 101 },
+    [101] = { mapID = 101, name = "Outland", mapType = 2, parentMapID = 947 },
+  }
+  C_Map = {
+    GetMapInfo = function(id) return maps[id] end,
+    GetBestMapForUnit = function() return playerMap end,
+    SetUserWaypoint = function(point) pins = pins + 1; C_Map.pin = point end,
+    GetUserWaypoint = function() return C_Map.pin end,
+    ClearUserWaypoint = function() C_Map.pin = nil end,
+  }
+  C_Timer.After = function(_, fn) fn() end
+  ns.Session:ApplyPlan({ title = "Sporeggar to Honored", goal = "Help Sporeggar", details = "One naga errand.",
+    tasks = { { id = "travel", title = "Reach Sporeggar", mapID = 102, x = 0.195, y = 0.5 },
+      { id = "turnin", title = "Turn in the quest", note = "Talk to Gzhun'tt." } } }, "companion")
+  check(pins == 0 and C_Map.pin == nil, "another continent defers the native waypoint")
+  check(textOf(mascot.route):find("Outland", 1, true), "collapsed card names the target continent")
+  mascot.cardToggle:Click()
+  check(textOf(mascot.goal) == "Help Sporeggar" and textOf(mascot.planDetails) == "One naga errand.",
+    "Plan goal and details appear once in the expanded header")
+  for _, row in ipairs(mascot.view.all) do
+    check(not row.detail or not row.detail:find("One naga errand.", 1, true), "Step list never repeats Plan details")
+  end
+  playerMap = 102
+  ns.Events.OnEvent("ZONE_CHANGED_NEW_AREA")
+  check(pins == 1 and C_Map.pin.uiMapID == 102, "zone change activates the deferred waypoint")
+  check(not mascot.route:IsShown(), "route hint clears after arrival on the continent")
+  ns.Events.Pulse()
+  check(pins == 1, "the distance pulse does not reset the native waypoint")
+  ns.Session:Done()
+  check(mascot.CardOpen() and not mascot.details:IsShown(), "within a Plan expansion persists, notes start hidden")
+  C_Map, C_Timer.After = oldMap, oldAfter
+end
+
+-- Progress bursts should cost nothing when the card is not on screen.
+do
+  local oldAfter, oldInfo = C_Timer.After, GetAchievementInfo
+  local reads, callbacks = 0, {}
+  C_Timer.After = function(_, fn) callbacks[#callbacks + 1] = fn end
+  GetAchievementInfo = function() reads = reads + 1; return 42, "Explorer", 10, false end
+  ns.Session:ApplyPlan({ title = "Explore", outcome = { kind = "achievement", achievementID = 42 },
+    tasks = { { id = "explore", title = "Explore the shore" } } }, "companion", true)
+  mascot.forceChoice = true
+  mascot:Refresh()
+  local readsBefore = reads
+  ns.Outcome.dirty = nil
+  for _ = 1, 10 do ns.Outcome.OnEvent("CRITERIA_UPDATE") end
+  check(reads == readsBefore and #callbacks == 0 and not ns.Outcome.dirty,
+    "criteria bursts do nothing while the choice Bubble replaces the card")
+  mascot.forceChoice = nil
+  mascot:Reveal()
+  check(reads > readsBefore, "returning from choices refreshes progress missed while the card was absent")
+  readsBefore = reads
+  mascot:Hide(true)
+  ns.Outcome.dirty = nil
+  ns.Outcome.OnEvent("CRITERIA_UPDATE")
+  check(#callbacks == 0 and not ns.Outcome.dirty, "a hidden mascot does no outcome event work")
+  mascot:Reveal()
+  check(reads > readsBefore, "revealing a hidden mascot refreshes progress")
+  readsBefore = reads
+  mascot:Collapse()
+  ns.Outcome.dirty = nil
+  ns.Outcome.OnEvent("CRITERIA_UPDATE")
+  check(#callbacks == 0 and not ns.Outcome.dirty, "a portrait-only mascot does no outcome event work")
+  mascot:Reveal()
+  check(reads > readsBefore, "restoring the Bubble from its portrait refreshes progress")
+  readsBefore = reads
+  for _ = 1, 10 do ns.Outcome.OnEvent("CRITERIA_UPDATE") end
+  check(reads == readsBefore and #callbacks == 1, "visible criteria bursts schedule only one settled refresh")
+  for _, fn in ipairs(callbacks) do fn() end
+  callbacks = {}
+  check(reads == readsBefore + 1, "the settled criteria burst reads achievement progress once")
+  ns.Outcome.OnEvent("CRITERIA_UPDATE")
+  mascot.forceChoice = true
+  mascot:Refresh()
+  readsBefore = reads
+  for _, fn in ipairs(callbacks) do fn() end
+  callbacks = {}
+  check(reads == readsBefore and mascot.view.kind == "choice", "a pending refresh does not read a replaced card")
+  mascot.forceChoice = nil
+  mascot:Reveal()
+  ns.Outcome.OnEvent("CRITERIA_UPDATE")
+  InCombatLockdown = function() return true end
+  mascot:Refresh()
+  readsBefore = reads
+  for _, fn in ipairs(callbacks) do fn() end
+  callbacks = {}
+  for _ = 1, 10 do ns.Outcome.OnEvent("CRITERIA_UPDATE") end
+  check(reads == readsBefore and #callbacks == 0 and ns.Outcome.dirty,
+    "combat only leaves progress dirty, including a previously scheduled callback")
+  InCombatLockdown = nil
+  ns.Outcome.OnEvent("PLAYER_REGEN_ENABLED")
+  -- The regular combat-end refresh restores the hidden Bubble.
+  mascot:Refresh()
+  for _, fn in ipairs(callbacks) do fn() end
+  callbacks = {}
+  check(reads > readsBefore, "progress catches up when combat ends")
+  ns.Outcome.OnEvent("CRITERIA_UPDATE")
+  local oldCount, owned = C_Item.GetItemCount, 0
+  C_Item.GetItemCount = function() return owned end
+  ns.Session:ApplyPlan({ title = "Find treasure", outcome = { kind = "item", id = 6948 },
+    tasks = { { id = "treasure", title = "Find the treasure" } } }, "companion", true)
+  owned = 1
+  for _ = 1, 10 do ns.Outcome.OnEvent("GET_ITEM_INFO_RECEIVED") end
+  check(#callbacks == 1, "item information bursts also settle into one refresh")
+  for _, fn in ipairs(callbacks) do fn() end
+  check(textOf(mascot.outcomeChip.label):find("Done", 1, true),
+    "a Plan replaced during debounce still receives its own progress update")
+  callbacks = {}
+  mascot.forceChoice = true
+  mascot:Refresh()
+  ns.Outcome.dirty = nil
+  for _ = 1, 10 do ns.Outcome.OnEvent("GET_ITEM_INFO_RECEIVED") end
+  check(#callbacks == 0 and not ns.Outcome.dirty, "item information bursts do nothing without a visible card")
+  mascot.forceChoice = nil
+  mascot:Reveal()
+  C_Timer.After, GetAchievementInfo = oldAfter, oldInfo
+  C_Item.GetItemCount = oldCount
+end
+
+-- Contract delivery reaches the visible card, including older reward-only Plans.
+do
+  local oldCurrency, oldRep, oldMount = C_CurrencyInfo, C_Reputation, C_MountJournal
+  C_CurrencyInfo = { GetCurrencyInfo = function() return { name = "Timewarped Badges", quantity = 3200 } end }
+  C_Reputation = { GetFactionDataByID = function()
+    return { name = "Sporeggar", reaction = 5, currentStanding = 8885, currentReactionThreshold = 3000 }
+  end }
+  mascot.forceChoice, mascot.item, mascot.answer = nil, nil, nil
+  C_MountJournal = { GetMountInfoByID = function() return "Infinite Timereaver", 201098 end }
+  UnboredDB.mascot.cardOpen = true
+  ns.Session:ApplyPlan(assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan-outcome.json"))),
+    "companion", true)
+  check(mascot.outcomeChip:IsShown() and textOf(mascot.outcomeChip.label):find("Honored · Sporeggar", 1, true)
+    and textOf(mascot.outcomeChip.label):find("5,885 / 6,000", 1, true),
+    "shared reputation fixture reaches the live outcome chip through import and ApplyPlan")
+  check(not mascot.CardOpen() and not mascot.goal:IsShown(), "the old Account cardOpen value is ignored")
+  check(mascot.pipRow:IsShown() and mascot.stepCount:IsShown(), "multiple Steps keep their pips and count")
+  mascot.cardToggle:Click()
+  check(mascot.CardOpen(), "the previous Plan is expanded before replacement")
+  ns.Session:ApplyPlan(assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan-currency.json"))),
+    "companion", true)
+  check(mascot.outcomeChip:IsShown() and textOf(mascot.outcomeChip.label):find("3,200 / 5,000", 1, true),
+    "shared currency fixture reaches the live total-amount chip through import and ApplyPlan")
+  check(mascot.bonus:IsShown() and textOf(mascot.bonus):find("Possible bonus:", 1, true),
+    "the shared currency fixture renders an explicitly uncertain bonus")
+  check(not mascot.CardOpen() and not ns.Session.state.cardOpen,
+    "ApplyPlan resets expansion even with the old Account cardOpen value set")
+  check(not mascot.pipRow:IsShown() and not mascot.stepCount:IsShown(),
+    "a single-Step Plan draws neither pips nor Step 1 of 1")
+  mascot.cardToggle:Click()
+  check(not mascot.pipRow:IsShown() and not mascot.stepCount:IsShown(),
+    "expanding a single-Step Plan still draws neither pips nor a count")
+  local legacy = readJson("../packages/contracts/fixtures/plan-currency.json")
+  legacy.outcome, legacy.bonus = nil, nil
+  legacy.rewards = { "{item:6948|Hearthstone}" }
+  ns.Session:ApplyPlan(assert(ns.ValidatePlan(legacy)), "companion", true)
+  check(not mascot.outcomeChip:IsShown() and not mascot.bonus:IsShown()
+    and mascot.rewardLines[1]:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
+    "a 0.11-style Plan without outcome or bonus keeps its original reward chip")
+  UnboredDB.mascot.cardOpen = nil
+  C_CurrencyInfo, C_Reputation, C_MountJournal = oldCurrency, oldRep, oldMount
+end
 
 if fails > 0 then
   io.stderr:write(fails .. " failed, " .. checks .. " checks\n")

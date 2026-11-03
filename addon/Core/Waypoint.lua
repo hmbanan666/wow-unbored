@@ -1,4 +1,4 @@
--- The current step always has the arrow. The native user waypoint is set and
+-- The current step gets an arrow on its continent. The native waypoint is set and
 -- super-tracked so Blizzard's on-screen arrow and distance appear at once.
 -- When TomTom is loaded its crazy arrow is added on top, unless turned off.
 -- https://warcraft.wiki.gg/wiki/API_C_Map.SetUserWaypoint
@@ -28,6 +28,40 @@ function ns.Waypoint.Target(task)
     return { mapID = task.mapID, x = task.x, y = task.y }, 1, 1
   end
   return nil
+end
+
+-- Parent chains are small and static; missing data is retried on a later event.
+local continents = {}
+function ns.Waypoint.Continent(mapID)
+  if ns.IsCombat() or not C_Map or not C_Map.GetMapInfo then return nil end
+  if continents[mapID] then return continents[mapID] end
+  local original, seen = mapID, {}
+  for _ = 1, 20 do
+    if not mapID or mapID == 0 or seen[mapID] then return nil end
+    seen[mapID] = true
+    local info = ns.Call(C_Map.GetMapInfo, mapID)
+    if type(issecretvalue) == "function" and ns.Call(issecretvalue, info) ~= false then return nil end
+    if type(info) ~= "table" then return nil end
+    if ns.AsNumber(info.mapType) == 2 then
+      local continent = { id = mapID, name = ns.SafeString(info.name) }
+      continents[original] = continent
+      return continent
+    end
+    mapID = ns.AsNumber(info.parentMapID)
+  end
+end
+
+function ns.Waypoint.OtherContinent(point)
+  if not point or ns.IsCombat() then return nil end
+  local target = ns.Waypoint.Continent(point.mapID)
+  local mapID = C_Map and ns.AsNumber(ns.Call(C_Map.GetBestMapForUnit, "player"))
+  local here = mapID and ns.Waypoint.Continent(mapID)
+  if target and (not here or target.id ~= here.id) then return target end
+end
+
+function ns.Waypoint.RouteHint(task)
+  local continent = ns.Waypoint.OtherContinent(ns.Waypoint.Target(task))
+  if continent and continent.name then return ns.T("ROUTE_CONTINENT", continent.name) end
 end
 
 function ns.Waypoint:ClearTomTom()
@@ -140,6 +174,7 @@ function ns.Waypoint:Point(mapID, x, y, title)
   self:ClearNative()
   self:ClearTomTom()
   local point = { mapID = mapID, x = x, y = y }
+  if self.OtherContinent(point) then return false end
   local native = setNative(point)
   if native then
     self.nativePoint = point
@@ -151,6 +186,7 @@ end
 -- Point the arrow at the task's current target. Does nothing when that target
 -- already has the arrow, so it is cheap to call on every refresh.
 function ns.Waypoint:Sync(task, force)
+  if ns.IsPaused() then return false end
   local point, index = ns.Waypoint.Target(task)
   if not point then
     if self.key then
@@ -158,12 +194,13 @@ function ns.Waypoint:Sync(task, force)
     end
     return false
   end
+  if self.OtherContinent(point) then
+    if self.key or self.nativePoint or self.tomtomUID then self:ClearOwned() end
+    return false
+  end
   local key = tostring(task.id) .. "#" .. tostring(index)
   if key == self.key and not force then
     return true
-  end
-  if ns.IsPaused() then
-    return false
   end
   self:ClearOwned()
   local native = setNative(point)
