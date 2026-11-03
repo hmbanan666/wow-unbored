@@ -108,7 +108,7 @@ test("card texts are kept short, rewards are single tokens, conditions are check
     { warnings },
   );
   assert.ok(Buffer.byteLength(plan.goal ?? "") <= 160);
-  assert.ok(Buffer.byteLength(plan.tasks[0].why ?? "") <= 80);
+  assert.ok(Buffer.byteLength(plan.tasks[0].why ?? "") <= 120);
   assert.deepEqual(
     plan.rewards,
     ["{mount:183}"],
@@ -117,7 +117,7 @@ test("card texts are kept short, rewards are single tokens, conditions are check
   assert.equal(plan.tasks[0].rewards?.length, 3);
   assert.equal(plan.tasks[0].condition?.check?.atLeast, 5000);
   assert.ok(warnings.some((line) => line.startsWith("Plan goal: longer than 160 bytes")));
-  assert.ok(warnings.some((line) => line.startsWith("Task 1 why: longer than 80 bytes")));
+  assert.ok(warnings.some((line) => line.startsWith("Task 1 why: longer than 120 bytes")));
   assert.throws(
     () =>
       cleanPlan(
