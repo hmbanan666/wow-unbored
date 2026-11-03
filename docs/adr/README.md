@@ -64,6 +64,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0060. Idea button details](0060-idea-button-details.md) (amends 0040, 0047)
 - [0061. Instance guides](0061-instance-guides.md) (amends 0038)
 - [0062. Connect again keeps the old key until the new one is used](0062-safe-connect-again.md) (amends 0045)
+- [0063. Each Section is fresh or stale on its own](0063-section-freshness.md) (amends 0029, 0057)
 - [0064. Damaged Companion settings](0064-damaged-companion-settings.md)
 - [0065. Friendly Plans and destination points](0065-plan-presentation.md)
 - [0066. Safe Step notes for older addons](0066-older-addon-step-notes.md)
