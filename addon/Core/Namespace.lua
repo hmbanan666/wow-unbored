@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.addon = addonName or "Unbored"
 -- Must match ## Version in Unbored.toc (tests/run.lua checks it).
-ns.VERSION = "0.11.0"
+ns.VERSION = "0.12.0"
 ns.MASCOT_NAME = "Bory"
 ns.MEDIA = "Interface\\AddOns\\Unbored\\Media\\"
 

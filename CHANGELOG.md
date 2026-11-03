@@ -2,6 +2,18 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## 0.12.0
+
+- Every plan has one clear goal you will actually get: an achievement, a reputation rank, a currency amount, a quest reward or a collectible from a sure source. Surprise me too. A lucky drop is only ever a "possible bonus".
+- The plan card is lighter. Closed, it shows the goal, the step you are on and live progress, such as a reputation bar "5 885 / 6 000" that fills as you play. The plan's description shows once, and step details open with "More".
+- Steps are short and talk to you: one line of what to do, a zone on another continent says which one ("Shattrath City (Outland)"), and the arrow points where you are going. When the target is on another continent, Bory says where to go instead of pointing nowhere.
+- Self-check in Settings tests the game features Bory reads and sends a short report, so broken ones can be fixed fast.
+- Fixed: Connect again after Forget my data keeps your old key until the new one works, so a lost connection or a closed Companion no longer means pairing again.
+- Fixed: a damaged Companion settings file is kept as a copy and you are told, instead of starting over silently.
+- Fixed: plans are no longer cut off while the Server updates, and game data from different characters no longer pushes newer data out.
+- Новое: у каждого плана одна понятная цель с почти гарантированным результатом, а случайный дроп только «возможный бонус». Карточка плана легче, в ней виден живой прогресс. В настройках появилась самопроверка.
+- Исправлено: «Подключить снова» не теряет ключ, повреждённые настройки Companion сохраняются копией, планы не обрываются при обновлении сервера.
+
 ## 0.11.0
 
 - Idea buttons say what they are: the kind (achievement, chain, mount, event, rare), how far along you are ("3/16") and one line of what to do. Hover for the full goal and the rewards.
