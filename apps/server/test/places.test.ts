@@ -490,3 +490,34 @@ test("cached file versions refresh names and preserve quoted CSV cells", async (
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("quests nested in completion conditions correct both destination and proximity", () => {
+  const plan = cleanPlan(
+    {
+      title: "Finish the quest",
+      tasks: [
+        {
+          id: "quest",
+          title: "Turn it in",
+          mapID: 102,
+          x: 0.8,
+          y: 0.8,
+          complete: {
+            kind: "any",
+            any: [
+              { kind: "quest", questID: 9726 },
+              { kind: "proximity", mapID: 102, x: 0.8, y: 0.8 },
+            ],
+          },
+        },
+      ],
+    },
+    1,
+    { places: { questPoints: [{ questID: 9726, mapID: 102, x: 0.2, y: 0.4 }], knownPoints: [] } },
+  );
+  assert.equal(plan.tasks[0].x, 0.2);
+  assert.deepEqual(plan.tasks[0].complete?.any, [
+    { kind: "quest", questID: 9726 },
+    { kind: "proximity", mapID: 102, x: 0.2, y: 0.4, radiusYards: 40 },
+  ]);
+});

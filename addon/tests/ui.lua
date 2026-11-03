@@ -1431,6 +1431,19 @@ check(reEncoded.title == card.title and reEncoded.tasks[2].condition.text == car
 local old = assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan.json"), false))
 check(old.title == nil and old.rewards == nil and #old.tasks == 2, "a 0.7 plan still loads, with no card fields")
 
+-- New goal fields are optional to older addons; Steps and the explicit bonus note remain usable.
+local currencyRaw = readJson("../packages/contracts/fixtures/plan-currency.json")
+local currencyPlan = assert(ns.ValidatePlan(currencyRaw, false))
+check(#currencyPlan.tasks == 1 and currencyPlan.tasks[1].complete.kind == "currency"
+  and currencyPlan.tasks[1].complete.minQuantity == 5000,
+  "the shared currency outcome fixture keeps its completable Step")
+check(currencyPlan.outcome == nil and currencyPlan.bonus == nil
+  and currencyPlan.tasks[1].note == currencyRaw.tasks[1].note,
+  "older addons ignore new goal fields while keeping the bonus note")
+local goalPlan = assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan-outcome.json"), false))
+check(#goalPlan.tasks == 4 and goalPlan.tasks[4].complete.kind == "quest",
+  "the shared reputation outcome fixture keeps every Step")
+
 -- Long raid instructions stay intact and scroll separately from the boss list.
 local raidRaw = readJson("../packages/contracts/fixtures/plan-instance.json")
 local raid = assert(ns.ValidatePlan(raidRaw, false))

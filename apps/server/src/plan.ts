@@ -105,7 +105,7 @@ const PRESET_KEYS = [
 ];
 
 /** Cut at the last word boundary that fits, without an ellipsis (D94). */
-function cutWords(text: string, fits: (value: string) => boolean): string {
+function cutWords(text: string, maxChars: number, fits: (value: string) => boolean): string {
   if (fits(text)) return text;
   const words = text.split(/\s+/);
   let out = "";
@@ -115,7 +115,10 @@ function cutWords(text: string, fits: (value: string) => boolean): string {
     out = next;
   }
   if (!out) {
-    out = text;
+    // Bound the fallback before trimming: an unbroken word may be megabytes long.
+    out = Array.from(text.slice(0, maxChars * 2))
+      .slice(0, maxChars)
+      .join("");
     while (out && !fits(out)) out = [...out].slice(0, -1).join("");
   }
   return out.replace(/[\s,;:.-]+$/, "");
@@ -142,7 +145,7 @@ export function cleanTitle(raw: unknown, check: MarkupCheck = {}): string | unde
   const chars = (value: string) => [...value].length;
   if (chars(title) > CARD_LIMITS.titleMax) {
     warn(`longer than ${CARD_LIMITS.titleMax} characters; cut at a word. Keep it short and catchy`);
-    title = cutWords(title, (value) => chars(value) <= CARD_LIMITS.titleMax);
+    title = cutWords(title, CARD_LIMITS.titleMax, (value) => chars(value) <= CARD_LIMITS.titleMax);
   }
   if (chars(title) < CARD_LIMITS.titleMin) {
     warn(`shorter than ${CARD_LIMITS.titleMin} characters; dropped`);
@@ -179,7 +182,7 @@ function cardText(
   if (!text) return undefined;
   if (byteLength(text) > max) {
     scope.check.warnings?.push(`${where}: longer than ${max} bytes; cut at a word. Keep it short`);
-    text = cutWords(text, (value) => byteLength(value) <= max && !/\{[^}]*$/.test(value));
+    text = cutWords(text, max, (value) => byteLength(value) <= max && !/\{[^}]*$/.test(value));
   }
   return cleanText(text, scope, where, used) || undefined;
 }
@@ -716,6 +719,7 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
     );
     rawTitle = cutWords(
       rawTitle,
+      CARD_LIMITS.stepTitle,
       (value) =>
         [...value].length <= CARD_LIMITS.stepTitle &&
         byteLength(value) <= 240 &&
@@ -732,6 +736,7 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
     title =
       cutWords(
         label,
+        CARD_LIMITS.stepTitle,
         (value) => [...value].length <= CARD_LIMITS.stepTitle && byteLength(value) <= 240,
       ) || "…";
   }
@@ -784,8 +789,12 @@ export function taskQuestIds(task: Task): Set<number> {
       .map((id) => Number(id.slice(6))),
   );
   if (task.condition?.check?.kind === "quest") quests.add(task.condition.check.id);
-  if (task.complete?.kind === "quest" && typeof task.complete.questID === "number")
-    quests.add(task.complete.questID);
+  const visit = (complete: Record<string, unknown> | undefined) => {
+    if (complete?.kind === "quest" && typeof complete.questID === "number")
+      quests.add(complete.questID);
+    if (complete?.kind === "any" && Array.isArray(complete.any)) complete.any.forEach(visit);
+  };
+  visit(task.complete);
   return quests;
 }
 

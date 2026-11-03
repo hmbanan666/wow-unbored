@@ -306,3 +306,24 @@ test("HTTP planner submissions enforce the same required and unowned outcome rul
     await app.close();
   }
 });
+
+test("put_plan bounds work when shortening long unbroken text", async () => {
+  const app = await setup();
+  try {
+    await app.call({ ...plan, outcome: { kind: "level", level: 80 } });
+    const start = performance.now();
+    const result = await app.call({
+      title: "Reach the next level",
+      outcome: { kind: "level", level: 80 },
+      tasks: [{ id: "finish", title: "я".repeat(10_000), note: "z".repeat(10_000) }],
+    });
+    const elapsed = performance.now() - start;
+    assert.equal(result.isError, false, result.text);
+    const stored = JSON.parse(result.text).stored;
+    assert.equal(stored.tasks[0].title, "я".repeat(70));
+    assert.equal(stored.tasks[0].note, "z".repeat(400));
+    assert.ok(elapsed < 100, `long text blocked submission for ${elapsed} ms`);
+  } finally {
+    await app.close();
+  }
+});
