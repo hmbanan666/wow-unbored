@@ -16,6 +16,7 @@ async function historicalNotes(store: Store, notes: string[]) {
   notes.forEach((note, i) => {
     stored.plan.tasks[i].note = note;
   });
+  delete stored.plan.outcome; // Persisted Plans from before required outcomes remain readable.
   stored.unb1 = encodeUnb1(stored.plan);
   await store.db.run(
     `UPDATE plans SET ${store.db.body} = ?, unb1 = ? WHERE id = ?`,
@@ -54,6 +55,7 @@ test("all Companion plan reads adapt notes to the addon without changing the sto
         "content-type": "application/json",
       },
       body: JSON.stringify({
+        outcome: { kind: "achievement", achievementID: 964 },
         requestId: "req-notes",
         tasks: [
           { id: "one", title: "Go", note },
@@ -197,6 +199,7 @@ test("missing headers use the Device's latest currency data, with full notes whe
           "/v1/plan",
           "planner-test-token",
           {
+            outcome: { kind: "achievement", achievementID: 964 },
             requestId: "req-evidence",
             tasks: [{ id: "one", title: "Go", note }],
           },

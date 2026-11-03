@@ -54,6 +54,24 @@ export type MarkupCheck = {
   places?: PlaceData;
 };
 
+function atPlayerPosition(
+  point: Partial<Waypoint>,
+  start: PlayerContext | null | undefined,
+): boolean {
+  return (
+    point.mapID !== undefined &&
+    point.mapID === start?.mapID &&
+    point.x !== undefined &&
+    point.y !== undefined &&
+    start.x !== undefined &&
+    start.y !== undefined &&
+    point.x >= start.x - 0.005 &&
+    point.x <= start.x + 0.005 &&
+    point.y >= start.y - 0.005 &&
+    point.y <= start.y + 0.005
+  );
+}
+
 /** Card limits (ADR 0038): short on purpose, the card is for casual players. */
 export const CARD_LIMITS = {
   titleMin: 3,
@@ -682,19 +700,7 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
       throw new PlanError(`Task ${index} coordinates must be fractions from 0 to 1, not 0 to 100.`);
     }
   }
-  const start = scope.check.context;
-  if (
-    mapID !== undefined &&
-    mapID === start?.mapID &&
-    x !== undefined &&
-    y !== undefined &&
-    start.x !== undefined &&
-    start.y !== undefined &&
-    x >= start.x - 0.005 &&
-    x <= start.x + 0.005 &&
-    y >= start.y - 0.005 &&
-    y <= start.y + 0.005
-  ) {
+  if (atPlayerPosition({ mapID, x, y }, scope.check.context)) {
     mapID = undefined;
     x = undefined;
     y = undefined;
@@ -782,16 +788,7 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
   if (task.complete?.kind === "quest" && typeof task.complete.questID === "number")
     quests.add(task.complete.questID);
   const validate = (point: Waypoint, route = false): Waypoint | undefined => {
-    const start = check.context;
-    if (
-      point.mapID === start?.mapID &&
-      start.x !== undefined &&
-      start.y !== undefined &&
-      point.x >= start.x - 0.005 &&
-      point.x <= start.x + 0.005 &&
-      point.y >= start.y - 0.005 &&
-      point.y <= start.y + 0.005
-    ) {
+    if (atPlayerPosition(point, check.context)) {
       check.warnings?.push(`Step ${index} point is the player's own position; dropped`);
       return;
     }

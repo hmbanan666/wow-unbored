@@ -261,6 +261,47 @@ test("the Request's level is usable snapshot evidence when no char Section exist
     );
     assert.equal(accepted.isError, false, accepted.text);
     assert.deepEqual(JSON.parse(accepted.text).notes, []);
+    await app.store.putSnapshot(snapshot({ char: { body: { level: 79 } } }), "pc");
+    const newerRequest = await app.call(
+      { ...plan, outcome: { kind: "level", level: 80 } },
+      "level-context",
+    );
+    assert.equal(newerRequest.isError, true, newerRequest.text);
+    assert.match(newerRequest.text, /level 80 is already reached/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("HTTP planner submissions enforce the same required and unowned outcome rule", async () => {
+  const app = await setup();
+  const put = (value: unknown) =>
+    app.app.request("/v1/plan", {
+      method: "PUT",
+      headers: { authorization: "Bearer planner", "content-type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  try {
+    await app.store.putSnapshot(snapshot({ mounts: { body: { ids: packIds([183]) } } }), "pc");
+    for (const outcome of [
+      undefined,
+      { kind: "currency", currencyID: 1166, amount: -1 },
+      { kind: "mount", id: 183 },
+    ]) {
+      const result = await put({ ...plan, outcome });
+      assert.equal(result.status, 400);
+      assert.match(((await result.json()) as { error: string }).error, /Plan outcome/);
+      assert.equal(await app.store.latestPlan(), undefined);
+    }
+    const accepted = await put({
+      ...plan,
+      outcome: { kind: "currency", currencyID: 1166, amount: 5000 },
+    });
+    assert.equal(accepted.status, 200);
+    assert.match(
+      ((await accepted.json()) as { notes: string[] }).notes.join(" "),
+      /No snapshot data/,
+    );
   } finally {
     await app.close();
   }

@@ -17,6 +17,7 @@ import {
 import { PlanRunner } from "./runner.ts";
 import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError, planMarkupIds } from "./plan.ts";
+import { checkOutcome, OutcomeError } from "./outcome.ts";
 import { planForAddon } from "./plan-delivery.ts";
 import { cleanProfile } from "./profile.ts";
 import {
@@ -561,6 +562,14 @@ export function createApp(
         return c.json({ error: "No request with that id." }, 404);
       }
       const plan = stripRequestId(body);
+      if (typeof plan !== "object" || plan === null || Array.isArray(plan))
+        throw new PlanError("The plan must be a JSON object.");
+      if (inbox) await store.settle(asked?.account);
+      const notes = await checkOutcome(
+        (plan as Record<string, unknown>).outcome,
+        store.data,
+        asked,
+      );
       const warnings: string[] = [];
       const missing = await gameIds.missing(planMarkupIds(plan));
       // One transaction: Forget my data cannot erase the Request between the two.
@@ -580,10 +589,12 @@ export function createApp(
         plan: stored.unb1,
         stored: stored.plan,
         request: request ? publicRequest(request) : null,
+        notes,
         warnings,
       });
     } catch (error) {
-      if (error instanceof PlanError) return c.json({ error: error.message }, 400);
+      if (error instanceof PlanError || error instanceof OutcomeError)
+        return c.json({ error: error.message }, 400);
       throw error;
     }
   });

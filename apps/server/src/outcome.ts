@@ -9,6 +9,8 @@ import {
 
 export const OUTCOME_KINDS = "rep, renown, level, achievement, mount, pet, toy, item, currency";
 
+export class OutcomeError extends Error {}
+
 export function requireOutcome(raw: unknown): PlanOutcome {
   const parsed = planOutcomeSchema.safeParse(raw);
   if (!parsed.success) {
@@ -16,7 +18,7 @@ export function requireOutcome(raw: unknown): PlanOutcome {
       raw === undefined
         ? "is required"
         : `is invalid: ${parsed.error.issues.map((issue) => `${issue.path.join(".") || "kind"}: ${issue.message}`).join("; ")}`;
-    throw new Error(
+    throw new OutcomeError(
       `Plan outcome ${reason}. Allowed kinds: ${OUTCOME_KINDS}. Supply one near-guaranteed target and retry put_plan in this session.`,
     );
   }
@@ -83,7 +85,11 @@ export async function checkOutcome(
       break;
     }
     case "level": {
-      const have = num(body("char")?.level) ?? num(who?.context?.level);
+      // Levels cannot decrease: either snapshot can prove the target already reached.
+      const levels = [num(body("char")?.level), num(who?.context?.level)].filter(
+        (value): value is number => value !== undefined,
+      );
+      const have = levels.length ? Math.max(...levels) : undefined;
       known = have !== undefined;
       if (have !== undefined && have >= outcome.level)
         owned = `level ${have} is already reached (target ${outcome.level})`;
@@ -112,7 +118,7 @@ export async function checkOutcome(
     }
   }
   if (owned)
-    throw new Error(
+    throw new OutcomeError(
       `Plan outcome rejected: ${owned}. Choose an unowned, reachable target and retry put_plan in this session.`,
     );
   return known
