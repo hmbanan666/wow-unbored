@@ -34,7 +34,7 @@
     },
     "details": {
       "type": "string",
-      "description": "Facts and state, at most 600 bytes. May carry entity markup."
+      "description": "Optional context, at most 200 UTF-8 bytes; Server shortens at a word and warns."
     },
     "rewards": {
       "type": "array",
@@ -79,8 +79,8 @@
           "title": {
             "type": "string",
             "minLength": 1,
-            "description": "At most 240 UTF-8 bytes; may carry entity markup (markup.md).",
-            "maxLength": 240
+            "description": "At most 70 characters and 240 UTF-8 bytes. Server shortens at a word and warns.",
+            "maxLength": 70
           },
           "estMinutes": {
             "type": "integer"
@@ -96,13 +96,13 @@
           },
           "note": {
             "type": "string",
-            "description": "At most 1000 UTF-8 bytes, in short paragraphs. Expanded details scroll (ADR 0061). May carry entity markup.",
-            "maxLength": 1000
+            "description": "Optional, at most 400 UTF-8 bytes. Server shortens at a word and warns.",
+            "maxLength": 400
           },
           "why": {
             "type": "string",
-            "description": "One short reason, at most 120 bytes. May carry entity markup.",
-            "maxLength": 120
+            "description": "Optional, at most 80 UTF-8 bytes. Server shortens at a word and warns.",
+            "maxLength": 80
           },
           "rewards": {
             "type": "array",
@@ -189,6 +189,169 @@
             }
           }
         }
+      }
+    },
+    "outcome": {
+      "description": "One near-guaranteed target; required on planner submission, optional only for legacy delivery. ADR 0068.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "factionID", "standing"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "rep"
+            },
+            "factionID": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "standing": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "factionID", "level"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "renown"
+            },
+            "factionID": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "level": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "level"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "level"
+            },
+            "level": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "achievementID"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "achievement"
+            },
+            "achievementID": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mount"
+            },
+            "id": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "pet"
+            },
+            "id": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "toy"
+            },
+            "id": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "item"
+            },
+            "id": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "currencyID", "amount"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "currency"
+            },
+            "currencyID": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        }
+      ]
+    },
+    "bonus": {
+      "description": "Up to three chance reward tokens, never the goal; describe as possible bonuses in a Step note for 0.11.",
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string"
       }
     }
   }

@@ -7,10 +7,32 @@ import { test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 import { cleanPlan, encodeUnb1, type Plan } from "../src/plan.ts";
 import { planForAddon, truncateUtf8 } from "../src/plan-delivery.ts";
+import type { Store } from "../src/store.ts";
 import { storage } from "./backend.ts";
 
+/** Seed the pre-0068 persisted format: new submissions now shorten these notes. */
+async function historicalNotes(store: Store, notes: string[]) {
+  const stored = (await store.latestPlan())!;
+  notes.forEach((note, i) => {
+    stored.plan.tasks[i].note = note;
+  });
+  delete stored.plan.outcome; // Persisted Plans from before required outcomes remain readable.
+  stored.unb1 = encodeUnb1(stored.plan);
+  await store.db.run(
+    `UPDATE plans SET ${store.db.body} = ?, unb1 = ? WHERE id = ?`,
+    JSON.stringify(stored.plan),
+    stored.unb1,
+    stored.id,
+  );
+  return {
+    id: stored.id,
+    plan: stored.unb1,
+    stored: JSON.parse(JSON.stringify(stored.plan)) as Plan,
+  };
+}
+
 test("all Companion plan reads adapt notes to the addon without changing the stored Plan", async () => {
-  const { app, close } = createApp({
+  const { app, store, close } = createApp({
     ...storage(),
     companionToken: "companion-test-token",
     plannerToken: "planner-test-token",
@@ -33,6 +55,7 @@ test("all Companion plan reads adapt notes to the addon without changing the sto
         "content-type": "application/json",
       },
       body: JSON.stringify({
+        outcome: { kind: "achievement", achievementID: 964 },
         requestId: "req-notes",
         tasks: [
           { id: "one", title: "Go", note },
@@ -44,7 +67,7 @@ test("all Companion plan reads adapt notes to the addon without changing the sto
       }),
     });
     assert.equal(put.status, 200);
-    const original = (await put.json()) as { id: number; plan: string; stored: Plan };
+    const original = await historicalNotes(store, [note, "a" + note]);
     const trimmed = {
       ...original.stored,
       tasks: original.stored.tasks.map((task, index) =>
@@ -176,6 +199,7 @@ test("missing headers use the Device's latest currency data, with full notes whe
           "/v1/plan",
           "planner-test-token",
           {
+            outcome: { kind: "achievement", achievementID: 964 },
             requestId: "req-evidence",
             tasks: [{ id: "one", title: "Go", note }],
           },
@@ -185,6 +209,7 @@ test("missing headers use the Device's latest currency data, with full notes whe
       200,
     );
 
+    await historicalNotes(store, [note]);
     await expectNotes(true); // No data must preserve today's full notes.
     const old = { list: [{ id: 3008, quantity: 1 }] };
     const modern = { list: [{ id: 3008, quantity: 1, name: "Камни" }] };
@@ -250,6 +275,7 @@ test("explicit versions and short notes do not read Game data", async () => {
     throw new Error("This delivery must not query currency evidence");
   };
   const plan = cleanPlan({ tasks: [{ id: "one", title: "Go", note: "я".repeat(300) }] }, 1);
+  plan.tasks[0].note = "я".repeat(300); // A previously stored long note.
   const stored = { id: 1, createdAt: 1, plan, unb1: encodeUnb1(plan) };
   assert.equal(await planForAddon(stored, "0.11.0", noRead), stored.unb1);
   assert.notEqual(await planForAddon(stored, "0.10.0", noRead), stored.unb1);
