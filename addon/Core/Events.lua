@@ -64,6 +64,9 @@ function ns.Events.Register(frame)
     pcall(frame.RegisterEvent, frame, WATCH[i])
   end
   pcall(frame.RegisterEvent, frame, "MOUNT_JOURNAL_SEARCH_UPDATED")
+  for event in pairs(ns.Outcome.events) do
+    pcall(frame.RegisterEvent, frame, event)
+  end
   for _, source in ipairs({ ns.Profile, ns.Snapshot }) do
     if source and source.Events then
       local extra = source.Events()
@@ -85,6 +88,7 @@ local IDEAS_CHANGE = {
 }
 
 function ns.Events.OnEvent(event, ...)
+  ns.Outcome.OnEvent(event)
   if IDEAS_CHANGE[event] and ns.Suggestions then
     ns.Suggestions.Invalidate()
     if ns.Mascot and ns.Mascot.view and ns.Mascot.view.kind == "choice" and not ns.IsCombat() then

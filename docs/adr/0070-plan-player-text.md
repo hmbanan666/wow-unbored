@@ -1,4 +1,4 @@
-# 0069. Plans omit planner limitations
+# 0070. Plans omit planner limitations
 
 Status: accepted
 
