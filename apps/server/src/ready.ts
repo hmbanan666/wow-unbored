@@ -85,7 +85,7 @@ export type ReadyKind =
 export type ReadyItem = {
   kind: ReadyKind;
   key: string;
-  title?: string;
+  title: string;
   tokens: string[];
   have?: number;
   need?: number;
@@ -129,10 +129,10 @@ function list(value: unknown): Raw[] {
     : [];
 }
 
-/** A Section row's own name (addons 0.11 on), trimmed; absent when the data has none. */
-function named(value: unknown): { title?: string } {
+/** Prefer the Section row's own name; older snapshots still get a readable label. */
+function named(value: unknown, fallback: string): string {
   const title = typeof value === "string" ? value.trim().slice(0, 60) : "";
-  return title ? { title } : {};
+  return title || fallback;
 }
 
 function plural(n: number, word: string): string {
@@ -164,7 +164,7 @@ function reputationItems(section: SectionRow | undefined): ReadyItem[] {
     out.push({
       kind: "renown",
       key: `renown:${factionID}`,
-      ...named(row.name),
+      title: named(row.name, `Renown: Faction ${factionID}`),
       tokens,
       have: earned,
       need: threshold,
@@ -184,7 +184,7 @@ function reputationItems(section: SectionRow | undefined): ReadyItem[] {
         out.push({
           kind: "paragon",
           key: `paragon:${factionID}`,
-          ...named(row.name),
+          title: named(row.name, `Faction ${factionID}`),
           tokens: questID ? [`{quest:${questID}}`] : [],
           why: "A paragon reward is waiting",
           score: READY_SCORE.rewardWaiting,
@@ -219,7 +219,7 @@ function reputationItems(section: SectionRow | undefined): ReadyItem[] {
     out.push({
       kind: "standing",
       key: `standing:${factionID}`,
-      ...named(row.name),
+      title: named(row.name, `Faction ${factionID}`),
       tokens: [],
       have,
       need: step,
@@ -246,7 +246,10 @@ function lockoutItems(section: SectionRow | undefined, now: number): ReadyItem[]
     out.push({
       kind: "lockout",
       key: `lockout:${num(row.instanceID) ?? name ?? "?"}:${num(row.difficultyID) ?? 0}`,
-      ...(name ? { title: name } : {}),
+      title: named(
+        name,
+        num(row.instanceID) === undefined ? "Instance" : `Instance ${row.instanceID}`,
+      ),
       tokens: [],
       have: killed,
       need: bosses,
@@ -267,6 +270,7 @@ function vaultItems(section: SectionRow | undefined): ReadyItem[] {
     out.push({
       kind: "vault",
       key: "vault:reward",
+      title: "Great Vault",
       tokens: [],
       why: "The Great Vault has a reward waiting",
       score: READY_SCORE.rewardWaiting,
@@ -292,6 +296,7 @@ function vaultItems(section: SectionRow | undefined): ReadyItem[] {
     out.push({
       kind: "vault",
       key: `vault:${type}:${num(row.index) ?? 0}`,
+      title: `Great Vault: ${name}`,
       tokens: [],
       have: progress,
       need: threshold,
@@ -311,6 +316,7 @@ function keyItems(section: SectionRow | undefined): ReadyItem[] {
     {
       kind: "key",
       key: "mplus:key",
+      title: `Keystone +${level}`,
       tokens: [],
       have: level,
       why: `Your key +${level}`,
@@ -333,7 +339,7 @@ function currencyItems(section: SectionRow | undefined): ReadyItem[] {
       out.push({
         kind: "currency",
         key: `cap:${id}`,
-        ...named(row.name),
+        title: named(row.name, `Currency ${id}`),
         tokens: [`{currency:${id}}`],
         have: quantity,
         need: max,
@@ -347,7 +353,7 @@ function currencyItems(section: SectionRow | undefined): ReadyItem[] {
       out.push({
         kind: "currency",
         key: `week:${id}`,
-        ...named(row.name),
+        title: named(row.name, `Currency ${id}`),
         tokens: [`{currency:${id}}`],
         have: week,
         need: weekMax,
@@ -367,7 +373,7 @@ function achievementItems(sections: Map<string, SectionRow>): ReadyItem[] {
     .map((row) => ({
       kind: "achievement" as const,
       key: `ach:${row.id}`,
-      ...named(row.name),
+      title: named(row.name, `Achievement ${row.id}`),
       tokens: [`{ach:${row.id}}`],
       have: row.d,
       need: row.t,

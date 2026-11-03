@@ -9,7 +9,9 @@ import { createServer } from "node:http";
 
 import { createApp } from "../src/app.ts";
 import { lookupCriteria } from "../src/criteria.ts";
+import type { ReadyItem } from "../src/ready.ts";
 import { onPostgres, storage } from "./backend.ts";
+import { snapshot } from "./helpers.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -845,6 +847,49 @@ async function mcpCall(
     value: JSON.parse(result.content[0].text) as Record<string, unknown>,
   };
 }
+
+test("the planner receives a readable title beside every Ready now item's ids", async () => {
+  const { app, store, close } = build();
+  try {
+    await store.putSnapshot(
+      snapshot({
+        char: { body: { level: 80 } },
+        achProgress: {
+          body: {
+            rows: [
+              { id: 12345, d: 8, t: 10 },
+              { id: 12346, name: "  Достижение из игры  ", d: 9, t: 10 },
+            ],
+          },
+        },
+        currencies: { body: { list: [{ id: 3008, quantity: 1900, max: 2000 }] } },
+        reputation: {
+          body: {
+            renown: [{ factionID: 2590, level: 3, earned: 2000, threshold: 2500 }],
+            factions: [{ factionID: 1, reaction: 5, standing: 8500, min: 3000, max: 9000 }],
+          },
+        },
+        vault: { body: { rewardWaiting: true } },
+      }),
+      "pc-1",
+    );
+    const result = await mcpCall(app, "get_ready_now", { character: "Mira", realm: "Realm" });
+    assert.equal(result.isError, false);
+    const items = result.value.items as ReadyItem[];
+    assert.deepEqual(Object.fromEntries(items.map((item) => [item.key, item.title])), {
+      "ach:12345": "Achievement 12345",
+      "ach:12346": "Достижение из игры",
+      "cap:3008": "Currency 3008",
+      "renown:2590": "Renown: Faction 2590",
+      "standing:1": "Faction 1",
+      "vault:reward": "Great Vault",
+    });
+    assert.deepEqual(items.find((item) => item.key === "ach:12345")!.tokens, ["{ach:12345}"]);
+    assert.deepEqual(items.find((item) => item.key === "cap:3008")!.tokens, ["{currency:3008}"]);
+  } finally {
+    close();
+  }
+});
 
 const context = {
   mapID: 2248,

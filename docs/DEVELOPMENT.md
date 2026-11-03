@@ -349,7 +349,7 @@ On the Server, `plans.request_id` preserves a Plan's Request even after the Plan
 
 ## Ready now, taste and wins
 
-`apps/server/src/ready.ts` computes **Ready now** per Character on demand from the latest Sections (MCP `get_ready_now`, [ADR 0052](adr/0052-ready-now.md)); sorted by score, at most 5 items per kind (`READY_MAX_PER_KIND`, so near-done achievements cannot crowd out the vault, renown or a lockout) and 25 in all. An item's `title` is the name the game gave its row (achievement, faction, renown, currency, lockout, chain, event; addons 0.11 on for the first four), in the client's language, and is left out when the data has none:
+`apps/server/src/ready.ts` computes **Ready now** per Character on demand from the latest Sections (MCP `get_ready_now`, [ADR 0052](adr/0052-ready-now.md)); sorted by score, at most 5 items per kind (`READY_MAX_PER_KIND`, so near-done achievements cannot crowd out the vault, renown or a lockout) and 25 in all. Every item has a readable `title`: the name the game gave its row (achievement, faction, renown, currency, lockout, chain, event; addons 0.11 on for the first four), in the client's language, or a generic label such as `Achievement 12345`, `Currency 3008`, or `Faction 2590` when the name is missing or blank. Vault entries say `Great Vault` with the activity name for slots; keystones include their level. Existing `tokens` and ids are unchanged. Older snapshots need no new fields. These generic labels describe facts to the Planner; player-facing achievement Ideas already use `titleToken` to resolve the game's name, with their existing readable `title` as a fallback for older addons:
 
 | Rule | Source | Score |
 | --- | --- | --- |
