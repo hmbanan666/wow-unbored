@@ -374,7 +374,45 @@ test("every kind gets its share before the 25-item cut, with the names the game 
   assert.equal(title("standing"), "Faction 0");
   assert.equal(title("currency"), "Coin 0");
   assert.equal(title("lockout"), "Raid 0");
-  assert.equal(title("vault"), undefined, "no name in the data, no title");
+  assert.equal(title("vault"), "Great Vault");
+});
+
+test("older snapshots without names still give every Ready now item a readable title", () => {
+  const { items } = ready([
+    section("achProgress", { rows: [{ id: 12345, d: 8, t: 10 }] }),
+    section("currencies", {
+      list: [{ id: 3008, name: "  ", quantity: 1900, max: 2000, week: 1, weekMax: 5 }],
+    }),
+    section("reputation", {
+      renown: [{ factionID: 2590, level: 3, earned: 2000, threshold: 2500 }],
+      factions: [
+        { factionID: 1, name: "", reaction: 5, standing: 8500, min: 3000, max: 9000 },
+        { factionID: 2, paragon: { pending: true, questID: 777 } },
+      ],
+    }),
+    section("vault", {
+      rewardWaiting: true,
+      activities: [
+        { type: 3, index: 2, threshold: 4, progress: 2 },
+        { type: 9, index: 1, threshold: 2, progress: 1 },
+      ],
+    }),
+    section("lockouts", { instances: [{ instanceID: 10, locked: true, bosses: 8, killed: 2 }] }),
+    section("mplus", { keyLevel: 12 }),
+  ]);
+  assert.deepEqual(Object.fromEntries(items.map((item) => [item.key, item.title])), {
+    "ach:12345": "Achievement 12345",
+    "cap:3008": "Currency 3008",
+    "week:3008": "Currency 3008",
+    "renown:2590": "Renown: Faction 2590",
+    "standing:1": "Faction 1",
+    "paragon:2": "Faction 2",
+    "vault:reward": "Great Vault",
+    "vault:3:2": "Great Vault: Raid",
+    "vault:9:1": "Great Vault: type 9",
+    "lockout:10:0": "Instance 10",
+    "mplus:key": "Keystone +12",
+  });
 });
 
 test("alts: another Character at least 0.2 further on and at least half done, at most 5", async () => {

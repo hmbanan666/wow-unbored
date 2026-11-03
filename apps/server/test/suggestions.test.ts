@@ -82,6 +82,9 @@ test("achievement buttons include known criteria progress and a short action in 
       [999, 8, 10],
     ]) {
       const idea = list.find((item) => item.id === `ach:${id}`)!;
+      assert.equal(idea.titleToken, `{ach:${id}}`, "idea buttons resolve the game's own name");
+      assert.match(idea.title, /[^\d\s]/, "older addons still have a readable title");
+      assert.match(idea.request.wish, /[^\d\s]/, "the planner's pick is never just an id");
       assert.deepEqual(idea.progress, { done, total });
       assert.equal(idea.displayKind, "achievement");
       assert.equal(
