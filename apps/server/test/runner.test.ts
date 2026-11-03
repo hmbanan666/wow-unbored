@@ -66,12 +66,76 @@ function build(backend: Backend, fallback = false) {
 }
 
 for (const backend of BACKENDS) {
+  test(`empty runner claims stay out of request logs (${backend})`, async () => {
+    const app = build(backend);
+    try {
+      app.lines.length = 0;
+      for (const url of ["/v1/runner/claim", "/v1/runner/claim?wait=0"])
+        assert.equal((await app.post(url)).status, 204);
+      assert.deepEqual(app.lines, []);
+    } finally {
+      app.close();
+    }
+  });
+
+  test(`runner claim errors still reach request logs (${backend})`, async () => {
+    const app = build(backend);
+    try {
+      app.lines.length = 0;
+      assert.equal((await app.post("/v1/runner/claim", undefined, "wrong")).status, 401);
+      assert.equal((await app.post("/v1/runner/claim?wait=bad")).status, 400);
+      assert.deepEqual(app.lines, [
+        'POST /v1/runner/claim 401 reason="Unauthorized"',
+        'POST /v1/runner/claim 400 reason="wait must be from 0 to 25 seconds."',
+      ]);
+    } finally {
+      app.close();
+    }
+  });
+
+  test(`runner claim server failures still reach request logs (${backend})`, async () => {
+    const app = build(backend);
+    const read = vi
+      .spyOn(app.store.db, "get")
+      .mockRejectedValueOnce(new Error("Database unavailable"));
+    try {
+      app.lines.length = 0;
+      assert.equal((await app.claim()).status, 500);
+      assert.deepEqual(app.lines, ["POST /v1/runner/claim 500"]);
+    } finally {
+      read.mockRestore();
+      app.close();
+    }
+  });
+
+  test(`other methods and routes still log empty responses (${backend})`, async () => {
+    const app = build(backend);
+    app.app.get("/v1/runner/claim", (c) => c.body(null, 204));
+    try {
+      app.lines.length = 0;
+      assert.equal(
+        (
+          await app.app.request("/v1/runner/claim", {
+            headers: { authorization: `Bearer ${runnerToken}` },
+          })
+        ).status,
+        204,
+      );
+      assert.equal((await app.app.request("/mcp", { method: "OPTIONS" })).status, 204);
+      assert.deepEqual(app.lines, ["GET /v1/runner/claim 204", "OPTIONS /mcp 204"]);
+    } finally {
+      app.close();
+    }
+  });
+
   test(`runner claims the oldest pending Request once with a prompt (${backend})`, async () => {
     const app = build(backend);
     try {
       assert.equal((await app.add()).status, 201);
       const response = await app.claim();
       assert.equal(response.status, 200);
+      assert.ok(app.lines.includes("POST /v1/requests 201"));
+      assert.ok(app.lines.includes("POST /v1/runner/claim 200"));
       const lease = await response.json();
       assert.equal(lease.request.requestId, "runner-first");
       assert.equal(lease.attempt, 1);

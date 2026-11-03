@@ -135,6 +135,8 @@ export function createApp(
   app.use("*", async (c, next) => {
     await next();
     if (c.req.path === "/health") return;
+    if (c.req.method === "POST" && c.req.path === "/v1/runner/claim" && c.res.status === 204)
+      return;
     let reason = "";
     if (c.res.status >= 400) {
       try {
