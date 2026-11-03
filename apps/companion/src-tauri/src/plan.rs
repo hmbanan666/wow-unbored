@@ -46,6 +46,9 @@ pub struct Plan {
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub goal: Option<String>,
+    /// Structured target (ADR 0068); progress is read by the addon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1070,6 +1073,9 @@ fn render_plan_body(plan: &Plan, extras: &[(&str, Value)]) -> String {
         if let Some(text) = text {
             push_pair(&mut out, 1, key, &Value::String(text.clone()));
         }
+    }
+    if let Some(outcome) = plan.outcome.as_ref().filter(|value| value.is_object()) {
+        push_pair(&mut out, 1, "outcome", outcome);
     }
     if let Some(rewards) = &plan.rewards {
         push_pair(&mut out, 1, "rewards", &Value::from(rewards.clone()));

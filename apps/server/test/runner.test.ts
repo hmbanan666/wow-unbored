@@ -191,7 +191,7 @@ for (const backend of BACKENDS) {
       assert.equal(lease.attempt, 1);
       assert.equal(lease.expiresAt, app.now() + 180);
       assert.match(lease.leaseToken, /^[A-Za-z0-9_-]{43}$/);
-      assert.equal(lease.prompt.version, "57fb9c9e787c");
+      assert.equal(lease.prompt.version, "8d899a149eac");
       assert.match(lease.prompt.text, /^# Unbored planner\n/);
       assert.equal(lease.mcpPath, "/mcp");
       assert.equal((await app.claim()).status, 204);
@@ -368,6 +368,7 @@ for (const backend of BACKENDS) {
       const names = listed.body.result.tools.map((tool: { name: string }) => tool.name);
       assert.ok(names.includes("get_request"));
       assert.ok(names.includes("get_instance_guide"));
+      assert.ok(names.includes("get_place"));
       const guideReply = await call("get_instance_guide", { achievementID: 10149 });
       assert.equal(guideReply.body.result.isError, false);
       const guide = JSON.parse(guideReply.body.result.content[0].text);
@@ -596,12 +597,12 @@ for (const backend of BACKENDS) {
       ]);
       const current = await call("get_current_plan", {});
       assert.equal(JSON.parse(current.body.result.content[0].text).plan, null);
-      args.plan.tasks[0].x = 0.6;
-      const corrected = await call("put_plan", args);
+      // An unknown destination is corrected by omitting the point.
+      const corrected = await call("put_plan", { ...args, plan });
       assert.equal(corrected.body.result.isError, false);
       const stored = JSON.parse(corrected.body.result.content[0].text);
       assert.deepEqual(stored.warnings, []);
-      assert.equal(stored.stored.tasks[0].x, 0.6);
+      assert.equal(stored.stored.tasks[0].x, undefined);
       assert.equal((await call("get_request", {})).status, 401);
     } finally {
       app.close();

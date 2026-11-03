@@ -4,6 +4,23 @@ import { z } from "zod";
 
 import type { Entities } from "./markup.ts";
 
+/** Targets only; progress is read live from the game. Collectible ids match markup ids. */
+const outcomeID = z.number().int().positive().max(2_147_483_647);
+export const planOutcomeSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("rep"),
+    factionID: outcomeID,
+    standing: z.number().int().min(1).max(8),
+  }),
+  z.object({ kind: z.literal("renown"), factionID: outcomeID, level: outcomeID }),
+  z.object({ kind: z.literal("level"), level: outcomeID }),
+  z.object({ kind: z.literal("achievement"), achievementID: outcomeID }),
+  ...(["mount", "pet", "toy", "item"] as const).map((kind) =>
+    z.object({ kind: z.literal(kind), id: outcomeID }),
+  ),
+]);
+export type PlanOutcome = z.infer<typeof planOutcomeSchema>;
+
 /** A Plan the Server stores and the Companion writes into the game. */
 export type Plan = {
   v: 1;
@@ -16,6 +33,7 @@ export type Plan = {
   title?: string;
   /** One sentence: what you do and why it is worth it; may carry tokens. */
   goal?: string;
+  outcome?: PlanOutcome;
   /** Facts and state ("you have 3,200 badges"); shown under Show more. */
   details?: string;
   /** Up to 6 single link tokens, such as "{mount:183}". */
@@ -43,7 +61,7 @@ export type Task = {
   x?: number;
   y?: number;
   note?: string;
-  /** One short reason, at most 120 bytes; may carry tokens. */
+  /** One short reason, at most 80 bytes; may carry tokens. */
   why?: string;
   /** Up to 3 single link tokens. */
   rewards?: string[];
@@ -233,7 +251,11 @@ export const planSchema = z
     note: z.string().optional(),
     title: z.string().optional(),
     goal: z.string().optional(),
-    details: z.string().optional(),
+    outcome: planOutcomeSchema.optional(),
+    details: z
+      .string()
+      .refine((text) => new TextEncoder().encode(text).length <= 200)
+      .optional(),
     rewards: z.array(z.string()).max(6).optional(),
     contains: z.record(z.string(), z.array(z.string()).min(1).max(6)).optional(),
     generatedAt: z.number().optional(),
@@ -245,14 +267,16 @@ export const planSchema = z
             title: z
               .string()
               .min(1)
-              .refine((text) => new TextEncoder().encode(text).length <= 240),
+              .refine(
+                (text) => [...text].length <= 70 && new TextEncoder().encode(text).length <= 240,
+              ),
             note: z
               .string()
-              .refine((text) => new TextEncoder().encode(text).length <= 1000)
+              .refine((text) => new TextEncoder().encode(text).length <= 400)
               .optional(),
             why: z
               .string()
-              .refine((text) => new TextEncoder().encode(text).length <= 120)
+              .refine((text) => new TextEncoder().encode(text).length <= 80)
               .optional(),
             rewards: z.array(z.string()).max(3).optional(),
             group: z

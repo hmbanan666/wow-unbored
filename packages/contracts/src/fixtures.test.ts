@@ -77,6 +77,7 @@ test("idea button fields are optional and enforce text and progress limits", () 
 test("plan and player profile fixtures match the shared schema", () => {
   expect(planSchema.safeParse(read("plan.json")).success).toBe(true);
   expect(planSchema.safeParse(read("plan-instance.json")).success).toBe(true);
+  expect(planSchema.safeParse(read("plan-outcome.json")).success).toBe(true);
   expect(playerProfileSchema.safeParse(read("profile.json")).success).toBe(true);
 });
 

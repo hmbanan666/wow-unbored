@@ -8,6 +8,10 @@ UnboredExternalPlan = {
   ["title"] = "Ashes in one evening",
   ["goal"] = "Clear {zone:109|Netherstorm}'s Tempest Keep for a shot at {mount:183|Ashes of Al'ar}.",
   ["details"] = "You already have {ach:964|Going Down?}.",
+  ["outcome"] = {
+    ["id"] = 183,
+    ["kind"] = "mount",
+  },
   ["rewards"] = {
     "{mount:183|Ashes of Al'ar}",
     "{ach:964|Going Down?}",

@@ -14,7 +14,10 @@
       "why": "It is a quick {ach:964} on the way",
       "estMinutes": 5,
       "rewards": ["{ach:964}"],
-      "complete": { "kind": "achievement", "achievementID": 964 }
+      "complete": {
+        "kind": "achievement",
+        "achievementID": 964
+      }
     },
     {
       "id": "mentor:ashes",
@@ -27,9 +30,19 @@
       "note": "Tempest Keep, Kael'thas.",
       "condition": {
         "text": "If you are level 70 or higher",
-        "check": { "kind": "level", "id": 70 }
+        "check": {
+          "kind": "level",
+          "id": 70
+        }
       },
-      "complete": { "kind": "mount", "mountID": 183 }
+      "complete": {
+        "kind": "mount",
+        "mountID": 183
+      }
     }
-  ]
+  ],
+  "outcome": {
+    "kind": "mount",
+    "id": 183
+  }
 }

@@ -576,3 +576,8 @@ curl -sS -X POST "$SERVER/v1/runner/leases/$LEASE_ID/finish" \
 ```
 
 Heartbeat comfortably before 180 seconds; an attempt has a 15-minute hard cap. Answer via `put_plan`, `answer_request` or `fail_request` with the leased Request id. Fix validation warnings within that lease. A successful answer invalidates the lease token; finish can acknowledge it with `{"ok":true}`. An unanswered finish retries after 15 then 60 seconds, up to three attempts. See [the runner API](../apps/server/README.md#plan-runner) for responses and log formats. `runner.test.ts` exercises HTTP and MCP against both backends when `UNBORED_TEST_DATABASE_URL` is set.
+
+
+### Plan outcomes and place data
+
+[ADR 0068](adr/0068-plan-outcome.md) and the [contract](contract/README.md#plan-outcome-and-short-text) define optional target data, shorter text and `get_place`. The place lookup uses the existing 24-hour Wago CSV pipeline with a 2 MB cap per table; unavailable, large or malformed tables are reported as unknown. Plan submission only reads fresh caches, including existing journal encounter points, and does not fetch during validation. Unit fixtures cover projection, absent data and ambiguous POIs; MCP storage/delivery tests run on both database backends. The Companion forwards `outcome` to Lua, and the 0.11 addon ignores it safely until the progress display is implemented.
