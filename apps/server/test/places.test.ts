@@ -597,3 +597,43 @@ for (const condition of [
     assert.ok(!warnings.some((warning) => warning.includes("replaced")));
   });
 }
+
+test("nested proximity completion follows the kept flight destination", () => {
+  const destination = { mapID: 102, x: 0.8, y: 0.8 };
+  const warnings: string[] = [];
+  const plan = cleanPlan(
+    {
+      title: "Reach the flight master",
+      tasks: [
+        {
+          id: "flight",
+          title: "Reach the flight master",
+          ...destination,
+          condition: { text: "After {quest:9726}", check: { kind: "quest", id: 9726 } },
+          complete: {
+            kind: "any",
+            any: [
+              { kind: "quest", questID: 9726 },
+              { kind: "proximity", mapID: 102, x: 0.2, y: 0.4 },
+            ],
+          },
+        },
+      ],
+    },
+    1,
+    {
+      warnings,
+      places: {
+        questPoints: [{ questID: 9726, mapID: 102, x: 0.2, y: 0.4 }],
+        knownPoints: [destination],
+      },
+    },
+  );
+  assert.equal(plan.tasks[0].x, 0.8);
+  assert.equal(plan.tasks[0].y, 0.8);
+  assert.deepEqual(plan.tasks[0].complete?.any, [
+    { kind: "quest", questID: 9726 },
+    { kind: "proximity", ...destination, radiusYards: 40 },
+  ]);
+  assert.deepEqual(warnings, []);
+});

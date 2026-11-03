@@ -865,8 +865,10 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
     );
     return;
   };
+  let destination: Waypoint | undefined;
   if (task.mapID !== undefined && task.x !== undefined && task.y !== undefined) {
     const point = validate({ mapID: task.mapID, x: task.x, y: task.y });
+    destination = point;
     delete task.mapID;
     delete task.x;
     delete task.y;
@@ -877,7 +879,7 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
   }
   const completion = (raw: Record<string, unknown>): Record<string, unknown> | undefined => {
     if (raw.kind === "proximity") {
-      const point = validate(raw as Waypoint);
+      const point = destination ?? validate(raw as Waypoint);
       return point ? { ...raw, ...point } : undefined;
     }
     if (raw.kind === "any" && Array.isArray(raw.any)) {
