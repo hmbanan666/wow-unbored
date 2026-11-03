@@ -28,7 +28,7 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.pick.outputs.version }}
       tag: ${{ steps.pick.outputs.tag }}
@@ -67,7 +67,7 @@ jobs:
 
   addon:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -140,7 +140,7 @@ jobs:
 
   companion:
     needs: version
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -150,7 +150,7 @@ jobs:
           workspaces: apps/companion/src-tauri -> target
           shared-key: companion-windows
           save-if: false
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.16.1
       - uses: actions/setup-node@v7
@@ -205,7 +205,7 @@ jobs:
 
   publish:
     needs: [version, addon, companion]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -264,7 +264,7 @@ jobs:
   # never leaves the packager's full CHANGELOG as the release body.
   notes:
     needs: [version, addon]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:

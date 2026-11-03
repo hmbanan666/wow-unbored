@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   conventional:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Check the title
         env:
@@ -29,7 +29,7 @@ jobs:
           fi
 
   notes-preview:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:

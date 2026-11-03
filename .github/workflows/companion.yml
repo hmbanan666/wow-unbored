@@ -23,14 +23,14 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/companion/src-tauri -> target
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.16.1
       - uses: actions/setup-node@v7
@@ -41,7 +41,7 @@ jobs:
         run: pnpm install --frozen-lockfile && pnpm run lint:companion && pnpm test:companion
 
   windows:
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -51,7 +51,7 @@ jobs:
           workspaces: apps/companion/src-tauri -> target
           shared-key: companion-windows
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.16.1
       - uses: actions/setup-node@v7
