@@ -12,7 +12,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-test("shutdown lets an in-flight request finish and closes the store last", async () => {
+test("shutdown lets an in-flight request finish and closes the app last", async () => {
   const started = deferred();
   const release = deferred();
   const workerStopped = deferred();
@@ -49,10 +49,8 @@ test("shutdown lets an in-flight request finish and closes the store last", asyn
         events.push("inbox stopped");
       },
     },
-    store: {
-      close: () => {
-        events.push("store closed");
-      },
+    close: () => {
+      events.push("app closed");
     },
     log: (line) => {
       events.push(line);
@@ -81,7 +79,7 @@ test("shutdown lets an in-flight request finish and closes the store last", asyn
     release.resolve();
     assert.equal(await response, "complete");
     await vi.waitFor(() => assert.ok(events.includes("inbox stopping")));
-    assert.ok(!events.includes("store closed"));
+    assert.ok(!events.includes("app closed"));
     workerStopped.resolve();
     await closing;
     assert.deepEqual(events, [
@@ -92,7 +90,7 @@ test("shutdown lets an in-flight request finish and closes the store last", asyn
       "webhook stopped",
       "inbox stopping",
       "inbox stopped",
-      "store closed",
+      "app closed",
       "Shutdown finished",
       "exit 0",
     ]);
@@ -105,14 +103,14 @@ test("shutdown lets an in-flight request finish and closes the store last", asyn
   }
 });
 
-for (const blocked of ["HTTP", "upload inbox"]) {
+for (const blocked of ["HTTP", "upload inbox", "app cleanup"]) {
   test(`shutdown exits at the hard cap while ${blocked} is still busy`, async () => {
     vi.useFakeTimers();
     const server = createServer();
     const release = deferred();
     const exits: number[] = [];
     const lines: string[] = [];
-    const closeStore = vi.fn();
+    const closeApp = vi.fn(() => (blocked === "app cleanup" ? release.promise : undefined));
     const close = vi.spyOn(server, "close").mockImplementation((callback) => {
       if (blocked === "HTTP") void release.promise.then(() => callback?.());
       else callback?.();
@@ -122,7 +120,7 @@ for (const blocked of ["HTTP", "upload inbox"]) {
       server,
       webhook: { stop: () => {} },
       inbox: { stop: () => (blocked === "upload inbox" ? release.promise : Promise.resolve()) },
-      store: { close: closeStore },
+      close: closeApp,
       log: (line) => {
         lines.push(line);
       },
@@ -136,7 +134,7 @@ for (const blocked of ["HTTP", "upload inbox"]) {
       assert.deepEqual(exits, []);
       await vi.advanceTimersByTimeAsync(1);
       assert.deepEqual(exits, [0]);
-      assert.equal(closeStore.mock.calls.length, 0);
+      assert.equal(closeApp.mock.calls.length, blocked === "app cleanup" ? 1 : 0);
       assert.deepEqual(lines, ["Shutdown started", "Shutdown finished (deadline reached)"]);
     } finally {
       release.resolve();
@@ -152,7 +150,7 @@ test("a second signal exits immediately without running cleanup twice", async ()
   const release = deferred();
   const exits: number[] = [];
   const lines: string[] = [];
-  const closeStore = vi.fn();
+  const closeApp = vi.fn();
   const close = vi.spyOn(server, "close").mockImplementation((callback) => {
     void release.promise.then(() => callback?.());
     return server;
@@ -160,7 +158,7 @@ test("a second signal exits immediately without running cleanup twice", async ()
   const shutdown = createShutdown({
     server,
     webhook: { stop: () => {} },
-    store: { close: closeStore },
+    close: closeApp,
     log: (line) => {
       lines.push(line);
     },
@@ -173,7 +171,7 @@ test("a second signal exits immediately without running cleanup twice", async ()
     await shutdown();
     assert.deepEqual(exits, [0]);
     assert.equal(close.mock.calls.length, 1);
-    assert.equal(closeStore.mock.calls.length, 0);
+    assert.equal(closeApp.mock.calls.length, 0);
     assert.deepEqual(lines, ["Shutdown started", "Shutdown finished (second signal)"]);
   } finally {
     release.resolve();

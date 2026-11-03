@@ -522,9 +522,9 @@ export class Store {
 
   /** Resolve a bearer and confirm a replacement only after its own secret is used. */
   async authenticateDevice(secretHash: string): Promise<Device | undefined> {
+    const found = await this.deviceByHash(secretHash);
+    if (!found?.reconnectFrom) return found;
     return this.db.tx(async () => {
-      const found = await this.deviceByHash(secretHash);
-      if (!found) return undefined;
       const device = await this.lockDevicePair(found.id);
       if (!device || device.secretHash !== secretHash) return undefined;
       if (device.status === "approved" && device.reconnectFrom) {

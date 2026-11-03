@@ -619,16 +619,38 @@ export function createApp(
     });
   });
 
+  let reconnectTimer: ReturnType<typeof setInterval> | undefined;
+  let reconnectCleanup: Promise<void> | undefined;
+  const startReconnectCleanup = () => {
+    if (reconnectTimer) return;
+    const tick = () => {
+      if (reconnectCleanup) return;
+      reconnectCleanup = store
+        .expireReconnects()
+        .catch(() => log("device reconnect cleanup failed"))
+        .finally(() => {
+          reconnectCleanup = undefined;
+        });
+    };
+    reconnectTimer = setInterval(tick, 10 * 60_000);
+    reconnectTimer.unref();
+    tick();
+  };
+
   return {
     app,
     store,
     webhook,
     runner,
+    startReconnectCleanup,
     /** The upload worker; index.ts starts it. Undefined on SQLite or inline ingest. */
     inbox,
     close: () => {
+      clearInterval(reconnectTimer);
+      reconnectTimer = undefined;
       runner?.stop();
       webhook.stop();
+      if (reconnectCleanup) return reconnectCleanup.then(() => store.close());
       store.close();
     },
   };

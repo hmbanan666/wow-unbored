@@ -2,14 +2,13 @@ import type { Server } from "node:http";
 import type { PlanRunner } from "./runner.ts";
 import type { PlannerWebhook } from "./webhook.ts";
 import type { UploadInbox } from "./inbox.ts";
-import type { Store } from "./store.ts";
 
 export function createShutdown(options: {
   server: Pick<Server, "close" | "closeIdleConnections" | "on">;
   runner?: Pick<PlanRunner, "beginShutdown" | "stop">;
   webhook: Pick<PlannerWebhook, "stop">;
   inbox?: Pick<UploadInbox, "stop">;
-  store: Pick<Store, "close">;
+  close: () => void | Promise<void>;
   log: (line: string) => void;
   exit?: (code: number) => void;
 }) {
@@ -18,7 +17,7 @@ export function createShutdown(options: {
     runner,
     webhook,
     inbox,
-    store,
+    close,
     log,
     exit = (code) => process.exit(code),
   } = options;
@@ -60,7 +59,7 @@ export function createShutdown(options: {
       webhook.stop();
       await inbox?.stop();
       if (finished) return;
-      store.close();
+      await close();
       finish();
     } catch {
       finish("cleanup failed", 1);

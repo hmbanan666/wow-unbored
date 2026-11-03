@@ -2,13 +2,32 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
+import { sha256Hex } from "../src/auth.ts";
 import { storage } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
+
+test("ordinary device authentication does not open a transaction or lock rows", async () => {
+  const built = setup();
+  try {
+    await register(built, "ordinary-pc", "ordinary-secret-value");
+    await built.store.setDeviceStatus("ordinary-pc", "approved");
+    const transaction = vi.spyOn(built.store.db, "tx");
+    const query = vi.spyOn(built.store.db, "get");
+    const device = await built.store.authenticateDevice(sha256Hex("ordinary-secret-value"));
+    assert.equal(device?.id, "ordinary-pc");
+    assert.equal(device.status, "approved");
+    assert.equal(transaction.mock.calls.length, 0);
+    assert.ok(query.mock.calls.every(([sql]) => !/FOR (UPDATE|SHARE)/i.test(sql)));
+  } finally {
+    vi.restoreAllMocks();
+    built.close();
+  }
+});
 
 function setup() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-reconnect-"));
@@ -317,7 +336,7 @@ for (const side of ["forgotten-pc", next.deviceId]) {
   }
 }
 
-test("periodic cleanup expires only unconfirmed replacements after 24 hours and logs ids only", async () => {
+test("cleanup expires only unconfirmed replacements after 24 hours and logs ids only", async () => {
   const logs: string[] = [];
   const now = Math.floor(Date.now() / 1000);
   let clock = now;
@@ -327,22 +346,21 @@ test("periodic cleanup expires only unconfirmed replacements after 24 hours and 
     plannerToken: planner,
     dataDir: mkdtempSync(path.join(tmpdir(), "unbored-expire-reconnect-")),
     log: (line) => logs.push(line),
-    webhookNow: () => clock,
   });
   try {
     await forgotten(built);
     assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
     const pending = await reconnect(built, "forgotten-secret-value", next);
     clock = ((await pending.json()) as { createdAt: number }).createdAt + 24 * 60 * 60;
-    await built.webhook.tick();
+    await built.store.expireReconnects(clock);
     assert.equal((await reconnect(built, "forgotten-secret-value", next)).status, 201);
     clock += 2;
-    await built.webhook.tick();
+    await built.store.expireReconnects(clock);
     assert.equal((await me(built, next.secret)).status, 401);
     assert.equal((await reconnect(built, "forgotten-secret-value", another)).status, 201);
     assert.equal((await me(built, another.secret)).status, 200);
     clock += 24 * 60 * 60;
-    await built.webhook.tick();
+    await built.store.expireReconnects(clock);
     assert.equal((await me(built, another.secret)).status, 200);
     assert.deepEqual(
       logs.filter((line) => line.startsWith("device reconnect")),
@@ -355,6 +373,60 @@ test("periodic cleanup expires only unconfirmed replacements after 24 hours and 
     );
   } finally {
     built.close();
+  }
+});
+
+test("app cleanup runs at startup and every ten minutes without a webhook, then stops on close", async () => {
+  const built = setup();
+  vi.useFakeTimers();
+  const expire = vi.spyOn(built.store, "expireReconnects").mockResolvedValue();
+  const interval = vi.spyOn(globalThis, "setInterval");
+  try {
+    assert.equal(built.webhook.enabled, false);
+    built.startReconnectCleanup();
+    built.startReconnectCleanup();
+    assert.equal(expire.mock.calls.length, 1);
+    assert.equal(interval.mock.results.length, 1);
+    assert.equal(interval.mock.results[0]!.value.hasRef(), false);
+    await vi.advanceTimersByTimeAsync(10 * 60_000 - 1);
+    assert.equal(expire.mock.calls.length, 1);
+    await vi.advanceTimersByTimeAsync(1);
+    assert.equal(expire.mock.calls.length, 2);
+    built.close();
+    await vi.advanceTimersByTimeAsync(20 * 60_000);
+    assert.equal(expire.mock.calls.length, 2);
+  } finally {
+    built.close();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  }
+});
+
+test("app close drains active reconnect cleanup before closing storage", async () => {
+  const built = setup();
+  vi.useFakeTimers();
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const expire = vi.spyOn(built.store, "expireReconnects").mockReturnValue(pending);
+  const closeStore = vi.spyOn(built.store, "close");
+  try {
+    built.startReconnectCleanup();
+    await vi.advanceTimersByTimeAsync(20 * 60_000);
+    assert.equal(expire.mock.calls.length, 1, "slow cleanup cannot overlap itself");
+    const closing = built.close();
+    assert.equal(closeStore.mock.calls.length, 0);
+    release();
+    await closing;
+    assert.equal(closeStore.mock.calls.length, 1);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    assert.equal(expire.mock.calls.length, 1);
+  } finally {
+    release();
+    await built.close();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   }
 });
 
