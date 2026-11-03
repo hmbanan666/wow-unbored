@@ -353,20 +353,19 @@ for (const tool of ["put_plan", "answer_request"]) {
         "UNAVAILABLE",
         "Not Available",
         "no data",
-        "tool",
         "According To",
         "the data shows",
         "SNAPSHOT",
         "get_place",
         "GET_INSTANCE_GUIDE",
         "check_ids",
-        "Ready now",
+        "get_ready_now",
+        "get_game_data",
+        "resolve_criteria",
         "недоступно",
         "НЕДОСТУПНЫ",
         "нет данных",
         "ПО ДАННЫМ",
-        "инструмент",
-        "инструментами",
       ]) {
         const result = await app.call(
           {

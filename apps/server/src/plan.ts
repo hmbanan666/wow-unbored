@@ -171,10 +171,13 @@ export function cleanTitle(raw: unknown, check: MarkupCheck = {}): string | unde
 
 // Unicode word boundaries also cover Russian; a substring in a game name is not a hit.
 const PLANNER_TALK =
-  /(?<![\p{L}\p{N}_])(?:unavailable|not\s+available|no\s+data|tool|according\s+to|the\s+data\s+shows|snapshot|get_place|get_instance_guide|check_ids|ready\s+now|недоступн\p{L}*|нет\s+данных|по\s+данным|инструмент(?:а|у|ом|е|ы|ов|ам|ами|ах)?)(?![\p{L}\p{N}_])/iu;
+  /(?<![\p{L}\p{N}_])(?:unavailable|not\s+available|no\s+data|according\s+to|the\s+data\s+shows|snapshot|get_place|get_instance_guide|check_ids|get_ready_now|get_game_data|resolve_criteria|недоступн\p{L}*|нет\s+данных|по\s+данным)(?![\p{L}\p{N}_])/iu;
 
 function warnPlannerTalk(text: string, check: MarkupCheck, where: string): void {
-  const match = PLANNER_TALK.exec(text);
+  const prose = parseMarkup(text)
+    .map((part) => (typeof part === "string" ? part : " "))
+    .join("");
+  const match = PLANNER_TALK.exec(prose);
   if (match) {
     check.warnings?.push(
       `${where}: planner wording "${match[0]}"; rewrite as a direct player action. Omit unavailable information and points without explaining tools, sources or missing data.`,
@@ -551,8 +554,28 @@ export function cleanPlan(raw: unknown, nowSeconds: number, check: MarkupCheck =
   if (contains !== undefined) plan.contains = contains;
   const entities = usedEntities(scope);
   if (entities) plan.entities = entities;
+  warnBonusPromises(plan, check);
   cleanPlanPlaces(plan, check);
   return plan;
+}
+
+function warnBonusPromises(plan: Plan, check: MarkupCheck): void {
+  const promised = new Set(
+    [...(plan.rewards ?? []), ...plan.tasks.flatMap((task) => task.rewards ?? [])].flatMap(
+      markupIds,
+    ),
+  );
+  const outcome = plan.outcome;
+  if (outcome?.kind === "achievement") promised.add(`ach:${outcome.achievementID}`);
+  else if (outcome && "id" in outcome) promised.add(`${outcome.kind}:${outcome.id}`);
+  for (const bonus of plan.bonus ?? []) {
+    const [id] = markupIds(bonus);
+    if (promised.has(id)) {
+      check.warnings?.push(
+        `Plan bonus: ${bonus} is already promised; remove it from bonus or choose a different outcome.`,
+      );
+    }
+  }
 }
 
 export const CONTAINS_MAX = 2;
@@ -800,12 +823,12 @@ export function cleanPlanPlaces(plan: Plan, check: MarkupCheck): void {
 }
 
 export function taskQuestIds(task: Task): Set<number> {
+  // Prerequisites describe when a Step is ready, not where it takes place.
   const quests = new Set<number>(
-    planMarkupIds({ tasks: [task] })
+    planMarkupIds({ tasks: [{ ...task, condition: undefined }] })
       .filter((id) => id.startsWith("quest:"))
       .map((id) => Number(id.slice(6))),
   );
-  if (task.condition?.check?.kind === "quest") quests.add(task.condition.check.id);
   const visit = (complete: Record<string, unknown> | undefined) => {
     if (complete?.kind === "quest" && typeof complete.questID === "number")
       quests.add(complete.questID);
@@ -823,6 +846,10 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
       check.warnings?.push(`Step ${index} point is the player's own position; dropped`);
       return;
     }
+    if (
+      check.places!.knownPoints.some((p) => p.mapID === point.mapID && distance(p, point) <= 0.005)
+    )
+      return point;
     const candidates = check.places!.questPoints.filter(
       (p) => quests.has(p.questID) && p.mapID === point.mapID,
     );
@@ -833,17 +860,15 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
       return validate({ mapID, x, y });
     }
     if (!route && candidates.length === 1) return point;
-    if (
-      check.places!.knownPoints.some((p) => p.mapID === point.mapID && distance(p, point) <= 0.005)
-    )
-      return point;
     check.warnings?.push(
       `Step ${index} unsupported travel point dropped; use a known destination or omit it`,
     );
     return;
   };
+  let destination: Waypoint | undefined;
   if (task.mapID !== undefined && task.x !== undefined && task.y !== undefined) {
     const point = validate({ mapID: task.mapID, x: task.x, y: task.y });
+    destination = point;
     delete task.mapID;
     delete task.x;
     delete task.y;
@@ -854,7 +879,7 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
   }
   const completion = (raw: Record<string, unknown>): Record<string, unknown> | undefined => {
     if (raw.kind === "proximity") {
-      const point = validate(raw as Waypoint);
+      const point = destination ?? validate(raw as Waypoint);
       return point ? { ...raw, ...point } : undefined;
     }
     if (raw.kind === "any" && Array.isArray(raw.any)) {
