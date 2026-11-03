@@ -12,6 +12,23 @@ Companion 0.1.1 does not ask for a token. On first launch it registers a device 
 
 Latest session for this player.
 
+Plan reads (`GET /v1/plan`, `GET /v1/requests/latest`, and `GET /v1/requests/{id}`)
+accept the optional `X-Unbored-Addon-Version` header, for example `0.11.0`.
+The Companion reads it from the installed `Unbored.toc` on each poll, including
+manual installs; it is the addon version, not the Companion version. Existing
+snapshots, Requests and Device records have no reliable addon version field;
+error reports alone cannot identify the currently installed version.
+
+For versions below 0.11.0, or a missing or malformed header, the Server trims
+each Step note to at most 400 UTF-8 bytes without splitting a character. An
+ellipsis is included within that limit. Known versions 0.11.0 and newer receive
+notes untouched (a `v` prefix and build metadata are accepted; a 0.11.0
+prerelease is below the cutoff). Old Companions that omit the header receive
+the safe short notes even if their installed addon is newer. Only the delivery
+copy changes: stored Plans, their ids and timestamps, and owner/Planner reads
+stay intact, so an upgrade can retrieve the full notes. No payload schema or
+database migration is needed ([ADR 0066](adr/0066-older-addon-step-notes.md)).
+
 ```
 GET {base}/v1/plan
 Accept: application/json

@@ -17,6 +17,7 @@ import {
 import { PlanRunner } from "./runner.ts";
 import { handleMcp } from "./mcp.ts";
 import { cleanPlanRequest, PlanError, planMarkupIds } from "./plan.ts";
+import { planForAddon } from "./plan-delivery.ts";
 import { cleanProfile } from "./profile.ts";
 import {
   accountKey,
@@ -162,9 +163,13 @@ export function createApp(
   const unauthorized = (c: Parameters<typeof requireRole>[0]) =>
     c.json({ error: "Unauthorized" }, 401);
 
-  const requestWithPlan = async (request: PlanRequest) => {
+  const requestWithPlan = async (request: PlanRequest, addonVersion: string | undefined) => {
     const plan = request.planId ? await store.planById(request.planId) : undefined;
-    return { ...publicRequest(request), plan: plan?.unb1 ?? null, eta: await store.planEta() };
+    return {
+      ...publicRequest(request),
+      plan: plan ? planForAddon(plan, addonVersion) : null,
+      eta: await store.planEta(),
+    };
   };
 
   app.use(
@@ -374,7 +379,7 @@ export function createApp(
     await store.expireRequests();
     const request = await store.latestRequestForDevice(access.deviceId);
     if (!request) return c.json({ error: "No request yet." }, 404);
-    return c.json(await requestWithPlan(request));
+    return c.json(await requestWithPlan(request, c.req.header("X-Unbored-Addon-Version")));
   });
 
   // The exact Request the game waits for (D82); another device's id is 404.
@@ -385,7 +390,7 @@ export function createApp(
     const request = await store.requestById(c.req.param("id"));
     if (!request || request.deviceId !== access.deviceId)
       return c.json({ error: "No such request." }, 404);
-    return c.json(await requestWithPlan(request));
+    return c.json(await requestWithPlan(request, c.req.header("X-Unbored-Addon-Version")));
   });
 
   // Personal advice for this device's characters (docs/adr/0019) and the
@@ -412,7 +417,11 @@ export function createApp(
     if (access instanceof Response) return access;
     const stored = await store.latestPlanForDevice(access.deviceId);
     if (!stored) return c.json({ error: "No plan yet." }, 404);
-    return c.json({ id: stored.id, createdAt: stored.createdAt, plan: stored.unb1 });
+    return c.json({
+      id: stored.id,
+      createdAt: stored.createdAt,
+      plan: planForAddon(stored, c.req.header("X-Unbored-Addon-Version")),
+    });
   });
 
   app.post("/v1/progress", async (c) => {
