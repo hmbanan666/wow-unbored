@@ -58,10 +58,11 @@ export class GameWatch {
     }
     try {
       const current = await this.game.currentBuild();
-      if (!current || Number(build.split(".")[3]) > Number(current.split(".")[3])) {
-        const result = await this.game.importAchievements(build, this.fetchImpl);
-        this.log(`Game DB: ${result.status} ${result.build}.`);
-      }
+      const target =
+        current && Number(current.split(".")[3]) > Number(build.split(".")[3]) ? current : build;
+      // A pre-core import of the same build still needs its remaining tables.
+      const result = await this.game.importBuild(target, this.fetchImpl);
+      if (result.status === "imported") this.log(`Game DB: ${result.status} ${result.build}.`);
     } catch {
       await this.game.watchFailed("import_failed");
       throw new Error("Build import failed");

@@ -170,21 +170,51 @@ On Ubuntu the luacheck package is `lua-check`.
 
 The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md)). The PostgreSQL schema is the numbered SQL files in `apps/server/migrations/`; the Server applies the missing ones at startup under an advisory lock and records them in `schema_migrations`. `DATABASE_POOL_MAX` sets the pool size (default 10). With `DATABASE_URL` set, every table is read and written in Postgres and the SQLite file is not opened; without it the Server runs on SQLite as before. Both go through one async layer (`apps/server/src/db.ts`); Forget and the Account migration run in one transaction on either. On Postgres `POST /v1/snapshot` queues the checked upload in `raw_uploads` and answers 202; a worker in the Server (`apps/server/src/inbox.ts`: `FOR UPDATE SKIP LOCKED`, the oldest upload of each Account first, `questLog`/`bags` uploads before others, woken by `LISTEN raw_uploads` and every 5 s, 5 attempts with backoff, then `failed` in the MCP tool `list_failed_uploads`) ingests it. SQLite keeps the inline 200. Tests that compare the backends run once per each (`BACKENDS` in `apps/server/test/postgres-db.ts`), and `UNBORED_TEST_BACKEND=postgres` runs the whole Server suite on Postgres (`apps/server/test/backend.ts`; CI does both). The Postgres tests run when `UNBORED_TEST_DATABASE_URL` points at a server where that user may create databases; each test file gets its own database copied from a migrated template. In CI they run against a `postgres:18` service container in `server.yml`, which sets `UNBORED_REQUIRE_POSTGRES=1` so they cannot silently skip. Without `UNBORED_TEST_DATABASE_URL` the Postgres tests are skipped and everything else runs on SQLite.
 
-### Game DB: Achievement imports
+### Game DB: core content imports
 
-Issue #94 implements the first slice of [ADR 0071](adr/0071-game-db.md). The Server
-stores `game.builds` and `game.achievements` on PostgreSQL; startup applies
-`0007_game.sql` through the existing migration runner. SQLite uses
-`game_builds` and `game_achievements` in its normal file. The SQLite-to-PostgreSQL
-transfer also copies these tables; a pre-Game-DB SQLite file still transfers.
-This data is separate from player snapshots and the Catalog.
+[ADR 0071](adr/0071-game-db.md) keeps client game facts separate from player
+snapshots and the Catalog. Startup migration `0011_game_content.sql` extends
+`0007_game.sql` with `game.rows` and `game.imports`; SQLite uses the corresponding
+`game_rows` and `game_imports` tables. The existing SQLite-to-Postgres transfer
+copies both (23 tables for a current file), and still accepts older files.
 
-The owner triggers an import with `POST /owner/game/import`, JSON
-`{"build":"12.0.1.66337"}`, using the existing owner/planner bearer. Supply the
-**current live retail build**, including all four components, from the installed
-client or the build selector at [wago.tools](https://wago.tools/db2/Achievement).
-The example build is a fixture, not a claim about the current live build.
+The import selects these 22 DB2 tables from wago.tools for one explicit retail
+build. The field allowlist is in
+[`game-content.ts`](../apps/server/src/game-content.ts); column names follow the
+[client definitions](https://github.com/wowdev/WoWDBDefs/tree/master/definitions).
 
+| Content | Source tables |
+| --- | --- |
+| Quests and quest lines | `QuestV2`, `QuestV2CliTask`, `QuestLine`, `QuestLineXQuest` |
+| Factions | `Faction` |
+| Item names | `ItemSparse` |
+| Mounts, pet species, toys | `Mount`, `BattlePetSpecies`, `Toy` |
+| Currencies | `CurrencyTypes` |
+| Achievements and criteria | `Achievement`, `CriteriaTree`, `Criteria` |
+| Maps and areas | `UiMap`, `UiMapAssignment`, `AreaTable`, `Map` |
+| Quest points | `QuestPOIBlob`, `QuestPOIPoint` |
+| Flight nodes | `TaxiNodes` |
+| Journal instances and encounters | `JournalInstance`, `JournalEncounter` |
+
+`QuestV2` is the quest-id registry; `QuestV2CliTask` supplies titles for only its
+subset of quests. `BattlePetSpecies` supplies creature and summon-spell ids,
+not a species name. Toy record ids differ from their `ItemID`. Map id zero is
+valid. No missing names or relationships are invented. Names and selected
+localized text are stored in enUS and ruRU; tables without localized fields
+are downloaded once. Locale id sets must match exactly, regardless of order.
+Numeric fields preserve scientific notation as numbers and wide integer
+quantities as exact strings. Extra columns are discarded.
+
+`game.rows` has a primary index on `(build, table_name, locale, id)` and selected
+fields in `body` (jsonb; `body_json` text on SQLite). `GameDb.row(table, id,
+locale)` reads one record from the current build and returns `{build, fields}`,
+or `undefined`; it never downloads or falls back to an older build. Unlocalized
+tables use the same record for both locales. The existing MCP `get_game_entity`
+continues to return Achievement names through `game.achievements`. More tools
+and Plan validation belong to subsequent tickets.
+
+The owner triggers all tables with `POST /owner/game/import`, JSON
+`{"build":"<current-live-build>"}`, using the existing owner/planner bearer.
 From the repo root, with `UNBORED_SERVER_URL` and `UNBORED_PLANNER_TOKEN` already
 set in the operator's environment, run:
 
@@ -192,34 +222,49 @@ set in the operator's environment, run:
 node apps/server/scripts/import-game.ts <current-live-build>
 ```
 
-The command invokes the running Server, so it needs no database access. On
-production, run it only after the Server containing this migration has been
-deployed. Credentials stay in the environment, outside command arguments and
-output. The response is `{build, status: "imported" | "unchanged", achievements}`.
+Get the current four-part retail build from the installed client or
+[wago.tools](https://wago.tools/db2/Achievement). The command invokes the running
+Server, needs no database access, and keeps credentials outside arguments and
+output. On production, run it after the Server containing the migration has
+been deployed. It returns `{build, status: "imported" | "unchanged",
+achievements, tables}`, where `tables` contains one count per source table
+(not double-counting locales). The command waits up to 16 minutes and exits 0
+on success, 1 on request failure, 2 on invalid arguments or missing settings.
 401 means the bearer was refused, 400 means the build was malformed, and 502
-means the upstream download or locale data was invalid; retry after resolving
-that cause. The command exits 0 on success, 1 on request failure, 2 on invalid
-arguments or missing environment settings.
+means the import failed; the previous complete build remains available.
 
-The Server downloads only `Achievement/csv?build=<build>&locale=enUS` and
-`Achievement/csv?build=<build>&locale=ruRU` from wago.tools, with a 30-second timeout
-and 20 MB cap per file. Both locale id sets must agree. It publishes the build
-and its names in one transaction after validation; a failed import leaves the
-previous complete build available. Repeating a completed build does no download
-and changes no rows. Concurrent imports of one build publish once.
+Downloads are sequential and streaming: 120 seconds and 256 MiB per CSV,
+256 Ki characters per row, two million records per table/locale, at most 1 GiB
+of projected staging data and 15 minutes per import. Parsing yields every
+16 KiB, including within quoted cells. Temporary files under the data directory
+are removed on success or failure. After an unclean process exit, an operator
+may remove abandoned `.game-import-*` directories while the Server is stopped.
+Database writes use batches of at most 500 rows or about 1 MiB, then publish
+all tables, both locales, counts and Achievement names in one transaction.
+Duplicate ids, bad fields, truncated text or locale disagreement roll it back.
+Postgres readers retain the previous build during publication. SQLite queries
+queue during publication; its synchronous commit/checkpoint runs in an import
+thread so it cannot block the request event loop. Imports within one Server
+are serialized. A repeated complete build performs no downloads. An existing
+Achievement-only build is upgraded on the next watch pass even when its build
+number is unchanged.
 
-MCP `get_game_entity` takes `{"kind":"achievement","id":964}` and returns
-`{kind, id, build, names: {enUS, ruRU}}`. It reads the highest imported numeric
-build, never downloads, and returns `{"entity":null}` if that build lacks the id
-or no build exists. Names are copied as supplied, including empty titles; no
-translation is invented. Older builds remain stored but are not used as a fallback.
-The owner and a live Plan runner lease may read it; Companion credentials and
-the runner claim token cannot. Import remains owner-only.
+`game-content.test.ts`, the owner command tests and watcher tests exercise the
+public import/read boundaries on both backends with fixture downloads.
+`game-content-load.test.ts` streams 300,000 item names in each locale, 750,000
+quest points, 100,000 quests and 20,000 Achievements per locale along with the
+other tables. It bounds import
+time to 90 seconds, 100 indexed lookups to one second, event-loop p99 to 100 ms,
+maximum lag to 500 ms and extra RSS to 350 MB. Normal CI does not contact wago.
 
-Additional tables and Plan validation are later roadmap slices. This command
-remains available for an immediate import or retry of a known live build.
-Tests replace only the HTTP download boundary and exercise import, storage and
-MCP on SQLite and PostgreSQL; they do not contact the live data source.
+A local PostgreSQL import of live retail build `12.1.5.70783` on 2026-11-04
+completed all 22 tables in 61.4 seconds with 120.7 MB extra RSS, 4.7 ms p99 lag
+and 50.2 ms maximum lag. It included 175,791 items, 172,732 quest points,
+121,821 criteria-tree records and 14,139 Achievements; `EXPLAIN` confirmed
+`rows_pkey` for an item-id lookup. This was a disposable local test database,
+not a production import. The larger generated fixture covers growth beyond
+those observed counts.
+
 
 ### Game DB: automatic build watching
 
@@ -232,7 +277,7 @@ response cap; the locale imports retain the limits above. Startup and requests
 do not wait for downloads. Overlapping ticks share one run, and shutdown stops
 the timer and waits for that run before closing storage.
 
-A newer numeric build imports both Achievement locales through the existing
+A newer numeric build imports all core tables and their localized text through the existing
 atomic importer. Unchanged or older builds do not download again; failed
 discovery or import retries on the next hourly check. A stale upstream response
 cannot lower the last observed live build. Multiple Server processes may download
