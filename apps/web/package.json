@@ -1,0 +1,27 @@
+{
+  "name": "@unbored/web",
+  "version": "0.12.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxt prepare && nuxt typecheck"
+  },
+  "dependencies": {
+    "@nuxt/fonts": "^1.2.0",
+    "@nuxt/ui": "^4.12.0",
+    "@nuxtjs/seo": "^6.0.1",
+    "@resvg/resvg-js": "^2.6.2",
+    "nuxt": "^4.6.4",
+    "nuxt-auth-utils": "^0.6.0",
+    "postgres": "^3.4.9",
+    "satori": "^0.63.2"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vue-tsc": "^3.3.14"
+  }
+}

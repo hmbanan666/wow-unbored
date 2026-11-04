@@ -1,0 +1,29 @@
+# HTTP routing for the site and the Server (ADR 0073).
+
+# Two Dokploy apps on the same host and the same public name. Traefik sends
+# Companion paths to the Server and everything else to the site. Nothing here
+# is applied by itself: set the rules on the two apps, and do not put the site
+# in the Server container.
+#
+# Companion base URL stays https://unbored.kosarev.space (no path). It calls
+# /v1/..., which must keep reaching the Server.
+
+http:
+  routers:
+    unbored-server:
+      rule: "Host(`unbored.kosarev.space`) && (PathPrefix(`/v1`) || PathPrefix(`/mcp`) || Path(`/health`) || PathPrefix(`/owner`))"
+      priority: 100
+      service: unbored-server
+    unbored-web:
+      rule: "Host(`unbored.kosarev.space`)"
+      priority: 1
+      service: unbored-web
+  services:
+    unbored-server:
+      loadBalancer:
+        servers:
+          - url: "http://unbored-server:3000"
+    unbored-web:
+      loadBalancer:
+        servers:
+          - url: "http://unbored-web:3000"
