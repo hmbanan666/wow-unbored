@@ -27,6 +27,10 @@ useSeoMeta({
       <NuxtLink class="wordmark" to="/">Unbored</NuxtLink>
     </header>
     <main class="page">
+      <div class="portrait" aria-hidden="true">
+        <img class="bory" src="/bory.png" alt="" />
+        <img src="/bory-frame.png" alt="" />
+      </div>
       <h1>{{ line }}</h1>
       <p>
         <NuxtLink to="/">Back home</NuxtLink>

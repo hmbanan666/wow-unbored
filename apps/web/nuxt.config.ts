@@ -3,9 +3,9 @@ export default defineNuxtConfig({
   modules: ["@nuxt/ui", "@nuxtjs/seo", "nuxt-auth-utils"],
   css: ["~/assets/css/main.css"],
   devServer: { port: 3001 },
-  colorMode: {
-    preference: "dark",
-    fallback: "dark",
+  /** Dark only: no color-mode script, no toggle, no light flash. */
+  ui: {
+    colorMode: false,
   },
   site: {
     url: "https://unbored.kosarev.space",
@@ -36,7 +36,11 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      htmlAttrs: { lang: "en" },
+      htmlAttrs: { lang: "en", class: "dark", style: "color-scheme: dark" },
+      meta: [
+        { name: "color-scheme", content: "dark" },
+        { name: "theme-color", content: "#1e1410" },
+      ],
       link: [{ rel: "icon", type: "image/png", href: "/bory.png" }],
     },
   },

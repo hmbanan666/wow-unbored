@@ -1,19 +1,60 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* One dark "lamp" theme for every page (no light theme, no toggle). */
 @theme static {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --color-gold-50: #fbf6ea;
   --color-gold-100: #f5e6c4;
   --color-gold-200: #f5d27a;
-  --color-gold-300: #e8b04a;
-  --color-gold-400: #d9a23a;
-  --color-gold-500: #e8b04a;
+  --color-gold-300: #eec266;
+  --color-gold-400: #e8b04a;
+  --color-gold-500: #d9a23a;
   --color-gold-600: #c4922e;
   --color-gold-700: #a87820;
   --color-gold-800: #7a5a18;
   --color-gold-900: #4a3810;
   --color-gold-950: #2a1c15;
-  --color-burgundy-500: #7a2230;
+}
+
+:root,
+.dark {
+  /* Lamp palette. Body text on the darkest stop is about 13:1, muted about 7:1 (WCAG AA). */
+  --lamp-deep: #140d0a;
+  --lamp-bg: #1e1410;
+  --lamp-glow: #2a1c15;
+  --lamp-line: #4a3810;
+  --lamp-text: #eadbc0;
+  --lamp-muted: #b8a385;
+  --lamp-gold: #e8b04a;
+  --lamp-gold-light: #f5d27a;
+  --lamp-gold-gradient: linear-gradient(180deg, #f5d27a 0%, #e8b04a 55%, #c4922e 100%);
+  --lamp-background: radial-gradient(
+    circle at 50% 0%,
+    var(--lamp-glow) 0%,
+    var(--lamp-bg) 55%,
+    var(--lamp-deep) 100%
+  );
+
+  color-scheme: dark;
+  --ui-bg: var(--lamp-bg);
+  --ui-bg-muted: var(--lamp-glow);
+  --ui-bg-elevated: var(--lamp-glow);
+  --ui-bg-accented: var(--lamp-line);
+  --ui-text: var(--lamp-text);
+  --ui-text-muted: var(--lamp-muted);
+  --ui-text-dimmed: var(--lamp-muted);
+  --ui-text-toned: var(--lamp-text);
+  --ui-text-highlighted: var(--lamp-gold-light);
+  --ui-text-inverted: var(--lamp-deep);
+  --ui-border: var(--lamp-line);
+  --ui-border-muted: var(--lamp-line);
+  --ui-border-accented: var(--lamp-gold);
+  --ui-primary: var(--lamp-gold);
+}
+
+html {
+  background-color: var(--lamp-deep);
 }
 
 html,
@@ -24,9 +65,20 @@ body,
 
 body {
   margin: 0;
-  background: radial-gradient(circle at 50% 0%, #2a1c15 0%, #1e1410 55%, #140d0a 100%);
-  color: #eadbc0;
-  font-family: "Segoe UI", "Iowan Old Style", Palatino, serif;
+  background: var(--lamp-background);
+  background-attachment: fixed;
+  color: var(--lamp-text);
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--lamp-gold);
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  color: var(--lamp-gold-light);
 }
 
 .site {
@@ -46,11 +98,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 0 0.5rem;
+  padding: 1.25rem 0 0.75rem;
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, transparent, var(--lamp-line), transparent) 1;
 }
 
 .wordmark {
-  color: #f5d27a;
+  color: var(--lamp-gold-light);
   font-weight: 650;
   letter-spacing: 0.02em;
   text-decoration: none;
@@ -59,12 +113,12 @@ body {
 .site-footer {
   margin-top: auto;
   padding: 2rem 0 1.5rem;
-  color: #b8a385;
+  color: var(--lamp-muted);
   font-size: 0.95rem;
 }
 
 .site-footer a {
-  color: #e8b04a;
+  color: var(--lamp-gold);
 }
 
 .page {
@@ -94,9 +148,17 @@ body {
   border-radius: 50%;
 }
 
+.wordmark,
+h1 {
+  background: var(--lamp-gold-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 h1 {
   margin: 0 0 0.75rem;
-  color: #f5d27a;
+  color: var(--lamp-gold-light);
   font-size: clamp(1.8rem, 4vw, 2.4rem);
   font-weight: 650;
   line-height: 1.15;
@@ -104,7 +166,7 @@ h1 {
 
 .lead,
 .page p {
-  color: #eadbc0;
+  color: var(--lamp-text);
   font-size: 1.05rem;
   line-height: 1.5;
 }
@@ -113,9 +175,9 @@ h1 {
   display: inline-block;
   margin: 0 0 0.75rem;
   padding: 0.1rem 0.55rem;
-  border: 1px solid #e8b04a;
+  border: 1px solid var(--lamp-gold);
   border-radius: 999px;
-  color: #e8b04a;
+  color: var(--lamp-gold);
   font-size: 0.85rem;
 }
 
@@ -134,13 +196,13 @@ h1 {
 .character h2,
 .page h2 {
   margin: 1.25rem 0 0.25rem;
-  color: #f5d27a;
+  color: var(--lamp-gold-light);
   font-size: 1.25rem;
 }
 
 .meta,
 .facts {
-  color: #b8a385;
+  color: var(--lamp-muted);
 }
 
 .facts {
@@ -153,4 +215,14 @@ h1 {
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 1.25rem;
+}
+
+.actions .gold-button {
+  background: var(--lamp-gold-gradient);
+  color: var(--lamp-deep);
+  font-weight: 600;
+}
+
+.actions .gold-button:hover {
+  filter: brightness(1.08);
 }
