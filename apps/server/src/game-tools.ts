@@ -1,5 +1,6 @@
-import type { GameDb } from "./game-db.ts";
-import type { GameTable } from "./game-content.ts";
+import { type GameDb, gameSource } from "./game-db.ts";
+import type { BlizzardIds } from "./blizzard.ts";
+export { gameSource } from "./game-db.ts";
 
 export const ENTITY_TABLES = {
   item: "ItemSparse",
@@ -13,16 +14,6 @@ export const ENTITY_TABLES = {
   instance: "JournalInstance",
 } as const;
 export type EntityKind = keyof typeof ENTITY_TABLES;
-
-export function gameSource(build: string | undefined, table: GameTable, locale: string) {
-  return {
-    kind: "Game DB",
-    build: build ?? null,
-    table,
-    locale,
-    url: build ? `https://wago.tools/db2/${table}/csv?build=${build}&locale=${locale}` : null,
-  };
-}
 
 export async function findGameEntity(
   game: GameDb,
@@ -44,6 +35,7 @@ export async function findGameEntity(
 export async function getQuestLine(
   game: GameDb,
   query: { questLineID: number; locale: "enUS" | "ruRU" },
+  api?: BlizzardIds,
 ) {
   const build = await game.currentBuild();
   const source = gameSource(build, "QuestLineXQuest", "enUS");
@@ -53,7 +45,12 @@ export async function getQuestLine(
   const unavailable: string[] = line
     ? []
     : [build ? "quest line not found" : "Game DB unavailable"];
-  const quests: { questID: number; order: number; name: string | null }[] = [];
+  const quests: {
+    questID: number;
+    order: number;
+    name: string | null;
+    nameSource: Awaited<ReturnType<GameDb["questName"]>>["source"];
+  }[] = [];
   if (line && build) {
     const rows = await game.related("QuestLineXQuest", "QuestLineID", query.questLineID, build);
     if (rows.length > 256) unavailable.push("quest line: result limit");
@@ -69,13 +66,16 @@ export async function getQuestLine(
           unavailable.push(`quest not found: ${questID}`);
           continue;
         }
-        const title = (await game.row("QuestV2CliTask", questID, query.locale, build))?.fields
-          .QuestTitle_lang;
-        if (!title) unavailable.push(`quest name: ${questID}`);
+        const title = await game.questName(questID, query.locale, build, api);
+        if (!title.name) {
+          unavailable.push(`quest name: ${questID}`);
+          unavailable.push(`quest name: ${questID} (Blizzard Game Data API unavailable)`);
+        }
         quests.push({
           questID,
           order: Number(row.OrderIndex),
-          name: typeof title === "string" && title ? title : null,
+          name: title.name,
+          nameSource: title.source,
         });
       }
     }

@@ -176,7 +176,7 @@ The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postg
 snapshots and the Catalog. Startup migration `0011_game_content.sql` extends
 `0007_game.sql` with `game.rows` and `game.imports`; SQLite uses the corresponding
 `game_rows` and `game_imports` tables. The existing SQLite-to-Postgres transfer
-copies both (23 tables for a current file), and still accepts older files.
+copies both (24 tables for a current file), and still accepts older files.
 
 The import selects these 23 DB2 tables from wago.tools for one explicit retail
 build. The field allowlist is in
@@ -483,12 +483,34 @@ The API search endpoint is documented in [Blizzard's static-search announcement]
 Catalog item ids and URLs are exported from the references already vetted in
 `addon/Data/Farm.lua`; rows without an explicit item reference are not guessed.
 
-Migration `0014_game_tools.sql` adds indexes through normal startup. No new
-tables are added: transfer/workflow counts remain 23. Existing imported builds
-need no re-import. On an empty installation, use the operator-run command already
-shown above: `node apps/server/scripts/import-game.ts <current-live-build>`.
-Run it with the documented owner authentication on the target installation;
-local development and tests never import into production.
+Migration `0014_game_tools.sql` adds indexes through normal startup. Migration
+`0019_quest_names.sql` adds `game.quest_names` (`game_quest_names` on SQLite)
+for successful Blizzard quest titles, keyed by build, quest id and locale, with
+the exact API source URL. SQLite transfer/workflow counts are now **24**.
+
+`get_quest_line` prefers imported `QuestV2CliTask` titles, then this persistent
+cache, then `/data/wow/quest/{id}` in the configured region's static namespace
+(`en_US` or `ru_RU`). Each quest's `nameSource` identifies the Game DB table or
+Blizzard API URL, build and locale; it is null when no title is verified.
+Credentials, OAuth reuse, injected fetch and four-second HTTP timeouts come from
+the existing Blizzard client. Missing credentials, HTTP failures and malformed
+or mismatched quest documents leave the name null and add an unavailable reason.
+Failures are not cached, so a later lookup can recover. A new build uses a fresh
+cache; cached titles remain readable without credentials. API titles never
+replace imported DB2 rows or establish quest existence, order or prerequisites.
+
+English quest Path goal name checks use the same lookup on both owner HTTP and
+MCP draft saves and publication. As with other content kinds, a known title must
+match; an unavailable title adds no invented name and leaves the existing
+verified-id check in force. Other goal kinds and Russian content name-check
+policy are unchanged. No new domain term or ADR is needed: this is the sourced
+Game DB supplement already authorized by ADR 0071.
+
+Existing builds need no re-import or production backfill: titles fill lazily on
+lookup. On an empty installation, use the documented operator-run command
+`node apps/server/scripts/import-game.ts <current-live-build>` with owner
+authentication on the target installation. Local development and fixture tests
+never call the live quest API or import into production.
 
 ### Game DB: Plan checks
 
