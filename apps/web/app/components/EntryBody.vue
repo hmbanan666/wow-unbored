@@ -20,6 +20,7 @@ function external(href: string): boolean {
           :to="block.href"
           :target="external(block.href) ? '_blank' : undefined"
           :rel="external(block.href) ? 'noopener noreferrer' : undefined"
+          class="gold-button"
           color="primary"
           size="lg"
         >

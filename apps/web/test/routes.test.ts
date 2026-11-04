@@ -56,3 +56,14 @@ test("the route table keeps Companion paths on the Server", () => {
   assert.equal(image.includes("NUXT_SESSION_PASSWORD="), false);
   assert.equal(image.includes("DATABASE_URL="), false);
 });
+
+test("the site is dark only, with no color-mode switch", () => {
+  const config = readFileSync(path.join(web, "nuxt.config.ts"), "utf8");
+  assert.match(config, /colorMode:\s*false/);
+  assert.match(config, /class:\s*"dark"/);
+  const vue = files(path.join(web, "app")).filter((file) => file.endsWith(".vue"));
+  for (const file of vue) {
+    const text = readFileSync(file, "utf8");
+    assert.equal(/UColorMode|useColorMode/.test(text), false, path.relative(web, file));
+  }
+});
