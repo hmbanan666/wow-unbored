@@ -22,6 +22,7 @@ export default defineNuxtConfig({
   nitro: {
     preset: "node-server",
   },
+<<<<<<< HEAD
   runtimeConfig: {
     /** Server base URL for sign-in (NUXT_SERVER_URL). Empty uses this request's origin. */
     serverUrl: "",
@@ -31,6 +32,8 @@ export default defineNuxtConfig({
       cookie: { sameSite: "lax", secure: true, httpOnly: true },
     },
   },
+=======
+>>>>>>> origin/main
   typescript: {
     strict: true,
   },

@@ -2,6 +2,7 @@
 import type { NuxtError } from "#app";
 
 import { PUBLIC_COPY } from "#shared/catalog";
+<<<<<<< HEAD
 import { SIGN_IN_COPY } from "#shared/sign-in";
 
 const props = defineProps<{ error: NuxtError }>();
@@ -10,6 +11,11 @@ const known = new Set<string>([
   ...Object.values(SIGN_IN_COPY.en),
   ...Object.values(SIGN_IN_COPY.ru),
 ]);
+=======
+
+const props = defineProps<{ error: NuxtError }>();
+const known = new Set<string>(Object.values(PUBLIC_COPY));
+>>>>>>> origin/main
 const line = computed(() => {
   const message = String(props.error.statusMessage || props.error.message || "");
   return known.has(message) ? message : PUBLIC_COPY.notFound;
