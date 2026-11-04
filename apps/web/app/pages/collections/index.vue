@@ -27,21 +27,15 @@ useSchemaOrg([
 </script>
 
 <template>
-  <main class="page page-wide">
-    <SiteBreadcrumbs
+  <DsPage width="wide">
+    <DsPageHeader
       :trail="[
         { label: 'Home', to: '/' },
         { label: 'Collections', to: '/collections' },
       ]"
+      title="Collections"
+      lead="Authored top lists, not a database: a short list of what is worth getting first, and for each pick exactly where it comes from. Luck-based drops are marked as chance drops."
     />
-    <h1>Collections</h1>
-    <p class="lead">
-      Authored top lists, not a database: a short list of what is worth getting first, and for each
-      pick exactly where it comes from. Luck-based drops are marked as chance drops.
-    </p>
-    <div v-if="pages.length" class="cards">
-      <CatalogCard v-for="page in pages" :key="page.href" :page="page" />
-    </div>
-    <p v-else>The first collections are on their way.</p>
-  </main>
+    <CatalogGrid :pages="pages" empty="The first collections are on their way." />
+  </DsPage>
 </template>

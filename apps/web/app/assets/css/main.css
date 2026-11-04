@@ -1,33 +1,22 @@
-@import "tailwindcss";
-@import "@nuxt/ui";
-
-/* One dark "lamp" theme for every page (no light theme, no toggle). */
-@theme static {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --color-gold-50: #fbf6ea;
-  --color-gold-100: #f5e6c4;
-  --color-gold-200: #f5d27a;
-  --color-gold-300: #eec266;
-  --color-gold-400: #e8b04a;
-  --color-gold-500: #d9a23a;
-  --color-gold-600: #c4922e;
-  --color-gold-700: #a87820;
-  --color-gold-800: #7a5a18;
-  --color-gold-900: #4a3810;
-  --color-gold-950: #2a1c15;
-}
-
-:root,
-.dark {
-  /* Lamp palette. Body text on the darkest stop is about 13:1, muted about 7:1 (WCAG AA). */
+/*
+ * Unbored design system: tokens and base type. One dark "lamp" theme, no light theme.
+ * Components live in app/components/ds and use only these tokens (docs/design-system.md).
+ */
+:root {
+  /* Color. Text on --lamp-bg: text about 13:1, muted about 7:1, gold about 9:1 (WCAG AA). */
   --lamp-deep: #140d0a;
   --lamp-bg: #1e1410;
   --lamp-glow: #2a1c15;
+  --lamp-surface: rgb(42 28 21 / 0.72);
+  --lamp-surface-hover: rgb(54 37 26 / 0.85);
   --lamp-line: #4a3810;
+  --lamp-line-soft: rgb(74 56 16 / 0.55);
   --lamp-text: #eadbc0;
   --lamp-muted: #b8a385;
   --lamp-gold: #e8b04a;
   --lamp-gold-light: #f5d27a;
+  --lamp-gold-dark: #a87820;
+  --lamp-chance: #d9b98a;
   --lamp-gold-gradient: linear-gradient(180deg, #f5d27a 0%, #e8b04a 55%, #c4922e 100%);
   --lamp-background: radial-gradient(
     circle at 50% 0%,
@@ -36,25 +25,66 @@
     var(--lamp-deep) 100%
   );
 
+  /* Type. Alegreya for reading and headings, Alegreya Sans for small UI labels. */
+  --font-display: "Alegreya", "Iowan Old Style", Palatino, Georgia, serif;
+  --font-body: "Alegreya", "Iowan Old Style", Palatino, Georgia, serif;
+  --font-ui: "Alegreya Sans", ui-sans-serif, system-ui, sans-serif;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1.125rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: clamp(1.625rem, 1.4rem + 1vw, 1.875rem);
+  --text-3xl: clamp(2.125rem, 1.6rem + 2.4vw, 3rem);
+  --leading-tight: 1.15;
+  --leading-snug: 1.3;
+  --leading-body: 1.55;
+
+  /* Spacing, a 4px grid. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* Layout. */
+  --container-narrow: 42rem;
+  --container-wide: 64rem;
+  --gutter: clamp(1rem, 4vw, 2rem);
+  --tap: 44px;
+
+  /* Radius. */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-pill: 999px;
+
+  /* Shadow and glow. */
+  --shadow-card: inset 0 1px 0 rgb(245 210 122 / 0.05), 0 10px 30px rgb(0 0 0 / 0.35);
+  --glow-gold: 0 0 0 1px var(--lamp-gold), 0 0 28px rgb(232 176 74 / 0.18);
+  --focus-ring: 0 0 0 3px rgb(245 210 122 / 0.6);
+
   color-scheme: dark;
-  --ui-bg: var(--lamp-bg);
-  --ui-bg-muted: var(--lamp-glow);
-  --ui-bg-elevated: var(--lamp-glow);
-  --ui-bg-accented: var(--lamp-line);
-  --ui-text: var(--lamp-text);
-  --ui-text-muted: var(--lamp-muted);
-  --ui-text-dimmed: var(--lamp-muted);
-  --ui-text-toned: var(--lamp-text);
-  --ui-text-highlighted: var(--lamp-gold-light);
-  --ui-text-inverted: var(--lamp-deep);
-  --ui-border: var(--lamp-line);
-  --ui-border-muted: var(--lamp-line);
-  --ui-border-accented: var(--lamp-gold);
-  --ui-primary: var(--lamp-gold);
+}
+
+/* Base and a small reset. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+ul,
+ol {
+  margin: 0;
 }
 
 html {
   background-color: var(--lamp-deep);
+  -webkit-text-size-adjust: 100%;
 }
 
 html,
@@ -65,15 +95,36 @@ body,
 
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--lamp-background);
   background-attachment: fixed;
   color: var(--lamp-text);
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
 }
 
 a {
   color: var(--lamp-gold);
+  text-decoration-thickness: 1px;
   text-underline-offset: 0.2em;
 }
 
@@ -81,345 +132,50 @@ a:hover {
   color: var(--lamp-gold-light);
 }
 
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+img {
+  max-width: 100%;
+}
+
+code {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--lamp-glow);
+  font-size: 0.9em;
+}
+
+/* App shell: header, page, footer pinned to the bottom. */
 .site {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  min-height: 100dvh;
 }
 
-.site-header,
-.site-footer,
-.page {
-  width: min(40rem, calc(100% - 2.5rem));
-  margin: 0 auto;
-}
-
-.site-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 0 0.75rem;
-  border-bottom: 1px solid transparent;
-  border-image: linear-gradient(90deg, transparent, var(--lamp-line), transparent) 1;
-}
-
-.wordmark {
-  color: var(--lamp-gold-light);
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  text-decoration: none;
-}
-
-.site-footer {
-  margin-top: auto;
-  padding: 2rem 0 1.5rem;
-  color: var(--lamp-muted);
-  font-size: 0.95rem;
-}
-
-.site-footer a {
-  color: var(--lamp-gold);
-}
-
-.page {
-  padding: 1.5rem 0 2rem;
-}
-
-.portrait {
-  width: 7.5rem;
-  height: 7.5rem;
-  margin: 0.5rem auto 1.25rem;
-  position: relative;
-}
-
-.portrait img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.portrait .bory {
-  inset: 8%;
-  width: 84%;
-  height: 84%;
-  margin: auto;
-  border-radius: 50%;
-}
-
-.wordmark,
-h1 {
-  background: var(--lamp-gold-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-h1 {
-  margin: 0 0 0.75rem;
-  color: var(--lamp-gold-light);
-  font-size: clamp(1.8rem, 4vw, 2.4rem);
-  font-weight: 650;
-  line-height: 1.15;
-}
-
-.lead,
-.page p {
+/* The only global text helpers; everything else is a ds component. */
+.ds-lead {
   color: var(--lamp-text);
-  font-size: 1.05rem;
-  line-height: 1.5;
+  font-size: var(--text-lg);
+  line-height: var(--leading-body);
 }
 
-.tier {
-  display: inline-block;
-  margin: 0 0 0.75rem;
-  padding: 0.1rem 0.55rem;
-  border: 1px solid var(--lamp-gold);
-  border-radius: 999px;
-  color: var(--lamp-gold);
-  font-size: 0.85rem;
-}
-
-.page ul {
-  padding-left: 1.2rem;
-}
-
-.page li + li {
-  margin-top: 0.35rem;
-}
-
-.character + .character {
-  margin-top: 1.25rem;
-}
-
-.character h2,
-.page h2 {
-  margin: 1.25rem 0 0.25rem;
-  color: var(--lamp-gold-light);
-  font-size: 1.25rem;
-}
-
-.meta,
-.facts {
+.ds-meta {
   color: var(--lamp-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
 }
 
-.facts {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
+.ds-stack > * + * {
+  margin-top: var(--space-4);
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.25rem;
-}
-
-.actions .gold-button {
-  background: var(--lamp-gold-gradient);
-  color: var(--lamp-deep);
-  font-weight: 600;
-}
-
-.actions .gold-button:hover {
-  filter: brightness(1.08);
-}
-
-/* Navigation, breadcrumbs and catalog lists (docs/site-structure.md). */
-.site-nav,
-.footer-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1.1rem;
-}
-
-.site-nav a,
-.footer-nav a {
-  color: var(--lamp-muted);
-  font-size: 0.95rem;
-  text-decoration: none;
-}
-
-.site-nav a:hover,
-.site-nav a[aria-current="page"],
-.footer-nav a:hover {
-  color: var(--lamp-gold-light);
-}
-
-.footer-nav {
-  margin-bottom: 0.75rem;
-}
-
-.page-wide {
-  max-width: 52rem;
-}
-
-.breadcrumbs ol {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0 0 1rem;
-  padding: 0;
-  list-style: none;
-  color: var(--lamp-muted);
-  font-size: 0.9rem;
-}
-
-.breadcrumbs li + li::before {
-  content: "›";
-  margin-right: 0.4rem;
-  color: var(--lamp-line);
-}
-
-.breadcrumbs a {
-  color: var(--lamp-muted);
-}
-
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 1rem;
-  margin: 1rem 0;
-}
-
-.catalog-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--lamp-line);
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--lamp-glow) 70%, transparent);
-  color: var(--lamp-text);
-  text-decoration: none;
-}
-
-.catalog-card:hover {
-  border-color: var(--lamp-gold);
-  color: var(--lamp-text);
-}
-
-.catalog-card strong {
-  color: var(--lamp-gold-light);
-  font-size: 1.1rem;
-}
-
-.card-kind,
-.card-text {
-  color: var(--lamp-muted);
-  font-size: 0.9rem;
-}
-
-.home-section {
-  max-width: 52rem;
-  margin: 2rem auto 0;
-}
-
-.home-section h2,
-.track h2 {
-  color: var(--lamp-gold-light);
-  font-size: 1.35rem;
-}
-
-.steps {
-  padding-left: 1.25rem;
-  line-height: 1.55;
-}
-
-.steps li + li {
-  margin-top: 0.5rem;
-}
-
-.items {
-  margin: 1.5rem 0;
-  padding: 0;
-  list-style: none;
-}
-
-.item {
-  display: flex;
-  gap: 1rem;
-  padding: 1.1rem 0;
-  border-top: 1px solid var(--lamp-line);
-}
-
-.item-rank {
-  flex: none;
-  width: 2.25rem;
-  height: 2.25rem;
-  border: 1px solid var(--lamp-gold);
-  border-radius: 50%;
-  color: var(--lamp-gold);
-  font-weight: 650;
-  line-height: 2.15rem;
-  text-align: center;
-}
-
-.item-body {
-  min-width: 0;
-}
-
-.page .item h2 {
-  margin: 0.1rem 0 0.35rem;
-}
-
-.item-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0 0 0.5rem;
-}
-
-.page .item-tags span {
-  padding: 0.05rem 0.5rem;
-  border: 1px solid var(--lamp-line);
-  border-radius: 999px;
-  color: var(--lamp-muted);
-  font-size: 0.8rem;
-}
-
-.page .item-tags .tag-sure {
-  border-color: var(--lamp-gold-700, #a87820);
-  color: var(--lamp-gold);
-}
-
-.page .item-tags .tag-chance {
-  border-color: #7a5a18;
-  color: #d9b98a;
-}
-
-.item-how {
-  margin-top: 0.5rem;
-  padding: 0.6rem 0.8rem;
-  border-left: 2px solid var(--lamp-gold);
-  background: color-mix(in srgb, var(--lamp-glow) 60%, transparent);
-}
-
-.item-how-label {
-  color: var(--lamp-gold-light);
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.item-how ul {
-  margin: 0.25rem 0 0;
-  padding-left: 1.1rem;
-}
-
-.item-source {
-  display: inline-block;
-  margin-top: 0.5rem;
-  font-size: 0.9rem;
-}
-
-.track {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--lamp-line);
-}
-
-.page .entry-heading {
-  margin-top: 2rem;
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
 }

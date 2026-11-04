@@ -1,9 +1,11 @@
+<script setup lang="ts">
+import { PRIVACY_URL, REPO_URL, SITE_NAV } from "#shared/catalog";
+</script>
+
 <template>
-  <UApp>
-    <div class="site">
-      <SiteHeader />
-      <NuxtPage />
-      <SiteFooter />
-    </div>
-  </UApp>
+  <div class="site">
+    <DsNav :links="SITE_NAV" />
+    <NuxtPage />
+    <DsFooter :links="SITE_NAV" :privacy="PRIVACY_URL" :source="REPO_URL" />
+  </div>
 </template>

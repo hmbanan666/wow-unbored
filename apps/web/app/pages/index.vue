@@ -25,6 +25,21 @@ const collections = computed(() =>
 const paths = computed(() => (catalog.value?.pages ?? []).filter((item) => item.kind === "path"));
 const guides = computed(() => (catalog.value?.pages ?? []).filter((item) => item.kind === "guide"));
 
+const steps = [
+  {
+    title: "Install the addon and the Companion.",
+    text: "The Companion is a small Windows app that keeps Bory up to date.",
+  },
+  {
+    title: "Pick an idea in game.",
+    text: 'No typing: tap a chip like "Get a mount" or one of Bory\'s ideas.',
+  },
+  {
+    title: "Follow one step at a time.",
+    text: "Each plan promises one result you can really get tonight, with a pin on the map for every step.",
+  },
+];
+
 useSchemaOrg([
   defineSoftwareApp({
     name: "Unbored",
@@ -37,47 +52,28 @@ useSchemaOrg([
 </script>
 
 <template>
-  <div>
-    <PageView :page="page" />
-    <section class="home-section">
-      <h2>How Bory works</h2>
-      <ol class="steps">
-        <li>
-          <strong>Install the addon and the Companion.</strong> The Companion is a small Windows app
-          that keeps Bory up to date.
-        </li>
-        <li>
-          <strong>Pick an idea in game.</strong> No typing: tap a chip like "Get a mount" or one of
-          Bory's ideas.
-        </li>
-        <li>
-          <strong>Follow one step at a time.</strong> Each plan promises one result you can really
-          get tonight, with a pin on the map for every step.
-        </li>
-      </ol>
-    </section>
-    <section v-if="guides.length" class="home-section">
-      <h2>Guides</h2>
-      <p class="meta">Short guides, checked against the game's own data.</p>
-      <div class="cards">
-        <CatalogCard v-for="item in guides" :key="item.href" :page="item" />
-      </div>
-      <p><NuxtLink to="/guides">All guides</NuxtLink></p>
-    </section>
-    <section v-if="collections.length" class="home-section">
-      <h2>Collections</h2>
-      <p class="meta">Short, authored top lists. Every pick says exactly where it comes from.</p>
-      <div class="cards">
-        <CatalogCard v-for="item in collections" :key="item.href" :page="item" />
-      </div>
-      <p><NuxtLink to="/collections">All collections</NuxtLink></p>
-    </section>
-    <section v-if="paths.length" class="home-section">
-      <h2>Paths</h2>
-      <div class="cards">
-        <CatalogCard v-for="item in paths" :key="item.href" :page="item" />
-      </div>
-      <p><NuxtLink to="/paths">All paths</NuxtLink></p>
-    </section>
-  </div>
+  <PageView :page="page">
+    <DsSection title="How Bory works">
+      <DsSteps :steps="steps" />
+    </DsSection>
+    <DsSection
+      v-if="guides.length"
+      title="Guides"
+      lead="Short guides, checked against the game's own data."
+      :more="{ label: 'All guides', to: '/guides' }"
+    >
+      <CatalogGrid :pages="guides" empty="" />
+    </DsSection>
+    <DsSection
+      v-if="collections.length"
+      title="Collections"
+      lead="Short, authored top lists. Every pick says exactly where it comes from."
+      :more="{ label: 'All collections', to: '/collections' }"
+    >
+      <CatalogGrid :pages="collections" empty="" />
+    </DsSection>
+    <DsSection v-if="paths.length" title="Paths" :more="{ label: 'All paths', to: '/paths' }">
+      <CatalogGrid :pages="paths" empty="" />
+    </DsSection>
+  </PageView>
 </template>

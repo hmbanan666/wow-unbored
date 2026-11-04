@@ -70,11 +70,38 @@ test("the route table keeps Companion paths on the Server", () => {
 
 test("the site is dark only, with no color-mode switch", () => {
   const config = readFileSync(path.join(web, "nuxt.config.ts"), "utf8");
-  assert.match(config, /colorMode:\s*false/);
+  assert.equal(config.includes("@nuxt/ui"), false);
+  assert.equal(/colorMode|color-mode/.test(config.replace(/\/\*\*[\s\S]*?\*\//g, "")), false);
   assert.match(config, /class:\s*"dark"/);
   const vue = files(path.join(web, "app")).filter((file) => file.endsWith(".vue"));
   for (const file of vue) {
     const text = readFileSync(file, "utf8");
     assert.equal(/UColorMode|useColorMode/.test(text), false, path.relative(web, file));
   }
+});
+
+test("pages are built from the design system, with no page styles", () => {
+  const ds = readdirSync(path.join(web, "app/components/ds")).sort();
+  for (const name of [
+    "Breadcrumbs",
+    "Button",
+    "Card",
+    "Chip",
+    "Container",
+    "EmptyState",
+    "Footer",
+    "Heading",
+    "ItemCard",
+    "Nav",
+    "Section",
+  ]) {
+    assert.ok(ds.includes(`${name}.vue`), name);
+  }
+  const pages = files(path.join(web, "app/pages")).concat(path.join(web, "app/error.vue"));
+  for (const file of pages) {
+    const text = readFileSync(file, "utf8");
+    assert.equal(/<style/.test(text), false, path.relative(web, file));
+  }
+  const doc = readFileSync(path.join(root, "docs/design-system.md"), "utf8");
+  for (const name of ds) assert.ok(doc.includes(`Ds${name.replace(".vue", "")}`), name);
 });
