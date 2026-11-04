@@ -45,8 +45,11 @@ export function projectGamePoint(
     const y =
       number(row.UiMax_1) +
       ((worldX - x0) / (x1 - x0)) * (number(row.UiMin_1) - number(row.UiMax_1));
-    if (x >= 0 && x <= 1 && y >= 0 && y <= 1)
-      points.push({ mapID, x: Number(x.toFixed(6)), y: Number(y.toFixed(6)) });
+    if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+      const point = { mapID, x: Number(x.toFixed(6)), y: Number(y.toFixed(6)) };
+      if (!points.some((existing) => existing.x === point.x && existing.y === point.y))
+        points.push(point);
+    }
   }
   return points.length === 1 ? points[0] : undefined;
 }
