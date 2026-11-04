@@ -36,6 +36,7 @@ export const GAME_TABLES = {
   ],
   Criteria: ["ID", "Type", "Asset"],
   UiMap: ["ID", "Name_lang", "ParentUiMapID", "Type"],
+  UiMapGroupMember: ["ID", "Name_lang", "UiMapID"],
   UiMapAssignment: [
     "ID",
     "UiMapID",
@@ -86,6 +87,11 @@ export const GAME_CONTENT_SQLITE_SCHEMA = `
   CREATE INDEX IF NOT EXISTS game_questpoipoint_questpoiblobid ON game_rows (build, locale, CAST(json_extract(body_json, '$.QuestPOIBlobID') AS TEXT)) WHERE table_name = 'QuestPOIPoint';
   CREATE INDEX IF NOT EXISTS game_taxinodes_continentid ON game_rows (build, locale, CAST(json_extract(body_json, '$.ContinentID') AS TEXT)) WHERE table_name = 'TaxiNodes';
   CREATE INDEX IF NOT EXISTS game_journalencounter_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'JournalEncounter';
+  CREATE INDEX IF NOT EXISTS game_uimapgroupmember_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'UiMapGroupMember';
+  CREATE INDEX IF NOT EXISTS game_criteriatree_parent ON game_rows (build, locale, CAST(json_extract(body_json, '$.Parent') AS TEXT)) WHERE table_name = 'CriteriaTree';
+  CREATE INDEX IF NOT EXISTS game_journalinstance_mapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.MapID') AS TEXT)) WHERE table_name = 'JournalInstance';
+  CREATE INDEX IF NOT EXISTS game_journalencounter_journalinstanceid ON game_rows (build, locale, CAST(json_extract(body_json, '$.JournalInstanceID') AS TEXT)) WHERE table_name = 'JournalEncounter';
+  CREATE INDEX IF NOT EXISTS game_journalencounter_dungeonencounterid ON game_rows (build, locale, CAST(json_extract(body_json, '$.DungeonEncounterID') AS TEXT)) WHERE table_name = 'JournalEncounter';
   CREATE TABLE IF NOT EXISTS game_imports (
     build TEXT PRIMARY KEY REFERENCES game_builds(build), body_json TEXT NOT NULL
   );
@@ -228,7 +234,10 @@ export async function importGameContent(
 async function completedImport(db: Db, build: string) {
   const table = db.pg ? "game.imports" : "game_imports";
   const previous = await db.get(`SELECT ${db.body} FROM ${table} WHERE build = ?`, build);
-  return previous ? fromJson<Counts>(previous[db.body])! : undefined;
+  const counts = previous ? fromJson<Counts>(previous[db.body]) : undefined;
+  return counts && Object.keys(GAME_TABLES).every((table) => counts[table] > 0)
+    ? counts
+    : undefined;
 }
 
 function importResult(build: string, status: string, tables: Counts) {
@@ -288,6 +297,7 @@ export async function publishGameContent(
       Math.floor(Date.now() / 1000),
       counts.Achievement,
     );
+    await db.run(`DELETE FROM ${rows} WHERE build = ?`, build);
     await insertRows(db, file, build, signal);
     // New relationship indexes otherwise look cheap on an unanalyzed import and
     // turn id lookups into full group scans until autovacuum updates statistics.
@@ -331,7 +341,7 @@ export async function publishGameContent(
     );
     signal.throwIfAborted();
     await db.run(
-      `INSERT INTO ${imports} (build, ${db.body}) VALUES (?, ?)`,
+      `INSERT INTO ${imports} (build, ${db.body}) VALUES (?, ?) ON CONFLICT (build) DO UPDATE SET ${db.body} = excluded.${db.body}`,
       build,
       JSON.stringify(counts),
     );

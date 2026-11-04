@@ -16,6 +16,7 @@ export const coreCsv: Record<string, string> = {
     "ID,Parent,CriteriaID,OrderIndex,Amount,Operator,Description_lang\n100,0,101,0,1,0,Fall\n",
   Criteria: "ID,Type,Asset\n101,29,90001\n",
   UiMap: "ID,Name_lang,ParentUiMapID,Type\n84,Stormwind City,13,3\n",
+  UiMapGroupMember: "ID,Name_lang,UiMapID\n1,Deadmines,291\n",
   UiMapAssignment:
     "ID,UiMapID,MapID,AreaID,Region_0,Region_1,Region_3,Region_4,UiMin_0,UiMin_1,UiMax_0,UiMax_1\n1,84,0,1519,0,0,100,100,0,0,1,1\n",
   AreaTable: "ID,AreaName_lang,ContinentID,ParentAreaID\n1519,Stormwind City,0,0\n",

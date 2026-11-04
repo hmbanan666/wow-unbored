@@ -80,6 +80,44 @@ for (const backend of BACKENDS) {
     }
   });
 
+  test(`a core build gains newly required floor labels without changing its build (${backend})`, async () => {
+    const app = setup(backend);
+    try {
+      await app.gameWatch.run();
+      // Seed the persisted format produced before floor labels joined the import.
+      if (backend === "postgres") {
+        await pg(backend)!.unsafe("DELETE FROM game.rows WHERE table_name = 'UiMapGroupMember'");
+        await pg(backend)!.unsafe("UPDATE game.imports SET body = body - 'UiMapGroupMember'");
+      } else {
+        const db = new DatabaseSync(path.join(app.dataDir, "unbored.sqlite"));
+        try {
+          db.exec(
+            "DELETE FROM game_rows WHERE table_name = 'UiMapGroupMember'; UPDATE game_imports SET body_json = json_remove(body_json, '$.UiMapGroupMember')",
+          );
+        } finally {
+          db.close();
+        }
+      }
+      app.source.broken = true;
+      await app.gameWatch.run();
+      assert.equal((await app.store.game.status()).lastError, "import_failed");
+      assert.equal((await app.store.game.row("QuestV2", 90001))?.build, oldBuild);
+      app.source.broken = false;
+      await app.gameWatch.run();
+      assert.equal(
+        (await app.store.game.row("UiMapGroupMember", 1))?.fields.Name_lang,
+        "Deadmines",
+      );
+      assert.equal((await app.store.game.row("QuestV2", 90001))?.build, oldBuild);
+      const again = await app.store.game.importBuild(oldBuild, async () => {
+        throw new Error("No repeat download");
+      });
+      assert.equal(again.status, "unchanged");
+    } finally {
+      await app.cleanup();
+    }
+  });
+
   test(`restarting preserves the pending build and its original lag (${backend})`, async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-04T00:00:00Z"));
