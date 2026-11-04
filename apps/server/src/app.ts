@@ -714,6 +714,24 @@ export function createApp(
     }
   });
 
+  app.get("/v1/paths/progress", async (c) => {
+    const denied = requireRole(c, "planner", tokens);
+    if (denied) return denied;
+    if (!content.available) return c.json({ error: "Path progress needs Postgres." }, 503);
+    const account = c.req.query("account")?.trim();
+    const character = c.req.query("character");
+    const realm = c.req.query("realm");
+    if (!account || [account, character, realm].some((value) => value && value.length > 80))
+      return c.json(
+        {
+          error: "Supply an Account and optional Character and realm (at most 80 characters each).",
+        },
+        400,
+      );
+    if (inbox) await store.settle(accountKey(account));
+    return c.json({ characters: await store.pathProgress({ account, character, realm }) });
+  });
+
   app.get("/v1/progress", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;

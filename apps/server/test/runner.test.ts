@@ -382,6 +382,7 @@ for (const backend of BACKENDS) {
       assert.ok(names.includes("get_request"));
       assert.ok(names.includes("get_instance_guide"));
       assert.ok(names.includes("get_place"));
+      assert.ok(names.includes("get_path_progress"));
       for (const name of ["save_content_draft", "publish_content", "get_content"]) {
         assert.ok(!names.includes(name));
         assert.ok((await call(name)).body.result.isError);
@@ -423,6 +424,8 @@ for (const backend of BACKENDS) {
       assert.equal(JSON.parse(request.body.result.content[0].text).id, "runner-first");
       for (const [name, args] of [
         ["get_player_profile", { account: "another-account" }],
+        ["get_path_progress", { account: "another-account" }],
+        ["get_path_progress", { character: "SomeoneElse", realm: "Elsewhere" }],
         ["get_player_history", { character: "SomeoneElse", realm: "Elsewhere" }],
         ["put_plan", { requestId: "another-request", plan }],
         ["put_plan", { plan }],

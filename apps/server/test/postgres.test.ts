@@ -97,6 +97,7 @@ pg("migrate applies each file once, also when two Servers start together", async
         [14, "0014_game_tools.sql"],
         [15, "0015_content_retired.sql"],
         [16, "0016_content_guides.sql"],
+        [17, "0017_path_completions.sql"],
       ],
     );
   } finally {

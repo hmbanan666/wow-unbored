@@ -476,6 +476,28 @@ export class ContentStore {
     return this.db.pg;
   }
 
+  /** Only live Paths and Collections participate in Character progress. */
+  async publishedPaths() {
+    if (!this.available) return [];
+    const rows = await this.db.all<
+      Row & { kind: "path" | "collection"; slug: string; locale: string }
+    >(
+      `SELECT id, kind, slug, locale, version, status, title, description, tier, prerequisite_slug, body
+       FROM content.paths WHERE status = 'published' AND kind IN ('path', 'collection')
+       ORDER BY kind, slug, locale`,
+    );
+    return rows.map((row) => ({
+      id: Number(row.id),
+      kind: row.kind,
+      slug: row.slug,
+      locale: row.locale,
+      version: row.version,
+      title: row.title,
+      build: fromJson<Body>(row.body)!.build,
+      items: fromJson<Body>(row.body)!.items,
+    }));
+  }
+
   private async rows(kind: ContentKind, slug: string, locale: string): Promise<Row[]> {
     return this.db.all<Row>(
       `SELECT id, version, status, title, description, tier, prerequisite_slug, body
