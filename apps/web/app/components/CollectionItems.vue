@@ -2,41 +2,33 @@
 import { ITEM_KIND_LABEL, SOURCE_LABEL, type CatalogItem } from "#shared/catalog";
 
 defineProps<{ items: CatalogItem[] }>();
+
+function chips(item: CatalogItem) {
+  return [
+    { label: ITEM_KIND_LABEL[item.kind] },
+    { label: SOURCE_LABEL[item.source.type], tone: "gold" as const },
+    item.chance
+      ? { label: "Chance drop", tone: "chance" as const }
+      : { label: "Guaranteed", tone: "gold" as const },
+  ];
+}
 </script>
 
 <template>
-  <ol class="items">
+  <DsItemList>
     <li
       v-for="(item, index) in items"
       :id="`${item.kind}-${item.id ?? item.level}`"
       :key="`${item.kind}:${item.id ?? item.level}`"
-      class="item"
     >
-      <span class="item-rank" aria-hidden="true">{{ index + 1 }}</span>
-      <div class="item-body">
-        <h2>{{ item.name }}</h2>
-        <p class="item-tags">
-          <span>{{ ITEM_KIND_LABEL[item.kind] }}</span>
-          <span>{{ SOURCE_LABEL[item.source.type] }}</span>
-          <span v-if="item.chance" class="tag-chance">Chance drop</span>
-          <span v-else class="tag-sure">Guaranteed</span>
-        </p>
-        <p>{{ item.note }}</p>
-        <div class="item-how">
-          <span class="item-how-label">How to get it</span>
-          <ul>
-            <li v-for="line in item.source.lines" :key="line">{{ line }}</li>
-          </ul>
-        </div>
-        <a
-          v-if="item.url"
-          class="item-source"
-          :href="item.url"
-          rel="nofollow noopener"
-          target="_blank"
-          >Check the source</a
-        >
-      </div>
+      <DsItemCard
+        :rank="index + 1"
+        :name="item.name"
+        :chips="chips(item)"
+        :note="item.note"
+        :how="item.source.lines"
+        :source="item.url"
+      />
     </li>
-  </ol>
+  </DsItemList>
 </template>

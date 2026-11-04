@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { NuxtError } from "#app";
 
-import { PUBLIC_COPY } from "#shared/catalog";
+import { PRIVACY_URL, PUBLIC_COPY, REPO_URL, SITE_NAV } from "#shared/catalog";
 import { SIGN_IN_COPY } from "#shared/sign-in";
 
 const props = defineProps<{ error: NuxtError }>();
@@ -24,17 +24,13 @@ useSeoMeta({
 
 <template>
   <div class="site">
-    <SiteHeader />
-    <main class="page">
-      <div class="portrait" aria-hidden="true">
-        <img class="bory" src="/bory.png" alt="" />
-        <img src="/bory-frame.png" alt="" />
-      </div>
-      <h1>{{ line }}</h1>
-      <p>
-        <NuxtLink to="/">Back home</NuxtLink> · <NuxtLink to="/collections">Collections</NuxtLink>
-      </p>
-    </main>
-    <SiteFooter />
+    <DsNav :links="SITE_NAV" />
+    <DsPage>
+      <DsEmptyState :level="1" :title="line">
+        <DsButton to="/">Back home</DsButton>
+        <DsButton to="/collections" variant="secondary">Collections</DsButton>
+      </DsEmptyState>
+    </DsPage>
+    <DsFooter :links="SITE_NAV" :privacy="PRIVACY_URL" :source="REPO_URL" />
   </div>
 </template>

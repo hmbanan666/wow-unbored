@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { CATALOG_SECTION, TIER_LABEL, type CatalogSummary } from "#shared/catalog";
 
-defineProps<{ page: CatalogSummary }>();
+const props = defineProps<{ page: CatalogSummary }>();
+const eyebrow = computed(() => {
+  const parts: string[] = [CATALOG_SECTION[props.page.kind].one];
+  if (props.page.tier) parts.push(TIER_LABEL[props.page.tier]);
+  if (props.page.count && props.page.kind !== "guide") {
+    parts.push(`${props.page.count} ${props.page.kind === "collection" ? "picks" : "goals"}`);
+  }
+  return parts.join(" · ");
+});
 </script>
 
 <template>
-  <NuxtLink class="catalog-card" :to="page.href">
-    <span class="card-kind">
-      {{ CATALOG_SECTION[page.kind].one }}
-      <template v-if="page.tier"> · {{ TIER_LABEL[page.tier] }}</template>
-      <template v-if="page.count && page.kind !== 'guide'">
-        · {{ page.count }} {{ page.kind === "collection" ? "picks" : "goals" }}</template
-      >
-    </span>
-    <strong>{{ page.title }}</strong>
-    <span class="card-text">{{ page.description }}</span>
-  </NuxtLink>
+  <DsCard :to="page.href" :eyebrow="eyebrow" :title="page.title" :text="page.description" />
 </template>

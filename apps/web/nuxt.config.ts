@@ -1,11 +1,24 @@
 export default defineNuxtConfig({
   compatibilityDate: "2026-11-04",
-  modules: ["@nuxt/ui", "@nuxtjs/seo", "nuxt-auth-utils"],
+  modules: ["@nuxt/fonts", "@nuxtjs/seo", "nuxt-auth-utils"],
   css: ["~/assets/css/main.css"],
   devServer: { port: 3001 },
-  /** Dark only: no color-mode script, no toggle, no light flash. */
-  ui: {
-    colorMode: false,
+  /** Dark only: no UI kit and no color-mode script, so no toggle and no light flash. */
+  /**
+   * Self-hosted, latin only: Alegreya (reading and headings) and Alegreya Sans (small UI labels).
+   * The two faces every page paints first are preloaded.
+   */
+  fonts: {
+    defaults: { subsets: ["latin"], styles: ["normal"] },
+    families: [
+      {
+        name: "Alegreya",
+        provider: "google",
+        weights: [400, 700],
+        preload: { weights: [400, 700] },
+      },
+      { name: "Alegreya Sans", provider: "google", weights: [500, 700] },
+    ],
   },
   site: {
     url: "https://playunbored.com",

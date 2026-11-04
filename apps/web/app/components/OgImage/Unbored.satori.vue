@@ -22,6 +22,7 @@ withDefaults(
       justify-content: center;
       background-image: radial-gradient(circle at 50% 0%, #2a1c15 0%, #1e1410 55%, #140d0a 100%);
       color: #eadbc0;
+      font-family: Alegreya;
       padding: 80px;
     "
   >
@@ -29,7 +30,8 @@ withDefaults(
     <div
       style="
         display: flex;
-        font-size: 64px;
+        font-size: 68px;
+        font-weight: 700;
         margin-top: 16px;
         line-height: 1.1;
         background-image: linear-gradient(180deg, #f5d27a 0%, #e8b04a 55%, #c4922e 100%);

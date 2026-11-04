@@ -27,21 +27,15 @@ useSchemaOrg([
 </script>
 
 <template>
-  <main class="page page-wide">
-    <SiteBreadcrumbs
+  <DsPage width="wide">
+    <DsPageHeader
       :trail="[
         { label: 'Home', to: '/' },
         { label: 'Guides', to: '/guides' },
       ]"
+      title="Guides"
+      lead="Short guides with the facts checked against the game's own data. Each one points at the lists and Paths that take you further."
     />
-    <h1>Guides</h1>
-    <p class="lead">
-      Short guides with the facts checked against the game's own data. Each one points at the lists
-      and Paths that take you further.
-    </p>
-    <div v-if="pages.length" class="cards">
-      <CatalogCard v-for="page in pages" :key="page.href" :page="page" />
-    </div>
-    <p v-else>The first guides are on their way.</p>
-  </main>
+    <CatalogGrid :pages="pages" empty="The first guides are on their way." />
+  </DsPage>
 </template>

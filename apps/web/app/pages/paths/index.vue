@@ -15,24 +15,19 @@ useSchemaOrg([defineWebPage({ "@type": "CollectionPage", name: title, descriptio
 </script>
 
 <template>
-  <main class="page page-wide">
-    <SiteBreadcrumbs
+  <DsPage width="wide">
+    <DsPageHeader
       :trail="[
         { label: 'Home', to: '/' },
         { label: 'Paths', to: '/paths' },
       ]"
+      title="Paths"
+      lead="A Path is a curated set of goals for one piece of content, in tiers: Basic, then Deeper, then Complete. Topic branches cover mounts, achievements and PvP."
     />
-    <h1>Paths</h1>
-    <p class="lead">
-      A Path is a curated set of goals for one piece of content, in tiers: Basic, then Deeper, then
-      Complete. Topic branches cover mounts, achievements and PvP.
-    </p>
-    <div v-if="pages.length" class="cards">
-      <CatalogCard v-for="page in pages" :key="page.href" :page="page" />
-    </div>
-    <template v-else>
-      <p>The first Paths are being written. Until then, start with a collection.</p>
-      <p><NuxtLink to="/collections">Browse collections</NuxtLink></p>
-    </template>
-  </main>
+    <CatalogGrid
+      :pages="pages"
+      empty="The first Paths are being written. Until then, start with a collection."
+      :empty-link="{ label: 'Browse collections', to: '/collections' }"
+    />
+  </DsPage>
 </template>
