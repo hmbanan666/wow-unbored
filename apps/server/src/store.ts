@@ -1,13 +1,11 @@
 import { checkGameOutcome, checkGameCompletions, gameMarkupCheck } from "./game-plan.ts";
 import { GameDb, GAME_SQLITE_SCHEMA } from "./game-db.ts";
-import { readPlaceData } from "./places.ts";
 import { DatabaseSync } from "node:sqlite";
 
 import { sqlitePath } from "./config.ts";
 import {
   cleanPlan,
   cleanPlanPlaces,
-  taskQuestIds,
   cleanProgress,
   encodeUnb1,
   PlanError,
@@ -222,7 +220,6 @@ export class Store {
   readonly db: Db;
   readonly plannerRoute: "webhook" | "runner";
   onRequestAdded?: () => void;
-  private readonly placeDataDir: string;
   private readonly log: (line: string) => void;
   private readonly runnerNow: () => number;
   readonly game: GameDb;
@@ -247,7 +244,6 @@ export class Store {
       runnerNow?: () => number;
     } = {},
   ) {
-    this.placeDataDir = dataDir;
     this.log = options.log ?? (() => {});
     this.plannerRoute = options.plannerRoute ?? "webhook";
     this.runnerNow = options.runnerNow ?? (() => Math.floor(Date.now() / 1000));
@@ -324,29 +320,8 @@ export class Store {
       await checkGameOutcome(plan, this.game, build);
       await checkGameCompletions(plan, this.game, build, check.warnings);
     }
-    const completionMaps = (complete: Record<string, unknown> | undefined): number[] => {
-      if (!complete) return [];
-      return [
-        complete.mapID,
-        ...(Array.isArray(complete.any) ? complete.any.flatMap(completionMaps) : []),
-      ].filter((id): id is number => typeof id === "number");
-    };
-    const maps = plan.tasks
-      .flatMap((task) => [
-        task.mapID,
-        ...(task.waypoints ?? []).map((p) => p.mapID),
-        ...completionMaps(task.complete),
-      ])
-      .filter((id): id is number => id !== undefined);
-    if (!check.places && maps.length)
-      cleanPlanPlaces(plan, {
-        ...check,
-        places: await readPlaceData(
-          this.placeDataDir,
-          maps,
-          plan.tasks.flatMap((task) => [...taskQuestIds(task)]),
-        ),
-      });
+    if (!check.places)
+      cleanPlanPlaces(plan, { ...check, places: { questPoints: [], knownPoints: [] } });
     const unb1 = encodeUnb1(plan);
     const createdAt = nowSeconds;
     return this.db.tx(async () => {

@@ -1112,7 +1112,7 @@ export function createMcpServer(
     {
       title: "Look up a place",
       description:
-        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name and parent continent, cached single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Tables use a 24-hour runtime cache with the same 20 MB cap, source and downloader as instance guides.",
+        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name and parent continent, imported single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Reads one imported Game DB build with bounded indexed lookups; no CSV downloads during a request.",
       inputSchema: {
         mapID: z.number().int().positive(),
         questID: z.number().int().positive().optional(),
@@ -1122,7 +1122,7 @@ export function createMcpServer(
     },
     async (query) => {
       try {
-        return text(await getPlace(dataDir, query));
+        return text(await getPlace(store.game, query));
       } catch (error) {
         return failure(error);
       }
@@ -1134,7 +1134,7 @@ export function createMcpServer(
     {
       title: "Read an instance guide",
       description:
-        "Call before planning a dungeon or raid. Returns bosses in journal order, floor names and fractional UiMap points, achievement requirements with proved boss mappings, and unmapped criteria. instanceID is a journal id (669 for Hellfire Citadel), never the lockout Map id (1448). achievementID can infer a unique instance; supply both to select one for a multi-instance achievement. Entrance/door/portal paths are unknown unless another source supplies them. Never turn unknown coordinates or creature display ids into waypoints or links.",
+        "Call before planning a dungeon or raid. Reads the imported Game DB without CSV downloads. Returns bosses in journal order, floor names and fractional UiMap points, achievement requirements with proved boss mappings, and unmapped criteria. instanceID is a journal id (669 for Hellfire Citadel), never the lockout Map id (1448). achievementID can infer a unique instance; supply both to select one for a multi-instance achievement. Entrance/door/portal paths are unknown unless another source supplies them. Never turn unknown coordinates or creature display ids into waypoints or links.",
       inputSchema: {
         instanceID: z.number().int().positive().optional(),
         achievementID: z.number().int().positive().optional(),
@@ -1143,7 +1143,7 @@ export function createMcpServer(
     },
     async (query) => {
       try {
-        return text(await getInstanceGuide(dataDir, query, { gameIds }));
+        return text(await getInstanceGuide(store.game, query, { gameIds }));
       } catch (error) {
         return failure(error);
       }

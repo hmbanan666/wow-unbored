@@ -1,8 +1,7 @@
 import type { Waypoint } from "@unbored/contracts";
 import type { GameDb } from "./game-db.ts";
 import type { GameFields } from "./game-content.ts";
-import { projectGamePoint, type PlaceData } from "./places.ts";
-import { PLACE_LIMIT } from "./place-tables.ts";
+import { PLACE_LIMIT, projectGamePoint, type PlaceData } from "./places.ts";
 
 /** Read bounded, complete geometry groups from one imported build. No CSV or network reads. */
 export async function gamePlaces(

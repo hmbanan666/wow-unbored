@@ -77,7 +77,13 @@ export class GameDb {
   }
 
   /** Bounded relationship lookup. A full group is required to prove unique geometry. */
-  async related(table: GameTable, field: string, id: number, build: string): Promise<GameFields[]> {
+  async related(
+    table: GameTable,
+    field: string,
+    id: number,
+    build: string,
+    locale: "enUS" | "ruRU" = "enUS",
+  ): Promise<GameFields[]> {
     if (!(GAME_TABLES[table] as readonly string[]).includes(field))
       throw new Error("Unknown game field");
     const rows = this.db.pg ? "game.rows" : "game_rows";
@@ -85,9 +91,10 @@ export class GameDb {
       ? `body ->> '${field}'`
       : `CAST(json_extract(body_json, '$.${field}') AS TEXT)`;
     const found = await this.db.all<{ body: unknown }>(
-      `SELECT ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = 'enUS' AND ${value} = ? LIMIT 257`,
+      `SELECT ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = ? AND ${value} = ? LIMIT 257`,
       build,
       table,
+      gameLocalized(table) ? locale : "enUS",
       String(id),
     );
     return found.map((row) => fromJson<GameFields>(row.body)!);

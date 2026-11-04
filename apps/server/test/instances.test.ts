@@ -1,23 +1,35 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
-import { tmpdir } from "node:os";
 import { test } from "vite-plus/test";
+import { Store } from "../src/store.ts";
+import { database } from "./backend.ts";
+import { coreResponse } from "./game-content-fixture.ts";
 import { getInstanceGuide } from "../src/instances.ts";
 
 const fixtureFetch: typeof fetch = async (input) => {
   const table = new URL(String(input)).pathname.split("/")[2];
+  if (
+    ![
+      "JournalInstance",
+      "JournalEncounter",
+      "Achievement",
+      "CriteriaTree",
+      "Criteria",
+      "UiMap",
+      "UiMapGroupMember",
+    ].includes(table)
+  )
+    return coreResponse(input);
   return new Response(readFileSync(new URL(`./fixtures/instances/${table}.csv`, import.meta.url)));
 };
 
 test("instance guide orders bosses and maps only typed evidence from child achievements", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "unbored-guide-"));
+  const dir = mkdtempSync(path.join(import.meta.dirname, ".guide-"));
+  const store = new Store(dir, { postgres: database() });
   try {
-    const guide = await getInstanceGuide(
-      dir,
-      { achievementID: 10149 },
-      { fetchImpl: fixtureFetch },
-    );
+    await store.game.importBuild("12.0.1.66337", fixtureFetch);
+    const guide = await getInstanceGuide(store.game, { achievementID: 10149 });
     assert.equal(guide.instance?.instanceID, 669);
     assert.equal(guide.instance?.mapID, 1448);
     assert.deepEqual(
@@ -44,12 +56,14 @@ test("instance guide orders bosses and maps only typed evidence from child achie
     );
     assert.equal(guide.entrance, null, "boss points do not invent an entrance");
   } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("creature criteria use journal creature ids from the Game Data API, never display ids", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "unbored-guide-"));
+  const dir = mkdtempSync(path.join(import.meta.dirname, ".guide-"));
+  const store = new Store(dir, { postgres: database() });
   const { BlizzardIds } = await import("../src/blizzard.ts");
   const gameIds = new BlizzardIds(
     { clientId: "test", clientSecret: "test", region: "us" },
@@ -67,10 +81,11 @@ test("creature criteria use journal creature ids from the Game Data API, never d
     }),
   );
   try {
+    await store.game.importBuild("12.0.1.66337", fixtureFetch);
     const guide = await getInstanceGuide(
-      dir,
+      store.game,
       { instanceID: 669, achievementID: 10149 },
-      { fetchImpl: fixtureFetch, gameIds },
+      { gameIds },
     );
     assert.equal(guide.bosses[2].criteria[0].achievement?.id, 9979);
     assert.deepEqual(
@@ -78,99 +93,60 @@ test("creature criteria use journal creature ids from the Game Data API, never d
       [10026],
     );
   } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("floor labels come from the map group, and missing points stay absent", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "unbored-guide-"));
+  const dir = mkdtempSync(path.join(import.meta.dirname, ".guide-"));
+  const store = new Store(dir, { postgres: database() });
   try {
-    const guide = await getInstanceGuide(dir, { instanceID: 669 }, { fetchImpl: fixtureFetch });
+    await store.game.importBuild("12.0.1.66337", fixtureFetch);
+    const guide = await getInstanceGuide(store.game, { instanceID: 669 });
     assert.equal(guide.bosses[2].point?.name, "Hellfire Antechamber");
-    const unplaced = await getInstanceGuide(dir, { instanceID: 670 }, { fetchImpl: fixtureFetch });
+    const unplaced = await getInstanceGuide(store.game, { instanceID: 670 });
     assert.equal(unplaced.bosses[0].point, undefined);
-    await assert.rejects(
-      getInstanceGuide(dir, { instanceID: 1448 }, { fetchImpl: fixtureFetch }),
-      /journal instance/,
-    );
+    await assert.rejects(getInstanceGuide(store.game, { instanceID: 1448 }), /journal instance/);
   } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("cache reuses fresh CSVs, refreshes expired ones, and separates Russian names", async () => {
-  const { utimesSync } = await import("node:fs");
-  const dir = mkdtempSync(path.join(tmpdir(), "unbored-guide-"));
-  const hits: string[] = [];
-  const fetchImpl: typeof fetch = async (input) => {
-    hits.push(String(input));
-    const response = await fixtureFetch(input);
-    const csv = await response.text();
-    return new Response(
-      String(input).includes("ruRU") ? csv.replaceAll("Iron Reaver", "Железный разоритель") : csv,
-    );
-  };
+test("guides use localized names from the latest imported build", async () => {
+  const dir = mkdtempSync(path.join(import.meta.dirname, ".guide-"));
+  const store = new Store(dir, { postgres: database() });
   try {
-    await getInstanceGuide(dir, { instanceID: 669 }, { fetchImpl });
-    const cached = await getInstanceGuide(dir, { instanceID: 669 }, { fetchImpl });
-    assert.equal(cached.bosses[1].name, "Iron Reaver");
-    assert.equal(hits.length, 7);
-    utimesSync(path.join(dir, "wago/JournalEncounter.csv"), 0, 0);
-    await getInstanceGuide(dir, { instanceID: 669 }, { fetchImpl });
-    assert.equal(hits.length, 8);
-    const ru = await getInstanceGuide(dir, { instanceID: 669, lang: "ru" }, { fetchImpl });
+    await store.game.importBuild("12.0.1.66337", fixtureFetch);
+    assert.equal(
+      (await getInstanceGuide(store.game, { instanceID: 669 })).bosses[1].name,
+      "Iron Reaver",
+    );
+    await store.game.importBuild("12.0.1.66338", async (input) => {
+      const csv = await (await fixtureFetch(input)).text();
+      return new Response(
+        String(input).includes("ruRU")
+          ? csv.replaceAll("Iron Reaver", "Железный разоритель")
+          : csv.replaceAll("Iron Reaver", "Updated Reaver"),
+      );
+    });
+    const ru = await getInstanceGuide(store.game, { instanceID: 669, lang: "ru" });
     assert.equal(ru.bosses[1].name, "Железный разоритель");
     assert.equal(ru.locale, "ruRU");
-    assert.equal(hits.length, 14, "the unlocalized Criteria table is shared");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("download errors and oversized CSV streams fail without caching them", async () => {
-  const { existsSync } = await import("node:fs");
-  const { cachedCsv } = await import("../src/criteria.ts");
-  const dir = mkdtempSync(path.join(tmpdir(), "unbored-guide-"));
-  try {
-    await assert.rejects(
-      cachedCsv(
-        dir,
-        "bad.csv",
-        "https://example.test",
-        async () => new Response("down", { status: 503 }),
-      ),
-      /503/,
+    assert.equal(
+      (await getInstanceGuide(store.game, { instanceID: 669 })).bosses[1].name,
+      "Updated Reaver",
     );
-    let cancelled = false;
-    await assert.rejects(
-      cachedCsv(
-        dir,
-        "big.csv",
-        "https://example.test",
-        async () =>
-          new Response(
-            new ReadableStream({
-              pull(controller) {
-                controller.enqueue(new Uint8Array(1_000_001));
-              },
-              cancel() {
-                cancelled = true;
-              },
-            }),
-          ),
-      ),
-      /cache limit/,
-    );
-    assert.equal(cancelled, true);
-    assert.equal(existsSync(path.join(dir, "big.csv")), false);
-    assert.equal(existsSync(path.join(dir, "bad.csv")), false);
   } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("a meta spanning instances returns candidates and keeps criteria unmapped", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "unbored-guide-"));
+  const dir = mkdtempSync(path.join(import.meta.dirname, ".guide-"));
+  const store = new Store(dir, { postgres: database() });
   const fetchImpl: typeof fetch = async (input) => {
     const response = await fixtureFetch(input);
     const csv = await response.text();
@@ -179,7 +155,8 @@ test("a meta spanning instances returns candidates and keeps criteria unmapped",
     );
   };
   try {
-    const guide = await getInstanceGuide(dir, { achievementID: 10149 }, { fetchImpl });
+    await store.game.importBuild("12.0.1.66337", fetchImpl);
+    const guide = await getInstanceGuide(store.game, { achievementID: 10149 });
     assert.equal(guide.instance, null);
     assert.deepEqual(
       guide.candidates.map((i) => i.instanceID),
@@ -188,12 +165,14 @@ test("a meta spanning instances returns candidates and keeps criteria unmapped",
     assert.equal(guide.bosses.length, 0);
     assert.equal(guide.unmapped.length, 3);
   } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("unknown child achievements remain visible and cyclic trees fail safely", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "unbored-guide-"));
+  const dir = mkdtempSync(path.join(import.meta.dirname, ".guide-"));
+  const store = new Store(dir, { postgres: database() });
   const missing: typeof fetch = async (input) => {
     const response = await fixtureFetch(input);
     const csv = await response.text();
@@ -202,13 +181,9 @@ test("unknown child achievements remain visible and cyclic trees fail safely", a
     );
   };
   try {
-    const guide = await getInstanceGuide(
-      dir,
-      { instanceID: 669, achievementID: 10149 },
-      { fetchImpl: missing },
-    );
+    await store.game.importBuild("12.0.1.66337", missing);
+    const guide = await getInstanceGuide(store.game, { instanceID: 669, achievementID: 10149 });
     assert.ok(guide.unmapped.some((c) => c.asset === 99999 && c.criteriaID === 28495));
-    rmSync(path.join(dir, "wago"), { recursive: true, force: true });
     const cycle: typeof fetch = async (input) => {
       const response = await fixtureFetch(input);
       const csv = await response.text();
@@ -216,17 +191,20 @@ test("unknown child achievements remain visible and cyclic trees fail safely", a
         String(input).includes("/Criteria/") ? csv.replace("28495,8,10026", "28495,8,10149") : csv,
       );
     };
+    await store.game.importBuild("12.0.1.66338", cycle);
     await assert.rejects(
-      getInstanceGuide(dir, { achievementID: 10149 }, { fetchImpl: cycle }),
+      getInstanceGuide(store.game, { achievementID: 10149 }),
       /child achievement graph/,
     );
   } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("a child with only partial boss evidence stays unmapped with all requirements", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "unbored-guide-"));
+  const dir = mkdtempSync(path.join(import.meta.dirname, ".guide-"));
+  const store = new Store(dir, { postgres: database() });
   const fetchImpl: typeof fetch = async (input) => {
     const response = await fixtureFetch(input);
     const csv = await response.text();
@@ -237,7 +215,8 @@ test("a child with only partial boss evidence stays unmapped with all requiremen
     );
   };
   try {
-    const guide = await getInstanceGuide(dir, { achievementID: 10149 }, { fetchImpl });
+    await store.game.importBuild("12.0.1.66337", fetchImpl);
+    const guide = await getInstanceGuide(store.game, { achievementID: 10149 });
     assert.equal(guide.bosses[1].criteria.length, 0);
     const child = guide.unmapped.find((c) => c.achievement?.id === 10057)!;
     assert.equal(child.requirements.length, 2);
@@ -246,6 +225,7 @@ test("a child with only partial boss evidence stays unmapped with all requiremen
       [1425],
     );
   } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

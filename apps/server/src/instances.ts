@@ -1,9 +1,8 @@
-import path from "node:path";
 import type { BlizzardIds } from "./blizzard.ts";
-import { cachedCsv, parseCsv } from "./criteria.ts";
+import type { GameDb } from "./game-db.ts";
+import type { GameFields as Row, GameTable } from "./game-content.ts";
 
 export type InstanceQuery = { instanceID?: number; achievementID?: number; lang?: "en" | "ru" };
-type Row = Record<string, string>;
 type Requirement = {
   achievementID: number;
   criteriaTreeID: number;
@@ -27,16 +26,6 @@ type Boss = {
   criteria: GuideCriterion[];
 };
 
-function rows(csv: string, required: string[]): Row[] {
-  const [header = [], ...body] = parseCsv(csv);
-  for (const field of ["ID", ...required]) {
-    if (!header.includes(field)) throw new Error(`Instance data is missing ${field}.`);
-  }
-  return body.map((cells) => Object.fromEntries(header.map((field, i) => [field, cells[i] ?? ""])));
-}
-function index(rows: Row[]) {
-  return new Map(rows.map((row) => [Number(row.ID), row]));
-}
 function positive(value: unknown): number | undefined {
   const n = Number(value);
   return Number.isSafeInteger(n) && n > 0 ? n : undefined;
@@ -44,9 +33,9 @@ function positive(value: unknown): number | undefined {
 
 /** Public DB2 facts only: journal order is not a doorway/portal graph. */
 export async function getInstanceGuide(
-  dataDir: string,
+  game: GameDb,
   query: InstanceQuery,
-  options: { fetchImpl?: typeof fetch; gameIds?: BlizzardIds } = {},
+  options: { gameIds?: BlizzardIds } = {},
 ) {
   if (!query.instanceID && !query.achievementID)
     throw new Error("Supply instanceID or achievementID.");
@@ -54,96 +43,88 @@ export async function getInstanceGuide(
     if (id !== undefined && !positive(id)) throw new Error("Ids must be positive integers.");
   }
   const locale = query.lang === "ru" ? "ruRU" : "enUS";
-  const dir = path.join(dataDir, "wago");
-  const read = async (table: string, fields: string[], localized = true) => {
-    const suffix = localized && locale === "ruRU" ? ".ruRU" : "";
-    const url = `https://wago.tools/db2/${table}/csv${suffix ? "?locale=ruRU" : ""}`;
-    return rows(await cachedCsv(dir, `${table}${suffix}.csv`, url, options.fetchImpl), fields);
+  const build = await game.currentBuild();
+  if (!build)
+    throw new Error("Game DB unavailable; import the current build before requesting a guide.");
+  const read = async (table: GameTable, id: number) =>
+    (await game.row(table, id, locale, build))?.fields;
+  const related = async (table: GameTable, field: string, id: number) => {
+    const rows = await game.related(table, field, id, build, locale);
+    if (rows.length > 256) throw new Error(`Oversized ${table} relationship; guide unavailable.`);
+    return rows;
   };
-  const [instances, encounters, achievements, trees, criteria, maps, floors] = await Promise.all([
-    read("JournalInstance", ["Name_lang", "MapID"]),
-    read("JournalEncounter", [
-      "Name_lang",
-      "JournalInstanceID",
-      "DungeonEncounterID",
-      "OrderIndex",
-      "UiMapID",
-      "Map_0",
-      "Map_1",
-    ]),
-    read("Achievement", ["Title_lang", "Description_lang", "Instance_ID", "Criteria_tree"]),
-    read("CriteriaTree", ["Parent", "CriteriaID", "OrderIndex", "Description_lang", "Amount"]),
-    read("Criteria", ["Type", "Asset"], false),
-    read("UiMap", ["Name_lang"]),
-    read("UiMapGroupMember", ["UiMapID", "Name_lang"]),
-  ]);
-  const achievementByID = index(achievements);
-  const treeByID = index(trees);
-  const criteriaByID = index(criteria);
-  const mapByID = index(maps);
-  const floorNames = new Map(floors.map((row) => [Number(row.UiMapID), row.Name_lang]));
-  const children = new Map<number, Row[]>();
-  for (const tree of trees) {
-    const parent = Number(tree.Parent);
-    const list = children.get(parent) ?? [];
-    list.push(tree);
-    children.set(parent, list);
-  }
-  for (const list of children.values())
-    list.sort((a, b) => Number(a.OrderIndex) - Number(b.OrderIndex) || Number(a.ID) - Number(b.ID));
-  function leaves(achievementID: number): Requirement[] {
-    const achievement = achievementByID.get(achievementID);
-    if (!achievement) throw new Error(`No achievement ${achievementID} in instance data.`);
-    const root = positive(achievement.Criteria_tree);
-    if (!root || !treeByID.has(root))
+  const achievementByID = new Map<number, Row>();
+  const achievement = async (id: number) => {
+    if (!achievementByID.has(id)) {
+      const row = await read("Achievement", id);
+      if (row) achievementByID.set(id, row);
+    }
+    return achievementByID.get(id);
+  };
+  async function leaves(achievementID: number): Promise<Requirement[]> {
+    const row = await achievement(achievementID);
+    if (!row) throw new Error(`No achievement ${achievementID} in instance data.`);
+    const root = positive(row.Criteria_tree);
+    if (!root || !(await read("CriteriaTree", root)))
       throw new Error(`Achievement ${achievementID} has no criteria tree.`);
     const out: Requirement[] = [];
     const seen = new Set<number>();
-    function walk(id: number) {
+    async function walk(id: number) {
       if (seen.has(id) || seen.size >= 2048) throw new Error("Invalid or oversized criteria tree.");
       seen.add(id);
-      const tree = treeByID.get(id)!;
+      const tree = (await read("CriteriaTree", id))!;
       const criteriaID = positive(tree.CriteriaID);
       if (criteriaID) {
-        const criterion = criteriaByID.get(criteriaID);
+        const criterion = await read("Criteria", criteriaID);
         out.push({
           achievementID,
           criteriaTreeID: id,
           criteriaID,
-          description: tree.Description_lang,
+          description: String(tree.Description_lang),
           amount: Number(tree.Amount),
           ...(criterion ? { type: Number(criterion.Type), asset: Number(criterion.Asset) } : {}),
         });
       }
-      for (const child of children.get(id) ?? []) walk(Number(child.ID));
+      const children = await related("CriteriaTree", "Parent", id);
+      children.sort(
+        (a, b) => Number(a.OrderIndex) - Number(b.OrderIndex) || Number(a.ID) - Number(b.ID),
+      );
+      for (const child of children) await walk(Number(child.ID));
     }
-    walk(root);
+    await walk(root);
     return out;
   }
   const visitedAchievements = new Set<number>();
   const expanded = new Map<number, Requirement[]>();
-  function hasTree(id: number | undefined): boolean {
-    return id !== undefined && treeByID.has(Number(achievementByID.get(id)?.Criteria_tree));
+  async function hasTree(id: number | undefined): Promise<boolean> {
+    if (id === undefined) return false;
+    const row = await achievement(id);
+    const root = positive(row?.Criteria_tree);
+    return !!root && !!(await read("CriteriaTree", root));
   }
-  function expand(achievementID: number, stack: number[] = []): Requirement[] {
+  async function expand(achievementID: number, stack: number[] = []): Promise<Requirement[]> {
     const cached = expanded.get(achievementID);
     if (cached) return cached;
     if (stack.includes(achievementID) || stack.length >= 16 || visitedAchievements.size >= 256)
       throw new Error("Invalid or oversized child achievement graph.");
     visitedAchievements.add(achievementID);
-    const result = leaves(achievementID).flatMap((leaf) =>
-      leaf.type === 8 && hasTree(leaf.asset)
-        ? expand(leaf.asset!, [...stack, achievementID])
-        : [leaf],
-    );
+    const result: Requirement[] = [];
+    for (const leaf of await leaves(achievementID)) {
+      const requirements =
+        leaf.type === 8 && (await hasTree(leaf.asset))
+          ? await expand(leaf.asset!, [...stack, achievementID])
+          : [leaf];
+      result.push(...requirements);
+      if (result.length > 2048) throw new Error("Oversized child achievement requirements.");
+    }
     if (result.length > 2048) throw new Error("Oversized child achievement requirements.");
     expanded.set(achievementID, result);
     return result;
   }
-  const goal = query.achievementID ? achievementByID.get(query.achievementID) : undefined;
+  const goal = query.achievementID ? await achievement(query.achievementID) : undefined;
   if (query.achievementID && !goal)
     throw new Error(`No achievement ${query.achievementID} in instance data.`);
-  const requirements = query.achievementID ? expand(query.achievementID) : [];
+  const requirements = query.achievementID ? await expand(query.achievementID) : [];
   // Achievement.Instance_ID is a Map.db2 id, never a UiMap or journal id.
   const mapIDs = new Set<number>();
   for (const id of visitedAchievements) {
@@ -152,17 +133,22 @@ export async function getInstanceGuide(
   }
   for (const requirement of requirements) {
     if (requirement.type !== 165) continue;
-    for (const encounter of encounters.filter(
-      (e) => Number(e.DungeonEncounterID) === requirement.asset,
+    for (const encounter of await related(
+      "JournalEncounter",
+      "DungeonEncounterID",
+      requirement.asset!,
     )) {
-      const instance = instances.find((i) => i.ID === encounter.JournalInstanceID);
+      const instance = await read("JournalInstance", Number(encounter.JournalInstanceID));
       const mapID = positive(instance?.MapID);
       if (mapID) mapIDs.add(mapID);
     }
   }
-  const candidates = instances.filter((row) => mapIDs.has(Number(row.MapID)));
+  const candidates: Row[] = [];
+  for (const mapID of mapIDs)
+    candidates.push(...(await related("JournalInstance", "MapID", mapID)));
+  candidates.sort((a, b) => Number(a.ID) - Number(b.ID));
   const instance = query.instanceID
-    ? instances.find((row) => Number(row.ID) === query.instanceID)
+    ? await read("JournalInstance", query.instanceID)
     : candidates.length === 1
       ? candidates[0]
       : undefined;
@@ -170,31 +156,39 @@ export async function getInstanceGuide(
     throw new Error(
       `No journal instance ${query.instanceID}. Use a journal id, not a lockout map id.`,
     );
-  const bosses: Boss[] = encounters
-    .filter((row) => instance && row.JournalInstanceID === instance.ID)
-    .sort((a, b) => Number(a.OrderIndex) - Number(b.OrderIndex) || Number(a.ID) - Number(b.ID))
-    .map((row) => {
-      const uiMapID = positive(row.UiMapID);
-      const x = row.Map_0.trim() ? Number(row.Map_0) : NaN;
-      const y = row.Map_1.trim() ? Number(row.Map_1) : NaN;
-      return {
-        encounterID: Number(row.ID),
-        dungeonEncounterID: positive(row.DungeonEncounterID),
-        name: row.Name_lang,
-        order: Number(row.OrderIndex),
-        ...(uiMapID && x >= 0 && x <= 1 && y >= 0 && y <= 1
-          ? {
-              point: {
-                uiMapID,
-                x,
-                y,
-                name: floorNames.get(uiMapID) || mapByID.get(uiMapID)?.Name_lang || "",
-              },
-            }
-          : {}),
-        criteria: [],
-      };
-    });
+  const encounters = instance
+    ? await related("JournalEncounter", "JournalInstanceID", Number(instance.ID))
+    : [];
+  const bosses: Boss[] = await Promise.all(
+    encounters
+      .sort((a, b) => Number(a.OrderIndex) - Number(b.OrderIndex) || Number(a.ID) - Number(b.ID))
+      .map(async (row) => {
+        const uiMapID = positive(row.UiMapID);
+        const x = Number(row.Map_0);
+        const y = Number(row.Map_1);
+        return {
+          encounterID: Number(row.ID),
+          dungeonEncounterID: positive(row.DungeonEncounterID),
+          name: String(row.Name_lang),
+          order: Number(row.OrderIndex),
+          ...(uiMapID && x >= 0 && x <= 1 && y >= 0 && y <= 1
+            ? {
+                point: {
+                  uiMapID,
+                  x,
+                  y,
+                  name: String(
+                    (await related("UiMapGroupMember", "UiMapID", uiMapID)).at(-1)?.Name_lang ||
+                      (await read("UiMap", uiMapID))?.Name_lang ||
+                      "",
+                  ),
+                },
+              }
+            : {}),
+          criteria: [],
+        };
+      }),
+  );
   const creatures = new Map<number, number[]>();
   if (options.gameIds?.enabled && requirements.some((r) => r.type === 0)) {
     // Bound concurrent public-document requests even for large journals.
@@ -208,9 +202,10 @@ export async function getInstanceGuide(
     }
   }
   const unmapped: GuideCriterion[] = [];
-  for (const leaf of query.achievementID ? leaves(query.achievementID) : []) {
-    const child = leaf.type === 8 ? achievementByID.get(leaf.asset!) : undefined;
-    const requirements = child && hasTree(Number(child.ID)) ? expand(Number(child.ID)) : [leaf];
+  for (const leaf of query.achievementID ? await leaves(query.achievementID) : []) {
+    const child = leaf.type === 8 ? await achievement(leaf.asset!) : undefined;
+    const requirements =
+      child && (await hasTree(Number(child.ID))) ? await expand(Number(child.ID)) : [leaf];
     const evidence: GuideCriterion["evidence"] = [];
     for (const requirement of requirements) {
       for (const boss of bosses) {
@@ -233,8 +228,8 @@ export async function getInstanceGuide(
         ? {
             achievement: {
               id: Number(child.ID),
-              name: child.Title_lang,
-              description: child.Description_lang,
+              name: String(child.Title_lang),
+              description: String(child.Description_lang),
             },
           }
         : {}),
