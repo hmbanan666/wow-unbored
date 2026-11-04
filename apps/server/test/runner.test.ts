@@ -382,6 +382,14 @@ for (const backend of BACKENDS) {
       assert.ok(names.includes("get_request"));
       assert.ok(names.includes("get_instance_guide"));
       assert.ok(names.includes("get_place"));
+      for (const [tool, args] of [
+        ["find_game_entity", { kind: "item", name: "Thunderfury" }],
+        ["get_quest_line", { questLineID: 10 }],
+        ["get_item_sources", { itemID: 49636 }],
+      ] as const) {
+        assert.ok(names.includes(tool));
+        assert.equal((await call(tool, args)).body.result.isError, false);
+      }
       const guideReply = await call("get_instance_guide", { achievementID: 10149 });
       assert.equal(guideReply.body.result.isError, false);
       const guide = JSON.parse(guideReply.body.result.content[0].text);

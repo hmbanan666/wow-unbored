@@ -1,3 +1,5 @@
+import { getItemSources } from "./item-sources.ts";
+import { ENTITY_TABLES, findGameEntity, getQuestLine } from "./game-tools.ts";
 import { gameMarkupCheck } from "./game-plan.ts";
 import { getPlace } from "./places.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -38,7 +40,7 @@ const MARKUP = `Links (step title, note, why, condition text, plan goal, details
 - {instance:JOURNALINSTANCEID} a dungeon or raid by Adventure Guide instance id; a click opens the guide
 - {npc:ID} an npc; needs entities.npc["ID"] = { name, mapID, x, y } on the plan (or the answer), x and y in percent
 - {pin:MAPID:X:Y} a map point, e.g. {pin:2339:52.1:47.3|the forge}; X and Y are map percent 0 to 100 with at most one decimal (wowhead numbers), unlike task x/y
-Use only ids a tool gave you (get_player_profile, get_game_data, check_ids, get_suggestions, the request, resolve_criteria, get_instance_guide); never guess an id, write the plain name instead. check_ids confirms mount, toy and pet ids against the player's data. At most 12 tokens per step and 12 in goal plus details. A bad token is replaced by its label and listed in warnings in the reply: read them and fix the plan if a link mattered.`;
+Use only ids a tool gave you (get_player_profile, get_game_data, check_ids, get_suggestions, the request, resolve_criteria, get_instance_guide, find_game_entity, get_quest_line, get_item_sources); never guess an id, write the plain name instead. check_ids confirms mount, toy and pet ids against the player's data. At most 12 tokens per step and 12 in goal plus details. A bad token is replaced by its label and listed in warnings in the reply: read them and fix the plan if a link mattered.`;
 
 const SCHEMA = `A session plan is one JSON object, the same shape as docs/plan-format.md.
 
@@ -171,6 +173,9 @@ const LEASE_TOOLS = new Set([
   "get_instance_guide",
   "get_place",
   "get_game_entity",
+  "find_game_entity",
+  "get_quest_line",
+  "get_item_sources",
   "put_plan",
   "answer_request",
   "fail_request",
@@ -735,6 +740,54 @@ export function createMcpServer(
   );
 
   registerTool(
+    "get_item_sources",
+    {
+      title: "Find sourced ways to obtain an item",
+      description:
+        "Search Blizzard journal encounter loot and vetted Catalog item references. Every match carries its source URL. Bounded to 50 journal matches; coverage and missing evidence are explicit. An empty result does not prove no source exists. Boss loot does not prove a guaranteed drop, difficulty, vendor, cost or location; never infer them.",
+      inputSchema: {
+        itemID: z.number().int().positive().max(2147483647),
+        locale: z.enum(["enUS", "ruRU"]).default("enUS"),
+      },
+    },
+    async ({ itemID, locale }) => text(await getItemSources(itemID, locale, gameIds)),
+  );
+
+  registerTool(
+    "get_quest_line",
+    {
+      title: "Read quests of a quest line",
+      description:
+        "Imported quest-line membership in OrderIndex order, with localized names and source. Missing names stay null. Ambiguous or oversized order is unavailable; the client order does not prove prerequisites, availability or a connecting story.",
+      inputSchema: {
+        questLineID: z.number().int().positive().max(2147483647),
+        locale: z.enum(["enUS", "ruRU"]).default("enUS"),
+      },
+    },
+    async (query) => text(await getQuestLine(store.game, query)),
+  );
+
+  registerTool(
+    "find_game_entity",
+    {
+      title: "Find a Game DB entity by name",
+      description:
+        "Exact, case-sensitive name lookup in enUS or ruRU in one imported build. Returns up to 50 matches with ids and source; multiple matches are ambiguous, never pick one by guess. No wildcard or fuzzy matching. Only imported named entity kinds are supported; quest titles cover client task rows only.",
+      inputSchema: {
+        kind: z.enum(
+          Object.keys(ENTITY_TABLES) as [
+            keyof typeof ENTITY_TABLES,
+            ...(keyof typeof ENTITY_TABLES)[],
+          ],
+        ),
+        name: z.string().trim().min(1).max(200),
+        locale: z.enum(["enUS", "ruRU"]).default("enUS"),
+      },
+    },
+    async (query) => text(await findGameEntity(store.game, query)),
+  );
+
+  registerTool(
     "get_game_entity",
     {
       title: "Look up a Game DB entity",
@@ -1112,7 +1165,7 @@ export function createMcpServer(
     {
       title: "Look up a place",
       description:
-        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name and parent continent, imported single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Reads one imported Game DB build with bounded indexed lookups; no CSV downloads during a request.",
+        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name, parent zone and continent, and a verified Map.ExpansionID when assignments agree, imported single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Reads one imported Game DB build with bounded indexed lookups; no CSV downloads during a request.",
       inputSchema: {
         mapID: z.number().int().positive(),
         questID: z.number().int().positive().optional(),

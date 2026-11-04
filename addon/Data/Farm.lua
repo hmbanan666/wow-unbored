@@ -6,6 +6,7 @@ local _, ns = ...
 -- https://warcraft.wiki.gg/wiki/InstanceID
 -- Mount journal ids: https://warcraft.wiki.gg/wiki/MountID
 -- Each mountSources entry names one verified way to earn that mount here.
+-- itemID and source expose the existing item reference to Planner tools.
 -- difficulty is required when the chosen boss only awards it in that mode.
 -- condition records encounter requirements beyond difficulty.
 -- Entrance coordinates are the Wowhead "Dungeon and Raid Entrances" guide
@@ -28,7 +29,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Reins_of_the_Onyxian_Drake
       -- https://www.wowhead.com/item=49636/reins-of-the-onyxian-drake
-      [349] = { boss = "Onyxia" },
+      [349] = {
+        itemID = 49636,
+        source = "https://www.wowhead.com/item=49636/reins-of-the-onyxian-drake",
+        boss = "Onyxia",
+      },
     },
   },
   {
@@ -43,7 +48,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Ashes_of_Al%27ar
       -- https://www.wowhead.com/item=32458/ashes-of-alar
-      [183] = { boss = "Kael'thas Sunstrider" },
+      [183] = {
+        itemID = 32458,
+        source = "https://www.wowhead.com/item=32458/ashes-of-alar",
+        boss = "Kael'thas Sunstrider",
+      },
     },
   },
   {
@@ -58,10 +67,18 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Midnight%27s_Eternal_Reins
       -- https://www.wowhead.com/item=142236/midnights-eternal-reins
-      [875] = { boss = "Attumen the Huntsman", difficulty = "mythic" },
+      [875] = {
+        itemID = 142236,
+        source = "https://www.wowhead.com/item=142236/midnights-eternal-reins",
+        boss = "Attumen the Huntsman", difficulty = "mythic",
+      },
       -- https://warcraft.wiki.gg/wiki/Smoldering_Ember_Wyrm
       -- https://www.wowhead.com/item=142552/smoldering-ember-wyrm
-      [883] = { boss = "Nightbane", difficulty = "mythic", condition = "timed-summon" },
+      [883] = {
+        itemID = 142552,
+        source = "https://www.wowhead.com/item=142552/smoldering-ember-wyrm",
+        boss = "Nightbane", difficulty = "mythic", condition = "timed-summon",
+      },
     },
   },
   {
@@ -76,7 +93,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Flametalon_of_Alysrazor
       -- https://www.wowhead.com/item=71665/flametalon-of-alysrazor
-      [425] = { boss = "Alysrazor" },
+      [425] = {
+        itemID = 71665,
+        source = "https://www.wowhead.com/item=71665/flametalon-of-alysrazor",
+        boss = "Alysrazor",
+      },
     },
   },
   {
@@ -91,7 +112,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Experiment_12-B
       -- https://www.wowhead.com/item=78919/experiment-12-b
-      [445] = { boss = "Ultraxion", difficulty = "normal-heroic" },
+      [445] = {
+        itemID = 78919,
+        source = "https://www.wowhead.com/item=78919/experiment-12-b",
+        boss = "Ultraxion", difficulty = "normal-heroic",
+      },
       -- https://warcraft.wiki.gg/wiki/Life-Binder%27s_Handmaiden
       -- https://www.wowhead.com/spell=107845/life-binders-handmaiden
       [444] = { boss = "Madness of Deathwing", difficulty = "heroic" },
@@ -106,10 +131,18 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/G.M.O.D.
       -- https://www.wowhead.com/item=166518/g-m-o-d
-      [1217] = { boss = "High Tinker Mekkatorque", difficulty = "normal-heroic-mythic" },
+      [1217] = {
+        itemID = 166518,
+        source = "https://www.wowhead.com/item=166518/g-m-o-d",
+        boss = "High Tinker Mekkatorque", difficulty = "normal-heroic-mythic",
+      },
       -- https://warcraft.wiki.gg/wiki/Glacial_Tidestorm
       -- https://www.wowhead.com/item=166705/glacial-tidestorm
-      [1219] = { boss = "Lady Jaina Proudmoore", difficulty = "mythic" },
+      [1219] = {
+        itemID = 166705,
+        source = "https://www.wowhead.com/item=166705/glacial-tidestorm",
+        boss = "Lady Jaina Proudmoore", difficulty = "mythic",
+      },
     },
     pins = {
       Alliance = { mapID = 1161, x = 0.70, y = 0.35 },
@@ -128,7 +161,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Ironhoof_Destroyer
       -- https://www.wowhead.com/item=116660/ironhoof-destroyer
-      [613] = { boss = "Blackhand", difficulty = "mythic" },
+      [613] = {
+        itemID = 116660,
+        source = "https://www.wowhead.com/item=116660/ironhoof-destroyer",
+        boss = "Blackhand", difficulty = "mythic",
+      },
     },
   },
   {
@@ -158,7 +195,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Invincible%27s_Reins
       -- https://www.wowhead.com/item=50818/invincibles-reins
-      [363] = { boss = "The Lich King", difficulty = "heroic25" },
+      [363] = {
+        itemID = 50818,
+        source = "https://www.wowhead.com/item=50818/invincibles-reins",
+        boss = "The Lich King", difficulty = "heroic25",
+      },
     },
   },
   {
@@ -173,7 +214,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Kor%27kron_Juggernaut
       -- https://www.wowhead.com/item=104253/korkron-juggernaut
-      [559] = { boss = "Garrosh Hellscream", difficulty = "mythic" },
+      [559] = {
+        itemID = 104253,
+        source = "https://www.wowhead.com/item=104253/korkron-juggernaut",
+        boss = "Garrosh Hellscream", difficulty = "mythic",
+      },
     },
   },
   {
@@ -188,7 +233,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Felsteel_Annihilator
       -- https://www.wowhead.com/item=123890/felsteel-annihilator
-      [751] = { boss = "Archimonde", difficulty = "mythic" },
+      [751] = {
+        itemID = 123890,
+        source = "https://www.wowhead.com/item=123890/felsteel-annihilator",
+        boss = "Archimonde", difficulty = "mythic",
+      },
       -- https://warcraft.wiki.gg/wiki/Infernal_Direwolf
       -- https://www.wowhead.com/achievement=10149/glory-of-the-hellfire-raider
       [758] = { achievementID = 10149 },
@@ -206,7 +255,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Mimiron%27s_Head
       -- https://www.wowhead.com/item=45693/mimirons-head
-      [304] = { boss = "Yogg-Saron", condition = "no-keepers" },
+      [304] = {
+        itemID = 45693,
+        source = "https://www.wowhead.com/item=45693/mimirons-head",
+        boss = "Yogg-Saron", condition = "no-keepers",
+      },
     },
   },
   {
@@ -239,7 +292,11 @@ ns.Data.Farm = {
     mountSources = {
       -- https://warcraft.wiki.gg/wiki/Fractal_Cypher_of_the_Zereth_Overseer
       -- https://www.wowhead.com/item=190768/fractal-cypher-of-the-zereth-overseer
-      [1587] = { boss = "The Jailer", difficulty = "mythic" },
+      [1587] = {
+        itemID = 190768,
+        source = "https://www.wowhead.com/item=190768/fractal-cypher-of-the-zereth-overseer",
+        boss = "The Jailer", difficulty = "mythic",
+      },
     },
   },
 }

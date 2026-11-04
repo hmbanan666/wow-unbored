@@ -77,6 +77,8 @@ export const GAME_CONTENT_SQLITE_SCHEMA = `
     locale TEXT NOT NULL, id INTEGER NOT NULL, body_json TEXT NOT NULL,
     PRIMARY KEY (build, table_name, locale, id)
   );
+  CREATE INDEX IF NOT EXISTS game_questlinexquest_questlineid ON game_rows (build, locale, CAST(json_extract(body_json, '$.QuestLineID') AS TEXT)) WHERE table_name = 'QuestLineXQuest';
+  CREATE INDEX IF NOT EXISTS game_rows_name ON game_rows (build, table_name, locale, COALESCE(json_extract(body_json, '$.Display_lang'), json_extract(body_json, '$.Name_lang'), json_extract(body_json, '$.QuestTitle_lang'), json_extract(body_json, '$.Title_lang')), id);
   CREATE INDEX IF NOT EXISTS game_toy_itemid ON game_rows (build, locale, CAST(json_extract(body_json, '$.ItemID') AS TEXT)) WHERE table_name = 'Toy';
   CREATE INDEX IF NOT EXISTS game_mount_sourcespellid ON game_rows (build, locale, CAST(json_extract(body_json, '$.SourceSpellID') AS TEXT)) WHERE table_name = 'Mount';
   CREATE INDEX IF NOT EXISTS game_battlepetspecies_summonspellid ON game_rows (build, locale, CAST(json_extract(body_json, '$.SummonSpellID') AS TEXT)) WHERE table_name = 'BattlePetSpecies';

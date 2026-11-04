@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { DatabaseSync } from "node:sqlite";
 
 import type { Sql } from "./postgres.ts";
@@ -338,6 +339,45 @@ export class BlizzardIds {
     }
   }
 
+  /** Search journal loot by item id, then verify every returned relation independently. */
+  async itemSources(itemID: number, locale: "enUS" | "ruRU") {
+    if (!this.config) return undefined;
+    const token = await this.accessToken();
+    if (!token) return undefined;
+    const region = this.config.region;
+    const language = locale === "ruRU" ? "ru_RU" : "en_US";
+    const url = `https://${region}.api.blizzard.com/data/wow/search/journal-encounter?namespace=static-${region}&items.item.id=${itemID}&orderby=id&_page=1&_pageSize=50`;
+    try {
+      const response = await this.fetchImpl(url, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!response.ok) return undefined;
+      const body = await response.json();
+      if (Buffer.byteLength(JSON.stringify(body)) > 256_000) return undefined;
+      const parsed = journalItemSearch.safeParse(body);
+      if (!parsed.success) return undefined;
+      const seen = new Set<number>();
+      const sources = parsed.data.results.flatMap(({ data }) => {
+        if (seen.has(data.id) || !data.items.some((row) => row.item.id === itemID)) return [];
+        seen.add(data.id);
+        return [
+          {
+            itemID,
+            encounterID: data.id,
+            name: data.name?.[language] ?? null,
+            guaranteed: null,
+            source: { kind: "Blizzard Game Data API", url, locale },
+          },
+        ];
+      });
+      return { sources, truncated: parsed.data.pageCount > 1 };
+    } catch {
+      return undefined;
+    }
+  }
+
   private async creature(
     token: string,
     npcID: number,
@@ -403,3 +443,21 @@ export class BlizzardIds {
     }
   }
 }
+
+const journalItemSearch = z.object({
+  page: z.literal(1),
+  pageCount: z.number().int().nonnegative(),
+  results: z
+    .array(
+      z.object({
+        data: z.object({
+          id: z.number().int().positive(),
+          name: z.record(z.string(), z.string().max(200)).optional(),
+          items: z
+            .array(z.object({ item: z.object({ id: z.number().int().positive() }) }))
+            .max(1000),
+        }),
+      }),
+    )
+    .max(50),
+});

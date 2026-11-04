@@ -265,6 +265,47 @@ not a production import. The larger generated fixture covers growth beyond
 those observed counts.
 
 
+### Game DB: Planner lookups
+
+The owner and a live Plan runner lease can call:
+
+- `find_game_entity {kind, name, locale?}`: exact, case-sensitive localized names
+  (`enUS` by default or `ruRU`), up to 50 matches in id order plus `truncated`.
+  SQL wildcard characters are literal. Kinds: item, quest, questLine, faction,
+  mount, currency, achievement, zone and instance. Quest names cover
+  `QuestV2CliTask`, not every quest; pet and toy names are not imported.
+- `get_quest_line {questLineID, locale?}`: membership from `QuestLineXQuest`,
+  sorted by `OrderIndex`, with names when available. More than 256 members or
+  conflicting order returns no sequence. Missing quests/names are reported,
+  never reconstructed. Client order does not establish prerequisites.
+- `get_place {mapID, questID?, npcID?, lang?}`: the existing destination lookup
+  also returns the nearest zone ancestor and an expansion `{id}` from
+  `UiMapAssignment` → `Map.ExpansionID` when all assignments agree. Map zero
+  is valid. No expansion label is invented. The source identifies the build,
+  locale and tables, including existing quest/flight geometry.
+- `get_item_sources {itemID, locale?}`: exact item references from Blizzard's
+  journal encounter search plus sourced Catalog Farm rows. Every match carries
+  its source URL; Catalog boss names stay English. API errors, missing names,
+  no Catalog match and truncated searches are explicit. Journal search is
+  limited to its first 50 results with a four-second HTTP timeout, and each
+  nested `items[].item.id` is checked independently. It does not search every
+  vendor, quest or crafting recipe. Drop probability and acquisition guarantees
+  remain unknown; a journal listing alone cannot justify a guaranteed outcome.
+
+Name and quest-line answers identify their build, table, locale and CSV source.
+No lookup downloads client tables. Item lookup uses the existing optional
+Blizzard credentials; without them the vetted Catalog remains available.
+The API search endpoint is documented in [Blizzard's static-search announcement](https://us.forums.blizzard.com/en/blizzard/t/world-of-warcraft-api-patch-notes-20200708/10310).
+Catalog item ids and URLs are exported from the references already vetted in
+`addon/Data/Farm.lua`; rows without an explicit item reference are not guessed.
+
+Migration `0014_game_tools.sql` adds indexes through normal startup. No new
+tables are added: transfer/workflow counts remain 23. Existing imported builds
+need no re-import. On an empty installation, use the operator-run command already
+shown above: `node apps/server/scripts/import-game.ts <current-live-build>`.
+Run it with the documented owner authentication on the target installation;
+local development and tests never import into production.
+
 ### Game DB: Plan checks
 
 `put_plan`, `answer_request` (including its optional Plan), and `PUT /v1/plan`

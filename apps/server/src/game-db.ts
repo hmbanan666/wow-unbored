@@ -76,6 +76,25 @@ export class GameDb {
     return found ? { build: found.build, fields: fromJson<GameFields>(found.body)! } : undefined;
   }
 
+  /** Exact localized names; SQL wildcard characters are literal. */
+  async named(table: GameTable, name: string, locale: "enUS" | "ruRU", build: string) {
+    const rows = this.db.pg ? "game.rows" : "game_rows";
+    const fields = ["Display_lang", "Name_lang", "QuestTitle_lang", "Title_lang"];
+    const expression = `COALESCE(${fields
+      .map((field) =>
+        this.db.pg ? `body ->> '${field}'` : `json_extract(body_json, '$.${field}')`,
+      )
+      .join(", ")})`;
+    const found = await this.db.all<{ body: unknown }>(
+      `SELECT ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = ? AND ${expression} = ? ORDER BY id LIMIT 51`,
+      build,
+      table,
+      locale,
+      name,
+    );
+    return found.map((row) => fromJson<GameFields>(row.body)!);
+  }
+
   /** Bounded relationship lookup. A full group is required to prove unique geometry. */
   async related(
     table: GameTable,
