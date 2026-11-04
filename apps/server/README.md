@@ -27,7 +27,7 @@ The process listens on `PORT` (default `3000`) and stores SQLite at `$UNBORED_DA
 | `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET` | no | Blizzard Game Data API client. When both are set, `put_plan` and `answer_request` check that linked item, quest, achievement, spell and npc ids exist ([markup](../../packages/contracts/markup.md)); results are cached in SQLite. Unset: structure checks only. Never logged. |
 | `BLIZZARD_REGION` | no | `us` (default), `eu`, `kr` or `tw`. |
 
-`GET /health` needs no token and returns `{"ok":true,"planner":"webhook","webhook":"on"}`, or `"off"` when `UNBORED_PLANNER_WEBHOOK_URL` is empty. Every other route rejects a missing or wrong bearer token.
+`GET /health` needs no token and includes `ok: true`, `planner: "webhook" | "runner"`, and `webhook: "on" | "off"` (off when `UNBORED_PLANNER_WEBHOOK_URL` is empty). Its `gameDb` object reports the imported and observed live builds, discovery errors and lag; see [build watching](../../docs/DEVELOPMENT.md#game-db-automatic-build-watching). Every other route rejects a missing or wrong bearer token.
 
 ### Planner webhook
 

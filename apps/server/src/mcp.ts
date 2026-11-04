@@ -948,7 +948,8 @@ export function createMcpServer(
         "The Data explorer: every Account and Character with each Game data Section (version, read time, savedAt, size in bytes, id and item counts, the last change), Sections the addon dropped to stay small, unknown Sections a newer addon sent, and for unresolvedIds the count per kind (quest, item, advice: ids Bory could not resolve or had no advice for). Each Account and Character also has expected (every Section it should have; errors and the 0.6 profile are not expected) and missing (each with reason window, dropped, sharing or never, and a hint for window). Use it to see whether everything arrived; read bodies with get_game_data.",
       inputSchema: { account: whoSchema.account },
     },
-    async ({ account }) => text(await data.catalog({ account })),
+    async ({ account }) =>
+      text({ ...(await data.catalog({ account })), gameDb: await store.game.status() }),
   );
 
   registerTool(
