@@ -8,7 +8,8 @@
     "build": "nuxt build",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "typecheck": "nuxt prepare && nuxt typecheck"
+    "typecheck": "nuxt prepare && nuxt typecheck",
+    "test": "cd ../.. && vp test --config apps/web/vite.config.ts"
   },
   "dependencies": {
     "@nuxt/fonts": "^1.2.0",
@@ -21,7 +22,12 @@
     "satori": "^0.63.2"
   },
   "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@vue/server-renderer": "^3.5.44",
+    "@vue/test-utils": "^2.5.1",
+    "happy-dom": "^21.0.4",
     "typescript": "5.9.3",
+    "vue": "^3.5.44",
     "vue-tsc": "^3.3.14"
   }
 }

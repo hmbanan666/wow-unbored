@@ -19,6 +19,7 @@ const eyebrow = computed(() => {
 
 <template>
   <DsCard :to="page.href" :eyebrow="eyebrow" :title="page.title" :text="page.description">
+    <template #visual><DsGameIconStrip v-if="page.icons?.length" :icons="page.icons" /></template>
     <DsProgress
       v-if="progress"
       :done="progress.done"

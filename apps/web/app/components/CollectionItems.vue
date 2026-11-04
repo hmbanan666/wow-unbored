@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { PageMedia } from "@unbored/contracts/game-media";
 import { ITEM_KIND_LABEL, SOURCE_LABEL, type CatalogItem } from "#shared/catalog";
 
 import { PATH_COPY, type PathProgress } from "#shared/personal-paths";
 
 defineProps<{
   items: CatalogItem[];
+  media?: PageMedia;
   progress?: PathProgress;
   copy?: typeof PATH_COPY.en | typeof PATH_COPY.ru;
 }>();
@@ -28,6 +30,8 @@ function chips(item: CatalogItem) {
       :key="`${item.kind}:${item.id ?? item.level}`"
     >
       <DsItemCard
+        :item="item"
+        :media="media?.[`${item.kind}:${item.id}`]"
         :rank="index + 1"
         :name="item.name"
         :chips="chips(item)"

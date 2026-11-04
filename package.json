@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @unbored/server start",
-    "test": "pnpm test:addon && pnpm exec vp test && pnpm test:companion",
+    "test": "pnpm test:addon && pnpm run test:js && pnpm test:companion",
     "test:addon": "cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/data.lua && lua5.1 tests/ui.lua",
     "test:companion": "cargo test --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features",
-    "test:js": "pnpm exec vp test",
+    "test:js": "pnpm exec vp test && pnpm --filter @unbored/web test",
     "lint:js": "pnpm exec vp check",
     "lint:companion": "cargo fmt --manifest-path apps/companion/src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features -- -D warnings",
     "lint:companion:all": "cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
