@@ -1,10 +1,17 @@
-import type { Db } from "./db.ts";
-import { CSV_MAX_BYTES, parseCsv } from "./criteria.ts";
-import { downloadGameText } from "./game-download.ts";
+import { type Db, fromJson } from "./db.ts";
+import {
+  GAME_CONTENT_SQLITE_SCHEMA,
+  importGameContent,
+  gameLocalized,
+  type GameFields,
+  type GameTable,
+} from "./game-content.ts";
 
 export const GAME_LAG_THRESHOLD_SECONDS = 6 * 60 * 60;
 
-export const GAME_SQLITE_SCHEMA = `
+export const GAME_SQLITE_SCHEMA =
+  GAME_CONTENT_SQLITE_SCHEMA +
+  `
   CREATE TABLE IF NOT EXISTS game_builds (
     build TEXT PRIMARY KEY, build_number INTEGER NOT NULL UNIQUE,
     imported_at INTEGER NOT NULL, achievements INTEGER NOT NULL
@@ -25,35 +32,6 @@ export function validGameBuild(value: unknown): value is string {
 
 export class GameImportError extends Error {}
 
-async function achievements(build: string, locale: string, fetchImpl: typeof fetch) {
-  const csv = await downloadGameText(
-    `https://wago.tools/db2/Achievement/csv?build=${build}&locale=${locale}`,
-    CSV_MAX_BYTES,
-    fetchImpl,
-  );
-  const [header = [], ...rows] = parseCsv(csv, true);
-  const idColumn = header.indexOf("ID");
-  const nameColumn = header.indexOf("Title_lang");
-  if (idColumn < 0 || nameColumn < 0 || !rows.length)
-    throw new Error("Missing Achievement columns or rows");
-  const result = new Map<number, string>();
-  for (const row of rows) {
-    const id = Number(row[idColumn]);
-    const name = row[nameColumn];
-    if (
-      row.length !== header.length ||
-      !Number.isInteger(id) ||
-      id <= 0 ||
-      id > 2147483647 ||
-      name === undefined ||
-      result.has(id)
-    )
-      throw new Error("Invalid Achievement row");
-    result.set(id, name);
-  }
-  return result;
-}
-
 /** Build rows become visible only together with both complete locale tables. */
 export class GameDb {
   private readonly builds: string;
@@ -61,12 +39,39 @@ export class GameDb {
   private readonly watch: string;
 
   private readonly db: Db;
+  private readonly dataDir: string;
+  private importing: Promise<unknown> = Promise.resolve();
 
-  constructor(db: Db) {
+  constructor(db: Db, dataDir: string) {
+    this.dataDir = dataDir;
     this.db = db;
     this.builds = db.pg ? "game.builds" : "game_builds";
     this.achievements = db.pg ? "game.achievements" : "game_achievements";
     this.watch = db.pg ? "game.watch" : "game_watch";
+  }
+
+  async importBuild(build: string, fetchImpl: typeof fetch = fetch) {
+    if (!validGameBuild(build)) throw new GameImportError("Invalid build.");
+    const run = this.importing.then(() =>
+      importGameContent(this.db, this.dataDir, build, fetchImpl),
+    );
+    this.importing = run.catch(() => {});
+    return run.catch((cause) => {
+      throw new GameImportError("Could not import all Game DB tables; retry the import.", {
+        cause,
+      });
+    });
+  }
+
+  async row(table: GameTable, id: number, locale: "enUS" | "ruRU" = "enUS") {
+    const rows = this.db.pg ? "game.rows" : "game_rows";
+    const found = await this.db.get<{ build: string; body: unknown }>(
+      `SELECT build, ${this.db.body} AS body FROM ${rows} WHERE build = (SELECT build FROM ${this.builds} ORDER BY build_number DESC LIMIT 1) AND table_name = ? AND locale = ? AND id = ?`,
+      table,
+      gameLocalized(table) ? locale : "enUS",
+      id,
+    );
+    return found ? { build: found.build, fields: fromJson<GameFields>(found.body)! } : undefined;
   }
 
   async currentBuild() {
@@ -141,46 +146,6 @@ export class GameDb {
       lagging: lagSeconds > GAME_LAG_THRESHOLD_SECONDS,
       lastError: row!.last_error,
     };
-  }
-
-  async importAchievements(build: string, fetchImpl: typeof fetch = fetch) {
-    if (!validGameBuild(build)) throw new GameImportError("Invalid build.");
-    const completed = () =>
-      this.db.get<{ achievements: number }>(
-        `SELECT achievements FROM ${this.builds} WHERE build = ?`,
-        build,
-      );
-    const previous = await completed();
-    if (previous) return { build, status: "unchanged", achievements: previous.achievements };
-    const [en, ru] = await Promise.all([
-      achievements(build, "enUS", fetchImpl),
-      achievements(build, "ruRU", fetchImpl),
-    ]).catch(() => {
-      throw new GameImportError("Could not read Achievement for both locales; retry the import.");
-    });
-    if (en.size !== ru.size || [...en.keys()].some((id) => !ru.has(id)))
-      throw new GameImportError("Achievement locale ids differ; retry the import.");
-    return this.db.tx(async () => {
-      await this.db.lockKey(`game-import:${build}`);
-      const previous = await completed();
-      if (previous) return { build, status: "unchanged", achievements: previous.achievements };
-      await this.db.run(
-        `INSERT INTO ${this.builds} (build, build_number, imported_at, achievements) VALUES (?, ?, ?, ?)`,
-        build,
-        Number(build.split(".")[3]),
-        Math.floor(Date.now() / 1000),
-        en.size,
-      );
-      const entries = [...en];
-      for (let start = 0; start < entries.length; start += 500) {
-        const batch = entries.slice(start, start + 500);
-        await this.db.run(
-          `INSERT INTO ${this.achievements} (build, id, name_en, name_ru) VALUES ${batch.map(() => "(?, ?, ?, ?)").join(", ")}`,
-          ...batch.flatMap(([id, name]) => [build, id, name, ru.get(id)!]),
-        );
-      }
-      return { build, status: "imported", achievements: en.size };
-    });
   }
 
   async entity(kind: "achievement", id: number) {

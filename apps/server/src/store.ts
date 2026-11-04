@@ -265,7 +265,7 @@ export class Store {
       this.gameIds = new SqliteIdCache(raw);
       this.creatureNames = new SqliteNameCache(raw);
     }
-    this.game = new GameDb(this.db);
+    this.game = new GameDb(this.db, dataDir);
     this.data = new DataStore(this.db, options.log);
     this.suggestions = new SuggestionStore(this.db, this.data, this.creatureNames);
     this.inbox = inbox;

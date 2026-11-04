@@ -28,6 +28,8 @@ const GAME_TABLES: Record<string, string> = {
   game_builds: "game.builds",
   game_achievements: "game.achievements",
   game_watch: "game.watch",
+  game_rows: "game.rows",
+  game_imports: "game.imports",
 };
 const PARTITIONED = new Set(["section_history", "history"]);
 

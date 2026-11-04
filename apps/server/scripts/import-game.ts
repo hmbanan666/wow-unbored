@@ -22,7 +22,7 @@ if (build === "--help") {
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({ build }),
         redirect: "error",
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(16 * 60 * 1000),
       });
       if (!response.ok) {
         console.error(

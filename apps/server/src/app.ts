@@ -610,7 +610,7 @@ export function createApp(
     if (!validGameBuild(body?.build))
       return c.json({ error: "Supply a build such as 12.0.1.66337." }, 400);
     try {
-      return c.json(await store.game.importAchievements(body.build, config.gameDbFetch));
+      return c.json(await store.game.importBuild(body.build, config.gameDbFetch));
     } catch (error) {
       if (error instanceof GameImportError) return c.json({ error: error.message }, 502);
       throw error;

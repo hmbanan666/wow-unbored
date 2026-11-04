@@ -9,6 +9,8 @@ import { test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 import { BACKENDS, postgresPerFile, type Backend } from "./postgres-db.ts";
 
+import { coreResponse } from "./game-content-fixture.ts";
+
 const pg = postgresPerFile();
 const build = "12.0.1.66337";
 const runnerToken = "runner-token-for-tests-with-32-characters";
@@ -17,8 +19,8 @@ function setup(backend: Backend) {
   const dataDir = mkdtempSync(path.join(import.meta.dirname, ".game-db-"));
   const downloads: string[] = [];
   const source = {
-    enUS: "ID,Title_lang\r\n964,Going Down?\r\n",
-    ruRU: "ID,Title_lang\r\n964,Летим!\r\n",
+    enUS: "ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\r\n964,Going Down?,,0,100\r\n",
+    ruRU: "ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\r\n964,Летим!,,0,100\r\n",
   };
   const app = createApp({
     database: pg(backend),
@@ -33,6 +35,7 @@ function setup(backend: Backend) {
     log: () => {},
     gameDbFetch: async (input) => {
       const url = new URL(String(input));
+      if (!url.pathname.includes("/Achievement/")) return coreResponse(input);
       downloads.push(url.href);
       assert.equal(url.origin + url.pathname, "https://wago.tools/db2/Achievement/csv");
       assert.match(url.searchParams.get("build")!, /^12\.0\.1\.\d+$/);
@@ -79,11 +82,12 @@ for (const backend of BACKENDS) {
   test(`all rows survive import batches, including an unnamed client row (${backend})`, async () => {
     const app = setup(backend);
     try {
-      const rows = Array.from({ length: 500 }, (_, index) => `${index + 1},Name,Ignored`).join(
-        "\n",
-      );
-      app.source.enUS = `ID,Title_lang,Description_lang\n${rows}\n964,,Unnamed client row\n965,Last row,Ignored\n`;
-      app.source.ruRU = `ID,Title_lang,Description_lang\n${rows}\n964,,Unnamed client row\n965,Последняя строка,Ignored\n`;
+      const rows = Array.from(
+        { length: 500 },
+        (_, index) => `${index + 1},Name,Ignored,0,100`,
+      ).join("\n");
+      app.source.enUS = `ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\n${rows}\n964,,Unnamed client row,0,100\n965,Last row,Ignored,0,100\n`;
+      app.source.ruRU = `ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\n${rows}\n964,,Unnamed client row,0,100\n965,Последняя строка,Ignored,0,100\n`;
       const response = await app.import();
       assert.equal(response.status, 200);
       assert.equal((await response.json()).achievements, 502);
@@ -173,10 +177,12 @@ for (const backend of BACKENDS) {
     const app = setup(backend);
     try {
       assert.equal((await app.import()).status, 200);
-      app.source.enUS = "ID,Title_lang\n6,Level 10\n";
+      app.source.enUS =
+        "ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\n6,Level 10,,0,100\n";
       assert.equal((await app.import("12.0.1.66338")).status, 502);
       assert.equal((await app.entity()).build, build);
-      app.source.ruRU = "ID,Title_lang\n6,Уровень 10\n";
+      app.source.ruRU =
+        "ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\n6,Уровень 10,,0,100\n";
       assert.equal((await app.import("12.0.1.66338")).status, 200);
       assert.deepEqual(await app.entity(), { entity: null });
       assert.deepEqual(await app.entity(6), {
@@ -195,10 +201,11 @@ for (const backend of BACKENDS) {
   test(`a truncated locale never publishes a build and can be retried (${backend})`, async () => {
     const app = setup(backend);
     try {
-      app.source.ruRU = 'ID,Title_lang\n964,"unfinished';
+      app.source.ruRU = 'ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\n964,"unfinished';
       assert.equal((await app.import()).status, 502);
       assert.deepEqual(await app.entity(), { entity: null });
-      app.source.ruRU = 'ID,Title_lang\n964,"Летим, ""ещё""!"\n';
+      app.source.ruRU =
+        'ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\n964,"Летим, ""ещё""!",,0,100\n';
       assert.equal((await app.import()).status, 200);
       assert.equal((await app.entity()).names.ruRU, 'Летим, "ещё"!');
     } finally {
@@ -212,7 +219,7 @@ for (const backend of BACKENDS) {
       assert.equal((await app.import()).status, 200);
       const repeated = await app.import();
       assert.equal(repeated.status, 200);
-      assert.deepEqual(await repeated.json(), { build, status: "unchanged", achievements: 1 });
+      assert.equal((await repeated.json()).status, "unchanged");
       assert.equal(app.downloads.length, 2);
       assert.equal((await app.entity()).names.ruRU, "Летим!");
     } finally {
@@ -224,7 +231,11 @@ for (const backend of BACKENDS) {
     try {
       const response = await app.import();
       assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { build, status: "imported", achievements: 1 });
+      const imported = await response.json();
+      assert.equal(imported.status, "imported");
+      assert.equal(imported.achievements, 1);
+      assert.equal(imported.tables.QuestV2, 1);
+      assert.equal((await app.store.game.row("QuestV2", 90001))?.fields.UniqueBitFlag, 42);
       assert.deepEqual(await app.entity(), {
         kind: "achievement",
         id: 964,

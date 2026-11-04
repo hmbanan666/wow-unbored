@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { coreResponse } from "./game-content-fixture.ts";
 import { test, vi } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 import { GAME_WATCH_INTERVAL_MS } from "../src/game-watch.ts";
@@ -32,13 +34,16 @@ function setup(backend: Backend, directory?: string) {
       const url = new URL(String(input));
       if (url.pathname === "/api/builds/wow/latest")
         return source.discovery?.() ?? Response.json({ product: "wow", version: source.build });
+      if (!url.pathname.includes("/Achievement/")) return coreResponse(input);
       assert.equal(url.origin + url.pathname, "https://wago.tools/db2/Achievement/csv");
       source.downloads++;
       await source.wait;
       if (source.broken) return new Response("Unavailable", { status: 503 });
       const version = url.searchParams.get("build");
       const name = url.searchParams.get("locale") === "ruRU" ? "Летим!" : "Going Down?";
-      return new Response(`ID,Title_lang\n${version === oldBuild ? 964 : 6},${name}\n`);
+      return new Response(
+        `ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\n${version === oldBuild ? 964 : 6},${name},,0,100\n`,
+      );
     },
   });
   return {
@@ -53,6 +58,28 @@ function setup(backend: Backend, directory?: string) {
 }
 
 for (const backend of BACKENDS) {
+  test(`an Achievement-only build is upgraded even when the live build has not changed (${backend})`, async () => {
+    const app = setup(backend);
+    try {
+      await app.store.game.currentBuild();
+      const seed = `INSERT INTO ${backend === "postgres" ? "game.builds" : "game_builds"} VALUES ('${oldBuild}', 66337, 1, 1)`;
+      if (backend === "postgres") await pg(backend)!.unsafe(seed);
+      else {
+        const db = new DatabaseSync(path.join(app.dataDir, "unbored.sqlite"));
+        try {
+          db.exec(seed);
+        } finally {
+          db.close();
+        }
+      }
+      await app.gameWatch.run();
+      assert.equal((await app.store.game.row("QuestV2", 90001))?.build, oldBuild);
+      assert.equal((await app.store.game.entity("achievement", 964))?.names.enUS, "Going Down?");
+    } finally {
+      await app.cleanup();
+    }
+  });
+
   test(`restarting preserves the pending build and its original lag (${backend})`, async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-04T00:00:00Z"));
@@ -143,7 +170,7 @@ for (const backend of BACKENDS) {
       });
       const first = app.gameWatch.run();
       assert.equal(app.gameWatch.run(), first);
-      await vi.waitFor(() => assert.equal(app.source.downloads, 4));
+      await vi.waitFor(() => assert.equal(app.source.downloads, 3));
       assert.equal((await app.store.game.entity("achievement", 964))?.build, oldBuild);
       assert.equal(await app.store.game.entity("achievement", 6), undefined);
       let stopped = false;

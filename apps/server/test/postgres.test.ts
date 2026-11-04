@@ -69,6 +69,7 @@ pg("migrate applies each file once, also when two Servers start together", async
       "0008_web_content.sql",
       "0009_web_sessions.sql",
       "0010_game_watch.sql",
+      "0011_game_content.sql",
     ]);
     assert.deepEqual(await migrate(db.sql), []);
     const rows = await db.sql`SELECT version, name FROM schema_migrations ORDER BY version`;
@@ -85,6 +86,7 @@ pg("migrate applies each file once, also when two Servers start together", async
         [8, "0008_web_content.sql"],
         [9, "0009_web_sessions.sql"],
         [10, "0010_game_watch.sql"],
+        [11, "0011_game_content.sql"],
       ],
     );
   } finally {
@@ -114,7 +116,7 @@ pg("the schema has every SQLite table and column, but the legacy profiles", asyn
         .sort();
       const actual = (
         await db.sql`SELECT column_name FROM information_schema.columns
-          WHERE table_schema = ${["game_builds", "game_achievements", "game_watch"].includes(table) ? "game" : "public"} AND table_name = ${["game_builds", "game_achievements", "game_watch"].includes(table) ? table.slice(5) : table}`
+          WHERE table_schema = ${["game_builds", "game_achievements", "game_watch", "game_rows", "game_imports"].includes(table) ? "game" : "public"} AND table_name = ${["game_builds", "game_achievements", "game_watch", "game_rows", "game_imports"].includes(table) ? table.slice(5) : table}`
       )
         .map((row) => row.column_name as string)
         .sort();
