@@ -1,28 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { test } from "vite-plus/test";
 import { Store } from "../src/store.ts";
 import { database } from "./backend.ts";
-import { coreResponse } from "./game-content-fixture.ts";
+import { instanceResponse as fixtureFetch } from "./game-content-fixture.ts";
 import { getInstanceGuide } from "../src/instances.ts";
-
-const fixtureFetch: typeof fetch = async (input) => {
-  const table = new URL(String(input)).pathname.split("/")[2];
-  if (
-    ![
-      "JournalInstance",
-      "JournalEncounter",
-      "Achievement",
-      "CriteriaTree",
-      "Criteria",
-      "UiMap",
-      "UiMapGroupMember",
-    ].includes(table)
-  )
-    return coreResponse(input);
-  return new Response(readFileSync(new URL(`./fixtures/instances/${table}.csv`, import.meta.url)));
-};
 
 test("instance guide orders bosses and maps only typed evidence from child achievements", async () => {
   const dir = mkdtempSync(path.join(import.meta.dirname, ".guide-"));

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { test, vi } from "vite-plus/test";
 import { Store } from "../src/store.ts";
 import { getInstanceGuide } from "../src/instances.ts";
 import { getPlace } from "../src/places.ts";
-import { coreResponse } from "./game-content-fixture.ts";
+import { coreResponse, instanceResponse } from "./game-content-fixture.ts";
 import { BACKENDS, postgresPerFile } from "./postgres-db.ts";
 
 const pg = postgresPerFile();
@@ -44,27 +44,7 @@ test("imported instance guides preserve boss order, evidence and floor labels", 
   const dir = mkdtempSync(path.join(import.meta.dirname, ".game-tools-"));
   const store = new Store(dir);
   try {
-    await store.game.importBuild("12.0.1.66337", async (input) => {
-      const table = new URL(String(input)).pathname.split("/")[2];
-      if (
-        [
-          "JournalInstance",
-          "JournalEncounter",
-          "Achievement",
-          "CriteriaTree",
-          "Criteria",
-          "UiMap",
-          "UiMapGroupMember",
-        ].includes(table)
-      ) {
-        const csv = readFileSync(
-          new URL(`./fixtures/instances/${table}.csv`, import.meta.url),
-          "utf8",
-        );
-        return new Response(csv);
-      }
-      return coreResponse(input);
-    });
+    await store.game.importBuild("12.0.1.66337", instanceResponse);
     const guide = await getInstanceGuide(store.game, { achievementID: 10149 });
     assert.equal(guide.instance?.instanceID, 669);
     assert.deepEqual(

@@ -117,7 +117,6 @@ export async function getInstanceGuide(
       result.push(...requirements);
       if (result.length > 2048) throw new Error("Oversized child achievement requirements.");
     }
-    if (result.length > 2048) throw new Error("Oversized child achievement requirements.");
     expanded.set(achievementID, result);
     return result;
   }
@@ -178,7 +177,9 @@ export async function getInstanceGuide(
                   x,
                   y,
                   name: String(
-                    (await related("UiMapGroupMember", "UiMapID", uiMapID)).at(-1)?.Name_lang ||
+                    (await related("UiMapGroupMember", "UiMapID", uiMapID))
+                      .sort((a, b) => Number(a.ID) - Number(b.ID))
+                      .at(-1)?.Name_lang ||
                       (await read("UiMap", uiMapID))?.Name_lang ||
                       "",
                   ),

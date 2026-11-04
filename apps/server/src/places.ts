@@ -50,6 +50,55 @@ export function projectGamePoint(
   }
   return points.length === 1 ? points[0] : undefined;
 }
+/** Project complete quest groups; a polygon or missing point makes its quest uncertain. */
+export async function projectQuestPoints(
+  game: GameDb,
+  build: string,
+  mapID: number,
+  assignments: readonly Row[],
+  blobs: readonly Row[],
+): Promise<{ points: QuestPoint[]; limited: boolean }> {
+  const points: QuestPoint[] = [];
+  const uncertain = new Set<number>();
+  let limited = false;
+  for (const blob of blobs) {
+    if (number(blob.UiMapID) !== mapID) continue;
+    const questID = number(blob.QuestID);
+    if (!positive(questID)) continue;
+    if (number(blob.NumPoints) !== 1) {
+      uncertain.add(questID);
+      continue;
+    }
+    const group = await game.related("QuestPOIPoint", "QuestPOIBlobID", number(blob.ID), build);
+    if (group.length > PLACE_LIMIT) limited = true;
+    const point =
+      group.length === 1
+        ? projectGamePoint(
+            assignments,
+            mapID,
+            number(blob.MapID),
+            number(group[0].X),
+            number(group[0].Y),
+          )
+        : undefined;
+    if (point) points.push({ ...point, questID });
+    else uncertain.add(questID);
+  }
+  return { points: points.filter((point) => !uncertain.has(point.questID)), limited };
+}
+
+export function projectFlightPoint(assignments: readonly Row[], mapID: number, row: Row) {
+  return number(row.Flags) & 3
+    ? projectGamePoint(
+        assignments,
+        mapID,
+        number(row.ContinentID),
+        number(row.Pos_0),
+        number(row.Pos_1),
+      )
+    : undefined;
+}
+
 async function load(game: GameDb, lang: "en" | "ru") {
   const build = await game.currentBuild();
   const locale = lang === "ru" ? "ruRU" : "enUS";
@@ -63,8 +112,6 @@ async function load(game: GameDb, lang: "en" | "ru") {
   const row = async (id: number) =>
     build ? (await game.row("UiMap", id, locale, build))?.fields : undefined;
   const questPoints = async (mapID: number, questID?: number): Promise<QuestPoint[]> => {
-    const points: QuestPoint[] = [];
-    const uncertain = new Set<number>();
     const blobs = await rows(
       "QuestPOIBlob",
       questID === undefined ? "UiMapID" : "QuestID",
@@ -73,20 +120,10 @@ async function load(game: GameDb, lang: "en" | "ru") {
     if (blobs.length > PLACE_LIMIT) return [];
     const assignments = await rows("UiMapAssignment", "UiMapID", mapID);
     if (assignments.length > PLACE_LIMIT) return [];
-    for (const blob of blobs) {
-      if (number(blob.UiMapID) !== mapID) continue;
-      const id = number(blob.QuestID),
-        worldMapID = number(blob.MapID);
-      if (!positive(id) || !positive(mapID)) continue;
-      const group = await rows("QuestPOIPoint", "QuestPOIBlobID", number(blob.ID));
-      const point =
-        number(blob.NumPoints) === 1 && group.length === 1
-          ? projectGamePoint(assignments, mapID, worldMapID, number(group[0].X), number(group[0].Y))
-          : undefined;
-      if (point) points.push({ ...point, questID: id });
-      else uncertain.add(id);
-    }
-    return points.filter((point) => !uncertain.has(point.questID));
+    if (!build) return [];
+    const result = await projectQuestPoints(game, build, mapID, assignments, blobs);
+    if (result.limited) unavailable.push("QuestPOIPoint: result limit");
+    return result.points;
   };
   const flights = async (mapID: number): Promise<FlightPoint[]> => {
     const result: FlightPoint[] = [];
@@ -95,14 +132,8 @@ async function load(game: GameDb, lang: "en" | "ru") {
     const worlds = new Set(assignments.map((row) => number(row.MapID)));
     for (const world of worlds) {
       for (const row of (await rows("TaxiNodes", "ContinentID", world)).slice(0, PLACE_LIMIT)) {
-        if (!row.Name_lang || !(number(row.Flags) & 3)) continue;
-        const point = projectGamePoint(
-          assignments,
-          mapID,
-          world,
-          number(row.Pos_0),
-          number(row.Pos_1),
-        );
+        if (!row.Name_lang) continue;
+        const point = projectFlightPoint(assignments, mapID, row);
         if (point) result.push({ ...point, id: number(row.ID), name: String(row.Name_lang) });
         if (result.length === PLACE_LIMIT) return result;
       }
