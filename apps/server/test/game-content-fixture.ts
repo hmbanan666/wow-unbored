@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 /** Small, independent examples of the client fields consumed by tools and checks. */
 export const coreCsv: Record<string, string> = {
   QuestV2: "ID,UniqueBitFlag\n90001,42\n",
@@ -16,6 +18,7 @@ export const coreCsv: Record<string, string> = {
     "ID,Parent,CriteriaID,OrderIndex,Amount,Operator,Description_lang\n100,0,101,0,1,0,Fall\n",
   Criteria: "ID,Type,Asset\n101,29,90001\n",
   UiMap: "ID,Name_lang,ParentUiMapID,Type\n84,Stormwind City,13,3\n",
+  UiMapGroupMember: "ID,Name_lang,UiMapID\n1,Deadmines,291\n",
   UiMapAssignment:
     "ID,UiMapID,MapID,AreaID,Region_0,Region_1,Region_3,Region_4,UiMin_0,UiMin_1,UiMax_0,UiMax_1\n1,84,0,1519,0,0,100,100,0,0,1,1\n",
   AreaTable: "ID,AreaName_lang,ContinentID,ParentAreaID\n1519,Stormwind City,0,0\n",
@@ -34,4 +37,24 @@ export async function coreResponse(input: string | URL | Request): Promise<Respo
   const csv = coreCsv[table];
   if (!csv) throw new Error(`Unexpected source table: ${table}`);
   return new Response(csv);
+}
+
+/** Journal examples shared by guide and runner tests; all other tables use core examples. */
+export async function instanceResponse(input: string | URL | Request): Promise<Response> {
+  const table = new URL(String(input)).pathname.split("/")[2];
+  if (
+    [
+      "JournalInstance",
+      "JournalEncounter",
+      "Achievement",
+      "CriteriaTree",
+      "Criteria",
+      "UiMap",
+      "UiMapGroupMember",
+    ].includes(table)
+  )
+    return new Response(
+      readFileSync(new URL(`./fixtures/instances/${table}.csv`, import.meta.url)),
+    );
+  return coreResponse(input);
 }

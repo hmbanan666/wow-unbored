@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vite-plus/test";
 
 import type { GameDataFetch } from "../src/blizzard.ts";
 import { createApp } from "../src/app.ts";
-import { cleanPlan, type Waypoint, type PlayerContext } from "../src/plan.ts";
+import { cleanPlan, type PlayerContext } from "../src/plan.ts";
+import { coreResponse } from "./game-content-fixture.ts";
 import { storage } from "./backend.ts";
 
 const companion = "companion-test-token";
@@ -21,16 +22,8 @@ fixture.plan.outcome = { kind: "achievement", achievementID: 964 };
 
 type Built = ReturnType<typeof createApp>;
 
-function build(options: { blizzardFetch?: GameDataFetch; points?: Waypoint[] } = {}): Built {
+function build(options: { blizzardFetch?: GameDataFetch } = {}): Built {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-markup-"));
-  if (options.points) {
-    mkdirSync(path.join(dataDir, "wago"));
-    writeFileSync(
-      path.join(dataDir, "wago", "JournalEncounter.csv"),
-      "ID,UiMapID,Map_0,Map_1\n" +
-        options.points.map((p, i) => `${i + 1},${p.mapID},${p.x},${p.y}`).join("\n"),
-    );
-  }
   return createApp({
     ...storage(),
     companionToken: companion,
@@ -98,7 +91,24 @@ const pointCases: {
 
 for (const scenario of pointCases) {
   test(`put_plan checks the Request's starting position: ${scenario.name}`, async () => {
-    const { app, close } = build({ points: [scenario.point, { mapID: 102, x: 0.2, y: 0.5 }] });
+    const { app, store, close } = build();
+    await store.game.importBuild("12.0.1.66337", async (input) => {
+      const table = new URL(String(input)).pathname.split("/")[2];
+      if (table === "UiMap")
+        return new Response(
+          "ID,Name_lang,ParentUiMapID,Type\n84,City,0,3\n85,City,0,3\n102,Zangarmarsh,0,3\n",
+        );
+      if (table === "Faction")
+        return new Response("ID,Name_lang,ParentFactionID,Expansion\n970,Sporeggar,0,1\n");
+      if (table === "JournalEncounter")
+        return new Response(
+          "ID,Name_lang,JournalInstanceID,DungeonEncounterID,OrderIndex,UiMapID,Map_0,Map_1\n" +
+            [scenario.point, { mapID: 102, x: 0.2, y: 0.5 }]
+              .map((p, i) => `${i + 1},Boss,1,1,${i},${p.mapID},${p.x},${p.y}`)
+              .join("\n"),
+        );
+      return coreResponse(input);
+    });
     try {
       if (!scenario.withoutRequest) {
         const response = await app.request("/v1/requests", {

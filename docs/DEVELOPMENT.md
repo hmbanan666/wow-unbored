@@ -178,7 +178,7 @@ snapshots and the Catalog. Startup migration `0011_game_content.sql` extends
 `game_rows` and `game_imports` tables. The existing SQLite-to-Postgres transfer
 copies both (23 tables for a current file), and still accepts older files.
 
-The import selects these 22 DB2 tables from wago.tools for one explicit retail
+The import selects these 23 DB2 tables from wago.tools for one explicit retail
 build. The field allowlist is in
 [`game-content.ts`](../apps/server/src/game-content.ts); column names follow the
 [client definitions](https://github.com/wowdev/WoWDBDefs/tree/master/definitions).
@@ -191,7 +191,7 @@ build. The field allowlist is in
 | Mounts, pet species, toys | `Mount`, `BattlePetSpecies`, `Toy` |
 | Currencies | `CurrencyTypes` |
 | Achievements and criteria | `Achievement`, `CriteriaTree`, `Criteria` |
-| Maps and areas | `UiMap`, `UiMapAssignment`, `AreaTable`, `Map` |
+| Maps and areas | `UiMap`, `UiMapGroupMember`, `UiMapAssignment`, `AreaTable`, `Map` |
 | Quest points | `QuestPOIBlob`, `QuestPOIPoint` |
 | Flight nodes | `TaxiNodes` |
 | Journal instances and encounters | `JournalInstance`, `JournalEncounter` |
@@ -782,13 +782,19 @@ Heartbeat comfortably before 180 seconds; an attempt has a 15-minute hard cap. A
 
 ### Plan outcomes and place data
 
-[ADR 0068](adr/0068-plan-outcome.md) and the [contract](contract/README.md#plan-outcome-and-short-text) define required planner outcome targets, optional chance bonuses, shorter text and `get_place`. Every Plan promises one reachable result; the planner names it in the title and completes it in the last Step, including Surprise me and fun. The place lookup uses the existing 24-hour Wago CSV pipeline with the instance-guide 20 MB cap per table; unavailable, large or malformed tables are reported as unknown. Plan submission only reads fresh caches, including existing journal encounter points, and does not fetch during validation. Unit fixtures cover projection, absent data and ambiguous POIs; MCP storage/delivery tests run on both database backends. The Companion forwards `outcome` and `bonus` to Lua; 0.11 ignores them safely and shows the planner's explicit bonus line in the Step note. HTTP and MCP reject absent/invalid/already-owned outcomes and leaves the lease open for correction; missing snapshot evidence is a nonblocking `notes` entry. Delivery schemas still accept older stored Plans without a target.
+[ADR 0068](adr/0068-plan-outcome.md) and the [contract](contract/README.md#plan-outcome-and-short-text) define required planner outcome targets, optional chance bonuses, shorter text and `get_place`. Every Plan promises one reachable result; the planner names it in the title and completes it in the last Step, including Surprise me and fun. Place lookup, instance guides and Plan validation read the imported Game DB. Missing or ambiguous evidence stays unknown; none of these paths downloads CSV during a request. Unit fixtures cover projection, absent data and ambiguous POIs; MCP storage/delivery tests run on both database backends. The Companion forwards `outcome` and `bonus` to Lua; 0.11 ignores them safely and shows the planner's explicit bonus line in the Step note. HTTP and MCP reject absent/invalid/already-owned outcomes and leaves the lease open for correction; missing snapshot evidence is a nonblocking `notes` entry. Delivery schemas still accept older stored Plans without a target.
 
 
-The production Docker image copies `apps/server/src` and uses `UNBORED_DATA_DIR=/data`, a writable persistent volume. On the first `get_place` call (and after 24-hour expiry), the running Server downloads `UiMap`, `UiMapAssignment`, `QuestPOIBlob`, `QuestPOIPoint` and `TaxiNodes` from `https://wago.tools/db2/<table>/csv` into `/data/wago`; Russian name tables use `?locale=ruRU` and `.ruRU.csv`. This is the same `cachedCsv` downloader, source and native fetch headers as instance guides, with a 20-second timeout and a 20 MB per-table cap; there is no build-time download or shipped table. HTTP 403, timeout, network failure, malformed headers and oversized data leave the affected entries in `unavailable`, with null names/empty points where needed, without crashing the tool or using expired evidence. The next lookup retries failed downloads; concurrent callers share an in-flight download. Live availability from the production network is not guaranteed.
+`get_place` and `get_instance_guide` read one build of the Game DB per call, including enUS or ruRU names. Place lookup projects only the requested quest and flight points; guides traverse indexed achievement trees and journal relationships. `UiMapGroupMember` supplies journal floor labels. Journal creature evidence still uses the existing bounded Blizzard Game Data API adapter when configured; it never treats creature display ids as NPC ids.
 
-Place tables are parsed and indexed once per file version (`mtimeMs` and size), with asynchronous file I/O and parsing slices of about 4 ms. Assignments join by map and world map, blobs by map and quest, points by blob, and flight nodes by world map. Only requested geometry is projected; Plan validation prioritizes its referenced quests, and an empty map selection does no work. Cached versions are replaced rather than accumulated (at most 24 table files across directories/locales).
+Migration `0013_game_guides.sql` adds relationship indexes through normal Server startup. No database tables are added: SQLite transfer/workflow counts remain **23**. The additional DB2 table is stored in the existing `game.rows`. The build watcher upgrades an earlier import of the same build automatically. An operator can prepare or refresh all tables explicitly with the existing command (do not run against production as part of development):
 
-Each table load has a 3-second response deadline; a slow download may finish in the background under the downloader's 20-second timeout, and a later lookup can use it. Index building also has a 3-second deadline. Missing, expired, changed-during-read or malformed files remain unknown. Results and internal groups are capped at 256 entries (points per blob need only two to establish ambiguity); truncated geometry cannot supply authoritative corrections. Flight lists retain at most 256 entries and report the limit. Stateless MCP setup yields between calls so a burst cannot starve health checks before the handlers begin.
+```sh
+node apps/server/scripts/import-game.ts <current-live-build>
+```
 
-`apps/server/test/places-load.test.ts` runs in the normal test command. It generates 4.8 MB of quest points, 2.6 MB of blobs, 2.3 MB of assignments, 0.2 MB of flight nodes and 0.1 MB of maps without network access, then sends 50 concurrent MCP place calls alongside health requests. It bounds cold loading, warm lookup/submission time, event-loop p99 and maximum delay, result size and extra RSS. Two test processes keep the suite within the development machine's CPU budget. The smaller regression fixture blocked a timer for about 10 seconds before indexing; production-sized data and actual CSVs are exercised during review.
+Use the `UNBORED_SERVER_URL` and `UNBORED_PLANNER_TOKEN` environment documented under Game DB above. Before any build has been imported, place lookup returns unknown facts with `Game DB unavailable`, and instance guides return an explicit import-needed error. A failed import preserves the previous complete build. Legacy `wago` files are no longer used by place lookup, instance guides or Plan validation; the separate `resolve_criteria` downloader still uses that directory.
+
+Relationship reads return at most 257 rows: the extra row detects overflow at the 256-result limit. Truncated geometry cannot prove a unique destination; oversized guide relationships fail explicitly instead of returning a misleading partial guide. Criteria trees and child achievement graphs retain their cycle and size guards.
+
+`apps/server/test/places-load.test.ts` imports generated production-size map/quest geometry and journal/criteria data, then sends 50 concurrent MCP place calls and 50 guide calls alongside health requests, on both enabled database backends. It bounds lookup/submission time, event-loop p95 and maximum delay, response size and extra RSS without network access. `game-content-load.test.ts` separately bounds import memory and lag. Two test processes keep the suite within the development machine's CPU budget.

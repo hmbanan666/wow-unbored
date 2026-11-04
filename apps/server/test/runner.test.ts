@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, cpSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, vi } from "vite-plus/test";
+import { instanceResponse } from "./game-content-fixture.ts";
+import type { GameDataFetch } from "../src/blizzard.ts";
 import { createApp } from "../src/app.ts";
 import { BACKENDS, postgresPerFile, type Backend } from "./postgres-db.ts";
 
@@ -14,14 +16,11 @@ const fixture = JSON.parse(
     "utf8",
   ),
 ).cases[0].body;
-function build(backend: Backend, fallback = false) {
+function build(backend: Backend, fallback = false, blizzardFetch?: GameDataFetch) {
   let now = Math.floor(Date.now() / 1000);
   const hits: unknown[] = [];
   const lines: string[] = [];
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-runner-"));
-  cpSync(new URL("./fixtures/instances/", import.meta.url), path.join(dataDir, "wago"), {
-    recursive: true,
-  });
   const built = createApp({
     database: pg(backend),
     ingest: "inline",
@@ -37,7 +36,8 @@ function build(backend: Backend, fallback = false) {
       hits.push(JSON.parse(init.body));
       return { ok: true, status: 204 };
     },
-    blizzard: null,
+    blizzard: blizzardFetch ? { clientId: "test", clientSecret: "test", region: "us" } : null,
+    blizzardFetch,
     log: (line) => lines.push(line),
   });
   const post = (url: string, body?: unknown, token = runnerToken) =>
@@ -288,7 +288,6 @@ const plan = {
 };
 for (const backend of BACKENDS) {
   test(`a slow scoped read lets heartbeats keep the lease alive (${backend})`, async () => {
-    const app = build(backend);
     let markStarted!: () => void;
     let release!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -297,20 +296,30 @@ for (const backend of BACKENDS) {
     const proceed = new Promise<void>((resolve) => {
       release = resolve;
     });
-    // Russian CSVs are not cached by build(): pause their download at the
-    // network boundary, while exercising the real MCP read and lease wrapper.
-    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    // Pause the public journal API while exercising the real MCP read and lease wrapper.
+    const app = build(backend, false, async (url) => {
+      if (url.includes("/token"))
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: "test", expires_in: 3600 }),
+        };
       markStarted();
       await proceed;
-      const table = new URL(String(input)).pathname.split("/")[2];
-      return new Response(
-        readFileSync(new URL(`./fixtures/instances/${table}.csv`, import.meta.url)),
-      );
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: Number(url.match(/journal-encounter\/(\d+)/)?.[1]),
+          creatures: [],
+        }),
+      };
     });
     let read: ReturnType<typeof mcp> | undefined;
     let heartbeat: Promise<Response> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      await app.store.game.importBuild("12.0.1.66337", instanceResponse);
       await app.add();
       const lease = await (await app.claim()).json();
       read = mcp(app, lease.leaseToken, "tools/call", {
@@ -336,7 +345,10 @@ for (const backend of BACKENDS) {
       assert.equal((await app.post(`/v1/runner/leases/${lease.leaseId}/heartbeat`)).status, 200);
       const answer = await mcp(app, lease.leaseToken, "tools/call", {
         name: "put_plan",
-        arguments: { requestId: "runner-first", plan },
+        arguments: {
+          requestId: "runner-first",
+          plan: { ...plan, outcome: { kind: "achievement", achievementID: 10149 } },
+        },
       });
       assert.equal(answer.body.result.isError, false);
       assert.equal((await app.store.runnerStatus("runner-first"))?.state, "done");
@@ -345,7 +357,6 @@ for (const backend of BACKENDS) {
       release();
       await read;
       await heartbeat;
-      fetch.mockRestore();
       app.close();
     }
   });
@@ -354,6 +365,7 @@ for (const backend of BACKENDS) {
   test(`lease MCP limits reads and answers to one Request and Account (${backend})`, async () => {
     const app = build(backend);
     try {
+      await app.store.game.importBuild("12.0.1.66337", instanceResponse);
       await app.add();
       app.advance(1);
       await app.add("another-request", {
@@ -404,7 +416,10 @@ for (const backend of BACKENDS) {
         ["put_plan", { plan }],
       ] as const)
         assert.equal((await call(name, args)).body.result.isError, true, name);
-      const answered = await call("put_plan", { requestId: "runner-first", plan });
+      const answered = await call("put_plan", {
+        requestId: "runner-first",
+        plan: { ...plan, outcome: { kind: "achievement", achievementID: 10149 } },
+      });
       assert.equal(answered.body.result.isError, false, JSON.stringify(answered.body));
       assert.equal((await app.store.requestById("runner-first"))?.status, "fulfilled");
       assert.equal((await app.store.runnerStatus("runner-first"))?.state, "done");

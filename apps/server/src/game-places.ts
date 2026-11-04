@@ -1,8 +1,7 @@
 import type { Waypoint } from "@unbored/contracts";
 import type { GameDb } from "./game-db.ts";
 import type { GameFields } from "./game-content.ts";
-import { projectGamePoint, type PlaceData } from "./places.ts";
-import { PLACE_LIMIT } from "./place-tables.ts";
+import { PLACE_LIMIT, projectQuestPoints, projectFlightPoint, type PlaceData } from "./places.ts";
 
 /** Read bounded, complete geometry groups from one imported build. No CSV or network reads. */
 export async function gamePlaces(
@@ -16,8 +15,6 @@ export async function gamePlaces(
     if (!(await game.row("UiMap", mapID, "enUS", build))) continue;
     const assignments = await game.related("UiMapAssignment", "UiMapID", mapID, build);
     if (assignments.length > PLACE_LIMIT) continue;
-    const project = (world: number, x: number, y: number) =>
-      projectGamePoint(assignments, mapID, world, x, y);
     const blobs = new Map<number, GameFields>();
     for (const questID of new Set(questIDs.slice(0, PLACE_LIMIT))) {
       const rows = await game.related("QuestPOIBlob", "QuestID", questID, build);
@@ -27,28 +24,16 @@ export async function gamePlaces(
     const nearby = await game.related("QuestPOIBlob", "UiMapID", mapID, build);
     if (nearby.length <= PLACE_LIMIT) for (const row of nearby) blobs.set(Number(row.ID), row);
     const quests = new Map<number, (Waypoint & { questID: number })[]>();
-    const uncertain = new Set<number>();
-    for (const blob of blobs.values()) {
-      const questID = Number(blob.QuestID);
-      if (blob.NumPoints !== 1) {
-        uncertain.add(questID);
-        continue;
-      }
-      const points = await game.related("QuestPOIPoint", "QuestPOIBlobID", Number(blob.ID), build);
-      const point =
-        points.length === 1
-          ? project(Number(blob.MapID), Number(points[0].X), Number(points[0].Y))
-          : undefined;
-      if (!point) {
-        uncertain.add(questID);
-        continue;
-      }
-      const group = quests.get(questID) ?? [];
-      group.push({ ...point, questID });
-      quests.set(questID, group);
+    const projected = await projectQuestPoints(game, build, mapID, assignments, [
+      ...blobs.values(),
+    ]);
+    for (const point of projected.points) {
+      const group = quests.get(point.questID) ?? [];
+      group.push(point);
+      quests.set(point.questID, group);
     }
     for (const [questID, group] of quests) {
-      if (uncertain.has(questID) || !(await game.row("QuestV2", questID, "enUS", build))) continue;
+      if (!(await game.row("QuestV2", questID, "enUS", build))) continue;
       if (
         result.questPoints.length + group.length <= PLACE_LIMIT &&
         result.knownPoints.length + group.length <= PLACE_LIMIT
@@ -67,8 +52,7 @@ export async function gamePlaces(
     for (const world of new Set(assignments.map((row) => Number(row.MapID)))) {
       const flights = await game.related("TaxiNodes", "ContinentID", world, build);
       for (const row of flights.slice(0, PLACE_LIMIT)) {
-        if (!(Number(row.Flags) & 3)) continue;
-        const point = project(world, Number(row.Pos_0), Number(row.Pos_1));
+        const point = projectFlightPoint(assignments, mapID, row);
         if (point && result.knownPoints.length < PLACE_LIMIT) result.knownPoints.push(point);
       }
     }
