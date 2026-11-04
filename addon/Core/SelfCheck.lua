@@ -35,6 +35,8 @@ local function chainArgument(campaign)
   return { 0 }
 end
 
+-- Criterion 1 exists only on an achievement that has criteria: "Level 10" (6)
+-- has none and raises. Eastern Kingdoms Explorer (42) lists every zone.
 -- Fixed public ids are only arguments, never player identifiers. No request,
 -- filter setter, chat function, tooltip or game window is driven by a probe.
 -- Add a row here and point the corresponding verification TODO at this file.
@@ -51,8 +53,8 @@ SC.checks = {
     note = "saved chain or empty-id probe; chain order is manual" },
   { api = "C_CampaignInfo.GetCampaignChapterInfo", args = function() return chainArgument(true) end,
     note = "saved chapter or empty-id probe; chapter mapping is manual" },
-  { api = "GetAchievementNumCriteria", args = { 6 }, note = "full staged-pass duration is manual" },
-  { api = "GetAchievementCriteriaInfo", args = { 6, 1 } },
+  { api = "GetAchievementNumCriteria", args = { 42 }, note = "full staged-pass duration is manual" },
+  { api = "GetAchievementCriteriaInfo", args = { 42, 1 } },
   { api = "C_ToyBox.GetCollectedShown" },
   { api = "C_ToyBox.GetUncollectedShown" },
   { api = "C_ToyBox.GetUnusableShown" },
