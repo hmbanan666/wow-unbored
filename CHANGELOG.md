@@ -2,6 +2,19 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## 0.13.0
+
+- Visit playunbored.com for guides, Collections and the Paths catalog. Open My page from the Companion with one click to see your Characters and Plans.
+- Choose an active Path or Collection for each Character on the website, see which goals are done and follow your progress. My page shows your active Paths and completed Paths.
+- Continue your active Path in game with the Continue chip. Bory picks a suitable unfinished required goal for each Plan; progress follows what you finish in the game.
+- The Plan card now keeps the reward icon beside the title, live progress directly below it and the current action with its Step count and time. One More / Less toggle opens all the details, without repeating the goal and reward.
+- Plans now check their goals, game links and map points against current game data, with sourced lookups for places and rewards. A reward known to depend only on luck cannot be the promised result; it can still be a possible bonus.
+- Fixed: Self-check no longer reports a false failure when checking achievement criteria.
+- Fixed: missing quest names can be recovered from verified sources, and valid quest and flight map points are no longer lost when the game's map data repeats them.
+- Fixed: Forget my data also removes website access, so My page needs a new link from the Companion.
+- Новое: на playunbored.com появились гайды, Подборки, каталог Путей и «Моя страница» по кнопке из Companion. Выбирай активный Путь для каждого персонажа, продолжай его в игре и смотри прогресс и завершённые Пути на сайте. У карточки плана одна кнопка подробностей и живой прогресс под названием; цели, ссылки и точки проверяются по игровым данным, случайная награда остаётся только возможным бонусом.
+- Исправлено: самопроверка больше не выдаёт ложную ошибку критериев достижения, недостающие названия заданий берутся из проверенных источников, точки на карте не теряются из-за повторов в данных игры. «Забыть мои данные» закрывает и доступ к «Моей странице».
+
 ## 0.12.0
 
 - Every plan has one clear goal you will actually get: an achievement, a reputation rank, a currency amount, a quest reward or a collectible from a sure source. Surprise me too. A lucky drop is only ever a "possible bonus".
