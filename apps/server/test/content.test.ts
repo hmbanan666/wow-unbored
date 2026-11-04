@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vite-plus/test";
 
 import { createApp } from "../src/app.ts";
-import { ContentError, ContentStore, parseContent } from "../src/content.ts";
+import { ContentError, ContentStore, contentItemOutcome, parseContent } from "../src/content.ts";
 import { Store } from "../src/store.ts";
 import { coreResponse } from "./game-content-fixture.ts";
 import { hasPostgres, postgresPerFile } from "./postgres-db.ts";
@@ -176,6 +177,365 @@ test.skipIf(!hasPostgres)(
       SELECT body FROM content.paths WHERE slug = ${collection.slug} AND status = 'published'`;
       assert.equal(live.body.items.length, 2);
       assert.equal(live.body.build, "12.0.1.66337");
+    } finally {
+      store.close();
+      await sql`DELETE FROM content.paths`;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("Path Topics and required goals survive parsing in authored order", () => {
+  const doc = parseContent({
+    ...collection,
+    kind: "path",
+    tier: "basic",
+    topics: [{ slug: "adventure", title: "Adventure" }],
+    items: [
+      {
+        ...collection.items[0],
+        kind: "quest",
+        id: 90001,
+        name: "A small adventure",
+        topic: "adventure",
+        required: false,
+      },
+      {
+        ...collection.items[1],
+        kind: "questLine",
+        id: 10,
+        name: "A new beginning",
+        topic: "adventure",
+      },
+    ],
+  });
+  assert.deepEqual(doc.topics, [{ slug: "adventure", title: "Adventure" }]);
+  assert.deepEqual(
+    doc.items.map((item) => [item.kind, item.id, item.topic, item.required]),
+    [
+      ["quest", 90001, "adventure", false],
+      ["questLine", 10, "adventure", true],
+    ],
+  );
+});
+
+test.skipIf(!hasPostgres)(
+  "owner reads retain Path versions and recheck quest ids before publishing",
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".content-path-"));
+    const sql = pg("postgres")!;
+    await sql`DELETE FROM content.paths`;
+    const store = new Store(dir, { postgres: sql });
+    const content = new ContentStore(store.db, store.game);
+    const doc = {
+      ...collection,
+      kind: "path",
+      slug: "first-adventure",
+      tier: "basic",
+      topics: [{ slug: "quests", title: "Quests" }],
+      items: [
+        {
+          ...collection.items[0],
+          kind: "questLine",
+          id: 10,
+          name: "A new beginning",
+          topic: "quests",
+          required: false,
+        },
+      ],
+    };
+    try {
+      await store.game.importBuild("12.0.1.66337", coreResponse);
+      await content.saveDraft(doc);
+      const draft = await content.read("path", doc.slug);
+      assert.equal(draft?.status, "draft");
+      assert.deepEqual(draft?.document.topics, [{ slug: "quests", title: "Quests" }]);
+      assert.equal(draft?.document.items[0].required, false);
+      await content.publish("path", doc.slug);
+      const original = await content.read("path", doc.slug, "en", 1);
+      await content.saveDraft({
+        ...doc,
+        title: "More adventures",
+        topics: [],
+        items: collection.items,
+      });
+      assert.deepEqual(await content.read("path", doc.slug, "en", 1), original);
+      await content.publish("path", doc.slug);
+      const retired = await content.read("path", doc.slug, "en", 1);
+      assert.equal(retired?.status, "retired");
+      assert.deepEqual(retired?.document, original?.document);
+      assert.equal((await content.read("path", doc.slug))?.document.title, "More adventures");
+      assert.equal(await content.read("path", doc.slug, "en", 99), null);
+
+      await assert.rejects(
+        content.saveDraft({ ...doc, items: [{ ...doc.items[0], id: 999999 }] }),
+        (error) => problems(error).some((p) => p.includes("questLine:999999")),
+      );
+      await content.saveDraft(doc);
+      await store.game.importBuild("12.0.1.66338", async (input) => {
+        const response = await coreResponse(input);
+        const csv = await response.text();
+        return new Response(
+          new URL(String(input)).pathname.includes("/QuestLine/")
+            ? "ID,Name_lang\n20,Another adventure\n"
+            : csv,
+        );
+      });
+      await assert.rejects(content.publish("path", doc.slug), (error) =>
+        problems(error).some((p) => p.includes("questLine:10")),
+      );
+      assert.equal((await content.read("path", doc.slug))?.status, "draft");
+      assert.equal((await content.read("path", doc.slug, "en", 2))?.status, "published");
+    } finally {
+      store.close();
+      await sql`DELETE FROM content.paths`;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("Path goals carry outcome thresholds and chance goals can never supply a Plan outcome", () => {
+  const doc = parseContent({
+    ...collection,
+    kind: "path",
+    tier: "basic",
+    items: [
+      { ...collection.items[0], kind: "rep", id: 72, name: "Stormwind", standing: 8 },
+      { ...collection.items[0], kind: "renown", id: 72, name: "Stormwind", level: 10 },
+      { ...collection.items[0], kind: "level", id: undefined, name: "Level 80", level: 80 },
+      { ...collection.items[0], kind: "currency", id: 2000, name: "Test currency", amount: 50 },
+      { ...collection.items[0], chance: true },
+      collection.items[1],
+    ],
+  });
+  assert.deepEqual(doc.items.map(contentItemOutcome), [
+    { kind: "rep", factionID: 72, standing: 8 },
+    { kind: "renown", factionID: 72, level: 10 },
+    { kind: "level", level: 80 },
+    { kind: "currency", currencyID: 2000, amount: 50 },
+    undefined,
+    { kind: "achievement", achievementID: 964 },
+  ]);
+  for (const item of doc.items) {
+    assert.equal(contentItemOutcome({ ...item, chance: true }), undefined);
+  }
+  assert.throws(() => parseContent({ ...collection, items: [doc.items[0]] }), ContentError);
+  for (const item of [
+    { ...doc.items[0], standing: 9 },
+    { ...doc.items[1], level: 0 },
+    { ...doc.items[2], id: 80 },
+    { ...doc.items[3], amount: undefined, chance: true },
+  ])
+    assert.throws(
+      () => parseContent({ ...collection, kind: "path", tier: "basic", items: [item] }),
+      ContentError,
+    );
+});
+
+test.skipIf(!hasPostgres)(
+  "owner MCP tools save, edit, read and publish through the content checks",
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".content-mcp-"));
+    const sql = pg("postgres")!;
+    await sql`DELETE FROM content.paths`;
+    const server = createApp({
+      dataDir: dir,
+      database: sql,
+      companionToken: "c",
+      plannerToken: "p",
+      log: () => {},
+    });
+    const rpc = async (method: string, params: unknown, token = "p") =>
+      server.app.request("/mcp", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      });
+    const call = async (name: string, args: unknown, error = false) => {
+      const response = await rpc("tools/call", { name, arguments: args });
+      const body = await response.json();
+      assert.ok(!body.error, JSON.stringify(body));
+      assert.equal(body.result.isError, error, JSON.stringify(body));
+      return JSON.parse(body.result.content[0].text);
+    };
+    try {
+      await server.store.game.importBuild("12.0.1.66337", coreResponse);
+      const listed = await (await rpc("tools/list", {})).json();
+      for (const name of ["save_content_draft", "publish_content", "get_content"])
+        assert.ok(listed.result.tools.some((tool: { name: string }) => tool.name === name));
+      assert.equal((await rpc("tools/list", {}, "c")).status, 401);
+      const fake = await call(
+        "save_content_draft",
+        { document: { ...collection, items: [{ ...collection.items[0], id: 999999 }] } },
+        true,
+      );
+      assert.ok(fake.problems.some((p: string) => p.includes("mount:999999")));
+      const key = { kind: "collection", slug: collection.slug };
+      assert.equal(await call("get_content", key), null);
+      assert.equal((await call("save_content_draft", { document: collection })).version, 1);
+      assert.equal((await call("get_content", key)).status, "draft");
+      assert.equal(
+        (await call("save_content_draft", { document: { ...collection, title: "First mounts" } }))
+          .version,
+        1,
+      );
+      assert.equal((await call("publish_content", key)).status, "published");
+      const original = await call("get_content", { ...key, version: 1 });
+      assert.equal(original.document.title, "First mounts");
+      assert.equal((await call("save_content_draft", { document: collection })).version, 2);
+      assert.deepEqual(await call("get_content", { ...key, version: 1 }), original);
+    } finally {
+      await server.close();
+      await sql`DELETE FROM content.paths`;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("Paths require a tier, goals and valid Topic references", () => {
+  const basic = { ...collection, kind: "path", tier: "basic" };
+  for (const invalid of [
+    { ...basic, tier: undefined },
+    { ...basic, items: [] },
+    { ...basic, items: {} },
+    { ...basic, tier: "deeper" },
+    { ...basic, tier: "complete" },
+    { ...basic, prerequisite: "earlier" },
+    { ...basic, tier: "deeper", prerequisite: basic.slug },
+    {
+      ...basic,
+      topics: [
+        { slug: "mounts", title: "Mounts" },
+        { slug: "mounts", title: "Again" },
+      ],
+    },
+    { ...basic, items: [{ ...basic.items[0], topic: "missing" }] },
+    { ...basic, items: [{ ...basic.items[0], required: "yes" }] },
+  ])
+    assert.throws(() => parseContent(invalid), ContentError);
+});
+
+test.skipIf(!hasPostgres)(
+  "a deeper Path requires a published preceding tier in the same locale",
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".content-tiers-"));
+    const sql = pg("postgres")!;
+    await sql`DELETE FROM content.paths`;
+    const store = new Store(dir, { postgres: sql });
+    const content = new ContentStore(store.db, store.game);
+    const basic = { ...collection, kind: "path", tier: "basic", slug: "adventure-basic" };
+    const deeper = { ...basic, tier: "deeper", slug: "adventure-deeper", prerequisite: basic.slug };
+    try {
+      await store.game.importBuild("12.0.1.66337", coreResponse);
+      await assert.rejects(content.saveDraft(deeper), ContentError);
+      await content.saveDraft(basic);
+      await assert.rejects(content.saveDraft(deeper), ContentError);
+      await content.publish("path", basic.slug);
+      await content.saveDraft(deeper);
+      await assert.rejects(content.saveDraft({ ...deeper, locale: "ru" }), ContentError);
+      await assert.rejects(content.saveDraft({ ...deeper, tier: "complete" }), ContentError);
+      await content.publish("path", deeper.slug);
+      await content.saveDraft({
+        ...deeper,
+        tier: "complete",
+        slug: "adventure-complete",
+        prerequisite: deeper.slug,
+      });
+      assert.equal(
+        (await content.read("path", "adventure-complete"))?.document.prerequisite,
+        deeper.slug,
+      );
+    } finally {
+      store.close();
+      await sql`DELETE FROM content.paths`;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(!hasPostgres)(
+  "every new Path goal kind checks its target and sources against the current build",
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".content-ids-"));
+    const sql = pg("postgres")!;
+    await sql`DELETE FROM content.paths`;
+    const store = new Store(dir, { postgres: sql });
+    const content = new ContentStore(store.db, store.game);
+    const goals = [
+      { kind: "rep", id: 72, name: "Stormwind", standing: 8 },
+      { kind: "renown", id: 72, name: "Stormwind", level: 10 },
+      { kind: "currency", id: 2000, name: "Test currency", amount: 50 },
+      { kind: "quest", id: 90001, name: "A small adventure" },
+      { kind: "questLine", id: 10, name: "A new beginning" },
+      { kind: "level", id: undefined, name: "Level 80", level: 80 },
+    ];
+    const document = (goal: object) => ({
+      ...collection,
+      kind: "path",
+      tier: "basic",
+      items: [{ ...collection.items[0], ...goal }],
+    });
+    try {
+      await store.game.importBuild("12.0.1.66337", coreResponse);
+      for (const goal of goals) {
+        await content.saveDraft(document(goal));
+        await content.publish("path", collection.slug);
+        if (goal.kind !== "level") {
+          await assert.rejects(content.saveDraft(document({ ...goal, id: 999999 })), (error) =>
+            problems(error).some((p) => p.includes(":999999 is not in build")),
+          );
+          await assert.rejects(
+            content.saveDraft(document({ ...goal, name: "Invented name" })),
+            (error) => problems(error).some((p) => p.includes("the game calls")),
+          );
+        }
+        await assert.rejects(
+          content.saveDraft(
+            document({ ...goal, source: { type: "quest", text: "Quest", zone: 999999 } }),
+          ),
+          (error) => problems(error).some((p) => p.includes("zone:999999")),
+        );
+      }
+    } finally {
+      store.close();
+      await sql`DELETE FROM content.paths`;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(!hasPostgres)(
+  "saving an unchanged publication from before Path fields is still a no-op",
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".content-legacy-"));
+    const sql = pg("postgres")!;
+    const store = new Store(dir, { postgres: sql });
+    const content = new ContentStore(store.db, store.game);
+    // A pre-existing publication in the format written before Topics and required flags.
+    const fields = {
+      title: collection.title,
+      description: collection.description,
+      tier: null,
+      prerequisite: null,
+      blocks: collection.blocks,
+      items: collection.items,
+    };
+    const hash = createHash("sha256")
+      .update(JSON.stringify(["collection", collection.slug, "en", fields]))
+      .digest("hex");
+    try {
+      await sql`DELETE FROM content.paths`;
+      await sql`INSERT INTO content.paths (kind, slug, locale, title, description, version, status, body, updated_at)
+      VALUES ('collection', ${collection.slug}, 'en', ${collection.title}, ${collection.description}, 1, 'published',
+        ${sql.json({ blocks: collection.blocks, items: collection.items, hash, build: "12.0.1.66337" })}, 1)`;
+      await store.game.importBuild("12.0.1.66337", coreResponse);
+      const original = await content.read("collection", collection.slug);
+      assert.equal((await content.saveDraft(collection)).unchanged, true);
+      assert.deepEqual(await content.read("collection", collection.slug), original);
     } finally {
       store.close();
       await sql`DELETE FROM content.paths`;

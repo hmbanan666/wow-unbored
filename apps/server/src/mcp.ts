@@ -1,3 +1,4 @@
+import { CONTENT_KINDS, ContentError, ContentStore } from "./content.ts";
 import { getItemSources } from "./item-sources.ts";
 import { ENTITY_TABLES, findGameEntity, getQuestLine } from "./game-tools.ts";
 import { gameMarkupCheck } from "./game-plan.ts";
@@ -122,7 +123,10 @@ function text(value: unknown, isError = false) {
 
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : "Request failed.";
-  return text({ error: message }, true);
+  return text(
+    { error: message, ...(error instanceof ContentError ? { problems: error.problems } : {}) },
+    true,
+  );
 }
 
 const waypointSchema = z
@@ -312,6 +316,71 @@ export function createMcpServer(
       },
       async () => text(null),
     );
+
+  const content = new ContentStore(store.db, store.game);
+  const contentKey = {
+    kind: z.enum(CONTENT_KINDS),
+    slug: z
+      .string()
+      .min(1)
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    locale: z.enum(["en", "ru"]).default("en"),
+  };
+  registerTool(
+    "save_content_draft",
+    {
+      title: "Save a Path, Collection or Guide draft",
+      description:
+        "Owner only. Create or replace a draft through the same checks as PUT /owner/content. Every game id is checked against the current Game DB. Editing a publication creates a new version; identical saves change nothing. Read get_content before editing. See docs/DEVELOPMENT.md for the document format.",
+      inputSchema: {
+        document: z
+          .record(z.string(), z.unknown())
+          .describe(
+            "Full document: kind path|collection|guide, slug, locale en|ru, title, description, tier basic|deeper|complete and prerequisite slug for Paths, optional topics [{slug,title}], blocks, ordered items [{kind,id,name,source:{type,text,zone?,cost?,achievement?},chance,note,url?,required?,topic?,standing?,level?,amount?}]. Path goal kinds also include rep, renown, level, currency, quest, questLine. Level goals have level instead of id. Chance goals are bonuses only, never Plan outcomes.",
+          ),
+      },
+    },
+    async ({ document }) => {
+      try {
+        return text(await content.saveDraft(document));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+  registerTool(
+    "publish_content",
+    {
+      title: "Publish a Path, Collection or Guide",
+      description:
+        "Owner only. Recheck the newest draft against the current Game DB, publish it and retire the preceding publication. Published version contents are immutable.",
+      inputSchema: contentKey,
+    },
+    async ({ kind, slug, locale }) => {
+      try {
+        return text(await content.publish(kind, slug, locale));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+  registerTool(
+    "get_content",
+    {
+      title: "Read a Path, Collection or Guide version",
+      description:
+        "Owner only. Read the latest version, including a draft, or a specific version (including retired publications). Returns document, version, status and checked build; null when absent.",
+      inputSchema: { ...contentKey, version: z.number().int().positive().optional() },
+    },
+    async ({ kind, slug, locale, version }) => {
+      try {
+        return text(await content.read(kind, slug, locale, version));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
 
   const taskSchema = z
     .object({

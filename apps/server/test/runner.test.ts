@@ -382,6 +382,10 @@ for (const backend of BACKENDS) {
       assert.ok(names.includes("get_request"));
       assert.ok(names.includes("get_instance_guide"));
       assert.ok(names.includes("get_place"));
+      for (const name of ["save_content_draft", "publish_content", "get_content"]) {
+        assert.ok(!names.includes(name));
+        assert.ok((await call(name)).body.result.isError);
+      }
       for (const [tool, args] of [
         ["find_game_entity", { kind: "item", name: "Thunderfury" }],
         ["get_quest_line", { questLineID: 10 }],

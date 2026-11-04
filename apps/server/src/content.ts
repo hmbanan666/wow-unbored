@@ -1,3 +1,4 @@
+import { planOutcomeSchema, type PlanOutcome } from "@unbored/contracts";
 import { createHash } from "node:crypto";
 import type { Db } from "./db.ts";
 import { fromJson } from "./db.ts";
@@ -13,7 +14,17 @@ import type { GameDb } from "./game-db.ts";
 export const CONTENT_KINDS = ["path", "collection", "guide"] as const;
 export type ContentKind = (typeof CONTENT_KINDS)[number];
 export const ITEM_KINDS = ["mount", "pet", "toy", "achievement", "item"] as const;
-export type ItemKind = (typeof ITEM_KINDS)[number];
+export const PATH_GOAL_KINDS = [
+  ...ITEM_KINDS,
+  "rep",
+  "renown",
+  "level",
+  "currency",
+  "quest",
+  "questLine",
+] as const;
+export type ItemKind = (typeof PATH_GOAL_KINDS)[number];
+export type ContentTopic = { slug: string; title: string };
 export const SOURCE_TYPES = [
   "vendor",
   "drop",
@@ -33,8 +44,13 @@ const TIERS = ["basic", "deeper", "complete"] as const;
 export type ContentCost = { amount: number; currency?: number; item?: number; gold?: true };
 export type ContentItem = {
   kind: ItemKind;
-  id: number;
+  id?: number;
+  standing?: number;
+  level?: number;
+  amount?: number;
   name: string;
+  required: boolean;
+  topic?: string;
   source: {
     type: SourceType;
     text: string;
@@ -60,6 +76,7 @@ export type ContentDoc = {
   tier: (typeof TIERS)[number] | null;
   prerequisite: string | null;
   blocks: ContentBlock[];
+  topics: ContentTopic[];
   items: ContentItem[];
 };
 
@@ -134,13 +151,39 @@ export function parseContent(input: unknown): ContentDoc {
         ? (raw.tier as (typeof TIERS)[number])
         : (problems.push("tier must be basic, deeper or complete"), null);
   if (kind !== "path" && tier) problems.push(`a ${kind} has no tier`);
+  if (kind === "path" && !tier) problems.push("a Path needs a tier");
   const prerequisite =
     raw.prerequisite === undefined || raw.prerequisite === null
       ? null
-      : typeof raw.prerequisite === "string" && SLUG.test(raw.prerequisite)
+      : typeof raw.prerequisite === "string" &&
+          raw.prerequisite.length <= 80 &&
+          SLUG.test(raw.prerequisite)
         ? raw.prerequisite
         : (problems.push("prerequisite must be a slug"), null);
   if (kind !== "path" && prerequisite) problems.push(`a ${kind} has no prerequisite`);
+
+  if (kind === "path") {
+    if (tier === "basic" && prerequisite) problems.push("a Basic Path has no prerequisite");
+    if ((tier === "deeper" || tier === "complete") && !prerequisite)
+      problems.push("a deeper tier needs the previous tier as prerequisite");
+    if (prerequisite === slug) problems.push("a Path cannot require itself");
+  }
+
+  const topics: ContentTopic[] = [];
+  if (raw.topics !== undefined && !Array.isArray(raw.topics))
+    problems.push("topics must be a list");
+  const rawTopics = Array.isArray(raw.topics) ? raw.topics : [];
+  if (rawTopics.length > 30) problems.push("at most 30 Topics");
+  for (const value of rawTopics) {
+    const row = (value ?? {}) as Record<string, unknown>;
+    const title = text(row.title, 120);
+    if (typeof row.slug !== "string" || row.slug.length > 80 || !SLUG.test(row.slug) || !title)
+      problems.push("each Topic needs a slug and title");
+    else if (topics.some((topic) => topic.slug === row.slug))
+      problems.push(`repeated Topic ${row.slug}`);
+    else topics.push({ slug: row.slug, title });
+  }
+  if (kind !== "path" && topics.length) problems.push("Topics belong to Paths");
 
   const blocks: ContentBlock[] = [];
   const rawBlocks = Array.isArray(raw.blocks) ? raw.blocks : [];
@@ -172,7 +215,13 @@ export function parseContent(input: unknown): ContentDoc {
     const at = `items[${index}]`;
     const row = (value ?? {}) as Record<string, unknown>;
     const source = (row.source ?? {}) as Record<string, unknown>;
-    const itemKind = ITEM_KINDS.includes(row.kind as ItemKind) ? (row.kind as ItemKind) : undefined;
+    const allowedKinds: readonly string[] = kind === "path" ? PATH_GOAL_KINDS : ITEM_KINDS;
+    const itemKind = allowedKinds.includes(String(row.kind)) ? (row.kind as ItemKind) : undefined;
+    const required = row.required === undefined ? true : row.required;
+    if (typeof required !== "boolean") problems.push(`${at}.required must be true or false`);
+    const topic = typeof row.topic === "string" ? row.topic : undefined;
+    if (row.topic !== undefined && !topics.some((entry) => entry.slug === topic))
+      problems.push(`${at}.topic must name a Topic in this Path`);
     const id = positiveId(row.id);
     const name = text(row.name, 120);
     const type = SOURCE_TYPES.includes(source.type as SourceType)
@@ -180,8 +229,10 @@ export function parseContent(input: unknown): ContentDoc {
       : undefined;
     const sourceText = text(source.text, 400);
     const note = text(row.note, 600);
-    if (!itemKind) problems.push(`${at}.kind must be one of ${ITEM_KINDS.join(", ")}`);
-    if (!id) problems.push(`${at}.id must be a positive integer`);
+    if (!itemKind) problems.push(`${at}.kind must be one of ${allowedKinds.join(", ")}`);
+    if (itemKind === "level") {
+      if (row.id !== undefined) problems.push(`${at}.level has no game id`);
+    } else if (!id) problems.push(`${at}.id must be a positive integer`);
     if (!name) problems.push(`${at}.name is required`);
     if (!type) problems.push(`${at}.source.type must be one of ${SOURCE_TYPES.join(", ")}`);
     if (!sourceText) problems.push(`${at}.source.text is required`);
@@ -230,11 +281,24 @@ export function parseContent(input: unknown): ContentDoc {
       if (seen.has(key)) problems.push(`${at} repeats ${key}`);
       seen.add(key);
     }
-    if (itemKind && id && name && type && sourceText && note && typeof row.chance === "boolean")
-      items.push({
+    if (
+      itemKind &&
+      (id || itemKind === "level") &&
+      name &&
+      type &&
+      sourceText &&
+      note &&
+      typeof row.chance === "boolean"
+    ) {
+      const item: ContentItem = {
         kind: itemKind,
-        id,
+        ...(id ? { id } : {}),
+        ...(row.standing !== undefined ? { standing: row.standing as number } : {}),
+        ...(row.level !== undefined ? { level: row.level as number } : {}),
+        ...(row.amount !== undefined ? { amount: row.amount as number } : {}),
         name,
+        required: required === true,
+        ...(topic ? { topic } : {}),
         source: {
           type,
           text: sourceText,
@@ -245,11 +309,44 @@ export function parseContent(input: unknown): ContentDoc {
         chance: row.chance,
         note,
         ...(url ? { url } : {}),
-      });
+      };
+      if (itemKind !== "quest" && itemKind !== "questLine") {
+        try {
+          contentItemOutcome({ ...item, chance: false });
+        } catch {
+          problems.push(`${at}: invalid ${itemKind} outcome target or threshold`);
+        }
+      }
+      for (const field of ["standing", "level", "amount"] as const) {
+        const expected =
+          field === "standing"
+            ? itemKind === "rep"
+            : field === "level"
+              ? itemKind === "level" || itemKind === "renown"
+              : itemKind === "currency";
+        if (row[field] !== undefined && !expected)
+          problems.push(`${at}.${field} does not belong to ${itemKind}`);
+      }
+      items.push(item);
+    }
   });
-  if (kind === "collection" && rawItems.length === 0) problems.push("a collection needs items");
+  if (kind !== "guide" && rawItems.length === 0) problems.push("a Path or Collection needs items");
   if (problems.length) throw new ContentError("The content is not valid.", problems);
-  return { kind, slug, locale, title, description, tier, prerequisite, blocks, items };
+  return { kind, slug, locale, title, description, tier, prerequisite, blocks, topics, items };
+}
+
+/** Outcome candidates still need Plan checks; chance goals and quests cannot supply one. */
+export function contentItemOutcome(item: ContentItem): PlanOutcome | undefined {
+  if (item.chance || item.kind === "quest" || item.kind === "questLine") return undefined;
+  const target =
+    item.kind === "rep" || item.kind === "renown"
+      ? { kind: item.kind, factionID: item.id, standing: item.standing, level: item.level }
+      : item.kind === "currency"
+        ? { kind: item.kind, currencyID: item.id, amount: item.amount }
+        : item.kind === "achievement"
+          ? { kind: item.kind, achievementID: item.id }
+          : { kind: item.kind, id: item.id, level: item.level };
+  return planOutcomeSchema.parse(target);
 }
 
 const GAME_KEY: Record<ItemKind, string> = {
@@ -258,16 +355,31 @@ const GAME_KEY: Record<ItemKind, string> = {
   toy: "toy",
   achievement: "ach",
   item: "item",
+  quest: "quest",
+  questLine: "questLine",
+  rep: "faction",
+  renown: "faction",
+  level: "level",
+  currency: "currency",
 };
 
 /** Names the Game DB holds for an item kind: [table, field, id field]. */
 async function gameName(game: GameDb, item: ContentItem, build: string) {
+  if (item.kind === "level") return undefined;
+  if (item.kind === "rep" || item.kind === "renown")
+    return (await game.row("Faction", item.id!, "enUS", build))?.fields.Name_lang;
+  if (item.kind === "currency")
+    return (await game.row("CurrencyTypes", item.id!, "enUS", build))?.fields.Name_lang;
+  if (item.kind === "questLine")
+    return (await game.row("QuestLine", item.id!, "enUS", build))?.fields.Name_lang;
+  if (item.kind === "quest")
+    return (await game.row("QuestV2CliTask", item.id!, "enUS", build))?.fields.QuestTitle_lang;
   if (item.kind === "mount")
-    return (await game.row("Mount", item.id, "enUS", build))?.fields.Name_lang;
+    return (await game.row("Mount", item.id!, "enUS", build))?.fields.Name_lang;
   if (item.kind === "achievement")
-    return (await game.row("Achievement", item.id, "enUS", build))?.fields.Title_lang;
+    return (await game.row("Achievement", item.id!, "enUS", build))?.fields.Title_lang;
   if (item.kind === "item" || item.kind === "toy")
-    return (await game.row("ItemSparse", item.id, "enUS", build))?.fields.Display_lang;
+    return (await game.row("ItemSparse", item.id!, "enUS", build))?.fields.Display_lang;
   return undefined; // Battle pet names are not in the imported fields.
 }
 
@@ -278,7 +390,15 @@ export async function checkContentIds(doc: ContentDoc, game: GameDb): Promise<st
   const problems: string[] = [];
   for (const [index, item] of doc.items.entries()) {
     const at = `items[${index}] ${item.name}`;
-    const keys = [`${GAME_KEY[item.kind]}:${item.id}`];
+    const table =
+      item.kind === "questLine"
+        ? "QuestLine"
+        : item.kind === "rep" || item.kind === "renown"
+          ? "Faction"
+          : undefined;
+    const keys = table || item.kind === "level" ? [] : [`${GAME_KEY[item.kind]}:${item.id}`];
+    if (table && !(await game.row(table, item.id!, "enUS", build)))
+      problems.push(`${at}: ${GAME_KEY[item.kind]}:${item.id} is not in build ${build}`);
     if (item.source.zone) keys.push(`zone:${item.source.zone}`);
     if (item.source.achievement) keys.push(`ach:${item.source.achievement}`);
     for (const part of item.source.cost ?? []) {
@@ -308,12 +428,24 @@ type Row = {
   body: unknown;
 };
 
-type Body = { blocks: ContentBlock[]; items: ContentItem[]; build: string; hash: string };
+type Body = {
+  topics?: ContentTopic[];
+  blocks: ContentBlock[];
+  items: ContentItem[];
+  build: string;
+  hash: string;
+};
 
 function hashOf(doc: ContentDoc): string {
-  const { kind, slug, locale, ...rest } = doc;
+  const { kind, slug, locale, topics, ...rest } = doc;
+  // Omitted defaults keep hashes compatible with publications written before Path fields.
+  const normalized = {
+    ...rest,
+    items: rest.items.map(({ required, ...item }) => (required ? item : { ...item, required })),
+    ...(topics.length ? { topics } : {}),
+  };
   return createHash("sha256")
-    .update(JSON.stringify([kind, slug, locale, rest]))
+    .update(JSON.stringify([kind, slug, locale, normalized]))
     .digest("hex");
 }
 
@@ -355,15 +487,54 @@ export class ContentStore {
     );
   }
 
+  private async checkPrerequisite(doc: ContentDoc) {
+    if (!doc.prerequisite) return;
+    const previous = (await this.rows("path", doc.prerequisite, doc.locale)).find(
+      (row) => row.status === "published",
+    );
+    const expected = doc.tier === "complete" ? "deeper" : "basic";
+    if (!previous || previous.tier !== expected)
+      throw new ContentError("The prerequisite is not valid.", [
+        `prerequisite must be a published ${expected} Path in ${doc.locale}`,
+      ]);
+  }
+
+  /** Latest version by default; an explicit version also reads retired publications. */
+  async read(kind: ContentKind, slug: string, locale: "en" | "ru" = "en", version?: number) {
+    if (!this.available) throw new ContentError("Site content needs the Postgres Server.");
+    const rows = await this.rows(kind, slug, locale);
+    const row = version === undefined ? rows[0] : rows.find((row) => row.version === version);
+    if (!row) return null;
+    const body = fromJson<Body>(row.body)!;
+    return {
+      version: row.version,
+      status: row.status,
+      build: body.build,
+      document: {
+        kind,
+        slug,
+        locale,
+        title: row.title,
+        description: row.description,
+        tier: row.tier,
+        prerequisite: row.prerequisite_slug,
+        blocks: body.blocks,
+        topics: body.topics ?? [],
+        items: body.items,
+      },
+    };
+  }
+
   /** Saves a checked draft. The same document again changes nothing. */
   async saveDraft(input: unknown): Promise<SaveResult> {
     if (!this.available) throw new ContentError("Site content needs the Postgres Server.");
     const doc = parseContent(input);
     const build = await checkContentIds(doc, this.game);
     const hash = hashOf(doc);
-    const body: Body = { blocks: doc.blocks, items: doc.items, build, hash };
+    const body: Body = { topics: doc.topics, blocks: doc.blocks, items: doc.items, build, hash };
     return this.db.tx(async () => {
       await this.db.lockKey(`content:${doc.kind}:${doc.slug}:${doc.locale}`);
+      await this.checkPrerequisite(doc);
       const rows = await this.rows(doc.kind, doc.slug, doc.locale);
       const result = (version: number, status: "draft" | "published", unchanged: boolean) => ({
         kind: doc.kind,
@@ -440,9 +611,11 @@ export class ContentStore {
         description: newest.description,
         tier: newest.tier,
         prerequisite: newest.prerequisite_slug,
+        topics: stored.topics,
         blocks: stored.blocks,
         items: stored.items,
       });
+      await this.checkPrerequisite(doc);
       const build = await checkContentIds(doc, this.game);
       const now = this.now();
       await this.db.run(

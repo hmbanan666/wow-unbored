@@ -282,10 +282,50 @@ node apps/server/scripts/content.ts save top-mounts.json
 node apps/server/scripts/content.ts publish collection top-mounts-to-get-first
 ```
 
-A document has `kind`, `slug`, `title`, `description`, optional `tier` and
-`prerequisite` (Paths only), `blocks` (paragraph, list, link) and ordered
-`items`: `{kind: mount|pet|toy|achievement|item, id, name, source: {type, text,
-zone?, cost?: [{amount, gold|currency|item}], achievement?}, chance, note, url?}`.
+A document has `kind`, `slug`, `locale` (default `en`, or `ru`), `title`,
+`description`, `blocks` (paragraph, list, link) and ordered `items`:
+`{kind, id, name, source: {type, text, zone?, cost?: [{amount, gold|currency|item}],
+achievement?}, chance, note, url?, required?, topic?}`. The array order is the
+position; `required` defaults to true and false leaves a goal outside completion.
+Collections accept mount, pet, toy, achievement and item targets and have no tier,
+prerequisite or Topics. Paths require a `tier` (`basic`, `deeper`, `complete`);
+Deeper and Complete require the preceding tier's published Path slug as
+`prerequisite`, in the same locale. Basic has no prerequisite.
+
+Paths may also have `topics: [{slug, title}]`; an item's `topic` must reference
+one of those slugs. Path goal kinds additionally include:
+
+| Kind | Target fields |
+| --- | --- |
+| `rep` | `id` (Faction), `standing` (1–8) |
+| `renown` | `id` (Faction), `level` (positive integer) |
+| `level` | `level` (positive integer), no `id`; `name` is authored |
+| `currency` | `id` (CurrencyTypes), `amount` (positive integer) |
+| `quest` | `id` (QuestV2) |
+| `questLine` | `id` (QuestLine) |
+
+Names are checked when the imported English fields contain one; all target ids,
+including Factions and quest lines, are checked on save and publish. Sources,
+zones and costs use the same checks for every kind. `chance: true` goals remain
+in the list and can be required, but `contentItemOutcome` never returns them as
+Plan outcomes. It maps eligible targets to the existing Plan outcome contract;
+quest and questLine goals need a separately chosen supported outcome. Normal
+Plan acquisition, ownership and reachability checks still apply.
+
+The owner MCP tools use this same service and are unavailable to runner leases:
+
+- `save_content_draft {document}` creates or replaces the draft; supply the full
+  document, using `get_content` before editing.
+- `publish_content {kind, slug, locale?}` rechecks the newest draft and publishes it.
+- `get_content {kind, slug, locale?, version?}` reads the latest version or a
+  specific version, including retired publications. It returns `{document,
+  version, status, build}` or null when absent.
+
+Topics, required flags, thresholds and chance flags live inside the existing
+version body alongside `items`; no additional migration, import or table is
+needed. Published content stays unchanged when a new draft is saved; publishing
+that draft only retires the old version. The command above remains the operator
+entry point for production content imports; never insert content with hand SQL.
 
 ### Game DB: Planner lookups
 
@@ -737,7 +777,7 @@ The site is `apps/web` (Nuxt 4, Vue, Nuxt UI, `@nuxtjs/seo`, `nuxt-auth-utils`).
 
 The image is `docker build -f apps/web/Dockerfile .`. The container listens on 3000 and answers `GET /ready`. `GET /health` is the Server, including through the public host.
 
-Page text and SEO fields are rows in the same Postgres, not markdown files. `web.pages` is the home page. `content.paths` is the public catalog: `kind` is `path` or `collection`, with draft and published versions ([ADR 0072](adr/0072-paths.md), [ADR 0074](adr/0074-public-path-pages.md)). Public URLs are `/paths/<slug>` and `/collections/<slug>`. There is no page for one item, mount, NPC or other object. The Server migration `0008_web_content.sql` creates both schemas; they sit outside `public`, so the SQLite transfer does not copy them. Topics and Path goals are not in that migration.
+Page text and SEO fields are rows in the same Postgres, not markdown files. `web.pages` is the home page. `content.paths` is the public catalog: `kind` is `path` or `collection`, with draft and published versions ([ADR 0072](adr/0072-paths.md), [ADR 0074](adr/0074-public-path-pages.md)). Public URLs are `/paths/<slug>` and `/collections/<slug>`. There is no page for one item, mount, NPC or other object. The Server migration `0008_web_content.sql` creates both schemas; they sit outside `public`, so the SQLite transfer does not copy them. Topics and Path goals live in each version's body through the content authoring service; they need no separate tables.
 
 Locally, apply migrations by starting the Server once with `DATABASE_URL`, then:
 

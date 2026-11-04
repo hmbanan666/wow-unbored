@@ -133,3 +133,29 @@ test("list items keep verified fields and drop anything malformed", () => {
   ]);
   assert.deepEqual(cleanItems({ blocks: [] }), []);
 });
+
+test("public Paths retain every goal kind in authored order, including level targets without ids", () => {
+  const goals = [
+    { kind: "rep", id: 72, standing: 8 },
+    { kind: "renown", id: 72, level: 10 },
+    { kind: "level", level: 80 },
+    { kind: "currency", id: 2000, amount: 50 },
+    { kind: "quest", id: 90001 },
+    { kind: "questLine", id: 10 },
+  ];
+  const items = cleanItems({
+    items: goals.map((goal) => ({
+      ...goal,
+      name: "An authored goal",
+      source: { type: "quest", text: "Finish the quest." },
+      chance: false,
+      note: "Start here.",
+    })),
+  });
+  assert.deepEqual(
+    items.map((item) => item.kind),
+    ["rep", "renown", "level", "currency", "quest", "questLine"],
+  );
+  assert.equal(items[2].level, 80);
+  assert.equal(items[2].id, undefined);
+});

@@ -47,7 +47,19 @@ export const CATALOG_SECTION: Record<CatalogKind, { label: string; to: string; o
   guide: { label: "Guides", to: "/guides", one: "Guide" },
 };
 
-export const ITEM_KINDS = ["mount", "pet", "toy", "achievement", "item"] as const;
+export const ITEM_KINDS = [
+  "mount",
+  "pet",
+  "toy",
+  "achievement",
+  "item",
+  "rep",
+  "renown",
+  "level",
+  "currency",
+  "quest",
+  "questLine",
+] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 export const ITEM_KIND_LABEL: Record<ItemKind, string> = {
   mount: "Mount",
@@ -55,6 +67,12 @@ export const ITEM_KIND_LABEL: Record<ItemKind, string> = {
   toy: "Toy",
   achievement: "Achievement",
   item: "Item",
+  rep: "Reputation",
+  renown: "Renown",
+  level: "Level",
+  currency: "Currency",
+  quest: "Quest",
+  questLine: "Chain",
 };
 
 export const SOURCE_TYPES = [
@@ -88,7 +106,8 @@ export const SOURCE_LABEL: Record<SourceType, string> = {
 /** One authored list item: a verified game target and exactly how to get it. */
 export type CatalogItem = {
   kind: ItemKind;
-  id: number;
+  id?: number;
+  level?: number;
   name: string;
   source: { type: SourceType; lines: string[] };
   chance: boolean;
@@ -147,7 +166,9 @@ export function cleanItems(body: unknown): CatalogItem[] {
     if (
       !ITEM_KINDS.includes(kind) ||
       !SOURCE_TYPES.includes(type) ||
-      !Number.isInteger(row.id) ||
+      (kind === "level"
+        ? !Number.isInteger(row.level) || Number(row.level) <= 0
+        : !Number.isInteger(row.id)) ||
       !name ||
       !note ||
       !lines.length ||
@@ -164,7 +185,7 @@ export function cleanItems(body: unknown): CatalogItem[] {
     }
     out.push({
       kind,
-      id: row.id as number,
+      ...(kind === "level" ? { level: row.level as number } : { id: row.id as number }),
       name,
       source: { type, lines },
       chance: row.chance,
