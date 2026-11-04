@@ -166,7 +166,7 @@ A ready idea for this Character, computed by the Server from the Game data snaps
 _Avoid_: recommendation, quest, offer (that word is the Refresh offer), AI idea.
 
 **Idea**
-The player word for a Suggestion: one chip in the choice Bubble ("What shall we do?"), built from the player's own data: an event that is on, an unfinished Chain, an achievement, a rare, a collectible. The player only picks; he never types (ADR 0046, 0047).
+The player word for a Suggestion: one chip in the choice Bubble ("What shall we do?"), built from the player's own data: an event that is on, an unfinished Chain, an achievement, a rare, a collectible, or the Character’s active Path. The player only picks; he never types (ADR 0046, 0047).
 _Avoid_: Ask, chat, wish, question box, recommendation.
 
 **Chain**
@@ -224,6 +224,10 @@ _Avoid_: drop rate (a probability, not an acquisition verdict).
 **Path**
 A curated set of goals for one piece of content, in a tier (Basic, Deeper, Complete), shown as done of total. Russian: Путь (ADR 0072).
 _Avoid_: quest line, guide, checklist, roadmap.
+
+**Active Path**
+The one Path or Collection a Character has chosen to continue. Its Idea shows current done of total; choosing another replaces it, and it can be cleared. Russian: активный Путь (ADR 0075).
+_Avoid_: assignment, subscription, active quest.
 
 **Collection**
 A Path of kind `collection`: an authored, ordered top list of Game DB targets, such as "Top 50 mounts to get first", with progress X / Y. Russian: Подборка (ADR 0072).

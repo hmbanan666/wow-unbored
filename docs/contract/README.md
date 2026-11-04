@@ -75,3 +75,19 @@ Step titles: 70 Unicode characters, with a 240-byte compatibility ceiling. Optio
 The Server reuses `UiMap` and the Wago CSV cache, adding bounded reads of `UiMapAssignment`, `QuestPOIBlob`, `QuestPOIPoint` and `TaxiNodes` (24 hours, 20 MB per table, the same cap as instance guides). Missing, malformed or oversized tables stay unavailable. Quest polygons, ambiguous map assignments, instance entrances and portal paths stay unknown. No numeric id coincidence supplies a place. Field definitions: [game table definitions](https://github.com/wowdev/WoWDBDefs/tree/master/definitions); world-to-map axes follow [DB2 map projection](https://github.com/TrinityCore/TrinityCore/blob/master/src/server/game/DataStores/DB2Stores.cpp).
 
 Plan submission reads only fresh cached points, with no network wait. A unique single-point quest POI on the same map replaces a point more than 0.05 map distance away, with a warning. Quest references come from entity tokens, Conditions and quest completion. Ambiguous or unavailable quest POIs never justify moving a Step to a guessed location; unsupported points are omitted. A quest reference alone is not coordinate evidence. Unreferenced points and route stops must match a known quest POI, flight point or cached journal encounter point within 0.005; unsupported points are dropped with warnings. Starting-position points are still dropped, including corrected points, route stops and nested proximity completion checks. The same grounding applies to MCP and HTTP submissions before storage. Planner-supplied NPC side tables are not evidence.
+
+
+## Active Path Idea
+
+`kind: "path"` is a new Suggestion kind. Its required `path` field is
+`{ kind: "path" | "collection", slug, locale: "en" | "ru", version }`;
+`version` is a positive integer and `slug` is at most 80 lowercase alphanumeric
+words separated by hyphens. `progress` counts required goals. Picking the chip
+uses the existing `topic: "suggestion"` Request and copies this reference to
+`suggestion.path`, without a time budget. The reference identifies the published
+version shown at the pick; it is not replaced with a later active selection.
+
+Fixtures `path-suggestions.json`, `path-suggestions.lua`, `path-request.lua` and
+the matching case in `requests.json` cover delivery and upload. Unknown kinds
+are ignored by the 0.12 addon, so the helper-file format stays at v1. The Server
+rejects a Path Request with a malformed or missing reference.

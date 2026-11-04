@@ -223,7 +223,16 @@ pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, 
         lang: text_field(request, "lang"),
         suggestion_id: text_field(request, "suggestionId"),
         suggestion: table_get(request, "suggestion")
-            .map(LuaValue::to_json)
+            .map(|value| {
+                let mut suggestion = value.to_json();
+                // Lua's empty table is ambiguous; rewards is always a list.
+                if let Some(rewards) = suggestion.get_mut("rewards") {
+                    if rewards.as_object().is_some_and(|value| value.is_empty()) {
+                        *rewards = serde_json::Value::Array(Vec::new());
+                    }
+                }
+                suggestion
+            })
             .filter(serde_json::Value::is_object),
     }))
 }

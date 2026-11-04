@@ -690,6 +690,30 @@ fn clean_suggestion(item: &Value) -> Option<Value> {
         }
         out.insert("chain".into(), Value::Object(info));
     }
+    if item["kind"].as_str() == Some("path") {
+        let path = &item["path"];
+        let kind = path["kind"]
+            .as_str()
+            .filter(|v| matches!(*v, "path" | "collection"))?;
+        let locale = path["locale"]
+            .as_str()
+            .filter(|v| matches!(*v, "en" | "ru"))?;
+        let slug = path["slug"].as_str().filter(|v| {
+            !v.is_empty()
+                && v.len() <= 80
+                && v.split('-').all(|word| {
+                    !word.is_empty()
+                        && word
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+                })
+        })?;
+        let version = path["version"].as_u64().filter(|v| *v > 0)?;
+        out.insert(
+            "path".into(),
+            serde_json::json!({ "kind": kind, "locale": locale, "slug": slug, "version": version }),
+        );
+    }
     let request = &item["request"];
     if let Some(wish) = request["wish"].as_str() {
         let mut ask = serde_json::Map::new();
@@ -1524,6 +1548,26 @@ mod tests {
         }
         newer["action"] = Value::String("Do {quest:1}".into());
         assert!(written(&newer).get("action").is_none());
+    }
+
+    #[test]
+    fn path_idea_keeps_its_published_reference() {
+        let body: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/path-suggestions.json"
+        ))
+        .unwrap();
+        let lua = render_suggestions_lua(&body);
+        let parsed = parse_saved_variables(&lua).unwrap();
+        let written = parsed["UnboredSuggestions"].to_json();
+        assert_eq!(
+            written["characters"]["Silvermoon-Mira"][0]["path"],
+            body["characters"]["Silvermoon-Mira"][0]["path"]
+        );
+        let fixture = parse_saved_variables(include_str!(
+            "../../../../packages/contracts/fixtures/path-suggestions.lua"
+        ))
+        .unwrap();
+        assert_eq!(written, fixture["UnboredSuggestions"].to_json());
     }
 
     #[test]

@@ -117,8 +117,24 @@ export type RequestBody = {
   suggestion?: RequestSuggestion;
 };
 
+/** Published content identity carried by a Path Idea and its Request. */
+export const pathReferenceSchema = z
+  .object({
+    kind: z.enum(["path", "collection"]),
+    slug: z
+      .string()
+      .min(1)
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    locale: z.enum(["en", "ru"]),
+    version: z.number().int().positive(),
+  })
+  .strict();
+export type PathReference = z.infer<typeof pathReferenceSchema>;
+
 /** The Suggestion a player picked, as copied into the Request. */
 export type RequestSuggestion = {
+  path?: PathReference;
   id: string;
   kind: string;
   title: string;
@@ -229,8 +245,13 @@ export const requestBodySchema = z
         rewards: z.array(z.string()).max(3),
         mapID: z.number().int().optional(),
         expiresAt: z.number().int().optional(),
+        path: pathReferenceSchema.optional(),
       })
       .passthrough()
+      .refine(
+        (idea) => idea.kind !== "path" || idea.path !== undefined,
+        "Path Idea needs a published reference",
+      )
       .optional(),
   })
   .passthrough()
@@ -471,7 +492,14 @@ export const snapshotResultSchema = z.object({
 
 export type SnapshotIngestResult = z.infer<typeof snapshotResultSchema>;
 
-export const SUGGESTION_KINDS = ["event", "achievement", "rare", "collection", "chain"] as const;
+export const SUGGESTION_KINDS = [
+  "event",
+  "achievement",
+  "rare",
+  "collection",
+  "chain",
+  "path",
+] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
 
 /** Why an idea fits, as data, so the addon can say it in the player's language. */
@@ -496,6 +524,7 @@ export type SuggestionChain = {
 
 /** One idea for the choice Bubble (D106). */
 export type Suggestion = {
+  path?: PathReference;
   id: string;
   kind: SuggestionKind;
   /** Display label only; ranking and Taste still use kind. */
@@ -571,6 +600,7 @@ const suggestionSchema = z
     rewards: z.array(z.string()).max(3),
     mapID: z.number().int().positive().optional(),
     expiresAt: z.number().int().optional(),
+    path: pathReferenceSchema.optional(),
     chain: z
       .object({
         questLineID: z.number().int().positive(),
@@ -585,7 +615,11 @@ const suggestionSchema = z
       wish: z.string().min(1),
     }),
   })
-  .passthrough();
+  .passthrough()
+  .refine(
+    (idea) => idea.kind !== "path" || idea.path !== undefined,
+    "Path Idea needs a published reference",
+  );
 
 export const suggestionsBodySchema = z
   .object({

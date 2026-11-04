@@ -37,7 +37,7 @@
           "maxLength": 120
         },
         "kind": {
-          "enum": ["event", "achievement", "rare", "collection", "chain"]
+          "enum": ["event", "achievement", "rare", "collection", "chain", "path"]
         },
         "title": {
           "type": "string",
@@ -137,7 +137,7 @@
           }
         },
         "displayKind": {
-          "enum": ["event", "achievement", "rare", "collection", "chain", "mount"],
+          "enum": ["event", "achievement", "rare", "collection", "chain", "mount", "path"],
           "description": "Display label only; kind still controls ranking and Taste."
         },
         "action": {
@@ -161,8 +161,46 @@
               "exclusiveMinimum": 0
             }
           }
+        },
+        "path": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "slug", "locale", "version"],
+          "properties": {
+            "kind": {
+              "enum": ["path", "collection"]
+            },
+            "slug": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "locale": {
+              "enum": ["en", "ru"]
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "path"
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["path"]
+          }
+        }
+      ]
     }
   }
 }

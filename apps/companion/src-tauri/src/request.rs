@@ -195,6 +195,9 @@ mod tests {
             "suggestion.lua" => {
                 include_str!("../../../../packages/contracts/fixtures/suggestion.lua")
             }
+            "path-request.lua" => {
+                include_str!("../../../../packages/contracts/fixtures/path-request.lua")
+            }
             other => panic!("unknown fixture {other}"),
         }
     }

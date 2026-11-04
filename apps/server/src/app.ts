@@ -1,3 +1,4 @@
+import { ActivePathError, pathCharacterSchema, setActivePathSchema } from "./active-path.ts";
 import { GameImportError, validGameBuild } from "./game-db.ts";
 import { ContentError, ContentStore } from "./content.ts";
 import { GameWatch } from "./game-watch.ts";
@@ -710,6 +711,40 @@ export function createApp(
     } catch (error) {
       if (error instanceof PlanError || error instanceof OutcomeError)
         return c.json({ error: error.message }, 400);
+      throw error;
+    }
+  });
+
+  app.get("/v1/paths/active", async (c) => {
+    const denied = requireRole(c, "planner", tokens);
+    if (denied) return denied;
+    if (!content.available) return c.json({ error: "Active Paths need Postgres." }, 503);
+    const input = pathCharacterSchema.safeParse(c.req.query());
+    if (!input.success) return c.json({ error: "Supply an Account, Character and realm." }, 400);
+    if (inbox) await store.settle(accountKey(input.data.account));
+    try {
+      return c.json(await store.activePaths.get(input.data));
+    } catch (error) {
+      if (error instanceof ActivePathError) return c.json({ error: error.message }, 400);
+      throw error;
+    }
+  });
+
+  app.put("/v1/paths/active", async (c) => {
+    const denied = requireRole(c, "planner", tokens);
+    if (denied) return denied;
+    if (!content.available) return c.json({ error: "Active Paths need Postgres." }, 503);
+    const input = setActivePathSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json(
+        { error: "Supply an Account, Character, realm and published Path selection (or null)." },
+        400,
+      );
+    if (inbox) await store.settle(accountKey(input.data.account));
+    try {
+      return c.json(await store.activePaths.set(input.data));
+    } catch (error) {
+      if (error instanceof ActivePathError) return c.json({ error: error.message }, 400);
       throw error;
     }
   });

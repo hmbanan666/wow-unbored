@@ -219,3 +219,13 @@ test("planner submissions require an outcome while legacy delivery remains valid
   expect(planSubmissionSchema.safeParse(read("plan-currency.json")).success).toBe(true);
   expect(planSubmissionSchema.safeParse(read("plan-outcome.json")).success).toBe(true);
 });
+
+test("Path Ideas require a published reference in both delivery and Request fixtures", () => {
+  const body = read("path-suggestions.json") as {
+    characters: Record<string, Record<string, unknown>[]>;
+  };
+  expect(suggestionsBodySchema.safeParse(body).success).toBe(true);
+  const idea = body.characters["Silvermoon-Mira"]![0]!;
+  delete idea.path;
+  expect(suggestionsBodySchema.safeParse(body).success).toBe(false);
+});
