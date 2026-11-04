@@ -1,0 +1,5 @@
+# 0071. Game DB on the Server
+
+Status: accepted
+
+The Server keeps its own Game DB in Postgres (schema `game`): selected client DB2 tables imported from wago.tools CSV for the current live build (names in enUS and ruRU), each import tagged with its build; a build watcher imports a newer build without a deploy and reports lag in `/health` and `data_catalog`. It replaces the per-request CSV reads of place tables and instance guides. What DB2 lacks (item sources, vendors, NPC locations) comes only from the Blizzard Game Data API or from Catalog rows with a primary source URL; no bulk copying of third-party sites. Agent tools read the Game DB (entity lookup by id or name, quests of a quest line, sources of an item, place to zone, continent and expansion). Plan submission validates every Entity token, quest, outcome target and point against the current build: unknown ids become plain text, unknown points are dropped, and an outcome whose target is missing or known to be chance-only is rejected. Tables and fields are added only when a tool or check needs them.

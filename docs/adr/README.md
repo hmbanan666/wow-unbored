@@ -73,5 +73,9 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0068. Plan outcomes and shorter text](0068-plan-outcome.md)
 - [0069. A lighter Plan card](0069-casual-plan-card.md)
 - [0070. Plans omit planner limitations](0070-plan-player-text.md)
+- [0071. Game DB on the Server](0071-game-db.md)
+- [0072. Paths](0072-paths.md)
+- [0073. Website and account link](0073-website-and-account-link.md)
+- [0074. Public Path pages](0074-public-path-pages.md)
 
 The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md), v0.8 (D83-D121) in [`docs/decisions-v0.8.md`](../decisions-v0.8.md), v0.9 (D122-D167) in [`docs/decisions-v0.9.md`](../decisions-v0.9.md), and v0.10 (D168-D223) in [`docs/decisions-v0.10.md`](../decisions-v0.10.md).
