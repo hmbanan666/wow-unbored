@@ -1139,7 +1139,7 @@ A page can add `hero: { kind: 'mount' | 'pet' | 'instance', id, alt? }` or
 `hero: { image: '<16 lowercase hex>', alt }`. A figure block has `type: 'figure'`, `alt`,
 optional `caption`, and exactly one of `ref: { kind, id }` or `image: '<16 lowercase hex>'`.
 Paragraph/list text accepts at most 20 inline references per page, using
-`[[mount:460]]`, `[[pet:1890]]`, `[[achievement:6]]`, `[[item:84101]]`, `[[toy:1131]]`,
+`[[mount:460]]`, `[[pet:1890]]`, `[[achievement:6]]`, `[[item:84101]]`, `[[toy:84101]]`,
 or `[[currency:3008]]`. Invalid delimiters, unknown kinds and nonpositive ids are rejected.
 These additions share validation helpers in `packages/contracts/src/game-media.ts`.
 
