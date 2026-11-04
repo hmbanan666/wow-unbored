@@ -264,6 +264,28 @@ and 50.2 ms maximum lag. It included 175,791 items, 172,732 quest points,
 not a production import. The larger generated fixture covers growth beyond
 those observed counts.
 
+### Site content
+
+Paths and Collections for the website (ADR 0072, 0074) are authored as JSON
+documents and sent to the running Server; nothing is written to the database
+by hand and no content lives in repo files. `PUT /owner/content` saves a draft
+(a new version after a published one, the same draft otherwise; the same
+document twice changes nothing), and `POST /owner/content/<kind>/<slug>/publish`
+publishes the newest draft and retires the previous published version. Both
+use the planner bearer and check every item id, zone, achievement and cost id
+against the current Game DB build; English names must match the game's name.
+A 400 lists every problem. With `UNBORED_SERVER_URL` and `UNBORED_PLANNER_TOKEN`
+set:
+
+```sh
+node apps/server/scripts/content.ts save top-mounts.json
+node apps/server/scripts/content.ts publish collection top-mounts-to-get-first
+```
+
+A document has `kind`, `slug`, `title`, `description`, optional `tier` and
+`prerequisite` (Paths only), `blocks` (paragraph, list, link) and ordered
+`items`: `{kind: mount|pet|toy|achievement|item, id, name, source: {type, text,
+zone?, cost?: [{amount, gold|currency|item}], achievement?}, chance, note, url?}`.
 
 ### Game DB: Planner lookups
 

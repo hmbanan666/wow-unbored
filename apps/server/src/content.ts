@@ -1,0 +1,470 @@
+import { createHash } from "node:crypto";
+import type { Db } from "./db.ts";
+import { fromJson } from "./db.ts";
+import type { GameDb } from "./game-db.ts";
+
+/**
+ * Authored site content: Paths and Collections in `content.paths` (ADR 0072,
+ * 0074). Owners save a draft and publish it; every game id, zone and cost id
+ * must exist in the Game DB build the draft was checked against. A published
+ * version is never edited: a change is a new draft version.
+ */
+
+export const CONTENT_KINDS = ["path", "collection"] as const;
+export type ContentKind = (typeof CONTENT_KINDS)[number];
+export const ITEM_KINDS = ["mount", "pet", "toy", "achievement", "item"] as const;
+export type ItemKind = (typeof ITEM_KINDS)[number];
+export const SOURCE_TYPES = [
+  "vendor",
+  "drop",
+  "quest",
+  "achievement",
+  "reputation",
+  "renown",
+  "profession",
+  "pvp",
+  "event",
+  "treasure",
+  "other",
+] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
+const TIERS = ["basic", "deeper", "complete"] as const;
+
+export type ContentCost = { amount: number; currency?: number; item?: number; gold?: true };
+export type ContentItem = {
+  kind: ItemKind;
+  id: number;
+  name: string;
+  source: {
+    type: SourceType;
+    text: string;
+    zone?: number;
+    cost?: ContentCost[];
+    achievement?: number;
+  };
+  chance: boolean;
+  note: string;
+  url?: string;
+};
+export type ContentBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "list"; items: string[] }
+  | { type: "link"; label: string; href: string };
+export type ContentDoc = {
+  kind: ContentKind;
+  slug: string;
+  locale: "en" | "ru";
+  title: string;
+  description: string;
+  tier: (typeof TIERS)[number] | null;
+  prerequisite: string | null;
+  blocks: ContentBlock[];
+  items: ContentItem[];
+};
+
+export class ContentError extends Error {
+  readonly problems: string[];
+  constructor(message: string, problems: string[] = []) {
+    super(message);
+    this.problems = problems;
+  }
+}
+
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MAX_ITEMS = 100;
+const MAX_BLOCKS = 40;
+
+function text(value: unknown, max: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const out = value.trim();
+  return out && out.length <= max ? out : undefined;
+}
+
+function positiveId(value: unknown): number | undefined {
+  return Number.isInteger(value) && (value as number) > 0 && (value as number) < 2 ** 31
+    ? (value as number)
+    : undefined;
+}
+
+function https(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && value.length <= 300 ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function localHref(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  if (value === "/" || /^\/(paths|collections)\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value))
+    return value;
+  return https(value);
+}
+
+/** The document's shape; game ids are checked separately against a build. */
+export function parseContent(input: unknown): ContentDoc {
+  const problems: string[] = [];
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const kind = CONTENT_KINDS.includes(raw.kind as ContentKind)
+    ? (raw.kind as ContentKind)
+    : (problems.push("kind must be path or collection"), "collection");
+  const slug =
+    typeof raw.slug === "string" && raw.slug.length <= 80 && SLUG.test(raw.slug)
+      ? raw.slug
+      : (problems.push("slug must be lowercase words joined by hyphens"), "x");
+  const locale =
+    raw.locale === undefined || raw.locale === "en"
+      ? "en"
+      : raw.locale === "ru"
+        ? "ru"
+        : (problems.push("locale must be en or ru"), "en");
+  const title = text(raw.title, 120) ?? (problems.push("title: 1-120 characters"), "");
+  const description =
+    text(raw.description, 300) ?? (problems.push("description: 1-300 characters"), "");
+  const tier =
+    raw.tier === undefined || raw.tier === null
+      ? null
+      : TIERS.includes(raw.tier as (typeof TIERS)[number])
+        ? (raw.tier as (typeof TIERS)[number])
+        : (problems.push("tier must be basic, deeper or complete"), null);
+  if (kind === "collection" && tier) problems.push("a collection has no tier");
+  const prerequisite =
+    raw.prerequisite === undefined || raw.prerequisite === null
+      ? null
+      : typeof raw.prerequisite === "string" && SLUG.test(raw.prerequisite)
+        ? raw.prerequisite
+        : (problems.push("prerequisite must be a slug"), null);
+  if (kind === "collection" && prerequisite) problems.push("a collection has no prerequisite");
+
+  const blocks: ContentBlock[] = [];
+  const rawBlocks = Array.isArray(raw.blocks) ? raw.blocks : [];
+  if (rawBlocks.length > MAX_BLOCKS) problems.push(`at most ${MAX_BLOCKS} blocks`);
+  rawBlocks.forEach((block, index) => {
+    const row = (block ?? {}) as Record<string, unknown>;
+    if (row.type === "paragraph" && text(row.text, 2000))
+      blocks.push({ type: "paragraph", text: text(row.text, 2000)! });
+    else if (
+      row.type === "list" &&
+      Array.isArray(row.items) &&
+      row.items.length > 0 &&
+      row.items.length <= 30 &&
+      row.items.every((item) => text(item, 400))
+    )
+      blocks.push({ type: "list", items: row.items.map((item) => text(item, 400)!) });
+    else if (row.type === "link" && text(row.label, 80) && localHref(row.href))
+      blocks.push({ type: "link", label: text(row.label, 80)!, href: localHref(row.href)! });
+    else problems.push(`blocks[${index}] is not a paragraph, list or link`);
+  });
+
+  const items: ContentItem[] = [];
+  const rawItems = Array.isArray(raw.items) ? raw.items : [];
+  if (rawItems.length > MAX_ITEMS) problems.push(`at most ${MAX_ITEMS} items`);
+  const seen = new Set<string>();
+  rawItems.forEach((value, index) => {
+    const at = `items[${index}]`;
+    const row = (value ?? {}) as Record<string, unknown>;
+    const source = (row.source ?? {}) as Record<string, unknown>;
+    const itemKind = ITEM_KINDS.includes(row.kind as ItemKind) ? (row.kind as ItemKind) : undefined;
+    const id = positiveId(row.id);
+    const name = text(row.name, 120);
+    const type = SOURCE_TYPES.includes(source.type as SourceType)
+      ? (source.type as SourceType)
+      : undefined;
+    const sourceText = text(source.text, 400);
+    const note = text(row.note, 600);
+    if (!itemKind) problems.push(`${at}.kind must be one of ${ITEM_KINDS.join(", ")}`);
+    if (!id) problems.push(`${at}.id must be a positive integer`);
+    if (!name) problems.push(`${at}.name is required`);
+    if (!type) problems.push(`${at}.source.type must be one of ${SOURCE_TYPES.join(", ")}`);
+    if (!sourceText) problems.push(`${at}.source.text is required`);
+    if (!note) problems.push(`${at}.note is required (at most 600 characters)`);
+    if (typeof row.chance !== "boolean") problems.push(`${at}.chance must be true or false`);
+    const zone = source.zone === undefined ? undefined : positiveId(source.zone);
+    if (source.zone !== undefined && !zone) problems.push(`${at}.source.zone must be a UiMap id`);
+    const achievement =
+      source.achievement === undefined ? undefined : positiveId(source.achievement);
+    if (source.achievement !== undefined && !achievement)
+      problems.push(`${at}.source.achievement must be an achievement id`);
+    const cost: ContentCost[] = [];
+    if (source.cost !== undefined) {
+      if (!Array.isArray(source.cost) || source.cost.length > 4)
+        problems.push(`${at}.source.cost must be a list of at most 4 parts`);
+      else
+        source.cost.forEach((part, partIndex) => {
+          const p = (part ?? {}) as Record<string, unknown>;
+          const amount = positiveId(p.amount);
+          const currency = p.currency === undefined ? undefined : positiveId(p.currency);
+          const item = p.item === undefined ? undefined : positiveId(p.item);
+          const gold = p.gold === true;
+          const kinds = Number(currency !== undefined) + Number(item !== undefined) + Number(gold);
+          if (
+            !amount ||
+            kinds !== 1 ||
+            (p.currency !== undefined && !currency) ||
+            (p.item !== undefined && !item)
+          )
+            problems.push(
+              `${at}.source.cost[${partIndex}] needs an amount and one of gold, currency or item`,
+            );
+          else
+            cost.push({
+              amount,
+              ...(currency ? { currency } : {}),
+              ...(item ? { item } : {}),
+              ...(gold ? { gold: true as const } : {}),
+            });
+        });
+    }
+    const url = row.url === undefined ? undefined : https(row.url);
+    if (row.url !== undefined && !url) problems.push(`${at}.url must be an https URL`);
+    if (itemKind && id) {
+      const key = `${itemKind}:${id}`;
+      if (seen.has(key)) problems.push(`${at} repeats ${key}`);
+      seen.add(key);
+    }
+    if (itemKind && id && name && type && sourceText && note && typeof row.chance === "boolean")
+      items.push({
+        kind: itemKind,
+        id,
+        name,
+        source: {
+          type,
+          text: sourceText,
+          ...(zone ? { zone } : {}),
+          ...(cost.length ? { cost } : {}),
+          ...(achievement ? { achievement } : {}),
+        },
+        chance: row.chance,
+        note,
+        ...(url ? { url } : {}),
+      });
+  });
+  if (kind === "collection" && rawItems.length === 0) problems.push("a collection needs items");
+  if (problems.length) throw new ContentError("The content is not valid.", problems);
+  return { kind, slug, locale, title, description, tier, prerequisite, blocks, items };
+}
+
+const GAME_KEY: Record<ItemKind, string> = {
+  mount: "mount",
+  pet: "pet",
+  toy: "toy",
+  achievement: "ach",
+  item: "item",
+};
+
+/** Names the Game DB holds for an item kind: [table, field, id field]. */
+async function gameName(game: GameDb, item: ContentItem, build: string) {
+  if (item.kind === "mount")
+    return (await game.row("Mount", item.id, "enUS", build))?.fields.Name_lang;
+  if (item.kind === "achievement")
+    return (await game.row("Achievement", item.id, "enUS", build))?.fields.Title_lang;
+  if (item.kind === "item" || item.kind === "toy")
+    return (await game.row("ItemSparse", item.id, "enUS", build))?.fields.Display_lang;
+  return undefined; // Battle pet names are not in the imported fields.
+}
+
+/** Every id, zone and cost id against one build; English names must match it. */
+export async function checkContentIds(doc: ContentDoc, game: GameDb): Promise<string> {
+  const build = await game.currentBuild();
+  if (!build) throw new ContentError("The Game DB is not imported yet.");
+  const problems: string[] = [];
+  for (const [index, item] of doc.items.entries()) {
+    const at = `items[${index}] ${item.name}`;
+    const keys = [`${GAME_KEY[item.kind]}:${item.id}`];
+    if (item.source.zone) keys.push(`zone:${item.source.zone}`);
+    if (item.source.achievement) keys.push(`ach:${item.source.achievement}`);
+    for (const part of item.source.cost ?? []) {
+      if (part.currency) keys.push(`currency:${part.currency}`);
+      if (part.item) keys.push(`item:${part.item}`);
+    }
+    const missing = await game.missing(keys, build);
+    for (const key of missing) problems.push(`${at}: ${key} is not in build ${build}`);
+    if (missing.size === 0 && doc.locale === "en") {
+      const name = await gameName(game, item, build);
+      if (name !== undefined && String(name) !== item.name)
+        problems.push(`${at}: the game calls ${item.kind}:${item.id} "${String(name)}"`);
+    }
+  }
+  if (problems.length) throw new ContentError("Some ids are not in the Game DB.", problems);
+  return build;
+}
+
+type Row = {
+  id: number | string;
+  version: number;
+  status: string;
+  title: string;
+  description: string;
+  tier: string | null;
+  prerequisite_slug: string | null;
+  body: unknown;
+};
+
+type Body = { blocks: ContentBlock[]; items: ContentItem[]; build: string; hash: string };
+
+function hashOf(doc: ContentDoc): string {
+  const { kind, slug, locale, ...rest } = doc;
+  return createHash("sha256")
+    .update(JSON.stringify([kind, slug, locale, rest]))
+    .digest("hex");
+}
+
+export type SaveResult = {
+  kind: ContentKind;
+  slug: string;
+  locale: string;
+  version: number;
+  status: "draft" | "published";
+  unchanged: boolean;
+  build: string;
+  items: number;
+};
+
+/** Drafts and publishing in Postgres. SQLite Servers have no site content. */
+export class ContentStore {
+  private readonly db: Db;
+  private readonly game: GameDb;
+  private readonly now: () => number;
+
+  constructor(db: Db, game: GameDb, now: () => number = () => Math.floor(Date.now() / 1000)) {
+    this.db = db;
+    this.game = game;
+    this.now = now;
+  }
+
+  get available(): boolean {
+    return this.db.pg;
+  }
+
+  private async rows(kind: ContentKind, slug: string, locale: string): Promise<Row[]> {
+    return this.db.all<Row>(
+      `SELECT id, version, status, title, description, tier, prerequisite_slug, body
+       FROM content.paths WHERE kind = ? AND slug = ? AND locale = ?
+       ORDER BY version DESC`,
+      kind,
+      slug,
+      locale,
+    );
+  }
+
+  /** Saves a checked draft. The same document again changes nothing. */
+  async saveDraft(input: unknown): Promise<SaveResult> {
+    if (!this.available) throw new ContentError("Site content needs the Postgres Server.");
+    const doc = parseContent(input);
+    const build = await checkContentIds(doc, this.game);
+    const hash = hashOf(doc);
+    const body: Body = { blocks: doc.blocks, items: doc.items, build, hash };
+    return this.db.tx(async () => {
+      await this.db.lockKey(`content:${doc.kind}:${doc.slug}:${doc.locale}`);
+      const rows = await this.rows(doc.kind, doc.slug, doc.locale);
+      const result = (version: number, status: "draft" | "published", unchanged: boolean) => ({
+        kind: doc.kind,
+        slug: doc.slug,
+        locale: doc.locale,
+        version,
+        status,
+        unchanged,
+        build,
+        items: doc.items.length,
+      });
+      const live = rows.find((row) => row.status === "draft" || row.status === "published");
+      const draft = rows[0]?.status === "draft" ? rows[0] : undefined;
+      if (live && fromJson<Body>(live.body)?.hash === hash)
+        return result(live.version, live.status as "draft" | "published", true);
+      const fields = [
+        doc.title,
+        doc.description,
+        doc.tier,
+        doc.prerequisite,
+        JSON.stringify(body),
+        this.now(),
+      ];
+      if (draft) {
+        await this.db.run(
+          `UPDATE content.paths SET title = ?, description = ?, tier = ?, prerequisite_slug = ?,
+             body = CAST(? AS jsonb), updated_at = ? WHERE id = ?`,
+          ...fields,
+          Number(draft.id),
+        );
+        return result(draft.version, "draft", false);
+      }
+      const version = (rows[0]?.version ?? 0) + 1;
+      await this.db.run(
+        `INSERT INTO content.paths
+           (kind, slug, locale, title, description, tier, prerequisite_slug, body, updated_at, version, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, 'draft')`,
+        doc.kind,
+        doc.slug,
+        doc.locale,
+        ...fields,
+        version,
+      );
+      return result(version, "draft", false);
+    });
+  }
+
+  /** Publishes the newest draft after checking its ids again; retires the old version. */
+  async publish(kind: ContentKind, slug: string, locale: "en" | "ru" = "en"): Promise<SaveResult> {
+    if (!this.available) throw new ContentError("Site content needs the Postgres Server.");
+    return this.db.tx(async () => {
+      await this.db.lockKey(`content:${kind}:${slug}:${locale}`);
+      const rows = await this.rows(kind, slug, locale);
+      const newest = rows[0];
+      if (!newest) throw new ContentError("No such content.");
+      const stored = fromJson<Body>(newest.body)!;
+      if (newest.status === "published")
+        return {
+          kind,
+          slug,
+          locale,
+          version: newest.version,
+          status: "published",
+          unchanged: true,
+          build: stored.build,
+          items: stored.items.length,
+        };
+      if (newest.status !== "draft") throw new ContentError("Nothing to publish.");
+      const doc = parseContent({
+        kind,
+        slug,
+        locale,
+        title: newest.title,
+        description: newest.description,
+        tier: newest.tier,
+        prerequisite: newest.prerequisite_slug,
+        blocks: stored.blocks,
+        items: stored.items,
+      });
+      const build = await checkContentIds(doc, this.game);
+      const now = this.now();
+      await this.db.run(
+        `UPDATE content.paths SET status = 'retired', updated_at = ?
+         WHERE kind = ? AND slug = ? AND locale = ? AND status = 'published'`,
+        now,
+        kind,
+        slug,
+        locale,
+      );
+      await this.db.run(
+        `UPDATE content.paths SET status = 'published', published_at = ?, updated_at = ?,
+           body = jsonb_set(body, '{build}', to_jsonb(CAST(? AS text))) WHERE id = ?`,
+        now,
+        now,
+        build,
+        Number(newest.id),
+      );
+      return {
+        kind,
+        slug,
+        locale,
+        version: newest.version,
+        status: "published",
+        unchanged: false,
+        build,
+        items: doc.items.length,
+      };
+    });
+  }
+}

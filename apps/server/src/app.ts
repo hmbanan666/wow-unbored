@@ -1,4 +1,5 @@
 import { GameImportError, validGameBuild } from "./game-db.ts";
+import { ContentError, ContentStore } from "./content.ts";
 import { GameWatch } from "./game-watch.ts";
 import { gunzipSync } from "node:zlib";
 
@@ -614,6 +615,38 @@ export function createApp(
     } catch (error) {
       if (error instanceof GameImportError) return c.json({ error: error.message }, 502);
       throw error;
+    }
+  });
+
+  // Authored site content (ADR 0072, 0074): save a checked draft, then publish it.
+  const content = new ContentStore(store.db, store.game);
+  const contentFailed = (c: Parameters<typeof requireRole>[0], error: unknown) => {
+    if (error instanceof ContentError)
+      return c.json({ error: error.message, problems: error.problems }, 400);
+    throw error;
+  };
+  app.put("/owner/content", async (c) => {
+    const denied = requireRole(c, "planner", tokens);
+    if (denied) return denied;
+    if (!content.available) return c.json({ error: "Site content needs Postgres." }, 503);
+    const body = await c.req.json().catch(() => null);
+    try {
+      return c.json(await content.saveDraft(body));
+    } catch (error) {
+      return contentFailed(c, error);
+    }
+  });
+  app.post("/owner/content/:kind/:slug/publish", async (c) => {
+    const denied = requireRole(c, "planner", tokens);
+    if (denied) return denied;
+    if (!content.available) return c.json({ error: "Site content needs Postgres." }, 503);
+    const kind = c.req.param("kind");
+    const locale = c.req.query("locale") === "ru" ? "ru" : "en";
+    if (kind !== "path" && kind !== "collection") return c.json({ error: "No such kind." }, 404);
+    try {
+      return c.json(await content.publish(kind, c.req.param("slug"), locale));
+    } catch (error) {
+      return contentFailed(c, error);
     }
   });
 
