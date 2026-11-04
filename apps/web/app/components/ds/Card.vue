@@ -1,15 +1,12 @@
 <script setup lang="ts">
 /** A summary card: eyebrow, title, short text. With `to`, the whole card is the tap target. */
 defineProps<{ to?: string; eyebrow?: string; title: string; text?: string }>();
+// Resolved here: inside the template a string name would render a literal <NuxtLink> tag.
+const NuxtLink = resolveComponent("NuxtLink");
 </script>
 
 <template>
-  <component
-    :is="to ? resolveComponent('NuxtLink') : 'div'"
-    :to="to"
-    class="ds-card"
-    :class="{ 'ds-card--link': to }"
-  >
+  <component :is="to ? NuxtLink : 'div'" :to="to" class="ds-card" :class="{ 'ds-card--link': to }">
     <span v-if="eyebrow" class="ds-card__eyebrow">{{ eyebrow }}</span>
     <strong class="ds-card__title">{{ title }}</strong>
     <span v-if="text" class="ds-card__text">{{ text }}</span>
