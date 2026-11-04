@@ -127,14 +127,14 @@ export class MediaResolver {
     } else if (ref.kind === "instance") {
       add("tile", await asset(`media/journal-instance/${ref.id}`, "tile"));
     } else if (!ref.media?.icon) {
-      const item = ref.kind === "toy" ? await this.document(`toy/${ref.id}`) : undefined;
-      name ||= item?.name ?? item?.item?.name ?? "";
-      const id = item ? item.item?.id : ref.id;
-      if (id)
-        add(
+      // Content stores a toy by its item id (like kind item), so both read the item's media.
+      add(
+        "icon",
+        await asset(
+          `media/${ref.kind === "achievement" ? "achievement" : "item"}/${ref.id}`,
           "icon",
-          await asset(`media/${ref.kind === "achievement" ? "achievement" : "item"}/${id}`, "icon"),
-        );
+        ),
+      );
     }
     return out.map((a) => ({ ...a, name: name || a.name }));
   }

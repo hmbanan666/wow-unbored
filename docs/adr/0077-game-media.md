@@ -11,7 +11,7 @@ A player who lands on playunbored.com from Google has never seen Unbored. Text-o
 ### Sources (only what we may use)
 
 1. **Blizzard Game Data API media**, fetched by the Server, which already holds the API client:
-   - item and toy icons: `/data/wow/media/item/{itemId}` (toy -> `/data/wow/toy/{id}`.item.id).
+   - item and toy icons: `/data/wow/media/item/{itemId}` (content stores a toy by its item id, so a toy uses the same endpoint).
    - achievement icons: `/data/wow/media/achievement/{id}`.
    - battle pet icon: `/data/wow/pet/{speciesId}`.icon; pet render: `.creature.id` -> `/data/wow/creature/{id}`.creature_displays[0] -> `/data/wow/media/creature-display/{displayId}` (asset `zoom`, 600x600).
    - mount render: `/data/wow/mount/{mountId}`.creature_displays[0] -> creature-display media as above.
@@ -36,7 +36,7 @@ Blizzard Developer API terms: data is kept at most 30 days, so the Server refres
 - Collection/Path item: optional `media: { icon?: fileDataId, display?: creatureDisplayId }` overrides what the resolver finds. Kinds without game art (level, reputation, renown, quest, chain) use a drawn glyph from the design system.
 - Any page body: optional `hero: { kind, id, alt? }`, where `kind` is `mount`, `pet` or `instance` (render or tile), or `{ image: "<own media hash>", alt }`.
 - New block `figure`: `{ type: "figure", ref?: { kind, id }, image?: "<own media hash>", alt, caption? }`. A figure whose media is missing is not rendered.
-- Inline references in paragraph and list text: `[[mount:460]]`, `[[pet:1890]]`, `[[achievement:6]]`, `[[item:84101]]`, `[[toy:1131]]`, `[[currency:3008]]`. They render as icon plus game name with a tooltip; the name comes from the page's items or the media row, never from the visitor.
+- Inline references in paragraph and list text: `[[mount:460]]`, `[[pet:1890]]`, `[[achievement:6]]`, `[[item:84101]]`, `[[toy:84101]]`, `[[currency:3008]]`. They render as icon plus game name with a tooltip; the name comes from the page's items or the media row, never from the visitor.
 
 ### Tooltip and icons (design system)
 
