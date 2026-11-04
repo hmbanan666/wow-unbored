@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { test } from "vite-plus/test";
+import { findGameEntity } from "../src/game-tools.ts";
 import { Store } from "../src/store.ts";
 import { BACKENDS, postgresPerFile } from "./postgres-db.ts";
 import { coreResponse } from "./game-content-fixture.ts";
@@ -92,6 +93,16 @@ for (const backend of BACKENDS) {
         const lookupStart = performance.now();
         for (let id = 1; id <= 100; id++) await store.game.row("QuestPOIPoint", id * 7000);
         const lookups = performance.now() - lookupStart;
+        const nameStart = performance.now();
+        for (let id = 299_901; id <= 300_000; id++) {
+          const found = await findGameEntity(store.game, {
+            kind: "item",
+            name: `Item ${id}`,
+            locale: "ruRU",
+          });
+          assert.equal(found.entities[0]?.id, id);
+        }
+        const nameLookups = performance.now() - nameStart;
         await new Promise((resolve) => setTimeout(resolve, 20));
         delays.sort((a, b) => a - b);
         const p99 = delays[Math.floor(delays.length * 0.99)];
@@ -101,6 +112,7 @@ for (const backend of BACKENDS) {
             backend,
             importMs: duration,
             lookupsMs: lookups,
+            nameLookupsMs: nameLookups,
             p99LagMs: p99,
             maxLagMs: max,
             extraRssMB: (peak - baseline) / 1e6,
@@ -108,6 +120,7 @@ for (const backend of BACKENDS) {
         );
         assert.ok(duration < 90_000, `import took ${duration} ms`);
         assert.ok(lookups < 1000, `100 id lookups took ${lookups} ms`);
+        assert.ok(nameLookups < 1000, `100 localized name lookups took ${nameLookups} ms`);
         assert.ok(delays.length >= 10, "timers continue during import");
         assert.ok(p99 < 100, `p99 lag ${p99} ms`);
         assert.ok(max < 500, `maximum lag ${max} ms`);

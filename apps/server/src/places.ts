@@ -101,7 +101,7 @@ export function projectFlightPoint(assignments: readonly Row[], mapID: number, r
 
 async function load(game: GameDb, lang: "en" | "ru") {
   const build = await game.currentBuild();
-  const locale = lang === "ru" ? "ruRU" : "enUS";
+  const locale: "enUS" | "ruRU" = lang === "ru" ? "ruRU" : "enUS";
   const unavailable: string[] = build ? [] : ["Game DB unavailable"];
   const rows = async (table: GameTable, field: string, id: number) => {
     if (!build) return [];
@@ -140,7 +140,7 @@ async function load(game: GameDb, lang: "en" | "ru") {
     }
     return result;
   };
-  return { row, questPoints, flights, unavailable };
+  return { build, locale, rows, row, questPoints, flights, unavailable };
 }
 
 /** Read one imported build; project only the requested geometry. */
@@ -150,6 +150,7 @@ export async function getPlace(game: GameDb, query: PlaceQuery) {
   const data = await load(game, query.lang ?? "en");
   const map = await data.row(query.mapID);
   let ancestor: Row | undefined = map;
+  let zone: { mapID: number; name: string | number } | null = null;
   const seen = new Set<number>();
   while (ancestor && number(ancestor.Type) !== 2) {
     const id = number(ancestor.ID);
@@ -158,11 +159,26 @@ export async function getPlace(game: GameDb, query: PlaceQuery) {
       break;
     }
     seen.add(id);
+    if (!zone && number(ancestor.Type) === 3 && ancestor.Name_lang)
+      zone = { mapID: id, name: ancestor.Name_lang };
     ancestor = await data.row(number(ancestor.ParentUiMapID));
   }
   const continent = ancestor?.Name_lang
     ? { mapID: number(ancestor.ID), name: ancestor.Name_lang }
     : null;
+  const assignments = map ? await data.rows("UiMapAssignment", "UiMapID", query.mapID) : [];
+  const expansions = new Set<number>();
+  let complete = assignments.length > 0 && assignments.length <= PLACE_LIMIT;
+  if (complete && data.build) {
+    for (const mapID of new Set(assignments.map((row) => number(row.MapID)))) {
+      const world = await game.row("Map", mapID, data.locale, data.build);
+      const id = number(world?.fields.ExpansionID);
+      if (!Number.isSafeInteger(id) || id < 0) complete = false;
+      else expansions.add(id);
+    }
+  }
+  const expansion =
+    complete && expansions.size === 1 ? { id: [...expansions][0], scope: "worldMap" } : null;
   const name = map?.Name_lang || null;
   const questPoints =
     query.questID === undefined ? [] : await data.questPoints(query.mapID, query.questID);
@@ -174,8 +190,15 @@ export async function getPlace(game: GameDb, query: PlaceQuery) {
   return {
     mapID: query.mapID,
     name,
+    zone,
     continent,
-    expansion: null,
+    expansion,
+    source: {
+      kind: "Game DB",
+      build: data.build ?? null,
+      locale: data.locale,
+      tables: ["UiMap", "UiMapAssignment", "Map", "QuestPOIBlob", "QuestPOIPoint", "TaxiNodes"],
+    },
     label:
       name && continent && continent.mapID !== query.mapID ? `${name} (${continent.name})` : name,
     questPoints,
@@ -183,6 +206,9 @@ export async function getPlace(game: GameDb, query: PlaceQuery) {
     nearestFlightPoint,
     unavailable: [
       ...data.unavailable,
+      ...(!zone ? ["zone ancestry unavailable"] : []),
+      ...(!continent ? ["continent ancestry unavailable"] : []),
+      ...(!expansion ? ["expansion ambiguous or missing"] : []),
       "expansion label",
       "instance entrances",
       ...(query.npcID ? ["npc position"] : []),

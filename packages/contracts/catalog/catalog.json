@@ -86,7 +86,9 @@
       "mapID": 70,
       "mountSources": {
         "349": {
-          "boss": "Onyxia"
+          "boss": "Onyxia",
+          "itemID": 49636,
+          "source": "https://www.wowhead.com/item=49636/reins-of-the-onyxian-drake"
         }
       },
       "mounts": [349],
@@ -101,7 +103,9 @@
       "mapID": 109,
       "mountSources": {
         "183": {
-          "boss": "Kael'thas Sunstrider"
+          "boss": "Kael'thas Sunstrider",
+          "itemID": 32458,
+          "source": "https://www.wowhead.com/item=32458/ashes-of-alar"
         }
       },
       "mounts": [183],
@@ -117,12 +121,16 @@
       "mountSources": {
         "875": {
           "boss": "Attumen the Huntsman",
-          "difficulty": "mythic"
+          "difficulty": "mythic",
+          "itemID": 142236,
+          "source": "https://www.wowhead.com/item=142236/midnights-eternal-reins"
         },
         "883": {
           "boss": "Nightbane",
           "condition": "timed-summon",
-          "difficulty": "mythic"
+          "difficulty": "mythic",
+          "itemID": 142552,
+          "source": "https://www.wowhead.com/item=142552/smoldering-ember-wyrm"
         }
       },
       "mounts": [875, 883],
@@ -137,7 +145,9 @@
       "mapID": 198,
       "mountSources": {
         "425": {
-          "boss": "Alysrazor"
+          "boss": "Alysrazor",
+          "itemID": 71665,
+          "source": "https://www.wowhead.com/item=71665/flametalon-of-alysrazor"
         }
       },
       "mounts": [425],
@@ -157,7 +167,9 @@
         },
         "445": {
           "boss": "Ultraxion",
-          "difficulty": "normal-heroic"
+          "difficulty": "normal-heroic",
+          "itemID": 78919,
+          "source": "https://www.wowhead.com/item=78919/experiment-12-b"
         }
       },
       "mounts": [445, 444],
@@ -172,11 +184,15 @@
       "mountSources": {
         "1217": {
           "boss": "High Tinker Mekkatorque",
-          "difficulty": "normal-heroic-mythic"
+          "difficulty": "normal-heroic-mythic",
+          "itemID": 166518,
+          "source": "https://www.wowhead.com/item=166518/g-m-o-d"
         },
         "1219": {
           "boss": "Lady Jaina Proudmoore",
-          "difficulty": "mythic"
+          "difficulty": "mythic",
+          "itemID": 166705,
+          "source": "https://www.wowhead.com/item=166705/glacial-tidestorm"
         }
       },
       "mounts": [1217, 1219],
@@ -202,7 +218,9 @@
       "mountSources": {
         "613": {
           "boss": "Blackhand",
-          "difficulty": "mythic"
+          "difficulty": "mythic",
+          "itemID": 116660,
+          "source": "https://www.wowhead.com/item=116660/ironhoof-destroyer"
         }
       },
       "mounts": [613],
@@ -234,7 +252,9 @@
       "mountSources": {
         "363": {
           "boss": "The Lich King",
-          "difficulty": "heroic25"
+          "difficulty": "heroic25",
+          "itemID": 50818,
+          "source": "https://www.wowhead.com/item=50818/invincibles-reins"
         }
       },
       "mounts": [363],
@@ -250,7 +270,9 @@
       "mountSources": {
         "559": {
           "boss": "Garrosh Hellscream",
-          "difficulty": "mythic"
+          "difficulty": "mythic",
+          "itemID": 104253,
+          "source": "https://www.wowhead.com/item=104253/korkron-juggernaut"
         }
       },
       "mounts": [559],
@@ -266,7 +288,9 @@
       "mountSources": {
         "751": {
           "boss": "Archimonde",
-          "difficulty": "mythic"
+          "difficulty": "mythic",
+          "itemID": 123890,
+          "source": "https://www.wowhead.com/item=123890/felsteel-annihilator"
         },
         "758": {
           "achievementID": 10149
@@ -285,7 +309,9 @@
       "mountSources": {
         "304": {
           "boss": "Yogg-Saron",
-          "condition": "no-keepers"
+          "condition": "no-keepers",
+          "itemID": 45693,
+          "source": "https://www.wowhead.com/item=45693/mimirons-head"
         }
       },
       "mounts": [304],
@@ -320,7 +346,9 @@
       "mountSources": {
         "1587": {
           "boss": "The Jailer",
-          "difficulty": "mythic"
+          "difficulty": "mythic",
+          "itemID": 190768,
+          "source": "https://www.wowhead.com/item=190768/fractal-cypher-of-the-zereth-overseer"
         }
       },
       "mounts": [1587],

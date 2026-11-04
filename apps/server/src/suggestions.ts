@@ -80,13 +80,14 @@ type CatalogRare = {
   mapID?: number;
   questID?: number;
 };
-type MountSource =
+type MountSource = { itemID?: number; source?: string } & (
   | { achievementID: number }
   | {
       boss: string;
       difficulty?: "normal-heroic" | "normal-heroic-mythic" | "heroic" | "heroic25" | "mythic";
       condition?: "no-keepers" | "timed-summon";
-    };
+    }
+);
 
 type CatalogFarm = {
   id: string;
