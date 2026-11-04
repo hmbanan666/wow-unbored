@@ -79,6 +79,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0074. Public Path pages](0074-public-path-pages.md)
 - [0075. Active Path selection](0075-active-path-selection.md)
 - [0076. Personal Path progress on public pages](0076-website-path-progress.md)
+- [0077. Game media on the website](0077-game-media.md)
 
 The site sections, navigation and SEO rules are in [`docs/site-structure.md`](../site-structure.md).
 

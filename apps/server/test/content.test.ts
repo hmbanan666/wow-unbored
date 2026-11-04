@@ -124,7 +124,18 @@ test.skipIf(!hasPostgres)(
     await sql`DELETE FROM content.paths`;
     const store = new Store(dir, { postgres: sql });
     let clock = 1_800_000_000;
-    const content = new ContentStore(store.db, store.game, () => clock++);
+    let queued = 0;
+    const content = new ContentStore(
+      store.db,
+      store.game,
+      () => clock++,
+      undefined,
+      () => {
+        assert.equal(store.db.inTx, false);
+        queued++;
+        throw new Error("Media queue unavailable");
+      },
+    );
     try {
       await store.game.importBuild("12.0.1.66337", coreResponse);
 
@@ -153,6 +164,7 @@ test.skipIf(!hasPostgres)(
 
       const published = await content.publish("collection", collection.slug);
       assert.deepEqual([published.version, published.status], [1, "published"]);
+      assert.equal(queued, 1, "publication survives a failed media queue after commit");
       assert.equal((await content.publish("collection", collection.slug)).unchanged, true);
       assert.equal((await content.saveDraft(collection)).unchanged, true);
 
@@ -543,3 +555,54 @@ test.skipIf(!hasPostgres)(
     }
   },
 );
+
+test("content preserves optional media, hero, figures and bounded inline references", () => {
+  const hero = { image: "0123456789abcdef", alt: "Our screenshot" };
+  const figure = { type: "figure", ref: { kind: "mount", id: 6 }, alt: "Brown Horse" };
+  const doc = parseContent({
+    ...collection,
+    hero,
+    blocks: [figure, { type: "paragraph", text: "Try [[mount:6]]." }],
+    items: [{ ...collection.items[0], media: { icon: 123, display: 456 } }],
+  });
+  assert.deepEqual(doc.hero, hero);
+  assert.deepEqual(doc.blocks[0], figure);
+  assert.deepEqual(doc.items[0].media, { icon: 123, display: 456 });
+  for (const hero of [
+    { kind: "item", id: 1 },
+    { image: "../bad", alt: "x" },
+    { image: "0123456789abcdef" },
+    { kind: "mount", id: 0 },
+    { kind: "mount", id: 1, image: "0123456789abcdef", alt: "x" },
+  ]) {
+    assert.throws(() => parseContent({ ...collection, hero }), ContentError);
+  }
+  for (const media of [{ icon: 0 }, { display: 1.5 }, null, "bad"]) {
+    assert.throws(
+      () => parseContent({ ...collection, items: [{ ...collection.items[0], media }] }),
+      ContentError,
+    );
+  }
+  for (const block of [
+    { ...figure, image: "0123456789abcdef" },
+    { type: "figure", alt: "x" },
+    { ...figure, alt: "" },
+  ]) {
+    assert.throws(() => parseContent({ ...collection, blocks: [block] }), ContentError);
+  }
+  for (const text of [
+    "[[npc:1]]",
+    "[[[mount:1]]]",
+    "[[mount:1]]]",
+    "[[mount:0]]",
+    "[[mount:1]",
+    "mount:1]]",
+    "[[mount:1]]".repeat(21),
+  ]) {
+    assert.throws(
+      () => parseContent({ ...collection, blocks: [{ type: "paragraph", text }] }),
+      ContentError,
+    );
+  }
+  assert.equal(parseContent(collection).hero, undefined);
+});

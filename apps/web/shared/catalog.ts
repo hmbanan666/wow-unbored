@@ -1,3 +1,11 @@
+import {
+  cleanMediaOverrides,
+  type MediaOverrides,
+  type Hero,
+  type PageMedia,
+  type MediaRef,
+  type MediaAsset,
+} from "@unbored/contracts/game-media";
 import type { Block } from "./blocks";
 
 /** A Collection is a Path with kind `collection` (ADR 0072); a Guide is an authored article. */
@@ -105,6 +113,7 @@ export const SOURCE_LABEL: Record<SourceType, string> = {
 
 /** One authored list item: a verified game target and exactly how to get it. */
 export type CatalogItem = {
+  media?: MediaOverrides;
   kind: ItemKind;
   id?: number;
   level?: number;
@@ -116,6 +125,8 @@ export type CatalogItem = {
 };
 
 export type PublicPage = {
+  hero?: Hero;
+  media: PageMedia;
   version?: number;
   kind: "page" | CatalogKind;
   slug: string;
@@ -131,6 +142,7 @@ export type PublicPage = {
 
 /** A card on the home and index pages. */
 export type CatalogSummary = {
+  icons: (MediaRef & { icon: MediaAsset })[];
   kind: CatalogKind;
   slug: string;
   href: string;
@@ -184,7 +196,9 @@ export function cleanItems(body: unknown): CatalogItem[] {
         url = undefined;
       }
     }
+    const media = cleanMediaOverrides(row.media);
     out.push({
+      ...(media ? { media } : {}),
       kind,
       ...(kind === "level" ? { level: row.level as number } : { id: row.id as number }),
       name,

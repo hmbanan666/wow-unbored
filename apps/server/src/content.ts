@@ -1,3 +1,12 @@
+import {
+  cleanHero,
+  cleanFigure,
+  cleanMediaOverrides,
+  inlineMedia,
+  type Hero,
+  type Figure,
+  type MediaOverrides,
+} from "@unbored/contracts/game-media";
 import type { BlizzardIds } from "./blizzard.ts";
 import { planOutcomeSchema, type PlanOutcome } from "@unbored/contracts";
 import { createHash } from "node:crypto";
@@ -44,6 +53,7 @@ const TIERS = ["basic", "deeper", "complete"] as const;
 
 export type ContentCost = { amount: number; currency?: number; item?: number; gold?: true };
 export type ContentItem = {
+  media?: MediaOverrides;
   kind: ItemKind;
   id?: number;
   standing?: number;
@@ -64,11 +74,13 @@ export type ContentItem = {
   url?: string;
 };
 export type ContentBlock =
+  | Figure
   | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] }
   | { type: "link"; label: string; href: string };
 export type ContentDoc = {
+  hero?: Hero;
   kind: ContentKind;
   slug: string;
   locale: "en" | "ru";
@@ -186,12 +198,30 @@ export function parseContent(input: unknown): ContentDoc {
   }
   if (kind !== "path" && topics.length) problems.push("Topics belong to Paths");
 
+  const hero = cleanHero(raw.hero);
+  if (raw.hero !== undefined && !hero) problems.push("hero is not valid");
+  let inlineCount = 0;
   const blocks: ContentBlock[] = [];
   const rawBlocks = Array.isArray(raw.blocks) ? raw.blocks : [];
   if (rawBlocks.length > MAX_BLOCKS) problems.push(`at most ${MAX_BLOCKS} blocks`);
   rawBlocks.forEach((block, index) => {
     const row = (block ?? {}) as Record<string, unknown>;
-    if (row.type === "heading" && text(row.text, 120))
+    const lines =
+      row.type === "paragraph"
+        ? [row.text]
+        : row.type === "list" && Array.isArray(row.items)
+          ? row.items
+          : [];
+    for (const line of lines) {
+      if (typeof line !== "string") continue;
+      try {
+        inlineCount += inlineMedia(line).length;
+      } catch {
+        problems.push(`blocks[${index}]: invalid inline reference`);
+      }
+    }
+    if (row.type === "figure" && cleanFigure(row)) blocks.push(cleanFigure(row)!);
+    else if (row.type === "heading" && text(row.text, 120))
       blocks.push({ type: "heading", text: text(row.text, 120)! });
     else if (row.type === "paragraph" && text(row.text, 2000))
       blocks.push({ type: "paragraph", text: text(row.text, 2000)! });
@@ -205,9 +235,10 @@ export function parseContent(input: unknown): ContentDoc {
       blocks.push({ type: "list", items: row.items.map((item) => text(item, 400)!) });
     else if (row.type === "link" && text(row.label, 80) && localHref(row.href))
       blocks.push({ type: "link", label: text(row.label, 80)!, href: localHref(row.href)! });
-    else problems.push(`blocks[${index}] is not a heading, paragraph, list or link`);
+    else problems.push(`blocks[${index}] is not a heading, paragraph, list, link or figure`);
   });
 
+  if (inlineCount > 20) problems.push("at most 20 inline references per page");
   const items: ContentItem[] = [];
   const rawItems = Array.isArray(raw.items) ? raw.items : [];
   if (rawItems.length > MAX_ITEMS) problems.push(`at most ${MAX_ITEMS} items`);
@@ -215,6 +246,8 @@ export function parseContent(input: unknown): ContentDoc {
   rawItems.forEach((value, index) => {
     const at = `items[${index}]`;
     const row = (value ?? {}) as Record<string, unknown>;
+    const media = cleanMediaOverrides(row.media);
+    if (row.media !== undefined && !media) problems.push(`${at}.media is not valid`);
     const source = (row.source ?? {}) as Record<string, unknown>;
     const allowedKinds: readonly string[] = kind === "path" ? PATH_GOAL_KINDS : ITEM_KINDS;
     const itemKind = allowedKinds.includes(String(row.kind)) ? (row.kind as ItemKind) : undefined;
@@ -292,6 +325,7 @@ export function parseContent(input: unknown): ContentDoc {
       typeof row.chance === "boolean"
     ) {
       const item: ContentItem = {
+        ...(media ? { media } : {}),
         kind: itemKind,
         ...(id ? { id } : {}),
         ...(row.standing !== undefined ? { standing: row.standing as number } : {}),
@@ -333,7 +367,19 @@ export function parseContent(input: unknown): ContentDoc {
   });
   if (kind !== "guide" && rawItems.length === 0) problems.push("a Path or Collection needs items");
   if (problems.length) throw new ContentError("The content is not valid.", problems);
-  return { kind, slug, locale, title, description, tier, prerequisite, blocks, topics, items };
+  return {
+    kind,
+    slug,
+    locale,
+    title,
+    description,
+    tier,
+    prerequisite,
+    blocks,
+    topics,
+    items,
+    ...(hero ? { hero } : {}),
+  };
 }
 
 /** Outcome candidates still need Plan checks; chance goals and quests cannot supply one. */
@@ -441,6 +487,7 @@ type Row = {
 };
 
 type Body = {
+  hero?: Hero;
   topics?: ContentTopic[];
   blocks: ContentBlock[];
   items: ContentItem[];
@@ -478,17 +525,20 @@ export class ContentStore {
   private readonly game: GameDb;
   private readonly now: () => number;
   private readonly gameIds?: BlizzardIds;
+  private readonly onPublish?: (page: SaveResult) => void;
 
   constructor(
     db: Db,
     game: GameDb,
     now: () => number = () => Math.floor(Date.now() / 1000),
     gameIds?: BlizzardIds,
+    onPublish?: (page: SaveResult) => void,
   ) {
     this.db = db;
     this.game = game;
     this.now = now;
     this.gameIds = gameIds;
+    this.onPublish = onPublish;
   }
 
   get available(): boolean {
@@ -560,6 +610,7 @@ export class ContentStore {
         description: row.description,
         tier: row.tier,
         prerequisite: row.prerequisite_slug,
+        ...(body.hero ? { hero: body.hero } : {}),
         blocks: body.blocks,
         topics: body.topics ?? [],
         items: body.items,
@@ -573,7 +624,14 @@ export class ContentStore {
     const doc = parseContent(input);
     const build = await checkContentIds(doc, this.game, this.gameIds);
     const hash = hashOf(doc);
-    const body: Body = { topics: doc.topics, blocks: doc.blocks, items: doc.items, build, hash };
+    const body: Body = {
+      ...(doc.hero ? { hero: doc.hero } : {}),
+      topics: doc.topics,
+      blocks: doc.blocks,
+      items: doc.items,
+      build,
+      hash,
+    };
     return this.db.tx(async () => {
       await this.db.lockKey(`content:${doc.kind}:${doc.slug}:${doc.locale}`);
       await this.checkPrerequisite(doc);
@@ -627,7 +685,7 @@ export class ContentStore {
   /** Publishes the newest draft after checking its ids again; retires the old version. */
   async publish(kind: ContentKind, slug: string, locale: "en" | "ru" = "en"): Promise<SaveResult> {
     if (!this.available) throw new ContentError("Site content needs the Postgres Server.");
-    return this.db.tx(async () => {
+    const result = await this.db.tx<SaveResult>(async () => {
       await this.db.lockKey(`content:${kind}:${slug}:${locale}`);
       const rows = await this.rows(kind, slug, locale);
       const newest = rows[0];
@@ -654,6 +712,7 @@ export class ContentStore {
         tier: newest.tier,
         prerequisite: newest.prerequisite_slug,
         topics: stored.topics,
+        ...(stored.hero ? { hero: stored.hero } : {}),
         blocks: stored.blocks,
         items: stored.items,
       });
@@ -687,5 +746,12 @@ export class ContentStore {
         items: doc.items.length,
       };
     });
+    // Media work starts after commit and never delays or fails publication.
+    try {
+      this.onPublish?.(result);
+    } catch {
+      /* A later manual sync can retry. */
+    }
+    return result;
   }
 }

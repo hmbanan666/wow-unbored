@@ -1,3 +1,4 @@
+import { cleanFigure, inlineMedia, type Figure } from "@unbored/contracts/game-media";
 /** Authored page body. Structured blocks in Postgres, never a markdown file. */
 
 const MAX_TEXT = 2_000;
@@ -5,6 +6,7 @@ const MAX_BLOCKS = 40;
 const MAX_ITEMS = 30;
 
 export type Block =
+  | Figure
   | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] }
@@ -39,10 +41,30 @@ export function cleanBlocks(body: unknown): Block[] {
       ? (body as { blocks: unknown[] }).blocks
       : [];
   const out: Block[] = [];
+  let inlineCount = 0;
   for (const block of raw) {
     if (out.length >= MAX_BLOCKS || !block || typeof block !== "object") continue;
     const row = block as Record<string, unknown>;
-    if (row.type === "heading") {
+    const lines =
+      row.type === "paragraph"
+        ? [row.text]
+        : row.type === "list" && Array.isArray(row.items)
+          ? row.items
+          : [];
+    try {
+      const count = lines.reduce<number>(
+        (sum, line) => sum + (typeof line === "string" ? inlineMedia(line).length : 0),
+        0,
+      );
+      if (inlineCount + count > 20) continue;
+      inlineCount += count;
+    } catch {
+      continue;
+    }
+    if (row.type === "figure") {
+      const figure = cleanFigure(row);
+      if (figure) out.push(figure);
+    } else if (row.type === "heading") {
       const heading = text(row.text).slice(0, 120);
       if (heading) out.push({ type: "heading", text: heading });
     } else if (row.type === "paragraph") {

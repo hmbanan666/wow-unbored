@@ -1,3 +1,5 @@
+import { cleanHero, cleanMediaRef, type MediaAsset } from "@unbored/contracts/game-media";
+import { readPageMedia } from "./media.ts";
 import { cleanBlocks } from "#shared/blocks";
 import {
   catalogHref,
@@ -40,8 +42,16 @@ function buildOf(body: unknown): string | null {
   return typeof build === "string" && /^\d+\.\d+\.\d+\.\d+$/.test(build) ? build : null;
 }
 
+function heroOf(body: unknown) {
+  return cleanHero(
+    body && typeof body === "object" ? (body as { hero?: unknown }).hero : undefined,
+  );
+}
+
 function pageFrom(row: PageRow): PublicPage {
   return {
+    media: {},
+    ...(heroOf(row.body) ? { hero: heroOf(row.body) } : {}),
     kind: "page",
     slug: "home",
     title: row.title,
@@ -58,6 +68,8 @@ function pageFrom(row: PageRow): PublicPage {
 function catalogFrom(row: CatalogRow): PublicPage | undefined {
   if (!isCatalogKind(row.kind) || !isSlug(row.slug)) return undefined;
   return {
+    media: {},
+    ...(heroOf(row.body) ? { hero: heroOf(row.body) } : {}),
     kind: row.kind,
     version: row.version,
     slug: row.slug,
@@ -78,7 +90,9 @@ export async function readHome(sql: Sql): Promise<PublicPage | undefined> {
     SELECT title, description, headline, body, updated_at
     FROM web.pages
     WHERE slug = 'home' AND locale = 'en'`;
-  return row ? pageFrom(row) : undefined;
+  const page = row ? pageFrom(row) : undefined;
+  if (page) page.media = await readPageMedia(sql, page);
+  return page;
 }
 
 /** The published English Path or Collection. Drafts are not returned. */
@@ -92,13 +106,26 @@ export async function readPublished(
     SELECT kind, slug, title, description, tier, body, published_at, version
     FROM content.paths
     WHERE kind = ${kind} AND slug = ${slug} AND locale = 'en' AND status = 'published'`;
-  return row ? catalogFrom(row) : undefined;
+  const page = row ? catalogFrom(row) : undefined;
+  if (page) page.media = await readPageMedia(sql, page);
+  return page;
 }
 
 /** Every published English Path and Collection, for index pages, the home and the sitemap. */
 export async function listPublished(sql: Sql, kind?: CatalogKind): Promise<CatalogSummary[]> {
-  const rows = await sql<(Omit<CatalogRow, "body"> & { count: number | string })[]>`
+  const rows = await sql<
+    (Omit<CatalogRow, "body"> & { count: number | string; icons: unknown[] })[]
+  >`
     SELECT kind, slug, title, description, tier, published_at,
+      COALESCE((SELECT jsonb_agg(icons.entry) FROM (
+        SELECT jsonb_build_object('kind', item->>'kind', 'id', (item->>'id')::integer,
+          'icon', jsonb_build_object('variants', m.variants, 'width', m.width, 'height', m.height, 'alt', m.alt, 'name', m.name)) AS entry
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(body->'items') = 'array' THEN body->'items' ELSE '[]'::jsonb END)
+          WITH ORDINALITY AS items(item, position)
+        JOIN content.media m ON m.source = 'blizzard' AND m.role = 'icon'
+          AND m.ref_kind = item->>'kind' AND m.ref_id::text = item->>'id'
+        ORDER BY position LIMIT 6
+      ) icons), '[]'::jsonb) AS icons,
       CASE WHEN jsonb_typeof(body -> 'items') = 'array'
         THEN jsonb_array_length(body -> 'items') ELSE 0 END AS count
     FROM content.paths
@@ -110,7 +137,16 @@ export async function listPublished(sql: Sql, kind?: CatalogKind): Promise<Catal
     if (!isCatalogKind(row.kind)) continue;
     const href = catalogHref(row.kind, row.slug);
     if (!href) continue;
+    const icons = (row.icons ?? [])
+      .flatMap((value) => {
+        const ref = cleanMediaRef(value);
+        const icon =
+          value && typeof value === "object" ? (value as { icon?: MediaAsset }).icon : undefined;
+        return ref && icon ? [{ ...ref, icon }] : [];
+      })
+      .slice(0, 6);
     out.push({
+      icons,
       kind: row.kind,
       slug: row.slug,
       href,

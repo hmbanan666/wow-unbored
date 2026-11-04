@@ -159,3 +159,25 @@ test("public Paths retain every goal kind in authored order, including level tar
   assert.equal(items[2].level, 80);
   assert.equal(items[2].id, undefined);
 });
+
+test("media fields survive cleaning and old body output is unchanged", async () => {
+  const { cleanHero } = await import("@unbored/contracts/game-media");
+  const old = {
+    blocks: [
+      { type: "paragraph", text: "Start here." },
+      { type: "list", items: ["One", "Two"] },
+    ],
+  };
+  assert.deepEqual(cleanBlocks(old), old.blocks);
+  const figure = {
+    type: "figure",
+    image: "0123456789abcdef",
+    alt: "Our screenshot",
+    caption: "Here.",
+  };
+  assert.deepEqual(cleanBlocks({ blocks: [figure] }), [figure]);
+  assert.deepEqual(cleanBlocks({ blocks: [{ ...figure, ref: { kind: "mount", id: 1 } }] }), []);
+  assert.deepEqual(cleanHero({ kind: "mount", id: 460 }), { kind: "mount", id: 460 });
+  assert.equal(cleanHero({ kind: "item", id: 1 }), undefined);
+  assert.deepEqual(cleanBlocks({ blocks: [{ type: "paragraph", text: "[[npc:1]]" }] }), []);
+});

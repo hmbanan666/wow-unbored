@@ -19,8 +19,9 @@ defineProps<{
         <a :href="privacy" rel="noopener">What he knows</a>
       </p>
       <p class="ds-meta">
-        Unbored is a fan-made addon, not affiliated with Blizzard Entertainment. World of Warcraft
-        is a trademark of Blizzard Entertainment.
+        World of Warcraft and Blizzard Entertainment are trademarks or registered trademarks of
+        Blizzard Entertainment, Inc. Game icons and renders come from the Blizzard Game Data API.
+        Unbored is a fan project, not affiliated with Blizzard.
       </p>
     </DsContainer>
   </footer>

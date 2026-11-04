@@ -5,7 +5,13 @@ import type { Sql } from "./postgres.ts";
 
 export type GameDataFetch = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+    signal?: AbortSignal;
+    redirect?: "error";
+  },
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 /** Token type to Game Data API document (packages/contracts/markup.md). Currency is not checked. */
@@ -432,7 +438,7 @@ export class BlizzardIds {
     }
   }
 
-  private async accessToken(signal?: AbortSignal): Promise<string | null> {
+  async accessToken(signal?: AbortSignal): Promise<string | null> {
     const config = this.config;
     if (!config) return null;
     if (this.token && this.token.until > this.now()) return this.token.value;
@@ -440,6 +446,7 @@ export class BlizzardIds {
       const basic = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64");
       const response = await this.fetchImpl("https://oauth.battle.net/token", {
         method: "POST",
+        redirect: "error",
         headers: {
           authorization: `Basic ${basic}`,
           "content-type": "application/x-www-form-urlencoded",

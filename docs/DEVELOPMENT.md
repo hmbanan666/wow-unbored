@@ -1086,3 +1086,76 @@ Use the `UNBORED_SERVER_URL` and `UNBORED_PLANNER_TOKEN` environment documented 
 Relationship reads return at most 257 rows: the extra row detects overflow at the 256-result limit. Truncated geometry cannot prove a unique destination; oversized guide relationships fail explicitly instead of returning a misleading partial guide. Criteria trees and child achievement graphs retain their cycle and size guards.
 
 `apps/server/test/places-load.test.ts` imports generated production-size map/quest geometry and journal/criteria data, then sends 50 concurrent MCP place calls and 50 guide calls alongside health requests, on both enabled database backends. It bounds lookup/submission time, event-loop p95 and maximum delay, response size and extra RSS without network access. `game-content-load.test.ts` separately bounds import memory and lag. Two test processes keep the suite within the development machine's CPU budget.
+
+## Website game media
+
+[ADR 0077](adr/0077-game-media.md) stores game art in `content.media` and hashed AVIF/WebP files.
+Migration `0020_game_media.sql` grants SELECT to `unbored_web` only when that role exists.
+This is a Postgres-only content table; SQLite transfer/workflow counts remain **24**.
+The Server and website both use `UNBORED_MEDIA_DIR` (default `/srv/media`); the website also
+accepts `NUXT_MEDIA_DIR` through runtime config. The shared named volume is `unbored-media`,
+mounted at `/srv/media` in both containers, read-only on the website. The Server entrypoint
+creates and chowns its media directory for the node user. Provisioning the shared mount is
+an operator step; this change does not alter deployment configuration.
+
+The Server reuses its Blizzard OAuth client (`BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`,
+`BLIZZARD_REGION`, default `us`). Without credentials, automatic media work is disabled.
+It uses static regional documents with `en_US`, allows only Blizzard API/OAuth/render hosts,
+rejects redirects, and limits each download to 10 seconds and 2 MB (JSON to 256 KB).
+`sharp` ships its platform binary with the Server's production dependencies. Icons retain
+source size up to 56 px; renders trim the flat background and have 320/640 variants; tiles
+have 300/600 variants. Own images use 320/640 variants. Every size has AVIF and WebP.
+
+After owner HTTP or MCP publication commits, a bounded in-process queue syncs its items,
+hero, figures and inline references. Publishing never waits for downloads. Restarting can
+lose pending work; the explicit sync command retries it. Failures log a short message and
+leave existing art available. A daily job (also run at startup) visits Blizzard rows older
+than 25 days in batches of 20. A 404 removes the missing art; transient failures retry on
+the next pass, and assets that cannot be refreshed are removed at 30 days. Stop waits for
+current work before closing the database. Own images are never automatically refreshed.
+
+Commands inside the Server container (or prefix with `apps/server/` from the repo root):
+
+```sh
+node scripts/media.ts sync
+node scripts/media.ts sync --slug top-mounts-to-get-first
+node scripts/media.ts refresh
+node scripts/media.ts add-image /path/to/our-screenshot.png --ref-kind screenshot --alt 'Our character in Stormwind'
+node scripts/media.ts gc
+```
+
+They use `DATABASE_URL` directly; normal Server startup applies the migration first.
+`add-image` accepts only our own/licensed images, caps input at 20 MB, and prints the
+16-character hash for `hero.image` or `figure.image`. `gc` deletes unreferenced variants
+and abandoned temporary files only after one day, protecting writes awaiting a row commit.
+It can be run after refresh or an import; it does not delete referenced files.
+
+Authored items optionally carry `media: { icon: fileDataId, display: creatureDisplayId }`.
+Mount and currency icons require the authored file data id; no spell-media API is used.
+A page can add `hero: { kind: 'mount' | 'pet' | 'instance', id, alt? }` or
+`hero: { image: '<16 lowercase hex>', alt }`. A figure block has `type: 'figure'`, `alt`,
+optional `caption`, and exactly one of `ref: { kind, id }` or `image: '<16 lowercase hex>'`.
+Paragraph/list text accepts at most 20 inline references per page, using
+`[[mount:460]]`, `[[pet:1890]]`, `[[achievement:6]]`, `[[item:84101]]`, `[[toy:1131]]`,
+or `[[currency:3008]]`. Invalid delimiters, unknown kinds and nonpositive ids are rejected.
+These additions share validation helpers in `packages/contracts/src/game-media.ts`.
+
+Public page APIs expose `media`, a map keyed by `kind:id` (or `image:hash` for own images)
+with `icon`, `render`, `tile` or `image`, each containing variants, width, height, name and
+alt. One query gathers the page's referenced media. Catalog summaries include up to six
+available item icons in authored order, each `{ kind, id, icon }`, with no per-card query.
+The site streams `/media/<hash>-<width>.avif|webp` with immutable one-year caching;
+invalid or missing filenames get a 404 cached for 60 seconds. All other filenames are
+rejected before filesystem access. Icons, tooltips and hero/figure rendering are a separate
+change: existing body rendering stays unchanged, and figure blocks currently render nothing.
+
+Tests use generated images and fake HTTP responses, never live Blizzard credentials.
+Run with local PostgreSQL 18 (the role must be able to create test databases):
+
+```sh
+UNBORED_TEST_DATABASE_URL="$(pg-test url postgres)" \
+UNBORED_WEB_TEST_DATABASE_URL="$(pg-test url postgres)" pnpm test:js
+```
+
+The tests cover resolution, source restrictions, conversion, publish isolation, refresh,
+collection of unused files, new/old content bodies, database page/card reads and file serving.

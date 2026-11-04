@@ -44,6 +44,7 @@ export default defineNuxtConfig({
     compressPublicAssets: true,
   },
   runtimeConfig: {
+    mediaDir: "/srv/media",
     /** Server base URL for sign-in (NUXT_SERVER_URL). Empty uses this request's origin. */
     serverUrl: "",
     /** Sealed cookie, httpOnly, secure, SameSite=Lax; the row in web.sessions decides. */

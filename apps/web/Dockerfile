@@ -14,11 +14,14 @@ COPY apps/server/package.json apps/server/package.json
 COPY apps/companion/package.json apps/companion/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/contracts/src/web-session.ts packages/contracts/src/web-session.ts
+COPY packages/contracts/src/game-media.ts packages/contracts/src/game-media.ts
 
 RUN pnpm install --frozen-lockfile --filter @unbored/web...
 RUN pnpm --filter @unbored/web build
 
 FROM node:26-bookworm-slim
+
+RUN mkdir -p /srv/media
 
 WORKDIR /app
 ENV NODE_ENV=production

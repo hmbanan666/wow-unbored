@@ -1,3 +1,6 @@
+import { MediaStore } from "./media-store.ts";
+import { MediaResolver } from "./media.ts";
+import { mediaName } from "./media-name.ts";
 import { registerWebPaths } from "./web-paths.ts";
 import { ActivePathError, pathCharacterSchema, setActivePathSchema } from "./active-path.ts";
 import { GameImportError, validGameBuild } from "./game-db.ts";
@@ -90,6 +93,8 @@ export function createApp(
     blizzard?: BlizzardConfig | null;
     blizzardFetch?: GameDataFetch;
     gameDbFetch?: typeof fetch;
+    mediaFetch?: typeof fetch;
+    mediaDir?: string;
     /** One line per request (docs/adr/0013). Defaults to stdout. */
     log?: (line: string) => void;
     /** Postgres from DATABASE_URL, migrated (ADR 0057); the caller closes it. */
@@ -621,7 +626,19 @@ export function createApp(
   });
 
   // Authored site content (ADR 0072, 0074): save a checked draft, then publish it.
-  const content = new ContentStore(store.db, store.game, undefined, gameIds);
+  const mediaConfig = config.blizzard === undefined ? blizzardFromEnv() : config.blizzard;
+  const media = new MediaStore(
+    store.db,
+    mediaConfig ? new MediaResolver(mediaConfig.region, gameIds, config.mediaFetch) : null,
+    config.mediaDir,
+    config.mediaFetch,
+    undefined,
+    log,
+    (ref) => mediaName(store.game, ref),
+  );
+  const content = new ContentStore(store.db, store.game, undefined, gameIds, (page) =>
+    media.enqueue(page),
+  );
   const contentFailed = (c: Parameters<typeof requireRole>[0], error: unknown) => {
     if (error instanceof ContentError)
       return c.json({ error: error.message, problems: error.problems }, 400);
@@ -831,6 +848,7 @@ export function createApp(
     webhook,
     runner,
     gameWatch,
+    media,
     startReconnectCleanup,
     /** The upload worker; index.ts starts it. Undefined on SQLite or inline ingest. */
     inbox,
@@ -839,6 +857,7 @@ export function createApp(
       reconnectTimer = undefined;
       runner?.stop();
       webhook.stop();
+      await media.stop();
       await gameWatch.stop();
       await reconnectCleanup;
       store.close();

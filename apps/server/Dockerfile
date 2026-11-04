@@ -22,7 +22,7 @@ COPY packages/contracts packages/contracts
 ENV PORT=3000
 ENV UNBORED_DATA_DIR=/data
 
-RUN mkdir -p /data && chmod 755 /usr/local/bin/unbored-entrypoint
+RUN mkdir -p /data /srv/media && chmod 755 /usr/local/bin/unbored-entrypoint
 
 WORKDIR /src/apps/server
 
