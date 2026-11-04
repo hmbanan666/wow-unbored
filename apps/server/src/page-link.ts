@@ -121,7 +121,18 @@ export async function redeemPageLink(db: Db, token: string, now: number): Promis
   });
 }
 
-/** Forget my data ends every open session and unused link for this Device. */
+/** Erase all website credentials for an Account, including used and ended rows.
+ * The caller holds the Account lock inside the data-erasure transaction.
+ */
+export async function erasePageData(db: Db, account: string) {
+  await ensureSqlite(db);
+  const { links, sessions } = tables(db.pg);
+  const signInLinks = await db.run(`DELETE FROM ${links} WHERE account_id = ?`, account);
+  const webSessions = await db.run(`DELETE FROM ${sessions} WHERE account_id = ?`, account);
+  return { webSessions, signInLinks };
+}
+
+/** End any remaining Device sessions and remove its sign-in links after Forget. */
 export async function endPageSessions(
   db: Db,
   input: { accounts: string[]; deviceId: string; now: number },

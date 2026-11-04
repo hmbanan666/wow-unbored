@@ -1154,7 +1154,7 @@ export function createMcpServer(
     {
       title: "Delete an Account's data (owner only)",
       description:
-        "Owner only. Erases every Game data Section, its history, the Characters, 0.6 profiles, Player history, personal advice and ideas of one Account, and (unless requests is false) its Requests and the plans made for them: the same set a player erases with Forget my data in the Companion, which also revokes that device. This cannot be undone; pass confirm: true.",
+        "Owner only. Erases every Game data Section, its history, the Characters, 0.6 profiles, Player history, personal advice, ideas, website sessions and sign-in links (including used or expired ones) of one Account, and (unless requests is false) its Requests and the plans made for them: the same set a player erases with Forget my data in the Companion, which also revokes that device. Returns per-table removal counts, including webSessions and signInLinks. This cannot be undone; pass confirm: true.",
       inputSchema: {
         account: z.string().min(1).max(80),
         confirm: z.literal(true),
