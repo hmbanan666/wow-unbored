@@ -788,7 +788,7 @@ mascot.buttons.use:Click()
 check(ns.Session.state.source == "companion" and #ns.Session.state.tasks == 3, "Switch starts the Full plan")
 check(mascot.view.kind == "step" and textOf(mascot.message):find("Fly to Dalaran", 1, true) == 1, "the step as written")
 check(textOf(mascot.title) == "Ride to Dalaran", "the card is titled by the plan: " .. textOf(mascot.title))
--- Closed: title, progress, action, reward and distance; explanation stays inside.
+-- Closed: title, progress, action and legacy reward; explanations stay inside.
 check(not ns.Mascot.CardOpen(), "the card starts closed")
 check(not mascot.why:IsShown(), "closed: no extra explanation")
 check(mascot.message.height >= 2 * LINE_HEIGHT, "a long step wraps")
@@ -2083,12 +2083,12 @@ do
   check(not mascot.CardOpen() and not ns.Session.state.cardOpen,
     "ApplyPlan resets expansion even with the old Account cardOpen value set")
   check(not textOf(mascot.message):find("Step 1 of", 1, true),
-    "a single-Step Plan draws neither pips nor Step 1 of 1")
+    "a single-Step Plan omits Step 1 of 1")
   mascot.cardToggle:Click()
   check(mascot.bonus:IsShown() and textOf(mascot.bonus):find("Possible bonus:", 1, true),
     "the expanded card labels the bonus as uncertain")
   check(not textOf(mascot.message):find("Step 1 of", 1, true),
-    "expanding a single-Step Plan still draws neither pips nor a count")
+    "expanding a single-Step Plan still omits the Step count")
   local legacy = readJson("../packages/contracts/fixtures/plan-currency.json")
   legacy.outcome, legacy.bonus = nil, nil
   legacy.rewards = { "{item:6948|Hearthstone}" }
@@ -2096,6 +2096,10 @@ do
   check(not mascot.outcomeChip:IsShown() and not mascot.bonus:IsShown()
     and mascot.rewardLines[1]:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
     "a 0.11-style Plan without outcome or bonus keeps its original reward chip")
+  legacy.title = "Get Hearthstone"
+  ns.Session:ApplyPlan(assert(ns.ValidatePlan(legacy)), "companion", true)
+  check(mascot.rewardLines[1]:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
+    "a 0.11 Plan keeps its collapsed reward even when the title names it")
   UnboredDB.mascot.cardOpen = nil
   C_CurrencyInfo, C_Reputation, C_MountJournal = oldCurrency, oldRep, oldMount
 end
@@ -2148,6 +2152,12 @@ do
   check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true)
     and not mascot.rewardLines[2]:IsShown(), "only distinct rewards survive expansion")
   GetAchievementInfo, GetAchievementCriteriaInfo, GetAchievementNumCriteria = oldInfo, oldCriteria, oldCount
+  ns.Session:Current().rewards = { "{item:6948|Another label}" }
+  mascot:Refresh()
+  check(not mascot.rewardLines[2]:IsShown(), "Plan and Step rewards deduplicate by target, not token spelling")
+  ns.Session.state.title, ns.Session.state.goal = "Hearthstones", "Gather supplies."
+  mascot:Refresh()
+  check(mascot.rewardLines[1]:IsShown(), "a reward name inside a longer word is not the title")
   ns.LANG, ns.L = "ru", ns.Locales.ru
   ns.Session.state.title, ns.Session.state.goal = "Почёт Спореггара", "ПОЧЁТ — СПОРЕГГАРА!"
   mascot:Refresh()

@@ -37,7 +37,7 @@ local ECHO_ALPHA = { 0.85, 0.55 }
 local LEAD_SECONDS = 8
 local GOLD = P.highlight
 local LIST_MAX_HEIGHT = 260
-local LIST_ROW_GAP = 4
+local LIST_ROW_GAP = 8
 -- The drop hint stops once the player has handed Bory this many items.
 local DROP_TEACH = 3
 -- Media/IconChevron.tga points left ("<"), and SetRotation turns it
@@ -1118,17 +1118,19 @@ local function cardText(text)
   return text:gsub("|T.-|t", ""):gsub("|H.-|h(.-)|h", "%1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
 end
 
-local function cardWords(text)
+local function cardWords(text, spaced)
   text = cardText(text)
   local upper, lower = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ", "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
   for i = 1, #upper, 2 do text = text:gsub(upper:sub(i, i + 1), lower:sub(i, i + 1)) end
-  for _, mark in ipairs({ "«", "»", "—", "–", "…", "’" }) do text = text:gsub(mark, "") end
-  return text:lower():gsub("[%p%s]", "")
+  text = text:gsub("’", ""):gsub("'", "")
+  for _, mark in ipairs({ "«", "»", "—", "–", "…" }) do text = text:gsub(mark, " ") end
+  text = ns.Trim(text:lower():gsub("%p", " "):gsub("%s+", " "))
+  return spaced and text or text:gsub("%s", "")
 end
 
 local function repeatsTitle(text, title)
-  local words, name = cardWords(text), cardWords(title)
-  return words ~= "" and name ~= "" and name:find(words, 1, true) ~= nil
+  local words, name = cardWords(text, true), cardWords(title, true)
+  return words ~= "" and name ~= "" and (" " .. name .. " "):find(" " .. words .. " ", 1, true) ~= nil
 end
 
 -- Suppress a repeated goal, but keep sentences that add instructions or context.
@@ -1157,11 +1159,10 @@ local function outcomeToken(target)
   return id and ("{" .. kind .. ":" .. id .. "}") or nil
 end
 
-local function sameTarget(token, target)
-  local expected = outcomeToken(target)
-  if not expected then return false end
+local function rewardKey(token)
+  if type(token) ~= "string" then return token end
   local kind, id = token:match("^{(%l+):(%d+)")
-  return kind and ("{" .. kind .. ":" .. id .. "}") == expected
+  return id and ("{" .. kind .. ":" .. tonumber(id) .. "}") or token
 end
 
 -- Plan Rewards first, then the Step's own, at most 6 (D91). A container gets
@@ -1171,10 +1172,11 @@ local function rewardLines(state, task, open, title)
   for _, list in ipairs({ state.rewards or {}, task.rewards or {} }) do
     for i = 1, #(type(list) == "table" and list or {}) do
       local token = list[i]
-      if type(token) == "string" and not seen[token] and #out < ns.PLAN_LIMITS.rewards then
-        seen[token] = true
+      local key = rewardKey(token)
+      if type(token) == "string" and not seen[key] and #out < ns.PLAN_LIMITS.rewards then
+        seen[key] = true
         local line = ns.Markup.RenderReward(token, relink)
-        if line and not sameTarget(token, state.outcome) and not repeatsTitle(line, title) then
+        if line and key ~= outcomeToken(state.outcome) and not repeatsTitle(line, title) then
           local tail, links = ns.Mascot.ContainsText(state.contains, token)
           if tail then
             line = line .. " " .. ns.Hex(MUTED) .. tail .. "|r"
@@ -1260,7 +1262,7 @@ local function stepView(mascot, session, task)
   local goal = render(state.goal, state.npcs)
   if repeatedGoal(goal, title, render(task.title, task.npcs)) then goal = nil end
   local rewards = rewardLines(state, task, open, title)
-  local closedReward = rewardLines(state, task, false, title)[1]
+  local closedReward = not state.outcome and rewardLines(state, task, false)[1]
   local outcome = ns.Outcome.View(state.outcome)
   local bonus = {}
   for _, token in ipairs(state.bonus or {}) do
@@ -1873,8 +1875,8 @@ function ns.Mascot:LayoutList(rows, width)
     if entry.detail then
       row.detail:SetText(entry.detail)
       row.detail:ClearAllPoints()
-      row.detail:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 8, -2)
-      height = height + 2 + ns.UI.Measure(row.detail, width - 8)
+      row.detail:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 8, -8)
+      height = height + 8 + ns.UI.Measure(row.detail, width - 8)
       row.detail:Show()
     else
       row.detail:SetText("")
