@@ -231,6 +231,10 @@ for (const backend of BACKENDS) {
         build,
         names: { enUS: "Going Down?", ruRU: "Летим!" },
       });
+      assert.deepEqual(
+        app.downloads.map((url) => new URL(url).searchParams.get("build")),
+        [build, build],
+      );
       assert.deepEqual(app.downloads.map((url) => new URL(url).searchParams.get("locale")).sort(), [
         "enUS",
         "ruRU",
