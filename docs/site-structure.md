@@ -7,6 +7,8 @@ How playunbored.com is organised (ADRs 0072-0074). The site is an authored porta
 | URL | What it is | Indexed |
 | --- | --- | --- |
 | `/` | What Unbored is, how Bory works in three steps, featured Collections and Paths, install | yes |
+| `/guides` | Every published Guide: short articles such as "What to do at max level in Midnight" | yes |
+| `/guides/<slug>` | One Guide: headed sections of original text, checked facts, links to the Collections and Paths it points at | yes |
 | `/collections` | Every published Collection: authored top lists such as "Top mounts to get first" | yes |
 | `/collections/<slug>` | One Collection: why the list, then each item with what it is and exactly how to get it | yes |
 | `/paths` | Every published Path, grouped by content and tier (Basic, Deeper, Complete) | yes |
@@ -14,7 +16,7 @@ How playunbored.com is organised (ADRs 0072-0074). The site is an authored porta
 | `/install` | Get the addon and the Companion (the GitHub release feed), what Bory knows about you | yes |
 | `/my` | My page: your characters, Plans and progress, after signing in from the Companion | no |
 
-Header: Collections, Paths, Install, My page. Footer: the same links, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
+Header: Guides, Collections, Paths, Install, My page. Footer: the same links, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
 
 ## A list item
 
@@ -31,3 +33,7 @@ Public pages are English, server-rendered, with one H1, a unique title and descr
 ## Content
 
 All texts live in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and are written through owner tools that check every id against the Game DB. No content in repo files.
+
+## Guides
+
+A Guide is the third kind in `content.paths` (`kind = 'guide'`, migration 0016), authored through the same `/owner/content` route. Its blocks may include `heading` (an H2). Items are optional; when present they follow the Collection item rules. Every game fact in a Guide (names, vendors, costs, achievement titles) comes from the Game DB build it was checked against; anything that cannot be checked is left out. A Guide links to at least one Collection, and the Collections it points at link back.

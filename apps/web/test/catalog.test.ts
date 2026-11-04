@@ -16,10 +16,20 @@ import {
 test("paths and collections share the catalog, and objects have no page", () => {
   assert.deepEqual(
     PUBLIC_ROUTES.map((route) => route.pattern),
-    ["/", "/paths", "/paths/:slug", "/collections", "/collections/:slug", "/install"],
+    [
+      "/",
+      "/paths",
+      "/paths/:slug",
+      "/collections",
+      "/collections/:slug",
+      "/guides",
+      "/guides/:slug",
+      "/install",
+    ],
   );
   assert.equal(catalogHref("path", "midnight-basic"), "/paths/midnight-basic");
   assert.equal(catalogHref("collection", "first-mounts"), "/collections/first-mounts");
+  assert.equal(catalogHref("guide", "first-steps"), "/guides/first-steps");
   assert.equal(catalogHref("path", "../etc"), undefined);
   assert.equal(isCatalogKind("path"), true);
   assert.equal(isCatalogKind("collection"), true);

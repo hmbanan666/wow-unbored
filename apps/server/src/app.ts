@@ -642,7 +642,8 @@ export function createApp(
     if (!content.available) return c.json({ error: "Site content needs Postgres." }, 503);
     const kind = c.req.param("kind");
     const locale = c.req.query("locale") === "ru" ? "ru" : "en";
-    if (kind !== "path" && kind !== "collection") return c.json({ error: "No such kind." }, 404);
+    if (kind !== "path" && kind !== "collection" && kind !== "guide")
+      return c.json({ error: "No such kind." }, 404);
     try {
       return c.json(await content.publish(kind, c.req.param("slug"), locale));
     } catch (error) {

@@ -11,7 +11,8 @@ function external(href: string): boolean {
 <template>
   <div>
     <template v-for="(block, index) in blocks" :key="index">
-      <p v-if="block.type === 'paragraph'">{{ block.text }}</p>
+      <h2 v-if="block.type === 'heading'" class="entry-heading">{{ block.text }}</h2>
+      <p v-else-if="block.type === 'paragraph'">{{ block.text }}</p>
       <ul v-else-if="block.type === 'list'">
         <li v-for="item in block.items" :key="item">{{ item }}</li>
       </ul>

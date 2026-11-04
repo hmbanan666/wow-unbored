@@ -5,6 +5,7 @@ const MAX_BLOCKS = 40;
 const MAX_ITEMS = 30;
 
 export type Block =
+  | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] }
   | { type: "link"; label: string; href: string };
@@ -15,7 +16,7 @@ const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export function allowedHref(href: string): boolean {
   const value = href.trim();
   if (value.startsWith("/") && !value.startsWith("//")) {
-    if (["/", "/paths", "/collections", "/install"].includes(value)) return true;
+    if (["/", "/paths", "/collections", "/guides", "/install"].includes(value)) return true;
     const match = /^\/(paths|collections)\/([^/]+)$/.exec(value);
     return Boolean(match && match[2]!.length <= 80 && SLUG.test(match[2]!));
   }
@@ -41,7 +42,10 @@ export function cleanBlocks(body: unknown): Block[] {
   for (const block of raw) {
     if (out.length >= MAX_BLOCKS || !block || typeof block !== "object") continue;
     const row = block as Record<string, unknown>;
-    if (row.type === "paragraph") {
+    if (row.type === "heading") {
+      const heading = text(row.text).slice(0, 120);
+      if (heading) out.push({ type: "heading", text: heading });
+    } else if (row.type === "paragraph") {
       const paragraph = text(row.text);
       if (paragraph) out.push({ type: "paragraph", text: paragraph });
     } else if (row.type === "list" && Array.isArray(row.items)) {

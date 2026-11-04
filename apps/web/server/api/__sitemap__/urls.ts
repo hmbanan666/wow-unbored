@@ -1,9 +1,9 @@
 import { listPublished } from "../../utils/content.ts";
 import { db } from "../../utils/db.ts";
 
-/** Index pages and every published Path and Collection (docs/site-structure.md). */
+/** Index pages and every published Guide, Path and Collection (docs/site-structure.md). */
 export default defineSitemapEventHandler(async () => {
-  const fixed = ["/collections", "/paths", "/install"].map((loc) => ({ loc }));
+  const fixed = ["/guides", "/collections", "/paths", "/install"].map((loc) => ({ loc }));
   const sql = db();
   if (!sql) return fixed;
   const pages = await listPublished(sql);

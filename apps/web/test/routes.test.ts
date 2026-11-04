@@ -18,16 +18,18 @@ function files(dir: string): string[] {
   return out;
 }
 
-test("public pages are home, install, paths and collections", () => {
+test("public pages are home, install, guides, paths and collections", () => {
   const pages = path.join(web, "app/pages");
   assert.deepEqual(readdirSync(pages).sort(), [
     "collections",
+    "guides",
     "index.vue",
     "install.vue",
     "my.vue",
     "paths",
   ]);
   assert.deepEqual(readdirSync(path.join(pages, "paths")).sort(), ["[slug].vue", "index.vue"]);
+  assert.deepEqual(readdirSync(path.join(pages, "guides")).sort(), ["[slug].vue", "index.vue"]);
   assert.deepEqual(readdirSync(path.join(pages, "collections")).sort(), [
     "[slug].vue",
     "index.vue",

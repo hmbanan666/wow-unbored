@@ -4,13 +4,13 @@ import { fromJson } from "./db.ts";
 import type { GameDb } from "./game-db.ts";
 
 /**
- * Authored site content: Paths and Collections in `content.paths` (ADR 0072,
+ * Authored site content: Paths, Collections and Guides in `content.paths` (ADR 0072,
  * 0074). Owners save a draft and publish it; every game id, zone and cost id
  * must exist in the Game DB build the draft was checked against. A published
  * version is never edited: a change is a new draft version.
  */
 
-export const CONTENT_KINDS = ["path", "collection"] as const;
+export const CONTENT_KINDS = ["path", "collection", "guide"] as const;
 export type ContentKind = (typeof CONTENT_KINDS)[number];
 export const ITEM_KINDS = ["mount", "pet", "toy", "achievement", "item"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -47,6 +47,7 @@ export type ContentItem = {
   url?: string;
 };
 export type ContentBlock =
+  | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] }
   | { type: "link"; label: string; href: string };
@@ -98,7 +99,10 @@ function https(value: unknown): string | undefined {
 
 function localHref(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  if (value === "/" || /^\/(paths|collections)\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value))
+  if (
+    ["/", "/paths", "/collections", "/guides", "/install"].includes(value) ||
+    /^\/(paths|collections|guides)\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
+  )
     return value;
   return https(value);
 }
@@ -109,7 +113,7 @@ export function parseContent(input: unknown): ContentDoc {
   const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const kind = CONTENT_KINDS.includes(raw.kind as ContentKind)
     ? (raw.kind as ContentKind)
-    : (problems.push("kind must be path or collection"), "collection");
+    : (problems.push("kind must be path, collection or guide"), "collection");
   const slug =
     typeof raw.slug === "string" && raw.slug.length <= 80 && SLUG.test(raw.slug)
       ? raw.slug
@@ -129,21 +133,23 @@ export function parseContent(input: unknown): ContentDoc {
       : TIERS.includes(raw.tier as (typeof TIERS)[number])
         ? (raw.tier as (typeof TIERS)[number])
         : (problems.push("tier must be basic, deeper or complete"), null);
-  if (kind === "collection" && tier) problems.push("a collection has no tier");
+  if (kind !== "path" && tier) problems.push(`a ${kind} has no tier`);
   const prerequisite =
     raw.prerequisite === undefined || raw.prerequisite === null
       ? null
       : typeof raw.prerequisite === "string" && SLUG.test(raw.prerequisite)
         ? raw.prerequisite
         : (problems.push("prerequisite must be a slug"), null);
-  if (kind === "collection" && prerequisite) problems.push("a collection has no prerequisite");
+  if (kind !== "path" && prerequisite) problems.push(`a ${kind} has no prerequisite`);
 
   const blocks: ContentBlock[] = [];
   const rawBlocks = Array.isArray(raw.blocks) ? raw.blocks : [];
   if (rawBlocks.length > MAX_BLOCKS) problems.push(`at most ${MAX_BLOCKS} blocks`);
   rawBlocks.forEach((block, index) => {
     const row = (block ?? {}) as Record<string, unknown>;
-    if (row.type === "paragraph" && text(row.text, 2000))
+    if (row.type === "heading" && text(row.text, 120))
+      blocks.push({ type: "heading", text: text(row.text, 120)! });
+    else if (row.type === "paragraph" && text(row.text, 2000))
       blocks.push({ type: "paragraph", text: text(row.text, 2000)! });
     else if (
       row.type === "list" &&
@@ -155,7 +161,7 @@ export function parseContent(input: unknown): ContentDoc {
       blocks.push({ type: "list", items: row.items.map((item) => text(item, 400)!) });
     else if (row.type === "link" && text(row.label, 80) && localHref(row.href))
       blocks.push({ type: "link", label: text(row.label, 80)!, href: localHref(row.href)! });
-    else problems.push(`blocks[${index}] is not a paragraph, list or link`);
+    else problems.push(`blocks[${index}] is not a heading, paragraph, list or link`);
   });
 
   const items: ContentItem[] = [];
