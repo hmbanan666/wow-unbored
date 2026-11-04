@@ -335,7 +335,7 @@ export function parseContent(input: unknown): ContentDoc {
   return { kind, slug, locale, title, description, tier, prerequisite, blocks, topics, items };
 }
 
-/** Only guaranteed goal kinds can become outcomes; quests need a separately chosen outcome. */
+/** Outcome candidates still need Plan checks; chance goals and quests cannot supply one. */
 export function contentItemOutcome(item: ContentItem): PlanOutcome | undefined {
   if (item.chance || item.kind === "quest" || item.kind === "questLine") return undefined;
   const target =
@@ -437,9 +437,15 @@ type Body = {
 };
 
 function hashOf(doc: ContentDoc): string {
-  const { kind, slug, locale, ...rest } = doc;
+  const { kind, slug, locale, topics, ...rest } = doc;
+  // Omitted defaults keep hashes compatible with publications written before Path fields.
+  const normalized = {
+    ...rest,
+    items: rest.items.map(({ required, ...item }) => (required ? item : { ...item, required })),
+    ...(topics.length ? { topics } : {}),
+  };
   return createHash("sha256")
-    .update(JSON.stringify([kind, slug, locale, rest]))
+    .update(JSON.stringify([kind, slug, locale, normalized]))
     .digest("hex");
 }
 

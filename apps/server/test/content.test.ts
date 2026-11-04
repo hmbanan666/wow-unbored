@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -499,6 +500,42 @@ test.skipIf(!hasPostgres)(
           (error) => problems(error).some((p) => p.includes("zone:999999")),
         );
       }
+    } finally {
+      store.close();
+      await sql`DELETE FROM content.paths`;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(!hasPostgres)(
+  "saving an unchanged publication from before Path fields is still a no-op",
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".content-legacy-"));
+    const sql = pg("postgres")!;
+    const store = new Store(dir, { postgres: sql });
+    const content = new ContentStore(store.db, store.game);
+    // A pre-existing publication in the format written before Topics and required flags.
+    const fields = {
+      title: collection.title,
+      description: collection.description,
+      tier: null,
+      prerequisite: null,
+      blocks: collection.blocks,
+      items: collection.items,
+    };
+    const hash = createHash("sha256")
+      .update(JSON.stringify(["collection", collection.slug, "en", fields]))
+      .digest("hex");
+    try {
+      await sql`DELETE FROM content.paths`;
+      await sql`INSERT INTO content.paths (kind, slug, locale, title, description, version, status, body, updated_at)
+      VALUES ('collection', ${collection.slug}, 'en', ${collection.title}, ${collection.description}, 1, 'published',
+        ${sql.json({ blocks: collection.blocks, items: collection.items, hash, build: "12.0.1.66337" })}, 1)`;
+      await store.game.importBuild("12.0.1.66337", coreResponse);
+      const original = await content.read("collection", collection.slug);
+      assert.equal((await content.saveDraft(collection)).unchanged, true);
+      assert.deepEqual(await content.read("collection", collection.slug), original);
     } finally {
       store.close();
       await sql`DELETE FROM content.paths`;

@@ -8,8 +8,8 @@ defineProps<{ items: CatalogItem[] }>();
   <ol class="items">
     <li
       v-for="(item, index) in items"
-      :id="`${item.kind}-${item.id}`"
-      :key="`${item.kind}:${item.id}`"
+      :id="`${item.kind}-${item.id ?? item.level}`"
+      :key="`${item.kind}:${item.id ?? item.level}`"
       class="item"
     >
       <span class="item-rank" aria-hidden="true">{{ index + 1 }}</span>
