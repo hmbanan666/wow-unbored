@@ -290,8 +290,10 @@ The owner and a live Plan runner lease can call:
   no Catalog match and truncated searches are explicit. Journal search is
   limited to its first 50 results with a four-second HTTP timeout, and each
   nested `items[].item.id` is checked independently. It does not search every
-  vendor, quest or crafting recipe. Drop probability and acquisition guarantees
-  remain unknown; a journal listing alone cannot justify a guaranteed outcome.
+  vendor, quest or crafting recipe. Drop probability remains unknown; the
+  acquisition verdict uses vetted Catalog facts and current Game DB source
+  categories as described below. A journal listing alone cannot justify a
+  guaranteed outcome.
 
 Name and quest-line answers identify their build, table, locale and CSV source.
 No lookup downloads client tables. Item lookup uses the existing optional
@@ -339,11 +341,34 @@ is no separate data import for these checks.
 Before the first import, existing structural checks and optional remote id
 checks remain available, and submission replies explicitly report the missing
 Game DB in `notes`. Once imported, Game DB checks are authoritative and do not
-fall back to another build. Acquisition guarantees are not in the current
-source tables: source categories do not prove that a drop is chance-only.
-Source-based chance-only rejection remains a TODO until sourced acquisition
-facts are available; the Planner must still verify near-guaranteed outcomes
-under ADR 0068.
+fall back to another build. Acquisition uses current-build `SourceTypeEnum`
+from `Mount`, `BattlePetSpecies`, and `Toy` (joined by `ItemID` for toy and item
+outcomes): Quest 1, Vendor 2, and Achievement 5 establish a guaranteed source.
+These are the zero-based client categories, not the one-based journal filter
+numbers. Costs, prerequisites and availability still need Planner verification
+under ADR 0068; a guaranteed source alone does not make a target reachable now.
+
+Catalog mount sources can also carry a vetted target-wide `acquisition` verdict
+(`guaranteed` or `chance-only`) with their existing source URL. The same verdict
+applies to a source's `itemID`. Ashes of Al'ar is chance-only; Infernal Direwolf
+is an achievement reward. A known guaranteed source takes precedence over a
+chance-only Catalog verdict, including when a newer build adds a source. A
+boss name, DB2 Drop category 0, or Blizzard journal loot match alone proves
+neither chance-only acquisition nor a guaranteed drop. Missing or ambiguous
+evidence stays unknown, accepted with an informational `notes` entry, never a
+warning. The Catalog remains usable before the first import. Chance-only
+outcomes are rejected before storing anything; the explanation asks the Planner
+to keep the collectible in `bonus`, choose a near-guaranteed outcome and retry.
+
+`get_item_sources` reports the same item acquisition verdict and its source URLs;
+individual Catalog rows expose their own verdict. Blizzard matches still have
+`guaranteed: null`; failures and partial searches cannot turn missing evidence
+into a refusal. Submissions use local evidence and make no new API calls.
+No tables, columns or migrations are needed; transfer/workflow counts stay at
+23. Existing imports already contain the required fields. For an empty
+installation the documented operator command remains
+`node apps/server/scripts/import-game.ts <current-live-build>`; development
+does not run it against production.
 
 `game-plan.test.ts` exercises MCP submissions, HTTP rejection, warning payloads,
 current-build changes and unchanged Request state after a rejected Answer on

@@ -1,4 +1,9 @@
-import { checkGameOutcome, checkGameCompletions, gameMarkupCheck } from "./game-plan.ts";
+import {
+  checkGameOutcome,
+  checkGameCompletions,
+  checkOutcomeAcquisition,
+  gameMarkupCheck,
+} from "./game-plan.ts";
 import { GameDb, GAME_SQLITE_SCHEMA } from "./game-db.ts";
 import { DatabaseSync } from "node:sqlite";
 
@@ -320,6 +325,7 @@ export class Store {
       await checkGameOutcome(plan, this.game, build);
       await checkGameCompletions(plan, this.game, build, check.warnings);
     }
+    await checkOutcomeAcquisition(plan, this.game, build, check.notes);
     if (!check.places)
       cleanPlanPlaces(plan, { ...check, places: { questPoints: [], knownPoints: [] } });
     const unb1 = encodeUnb1(plan);

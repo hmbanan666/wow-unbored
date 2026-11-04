@@ -651,7 +651,14 @@ export function createApp(
         const stored = await store.putPlan(
           plan,
           undefined,
-          { gameBuild: build, missing, warnings, context: asked?.context, wish: asked?.wish },
+          {
+            gameBuild: build,
+            missing,
+            warnings,
+            notes,
+            context: asked?.context,
+            wish: asked?.wish,
+          },
           requestId,
         );
         const request = requestId ? await store.fulfillRequest(requestId, stored.id) : undefined;
