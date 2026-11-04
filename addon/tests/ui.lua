@@ -643,7 +643,8 @@ check(reloads == 0, "a preset click does not reload")
 check(ns.Session:PendingRequest() == nil and ns.Session:FlowState() == "quick", "nothing is sent yet")
 local quick = ns.Session.state
 check(quick and quick.quick and quick.topic == "mount", "a Quick plan is built here")
-check(mascot.view.kind == "step" and textOf(mascot.message) == ns.Session:Current().title, "Bory shows the first step")
+check(mascot.view.kind == "step" and textOf(mascot.message):find(ns.Session:Current().title, 1, true) == 1,
+  "Bory shows the first step")
 check(textOf(mascot.header) == "", "no Refresh talk over the Quick plan: " .. textOf(mascot.header))
 check(shownButtons() == "done,skip,proper", "Done, Skip and one proper-plan button: " .. shownButtons())
 check(textOf(mascot.buttons.proper.label) == "Want a proper plan?", "the button asks")
@@ -787,7 +788,7 @@ mascot.buttons.use:Click()
 check(ns.Session.state.source == "companion" and #ns.Session.state.tasks == 3, "Switch starts the Full plan")
 check(mascot.view.kind == "step" and textOf(mascot.message):find("Fly to Dalaran", 1, true) == 1, "the step as written")
 check(textOf(mascot.title) == "Ride to Dalaran", "the card is titled by the plan: " .. textOf(mascot.title))
--- Closed: title, progress, action, reward and distance; explanation stays inside.
+-- Closed: title, progress, action and legacy reward; explanations stay inside.
 check(not ns.Mascot.CardOpen(), "the card starts closed")
 check(not mascot.why:IsShown(), "closed: no extra explanation")
 check(mascot.message.height >= 2 * LINE_HEIGHT, "a long step wraps")
@@ -796,13 +797,13 @@ check(mascot.rewardLines[1]:IsShown() and textOf(mascot.rewardLines[1]):find("He
 for _, region in ipairs({ "goal", "details", "list" }) do
   check(not mascot[region]:IsShown(), "closed: no " .. region)
 end
-check(mascot.cardToggle:IsShown() and textOf(mascot.cardToggle.label) == "Show more", "one Show more toggle")
+check(mascot.cardToggle:IsShown() and textOf(mascot.cardToggle.label) == "More", "one More toggle")
 check(mascot.cardToggle.chevron.rotation == math.pi / 2, "closed: the chevron points down (D166)")
 check(mascot.collapse.icon.rotation == -math.pi / 2, "the collapse icon points up: fold it up (D166)")
 local function shownRegions()
   local out = {}
   for _, name in ipairs({ "meta", "header", "title", "condition", "message", "why", "sub", "where", "goal",
-    "details", "pipRow", "list", "rewardsHeader", "cardToggle" }) do
+    "details", "list", "rewardsHeader", "cardToggle" }) do
     if mascot[name]:IsShown() then
       out[#out + 1] = name
     end
@@ -822,14 +823,13 @@ local closedHeight = mascot.bubble.height
 
 mascot.cardToggle:Click()
 check(ns.Mascot.CardOpen() and ns.Session.state.cardOpen == true, "Show more is remembered on this Plan")
-check(textOf(mascot.cardToggle.label) == "Show less", "the toggle now says Show less")
-check(mascot.view.pips and mascot.view.pips.done == 1 and mascot.view.pips.total == 4, "open: the pips, 1 of 4 done")
-check(mascot.pipRow:IsShown(), "the pip row is on the card")
+check(textOf(mascot.cardToggle.label) == "Less", "the toggle now says Less")
+check(textOf(mascot.message):find("Step 2 of 4", 1, true), "Step count stays inline with the action")
 check(textOf(mascot.goal) == "Get to Dalaran and set your hearth there", "open: the goal")
 check(mascot.planDetails:IsShown() and textOf(mascot.planDetails):find("portal room", 1, true),
   "open: Plan details in the header only")
-check(not mascot.details:IsShown(), "open: the Step note stays behind More")
-mascot.noteToggle:Click()
+check(mascot.noteToggle == nil, "there is no separate Step note toggle")
+check(mascot.details:IsShown(), "one toggle opens the Step note too")
 check(textOf(mascot.details):find("never be cut", 1, true)
   and not textOf(mascot.details):find("portal room", 1, true), "More shows only the Step note")
 check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
@@ -854,7 +854,7 @@ check(not ns.Mascot.CardOpen() and not mascot.list:IsShown() and mascot.bubble.h
 for _, region in ipairs({ "goal", "details", "list", "rewardsHeader" }) do
   check(not mascot[region]:IsShown(), "closed after open: no " .. region)
 end
-check(mascot.where:IsShown() and mascot.pipRow:IsShown(), "closed: footer and progress stay visible")
+check(not mascot.where:IsShown(), "closed: route details stay behind More")
 for i = 2, #mascot.rewardLines do
   check(not mascot.rewardLines[i]:IsShown(), "closed after open: no reward line " .. i)
 end
@@ -1469,7 +1469,7 @@ ns.Session:ApplyPlan(raid, "companion", true)
 ns.Session:Done()
 if not ns.Mascot.CardOpen() then mascot.cardToggle:Click() end
 mascot:Refresh()
-mascot.noteToggle:Click()
+check(mascot.noteToggle == nil, "no nested note toggle")
 check(mascot.detailsScroll ~= nil, "long raid details have their own scroll area")
 if mascot.detailsScroll then
   check(mascot.detailsScroll:GetHeight() <= 180, "expanded instructions stay within 180 pixels")
@@ -1506,12 +1506,12 @@ ns.Session.answer = nil
 ns.Session:ApplyPlan(linked, "companion", true)
 mascot.forceChoice = nil
 mascot:Refresh()
-check(textOf(mascot.message) == "Talk to |cffffd100|Haddon:Unbored:npc:12345|h[Fixer Kev]|h|r",
+check(textOf(mascot.message):find("Talk to |cffffd100|Haddon:Unbored:npc:12345|h[Fixer Kev]|h|r", 1, true) == 1,
   "an npc link in the title: " .. textOf(mascot.message))
 if not ns.Mascot.CardOpen() then
   mascot.cardToggle:Click()
 end
-mascot.noteToggle:Click()
+check(mascot.noteToggle == nil, "no nested note toggle")
 check(textOf(mascot.details):find("|Hitem:6948|h[Hearthstone]|h", 1, true) ~= nil, "an item link with the game's name")
 check(textOf(mascot.details):find("|Haddon:Unbored:pin:2339:52.1:47.3|h[the forge]|h", 1, true) ~= nil, "a pin link")
 check(ns.Markup.Plain(linked.tasks[1].title, linked.tasks[1].npcs) == "Talk to Fixer Kev", "plain text for the tracker")
@@ -1610,8 +1610,8 @@ applyCard({ v = 1, kind = "plan", mode = "custom", note = "Plan for request mode
 check(textOf(mascot.title) == "Your plan", "a 0.7 plan without a title: never its note (D96): " .. textOf(mascot.title))
 check(not mascot.rewardsHeader:IsShown(), "no rewards: no reward row")
 check(not mascot.why:IsShown() and not mascot.condition:IsShown(), "no why, no condition line")
-check(textOf(mascot.where) == "about 25 min", "the footer time in words: " .. textOf(mascot.where))
-check(not bubbleText():find("~", 1, true), "no ~ anywhere on the card")
+check(textOf(mascot.message):find("· ~25 min", 1, true), "the action includes the Step time")
+check(not mascot.where:IsShown(), "time does not get its own footer")
 check(ns.Steps.Duration(100) == "1 h 40 min" and ns.Steps.Duration(120) == "2 h", "hours read as words")
 
 local coins = 3200
@@ -1808,7 +1808,7 @@ do
     "the right arrow is the chevron turned around")
   check(shownButtons() == "done,skip", "a group step has no new action buttons")
   mascot.buttons.skip.scripts.OnEnter(mascot.buttons.skip)
-  check(textOf(GameTooltip) == ns.T("TIP_SKIP_GROUP"), "Skip in a group says it drops the step")
+  check(textOf(GameTooltip) == ns.T("SKIP"), "Skip in a group has its localized tooltip")
   mascot.groupRow.next:Click()
   check(ns.Session:Current().id == "r2" and textOf(mascot.groupRow.text) == "2 of 4 · any order",
     "the right arrow shows the next rare")
@@ -1833,7 +1833,7 @@ do
   ns.Session:RefreshUI()
   check(not mascot.groupRow:IsShown(), "a sequential plan has no arrows")
   mascot.buttons.skip.scripts.OnEnter(mascot.buttons.skip)
-  check(textOf(GameTooltip) == ns.T("TIP_SKIP"), "Skip outside a group is unchanged")
+  check(textOf(GameTooltip) == ns.T("SKIP"), "Skip outside a group has its localized tooltip")
   ns.Session.state = nil
   ns.Session:RefreshUI()
 end
@@ -1869,7 +1869,7 @@ do
   mascot:Refresh()
   check(mascot.outcomeChip:IsShown() and mascot.outcomeChip.bar:IsShown(), "closed card has an outcome bar")
   check(textOf(mascot.outcomeChip.label):find("12 / 20", 1, true), "outcome chip shows owned currency")
-  check(textOf(mascot.bonus):find("Possible bonus:", 1, true), "bonus is explicitly uncertain")
+  check(not mascot.bonus:IsShown(), "the bonus is collapsed with the explanations")
   check(mascot.cardToggle:IsShown(), "a sole Step reward makes the outcome card expandable")
   mascot.cardToggle:Click()
   check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
@@ -1925,8 +1925,9 @@ do
     tasks = { { id = "travel", title = "Reach Sporeggar", mapID = 102, x = 0.195, y = 0.5 },
       { id = "turnin", title = "Turn in the quest", note = "Talk to Gzhun'tt." } } }, "companion")
   check(pins == 0 and C_Map.pin == nil, "another continent defers the native waypoint")
-  check(textOf(mascot.route):find("Outland", 1, true), "collapsed card names the target continent")
+  check(not mascot.route:IsShown(), "route hint stays behind More")
   mascot.cardToggle:Click()
+  check(textOf(mascot.route):find("Outland", 1, true), "expanded card names the target continent")
   check(textOf(mascot.goal) == "Help Sporeggar" and textOf(mascot.planDetails) == "One naga errand.",
     "Plan goal and details appear once in the expanded header")
   for _, row in ipairs(mascot.view.all) do
@@ -1939,7 +1940,7 @@ do
   ns.Events.Pulse()
   check(pins == 1, "the distance pulse does not reset the native waypoint")
   ns.Session:Done()
-  check(mascot.CardOpen() and not mascot.details:IsShown(), "within a Plan expansion persists, notes start hidden")
+  check(mascot.CardOpen() and mascot.details:IsShown(), "within a Plan expansion keeps the new Step note visible")
   C_Map, C_Timer.After = oldMap, oldAfter
 end
 
@@ -2068,25 +2069,26 @@ do
   ns.Session:ApplyPlan(assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan-outcome.json"))),
     "companion", true)
   check(mascot.outcomeChip:IsShown() and textOf(mascot.outcomeChip.label):find("Honored · Sporeggar", 1, true)
-    and textOf(mascot.outcomeChip.label):find("5,885 / 6,000", 1, true),
+    and textOf(mascot.outcomeChip.label):find("Friendly  ·  5,885 / 6,000", 1, true),
     "shared reputation fixture reaches the live outcome chip through import and ApplyPlan")
   check(not mascot.CardOpen() and not mascot.goal:IsShown(), "the old Account cardOpen value is ignored")
-  check(mascot.pipRow:IsShown() and mascot.stepCount:IsShown(), "multiple Steps keep their pips and count")
+  check(textOf(mascot.message):find("Step 1 of", 1, true), "multiple Steps show their count inline")
   mascot.cardToggle:Click()
   check(mascot.CardOpen(), "the previous Plan is expanded before replacement")
   ns.Session:ApplyPlan(assert(ns.ValidatePlan(readJson("../packages/contracts/fixtures/plan-currency.json"))),
     "companion", true)
   check(mascot.outcomeChip:IsShown() and textOf(mascot.outcomeChip.label):find("3,200 / 5,000", 1, true),
     "shared currency fixture reaches the live total-amount chip through import and ApplyPlan")
-  check(mascot.bonus:IsShown() and textOf(mascot.bonus):find("Possible bonus:", 1, true),
-    "the shared currency fixture renders an explicitly uncertain bonus")
+  check(not mascot.bonus:IsShown(), "the bonus stays behind More")
   check(not mascot.CardOpen() and not ns.Session.state.cardOpen,
     "ApplyPlan resets expansion even with the old Account cardOpen value set")
-  check(not mascot.pipRow:IsShown() and not mascot.stepCount:IsShown(),
-    "a single-Step Plan draws neither pips nor Step 1 of 1")
+  check(not textOf(mascot.message):find("Step 1 of", 1, true),
+    "a single-Step Plan omits Step 1 of 1")
   mascot.cardToggle:Click()
-  check(not mascot.pipRow:IsShown() and not mascot.stepCount:IsShown(),
-    "expanding a single-Step Plan still draws neither pips nor a count")
+  check(mascot.bonus:IsShown() and textOf(mascot.bonus):find("Possible bonus:", 1, true),
+    "the expanded card labels the bonus as uncertain")
+  check(not textOf(mascot.message):find("Step 1 of", 1, true),
+    "expanding a single-Step Plan still omits the Step count")
   local legacy = readJson("../packages/contracts/fixtures/plan-currency.json")
   legacy.outcome, legacy.bonus = nil, nil
   legacy.rewards = { "{item:6948|Hearthstone}" }
@@ -2094,8 +2096,85 @@ do
   check(not mascot.outcomeChip:IsShown() and not mascot.bonus:IsShown()
     and mascot.rewardLines[1]:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
     "a 0.11-style Plan without outcome or bonus keeps its original reward chip")
+  legacy.title = "Get Hearthstone"
+  ns.Session:ApplyPlan(assert(ns.ValidatePlan(legacy)), "companion", true)
+  check(mascot.rewardLines[1]:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true),
+    "a 0.11 Plan keeps its collapsed reward even when the title names it")
   UnboredDB.mascot.cardOpen = nil
   C_CurrencyInfo, C_Reputation, C_MountJournal = oldCurrency, oldRep, oldMount
+end
+
+-- A live achievement card has one reading order, even with old saved note state.
+do
+  local oldInfo, oldCriteria, oldCount = GetAchievementInfo, GetAchievementCriteriaInfo, GetAchievementNumCriteria
+  local oldLink = GetAchievementLink
+  GetAchievementLink = function() return "|cffffff00|Hachievement:42:0|h[Void Bane: Zul'Aman]|h|r" end
+  GetAchievementInfo = function() return 42, "Void Bane: Zul'Aman", 10, false, nil, nil, nil, nil, nil, 123 end
+  GetAchievementNumCriteria = function() return 1 end
+  GetAchievementCriteriaInfo = function() return "Strikes", nil, false, 32, 50 end
+  ns.Session:ApplyPlan({ title = "Void Bane: Zul'Aman",
+    goal = "Complete 19 more Void Strikes in Zul'Aman to earn {ach:42}",
+    outcome = { kind = "achievement", achievementID = 42 }, rewards = { "{ach:42|Old label}" },
+    tasks = { { id = "strikes", title = "Complete Void Strikes in Zul'Aman", estMinutes = 90,
+      note = "Fly to the closest Void Strike." } } }, "companion", true)
+  mascot.noteTask = ns.Session:Current()
+  mascot:Refresh()
+  check(textOf(mascot.outcomeChip.label) == "32 / 50", "the live count does not repeat the title")
+  local titleY = mascot.title.points[1][5]
+  local progressY = mascot.outcomeChip.points[1][5]
+  check(progressY == titleY - mascot.title.height - 8, "live progress follows the title by eight pixels")
+  check(mascot.message.points[1][5] < progressY, "the current action follows live progress")
+  check(textOf(mascot.message):find("· ~1 h 30 min", 1, true), "time is inline with the action")
+  check(not mascot.where:IsShown(), "time has no detached footer")
+  check(mascot.cardActions.points[1][5] > mascot.cardToggle.points[1][5], "buttons precede More")
+  check(mascot.noteToggle == nil and not mascot.details:IsShown(), "old noteTask cannot open a second disclosure")
+  mascot.buttons.done.scripts.OnEnter(mascot.buttons.done)
+  check(textOf(GameTooltip) == "Done", "Done has its localized game tooltip")
+  mascot.buttons.skip.scripts.OnEnter(mascot.buttons.skip)
+  check(textOf(GameTooltip) == "Skip", "Skip has its localized game tooltip")
+  check(mascot.titleReward and mascot.titleReward:IsShown(), "the first reward icon sits beside the title")
+  if mascot.titleReward then
+    mascot.titleReward.scripts.OnEnter(mascot.titleReward)
+    check(hovered and hovered:find("achievement:42", 1, true), "title reward uses the game achievement tooltip")
+  end
+  mascot.cardToggle:Click()
+  check(not mascot.goal:IsShown(), "a goal restating the action and title is hidden")
+  check(not mascot.rewardsHeader:IsShown(), "the outcome target is not repeated as a reward")
+  check(mascot.details:IsShown(), "one More reveals the note")
+  ns.Session.state.goal = "Void Bane: Zul'Aman also unlocks the next chapter."
+  mascot:Refresh()
+  check(mascot.goal:IsShown(), "a goal that adds information beyond the title stays visible")
+  ns.Session.state.goal = "VOID BANE — ZUL’AMAN!"
+  mascot:Refresh()
+  check(not mascot.goal:IsShown(), "case and punctuation do not create a second title")
+  ns.Session.state.rewards = { "{ach:42|Different spelling}", "{item:6948|Hearthstone}" }
+  mascot:Refresh()
+  check(mascot.rewardsHeader:IsShown() and textOf(mascot.rewardLines[1]):find("Hearthstone", 1, true)
+    and not mascot.rewardLines[2]:IsShown(), "only distinct rewards survive expansion")
+  GetAchievementInfo, GetAchievementCriteriaInfo, GetAchievementNumCriteria = oldInfo, oldCriteria, oldCount
+  ns.Session:Current().rewards = { "{item:6948|Another label}" }
+  mascot:Refresh()
+  check(not mascot.rewardLines[2]:IsShown(), "Plan and Step rewards deduplicate by target, not token spelling")
+  ns.Session.state.title, ns.Session.state.goal = "Hearthstones", "Gather supplies."
+  mascot:Refresh()
+  check(mascot.rewardLines[1]:IsShown(), "a reward name inside a longer word is not the title")
+  ns.LANG, ns.L = "ru", ns.Locales.ru
+  ns.Session.state.title, ns.Session.state.goal = "Почёт Спореггара", "ПОЧЁТ — СПОРЕГГАРА!"
+  mascot:Refresh()
+  check(not mascot.goal:IsShown(), "Russian case and punctuation deduplicate the goal")
+  check(textOf(mascot.cardToggle.label) == "Свернуть", "the single toggle closes in Russian")
+  mascot.cardToggle:Click()
+  check(textOf(mascot.cardToggle.label) == "Подробнее", "the single toggle opens in Russian")
+  for _, name in ipairs({ "done", "skip" }) do
+    local button = mascot.buttons[name]
+    button.scripts.OnEnter(button)
+    check(textOf(GameTooltip) == (name == "done" and "Готово" or "Пропустить"), name .. " tooltip in Russian")
+    button.scripts.OnLeave(button)
+    check(not GameTooltip:IsShown(), "leaving an action hides the tooltip")
+  end
+  ns.LANG, ns.L = "en", ns.Locales.en
+  GetAchievementLink = oldLink
+  mascot.noteTask = nil
 end
 
 if fails > 0 then

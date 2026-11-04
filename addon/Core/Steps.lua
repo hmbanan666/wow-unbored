@@ -29,7 +29,7 @@ function Steps.About(minutes)
 end
 
 -- The muted footer: route point, distance, and the Step's own time if it has one.
-function Steps.Footer(task)
+function Steps.Footer(task, withoutTime)
   local point, index, count = ns.Waypoint.Target(task)
   local parts = {}
   if point and count > 1 then
@@ -43,7 +43,7 @@ function Steps.Footer(task)
   if yards then
     parts[#parts + 1] = ns.T("YARDS", math.floor(yards + 0.5))
   end
-  local about = Steps.About(task.estMinutes)
+  local about = not withoutTime and Steps.About(task.estMinutes)
   if about then
     parts[#parts + 1] = about
   end

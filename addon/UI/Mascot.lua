@@ -36,10 +36,8 @@ local ECHO_BYTES = 90
 local ECHO_ALPHA = { 0.85, 0.55 }
 local LEAD_SECONDS = 8
 local GOLD = P.highlight
-local PIPS = 12
-local PIP = 7
 local LIST_MAX_HEIGHT = 260
-local LIST_ROW_GAP = 4
+local LIST_ROW_GAP = 8
 -- The drop hint stops once the player has handed Bory this many items.
 local DROP_TEACH = 3
 -- Media/IconChevron.tga points left ("<"), and SetRotation turns it
@@ -88,15 +86,8 @@ local PORTRAIT_RING = "BoryFrame128"
 -- Every action looks the same: one frame, a glyph from Media/Icon*, and a
 -- label when a glyph alone would not be clear.
 local ACTIONS = {
-  done = { icon = "IconDone", tip = "TIP_DONE" },
-  skip = {
-    icon = "IconSkip",
-    tip = "TIP_SKIP",
-    -- In a Step group Skip drops the step at once (docs/adr/0056).
-    tipFor = function()
-      return ns.T(ns.Session and ns.Session:GroupInfo() and "TIP_SKIP_GROUP" or "TIP_SKIP")
-    end,
-  },
+  done = { icon = "IconDone", label = "TIP_DONE", tipFor = function() return ns.T("TIP_DONE") end },
+  skip = { icon = "IconSkip", label = "SKIP", tipFor = function() return ns.T("SKIP") end },
   back = { icon = "IconBack", tip = "BACK" },
   ok = { icon = "IconDone", tip = "GOT_IT" },
   cancel = { icon = "IconClose", tip = "CANCEL_REQUEST" },
@@ -618,75 +609,6 @@ local function textToggle(parent, onClick)
   return button
 end
 
--- Progress pips (D91): done filled, the current one a gold ring, the rest dim.
-local function pipRow(parent)
-  local frame = CreateFrame("Frame", nil, parent)
-  frame:SetHeight(PIP)
-  frame:EnableMouse(true)
-  frame.pips = {}
-  for i = 1, PIPS do
-    local pip = frame:CreateTexture(nil, "ARTWORK")
-    pip:SetSize(PIP, PIP)
-    pip:SetPoint("LEFT", (i - 1) * (PIP + 4), 0)
-    local hole = frame:CreateTexture(nil, "OVERLAY")
-    hole:SetSize(PIP - 4, PIP - 4)
-    hole:SetPoint("CENTER", pip, "CENTER")
-    hole:SetColorTexture(P.bg[1], P.bg[2], P.bg[3], 1)
-    pip.hole = hole
-    frame.pips[i] = pip
-  end
-  frame.more = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  frame.more:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
-  frame:SetScript("OnEnter", function(self)
-    if GameTooltip and self.tip then
-      GameTooltip:SetOwner(self, "ANCHOR_TOP")
-      GameTooltip:SetText(self.tip, 1, 1, 1, 1, true)
-      GameTooltip:Show()
-    end
-  end)
-  frame:SetScript("OnLeave", function()
-    if GameTooltip then
-      GameTooltip:Hide()
-    end
-  end)
-  frame:Hide()
-  return frame
-end
-
-local function drawPips(frame, done, total)
-  local shown = math.min(total, PIPS)
-  for i = 1, PIPS do
-    local pip = frame.pips[i]
-    if i > shown then
-      pip:Hide()
-      pip.hole:Hide()
-    else
-      pip:Show()
-      if i <= done then
-        pip:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 1)
-        pip.hole:Hide()
-      elseif i == done + 1 then
-        pip:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
-        pip.hole:Show()
-      else
-        pip:SetColorTexture(MUTED[1], MUTED[2], MUTED[3], 0.35)
-        pip.hole:Hide()
-      end
-    end
-  end
-  local width = shown * (PIP + 4)
-  if total > PIPS then
-    frame.more:SetText("+" .. (total - PIPS))
-    frame.more:ClearAllPoints()
-    frame.more:SetPoint("LEFT", width, 0)
-    frame.more:Show()
-    width = width + math.ceil(ns.AsNumber(frame.more:GetStringWidth()) or 12)
-  else
-    frame.more:Hide()
-  end
-  frame:SetWidth(math.max(width, 1))
-end
-
 function ns.Mascot:CreateBubble()
   local okBubble, bubble = pcall(CreateFrame, "Frame", "UnboredMascotBubble", UIParent, "BackdropTemplate")
   if not okBubble or not bubble then
@@ -731,18 +653,27 @@ function ns.Mascot:CreateBubble()
   -- The plan card (D91).
   self.title = font(bubble, "GameFontNormal")
   self.title:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-  self.pipRow = pipRow(bubble)
+  self.cardActions = CreateFrame("Frame", nil, bubble)
+  self.titleReward = CreateFrame("Frame", nil, bubble)
+  self.titleReward:SetSize(16, 16)
+  self.titleReward:EnableMouse(true)
+  self.titleReward.icon = self.titleReward:CreateTexture(nil, "ARTWORK")
+  self.titleReward.icon:SetAllPoints()
+  self.titleReward:SetScript("OnEnter", function(frame)
+    if frame.link then ns.Markup.OnEnter(frame, frame.link, frame.text) end
+  end)
+  self.titleReward:SetScript("OnLeave", function() ns.Markup.OnLeave() end)
   self.goal = font(bubble, "GameFontHighlightSmall")
   self.goal:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
-  self.outcomeChip = framed(bubble)
+  self.outcomeChip = CreateFrame("Frame", nil, bubble)
   self.outcomeChip:EnableMouse(false)
   self.outcomeChip.label = font(self.outcomeChip, "GameFontHighlightSmall")
   self.outcomeChip.label:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
-  self.outcomeChip.label:SetPoint("TOPLEFT", 8, -6)
+  self.outcomeChip.label:SetPoint("TOPLEFT", 0, 0)
   self.outcomeChip.bar = CreateFrame("StatusBar", nil, self.outcomeChip)
   self.outcomeChip.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
   self.outcomeChip.bar:SetStatusBarColor(GOLD[1], GOLD[2], GOLD[3])
-  self.outcomeChip.bar:SetPoint("BOTTOMLEFT", 8, 6)
+  self.outcomeChip.bar:SetPoint("BOTTOMLEFT", 0, 0)
   self.outcomeChip.bar.back = self.outcomeChip.bar:CreateTexture(nil, "BACKGROUND")
   self.outcomeChip.bar.back:SetAllPoints()
   self.outcomeChip.bar.back:SetColorTexture(MUTED[1], MUTED[2], MUTED[3], 0.25)
@@ -752,13 +683,6 @@ function ns.Mascot:CreateBubble()
   self.route:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
   self.planDetails = font(bubble, "GameFontHighlightSmall")
   self.planDetails:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
-  self.stepCount = font(bubble, "GameFontHighlightSmall")
-  self.stepCount:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
-  self.noteToggle = textToggle(bubble, function()
-    local task = ns.Session:Current()
-    self.noteTask = task and self.noteTask ~= task and task or nil
-    self:Refresh()
-  end)
   self.condition = font(bubble, "GameFontHighlightSmall")
   self.condition:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
   self.why = font(bubble, "GameFontHighlightSmall")
@@ -767,6 +691,8 @@ function ns.Mascot:CreateBubble()
     self.peek = nil
     self:ToggleCard()
   end)
+  self.cardToggle.label:SetFontObject("GameFontHighlightSmall")
+  self.cardToggle.label:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
   local detailsScroll = CreateFrame("ScrollFrame", nil, bubble)
   detailsScroll.child = CreateFrame("Frame", nil, detailsScroll)
   detailsScroll:SetScrollChild(detailsScroll.child)
@@ -810,11 +736,12 @@ function ns.Mascot:CreateBubble()
   list.rows = {}
   list:Hide()
   self.list = list
-  self.rewardsHeader = font(bubble, "GameFontNormalSmall")
-  self.rewardsHeader:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+  self.rewardsHeader = font(bubble, "GameFontHighlightSmall")
+  self.rewardsHeader:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
   self.rewardLines = {}
   for i = 1, ns.PLAN_LIMITS.rewards do
     self.rewardLines[i] = font(bubble, "GameFontHighlightSmall")
+    self.rewardLines[i]:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
   end
   -- A Step group (docs/adr/0056): "‹  2 of 4 · any order  ›".
   local groupRow = CreateFrame("Frame", nil, bubble)
@@ -1118,6 +1045,7 @@ end
 
 -- A name that loads after the Bubble was drawn draws it again.
 local function relink()
+  ns.Mascot.titleArt = nil
   ns.Mascot:Refresh()
 end
 
@@ -1184,17 +1112,71 @@ function ns.Mascot.ContainsText(contains, token)
   return ns.T("CONTAINS_MANY_" .. kind, #left), left
 end
 
+-- Compare visible names, not link ids, icons or game colors. Lua's lower is ASCII-only.
+local function cardText(text)
+  text = ns.Markup.Plain(text or "") or ""
+  return text:gsub("|T.-|t", ""):gsub("|H.-|h(.-)|h", "%1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+end
+
+local function cardWords(text, spaced)
+  text = cardText(text)
+  local upper, lower = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ", "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+  for i = 1, #upper, 2 do text = text:gsub(upper:sub(i, i + 1), lower:sub(i, i + 1)) end
+  text = text:gsub("’", ""):gsub("'", "")
+  for _, mark in ipairs({ "«", "»", "—", "–", "…" }) do text = text:gsub(mark, " ") end
+  text = ns.Trim(text:lower():gsub("%p", " "):gsub("%s+", " "))
+  return spaced and text or text:gsub("%s", "")
+end
+
+local function repeatsTitle(text, title)
+  local words, name = cardWords(text, true), cardWords(title, true)
+  return words ~= "" and name ~= "" and (" " .. name .. " "):find(" " .. words .. " ", 1, true) ~= nil
+end
+
+-- Suppress a repeated goal, but keep sentences that add instructions or context.
+local function repeatedGoal(goal, title, action)
+  if repeatsTitle(goal, title) then return true end
+  local words, name = cardWords(goal), cardWords(title)
+  for _, verb in ipairs({ "get", "earn", "complete", "получить", "завершить" }) do
+    if words == verb .. name then return true end
+  end
+  local function actionWords(text)
+    text = cardText(text):lower():gsub("%d+", ""):gsub("%f[%a]more%f[%A]", "")
+    text = text:gsub(" ещё ", " "):gsub(" еще ", " ")
+    return cardWords(text)
+  end
+  local actionText = actionWords(action)
+  for _, purpose in ipairs({ "toearn", "toget", "чтобыполучить" }) do
+    if actionText ~= "" and actionWords(goal) == actionText .. purpose .. name then return true end
+  end
+  return false
+end
+
+local function outcomeToken(target)
+  if not target then return nil end
+  local kind = target.kind == "achievement" and "ach" or target.kind
+  local id = target.id or target.achievementID or target.currencyID
+  return id and ("{" .. kind .. ":" .. id .. "}") or nil
+end
+
+local function rewardKey(token)
+  if type(token) ~= "string" then return token end
+  local kind, id = token:match("^{(%l+):(%d+)")
+  return id and ("{" .. kind .. ":" .. tonumber(id) .. "}") or token
+end
+
 -- Plan Rewards first, then the Step's own, at most 6 (D91). A container gets
 -- its contents on the same line; open adds a muted line of their links.
-local function rewardLines(state, task, open)
+local function rewardLines(state, task, open, title)
   local out, seen = {}, {}
   for _, list in ipairs({ state.rewards or {}, task.rewards or {} }) do
     for i = 1, #(type(list) == "table" and list or {}) do
       local token = list[i]
-      if type(token) == "string" and not seen[token] and #out < ns.PLAN_LIMITS.rewards then
-        seen[token] = true
+      local key = rewardKey(token)
+      if type(token) == "string" and not seen[key] and #out < ns.PLAN_LIMITS.rewards then
+        seen[key] = true
         local line = ns.Markup.RenderReward(token, relink)
-        if line then
+        if line and key ~= outcomeToken(state.outcome) and not repeatsTitle(line, title) then
           local tail, links = ns.Mascot.ContainsText(state.contains, token)
           if tail then
             line = line .. " " .. ns.Hex(MUTED) .. tail .. "|r"
@@ -1220,7 +1202,7 @@ local function conditionLine(task, check)
   if not check then
     return text
   end
-  local tag = check.met and (ns.Hex(P.ok) .. ns.T("READY") .. "|r") or (ns.Hex(ACCENT) .. ns.T("NOT_YET") .. "|r")
+  local tag = ns.T(check.met and "READY" or "NOT_YET")
   return text and (text .. "  " .. tag) or tag
 end
 
@@ -1275,34 +1257,45 @@ local function stepView(mascot, session, task)
     details[#details + 1] = progressText
   end
   local note = render(task.note, task.npcs)
-  if mascot.noteTask == task then
-    details[#details + 1] = note
-  end
+  if note then details[#details + 1] = note end
+  local title = session:PlanName()
   local goal = render(state.goal, state.npcs)
-  local rewards = rewardLines(state, task, open)
-  local closedReward = rewardLines(state, task, false)[1]
+  if repeatedGoal(goal, title, render(task.title, task.npcs)) then goal = nil end
+  local rewards = rewardLines(state, task, open, title)
+  local closedReward = not state.outcome and rewardLines(state, task, false)[1]
   local outcome = ns.Outcome.View(state.outcome)
   local bonus = {}
   for _, token in ipairs(state.bonus or {}) do
     bonus[#bonus + 1] = ns.Markup.RenderReward(token, relink)
   end
-  local where = ns.Steps.Footer(task)
+  local where = ns.Steps.Footer(task, true)
   local many = progress.steps > 1
-  local tip = ns.T("STEP_OF", progress.step, progress.steps)
-  local left = ns.Steps.Duration(progress.minutesLeft)
-  if left then
-    tip = tip .. "\n" .. ns.T("LEFT", left)
+  local message = ns.Markup.Render(task.title or "", task.npcs, relink)
+  local inline = {}
+  if many then inline[#inline + 1] = ns.T("STEP_OF", progress.step, progress.steps) end
+  local duration = ns.Steps.Duration(task.estMinutes)
+  if duration then inline[#inline + 1] = ns.T("STEP_ESTIMATE", duration) end
+  if #inline > 0 then message = message .. ns.Hex(MUTED) .. " · " .. table.concat(inline, " · ") .. "|r" end
+  local rewardToken = (state.rewards or {})[1] or outcomeToken(state.outcome) or (task.rewards or {})[1]
+  if not ns.IsCombat() and (not mascot.titleArt or mascot.titleArt.state ~= state
+    or mascot.titleArt.token ~= rewardToken) then
+    mascot.titleArt = { state = state, token = rewardToken,
+      icon = rewardToken and ns.Markup.RewardIcon(rewardToken) }
   end
+  local titleReward = rewardToken and ns.Markup.Render(rewardToken, nil, relink)
+  local route = ns.Waypoint.RouteHint(task)
   return {
     kind = "step",
     key = task.id,
     mood = MOOD_FOR_VIEW.step,
     card = true,
-    title = session:PlanName(),
+    title = title,
+    titleIcon = mascot.titleArt and mascot.titleArt.state == state and mascot.titleArt.icon,
+    titleReward = titleReward,
     header = leadText(mascot),
     condition = conditionLine(task, check),
     notYet = check ~= nil and not check.met,
-    message = ns.Markup.Render(task.title or "", task.npcs, relink),
+    message = message,
     why = open and render(task.why, task.npcs) or nil,
     reward = not outcome and closedReward or nil,
     outcome = outcome,
@@ -1310,20 +1303,16 @@ local function stepView(mascot, session, task)
     group = session:GroupInfo(),
     -- Explanations and the full Step list open in place.
     expandable = many or goal ~= nil or state.details ~= nil or note ~= nil
-      or task.why ~= nil or #rewards > 1 or (outcome ~= nil and #rewards > 0),
+      or task.why ~= nil or #rewards > 1 or (outcome ~= nil and #rewards > 0)
+      or #bonus > 0 or route ~= nil or where ~= nil,
     open = open,
-    pips = many and { done = progress.step - 1, total = progress.steps } or nil,
-    stepCount = many and ns.T("STEP_OF", progress.step, progress.steps) or nil,
-    pipTip = tip,
     goal = open and goal or nil,
     planDetails = open and render(state.details, state.npcs) or nil,
-    hasNote = open and note ~= nil,
-    noteOpen = mascot.noteTask == task,
     details = open and #details > 0 and table.concat(details, "\n\n") or nil,
     all = open and many and allRows(state, mascot) or nil,
     rewards = open and rewards or {},
     where = where,
-    route = ns.Waypoint.RouteHint(task),
+    route = route,
     npcs = merged(task.npcs, state.npcs),
     buttons = { "done", "skip" },
   }
@@ -1860,8 +1849,8 @@ function ns.Mascot:ListRow(index)
 end
 
 local ROW_COLORS = {
-  done = P.faint,
-  skipped = P.faint,
+  done = MUTED,
+  skipped = MUTED,
   current = CREAM,
   ahead = MUTED,
 }
@@ -1876,8 +1865,8 @@ function ns.Mascot:LayoutList(rows, width)
   for i = 1, #rows do
     local entry = rows[i]
     local row = self:ListRow(i)
-    local mark = (entry.state == "done" and ns.Hex(P.ok) .. "+|r ") or (entry.state == "skipped" and "- ")
-      or (entry.state == "current" and ns.Hex(GOLD) .. ">|r ") or ""
+    local mark = (entry.state == "done" and "+ ") or (entry.state == "skipped" and "- ")
+      or (entry.state == "current" and "> ") or ""
     row.taskId = entry.state == "ahead" and entry.id or nil
     row.text:SetText(mark .. (entry.title or ""))
     local color = ROW_COLORS[entry.state] or MUTED
@@ -1886,8 +1875,8 @@ function ns.Mascot:LayoutList(rows, width)
     if entry.detail then
       row.detail:SetText(entry.detail)
       row.detail:ClearAllPoints()
-      row.detail:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 8, -2)
-      height = height + 2 + ns.UI.Measure(row.detail, width - 8)
+      row.detail:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 8, -8)
+      height = height + 8 + ns.UI.Measure(row.detail, width - 8)
       row.detail:Show()
     else
       row.detail:SetText("")
@@ -1936,7 +1925,7 @@ end
 local function resetRegions(mascot)
   local texts = { mascot.meta, mascot.header, mascot.title, mascot.condition, mascot.message, mascot.why,
     mascot.sub, mascot.where, mascot.goal, mascot.details, mascot.rewardsHeader,
-    mascot.planDetails, mascot.stepCount, mascot.bonus, mascot.route }
+    mascot.planDetails, mascot.bonus, mascot.route }
   for i = 1, #mascot.rewardLines do
     texts[#texts + 1] = mascot.rewardLines[i]
   end
@@ -1945,8 +1934,9 @@ local function resetRegions(mascot)
     texts[i]:ClearAllPoints()
     texts[i]:Hide()
   end
-  for _, region in ipairs({ mascot.pipRow, mascot.list, mascot.detailsScroll, mascot.cardToggle, mascot.groupRow,
-    mascot.noteToggle, mascot.outcomeChip }) do
+  for _, region in ipairs({ mascot.cardActions, mascot.titleReward, mascot.list, mascot.detailsScroll,
+    mascot.cardToggle, mascot.groupRow,
+    mascot.outcomeChip }) do
     region:ClearAllPoints()
     region:Hide()
   end
@@ -2073,10 +2063,23 @@ function ns.Mascot:Layout(view, right)
   else
     self.meta:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
   end
+  self.message:SetFontObject(view.card and "GameFontHighlightSmall" or "GameFontHighlight")
+  self.header:SetFontObject(view.card and "GameFontHighlightSmall" or "GameFontNormal")
+  local headerColor = view.card and CREAM or GOLD
+  self.header:SetTextColor(headerColor[1], headerColor[2], headerColor[3])
   ns.Markup.UseNpcs(view.npcs)
   local topWidth = inner - (TOP_ICON + 4) * 2 - 4
   if view.card then
-    put(self.title, view.title, 8, topWidth)
+    local icon = view.titleIcon and view.titleReward
+    put(self.title, view.title, 8, topWidth - (icon and 24 or 0))
+    if icon then
+      local reward = self.titleReward
+      reward.icon:SetTexture(view.titleIcon)
+      reward.link, reward.text = view.titleReward:match("|H(.-)|h"), view.titleReward
+      local width = math.min(self.title:GetStringWidth(), topWidth - 24)
+      reward:SetPoint("TOPLEFT", self.title, "TOPLEFT", width + 8, 0)
+      reward:Show()
+    end
     self:LayoutCard(view, inner, function(region, height, gap, x)
       region:ClearAllPoints()
       region:SetPoint("TOPLEFT", bubble, "TOPLEFT", PAD + (x or 0), y)
@@ -2208,7 +2211,7 @@ function ns.Mascot:Layout(view, right)
 
   -- One action bar; a row that would not fit wraps.
   local buttons = view.buttons or {}
-  if #buttons > 0 then
+  if #buttons > 0 and not view.card then
     y = y - 2
     local x = PAD
     for i = 1, #buttons do
@@ -2231,65 +2234,61 @@ end
 
 -- The current action and progress stay visible; explanations open in place.
 function ns.Mascot:LayoutCard(view, inner, place, put)
-  if view.pips then
-    drawPips(self.pipRow, view.pips.done, view.pips.total)
-    self.pipRow.tip = view.pipTip
-    place(self.pipRow, PIP, 4, 1)
-  end
-  put(self.stepCount, view.stepCount, 6)
-  if view.group then
-    local row = self.groupRow
-    row.text:SetText(ns.T("GROUP_OF", view.group.index, view.group.count))
-    row.text:Show()
-    place(row, TOP_ICON + 4, 4)
-  end
-  put(self.header, view.header, 6)
-  put(self.condition, view.condition, 3)
-  put(self.message, view.message, 4)
-  put(self.why, view.why, 8)
   if view.outcome then
     local chipView, region = view.outcome, self.outcomeChip
     local parts = { chipView.label, chipView.status, chipView.progress }
-    local lines = { chipView.label }
+    local lines = repeatsTitle(chipView.label, view.title) and {} or { chipView.label }
     for i = 2, 3 do
       if parts[i] then lines[#lines + 1] = parts[i] end
     end
     region.label:SetText(table.concat(lines, "  ·  "))
-    local height = ns.UI.Measure(region.label, inner - 16) + 12
+    local height = ns.UI.Measure(region.label, inner)
     region.label:Show()
     region.bar:Hide()
     if chipView.have and chipView.need then
-      region.bar:SetSize(inner - 16, 4)
+      region.bar:SetSize(inner, 4)
       region.bar:SetMinMaxValues(0, chipView.need)
       region.bar:SetValue(math.min(chipView.have, chipView.need))
       region.bar:Show()
-      height = height + 10
+      height = height + 8
     end
     region:SetSize(inner, height)
-    place(region, height, 6)
+    place(region, height, 8)
   end
-  put(self.bonus, view.bonus, 6)
-  put(self.route, view.route, 6)
+  put(self.header, view.header, 8)
+  put(self.condition, view.condition, 8)
+  put(self.message, view.message, 8)
+  if view.group then
+    self.groupRow.text:SetText(ns.T("GROUP_OF", view.group.index, view.group.count))
+    self.groupRow.text:Show()
+    place(self.groupRow, TOP_ICON + 4, 8)
+  end
   if view.reward and not view.open then
     put(self.rewardLines[1], view.reward, 8)
   end
-  if view.where then
-    self.where:SetJustifyH("RIGHT")
-    put(self.where, view.where, 4)
+  local x, actionHeight = 0, ACTION
+  for _, name in ipairs(view.buttons or {}) do
+    local button = self.buttons[name]
+    local width = button:GetWidth()
+    if button.label then button.label:SetTextColor(CREAM[1], CREAM[2], CREAM[3]) end
+    if x > 0 and x + width > inner then x, actionHeight = 0, actionHeight + ACTION + 8 end
+    button:ClearAllPoints()
+    button:SetPoint("TOPLEFT", self.cardActions, "TOPLEFT", x, ACTION - actionHeight)
+    button:Show()
+    x = x + width + 8
   end
+  self.cardActions:SetSize(inner, actionHeight)
+  place(self.cardActions, actionHeight, 8)
   if view.expandable then
-    self.cardToggle:SetOpen(view.open and ns.T("LESS") or ns.T("CARD_MORE"), view.open)
+    self.cardToggle:SetOpen(view.open and ns.T("CARD_LESS") or ns.T("CARD_MORE"), view.open)
     place(self.cardToggle, 16, 8)
   end
   if not view.open then
     return
   end
+  put(self.why, view.why, 8)
   put(self.goal, view.goal, 8)
   put(self.planDetails, view.planDetails, 8)
-  if view.hasNote then
-    self.noteToggle:SetOpen(ns.T(view.noteOpen and "LESS" or "NOTE_MORE"), view.noteOpen)
-    place(self.noteToggle, 16, 8)
-  end
   if view.details and view.details ~= "" then
     local scroll = self.detailsScroll
     if scroll.text ~= view.details then
@@ -2309,11 +2308,15 @@ function ns.Mascot:LayoutCard(view, inner, place, put)
     place(self.list, height, 8, 4)
   end
   if #view.rewards > 0 then
-    put(self.rewardsHeader, ns.T("REWARDS"), 4)
+    put(self.rewardsHeader, ns.T("REWARDS"), 8)
     for i = 1, #self.rewardLines do
-      put(self.rewardLines[i], view.rewards[i], 3)
+      put(self.rewardLines[i], view.rewards[i], 8)
     end
   end
+  put(self.bonus, view.bonus, 8)
+  self.where:SetJustifyH("LEFT")
+  put(self.where, view.where, 8)
+  put(self.route, view.route, 8)
 end
 
 -- An older message, kept for a little while above the bubble. Done/Skip
@@ -2392,7 +2395,7 @@ function ns.Mascot:UpdateDistance()
   if not self.bubble or not self.bubble:IsShown() or not view or view.kind ~= "step" or not task then
     return
   end
-  if ns.Steps.Footer(task) ~= view.where then
+  if ns.Steps.Footer(task, true) ~= view.where then
     self:Refresh()
   end
 end

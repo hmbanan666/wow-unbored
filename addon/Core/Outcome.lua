@@ -39,7 +39,10 @@ local function reputation(view, target)
   local standing = num(data.reaction)
   local label = ns.T("OUTCOME_STANDING_" .. target.standing)
   factionLabel(view, label, str(data.name))
-  if standing then view.done = standing >= target.standing end
+  if standing then
+    view.done = standing >= target.standing
+    view.status = ns.T("OUTCOME_STANDING_" .. standing)
+  end
   local friend = info(C_GossipInfo, "GetFriendshipReputation", target.factionID)
   if (num(friend.friendshipFactionID) or 0) > 0 then
     view.status = str(friend.reaction)
