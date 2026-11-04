@@ -98,7 +98,7 @@ Advice the Server computes for one character from its Account profile, delivered
 _Avoid_: server advice, AI advice.
 
 **Player history**
-The dated record the Server keeps per character: Requests, Answers, Plans, Step progress, and profile snapshots.
+The dated record the Server keeps per character: Requests, Answers, Plans, Step progress, profile snapshots, Wins and Path completions.
 _Avoid_: log, telemetry, tracking.
 
 **Account**

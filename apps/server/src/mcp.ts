@@ -165,6 +165,7 @@ const LEASE_TOOLS = new Set([
   "get_player_history",
   "get_account_overview",
   "get_ready_now",
+  "get_path_progress",
   "get_suggestions",
   "get_game_data",
   "check_ids",
@@ -716,7 +717,7 @@ export function createMcpServer(
     {
       title: "Get the player history",
       description:
-        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), advice (a put_item_advice batch), and win (something a plan promised that game data later showed obtained: ref like mount:ID, body with planId, requestId, kind, id, token, planTitle, category; see list_wins). What changed in the game data itself (new quests done, mounts, item counts, gold) is in get_data_changes. Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
+        "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), advice (a put_item_advice batch), and win (something a plan promised that game data later showed obtained: ref like mount:ID, body with planId, requestId, kind, id, token, planTitle, category; see list_wins). path_completion records a Character reaching all required goals of a published Path or Collection version (ref is the content version row; body has kind, slug, locale, version, title, done and total). What changed in the game data itself (new quests done, mounts, item counts, gold) is in get_data_changes. Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
       inputSchema: {
         character: z.string().max(80).optional(),
         realm: z.string().max(80).optional(),
@@ -774,6 +775,31 @@ export function createMcpServer(
     character: z.string().max(80).optional().describe("Character name."),
     realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
   };
+
+  registerTool(
+    "get_path_progress",
+    {
+      title: "Get Path progress",
+      description:
+        "Published Paths and Collections for each Character, from the latest Game data snapshot: done / total counts required goals only; goals stay in authored order (zero-based position, kind, id, required, done). Chance goals count too. Missing or unsupported evidence never proves completion. completedAt is the first recorded Path completion for this Character and version, even if a spendable target later falls below its threshold. Reads also record newly observed completions in Player history as path_completion. Pass account for all its Characters, or character and realm; no arguments selects the most recently seen Character. Drafts and Guides are excluded.",
+      inputSchema: whoSchema,
+    },
+    async (input) => {
+      if (!store.db.pg) return failure(new Error("Path progress needs Postgres."));
+      await settle(input.account);
+      const characters = [];
+      for (const row of await pickCharacters(input)) {
+        characters.push(
+          ...(await store.pathProgress({
+            account: row.accountId,
+            character: row.name,
+            realm: row.realm,
+          })),
+        );
+      }
+      return text({ characters });
+    },
+  );
 
   registerTool(
     "get_account_overview",

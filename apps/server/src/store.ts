@@ -1,3 +1,5 @@
+import { ContentStore } from "./content.ts";
+import { createPathProgressReader } from "./path-progress.ts";
 import {
   checkGameOutcome,
   checkGameCompletions,
@@ -1048,6 +1050,78 @@ export class Store {
     });
   }
 
+  /** Current published Paths; first observed completions also enter Player history. */
+  async pathProgress(
+    filter: { account: string; character?: string; realm?: string },
+    nowSeconds = Math.floor(Date.now() / 1000),
+  ) {
+    return this.db.tx(async () => {
+      // Serialize with uploads and erasure, and re-read Characters after taking the lock.
+      await this.db.lockKey(`account:${accountKey(filter.account)}`);
+      const paths = await new ContentStore(this.db, this.game).publishedPaths();
+      const characters = (await this.data.characters(filter.account)).filter(
+        (row) =>
+          (!filter.character || row.name === filter.character) &&
+          (!filter.realm || row.realm === filter.realm),
+      );
+      const results = [];
+      const readProgress = createPathProgressReader(this.game);
+      for (const character of characters) {
+        const sections = paths.length ? await this.data.sectionsFor(character) : new Map();
+        const completed = new Map(
+          (paths.length
+            ? await this.db.all<{ content_id: number; at: number }>(
+                `SELECT content_id, at FROM path_completions WHERE character_id = ?`,
+                character.id,
+              )
+            : []
+          ).map((row) => [Number(row.content_id), row.at]),
+        );
+        const progress = [];
+        for (const current of await readProgress(paths, sections)) {
+          let completedAt = completed.get(current.id) ?? null;
+          if (completedAt === null && current.total > 0 && current.done === current.total) {
+            const inserted = await this.db.run(
+              `INSERT INTO path_completions (character_id, content_id, at) VALUES (?, ?, ?)
+               ON CONFLICT (character_id, content_id) DO NOTHING`,
+              character.id,
+              current.id,
+              nowSeconds,
+            );
+            if (inserted) {
+              completedAt = nowSeconds;
+              await this.addHistory({
+                at: nowSeconds,
+                account: character.accountId,
+                character: character.name,
+                realm: character.realm,
+                kind: "path_completion",
+                ref: String(current.id),
+                body: {
+                  kind: current.kind,
+                  slug: current.slug,
+                  locale: current.locale,
+                  version: current.version,
+                  title: current.title,
+                  done: current.done,
+                  total: current.total,
+                },
+              });
+            }
+          }
+          progress.push({ ...current, completedAt });
+        }
+        results.push({
+          account: character.accountId,
+          character: character.name,
+          realm: character.realm,
+          paths: progress,
+        });
+      }
+      return results;
+    });
+  }
+
   /** A Game data snapshot upload (docs/adr/0029). */
   async putSnapshot(
     snapshot: CleanSnapshot,
@@ -1076,6 +1150,11 @@ export class Store {
           ref: snapshot.savedAt === null ? null : String(snapshot.savedAt),
           body: { ...profileSummary(view?.profile ?? {}), sections: result.stored },
         });
+      }
+      if (this.db.pg) {
+        // Account Sections may complete a Path for any Alt. Empty uploads also
+        // cover newly seen Characters and content published since the last upload.
+        await this.pathProgress({ account: result.account }, nowSeconds);
       }
       return result;
     });
@@ -2224,7 +2303,8 @@ export type HistoryKind =
   | "progress"
   | "profile"
   | "advice"
-  | "win";
+  | "win"
+  | "path_completion";
 export const HISTORY_KINDS: HistoryKind[] = [
   "request",
   "answer",
@@ -2234,6 +2314,7 @@ export const HISTORY_KINDS: HistoryKind[] = [
   "profile",
   "advice",
   "win",
+  "path_completion",
 ];
 
 export type HistoryEntry = {

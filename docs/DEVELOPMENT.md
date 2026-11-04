@@ -327,6 +327,54 @@ needed. Published content stays unchanged when a new draft is saved; publishing
 that draft only retires the old version. The command above remains the operator
 entry point for production content imports; never insert content with hand SQL.
 
+### Path progress
+
+`GET /v1/paths/progress?account=<key>&character=<name>&realm=<realm>` uses the
+planner bearer; Character and realm are optional. MCP `get_path_progress`
+accepts the same filters (no arguments selects the most recently seen Character).
+Runner leases may read only their Request's Account. Both return `characters`,
+each with `account`, `character`, `realm` and `paths`. Each Path includes its
+published version's `id`, `kind`, `slug`, `locale`, `version`, `title`, `done`,
+`total`, `completedAt` and ordered `goals` (`position` starts at zero, `kind`,
+`id` when applicable, `required`, `done`). Collections use exactly the same rules.
+These are private reads; public content pages contain no player data.
+
+Only required goals count toward done / total; optional goals still have their
+own done flag. Chance goals count normally. Drafts and Guides are excluded.
+Missing or unknown-version Sections do not prove completion. Progress reads:
+
+| Goal | Snapshot evidence |
+| --- | --- |
+| mount, pet, toy | Account `mounts.ids`, `pets.species`, `toys.ids` |
+| achievement | Account `achievements.ids` or Character `achievementsMine.ids` |
+| item | Positive counts in Character bags/bank/reagentBank or Account warband; equipped gear also counts |
+| rep, renown | Character `reputation.factions[].reaction` / `renown[].level` reaches the threshold |
+| level, currency | Character `char.level` / `currencies.list[].quantity` reaches the threshold |
+| quest | Character `questsDone.ids` |
+| questLine | Every verified quest in the published build's `QuestLineXQuest` is in Character `questsDone.ids` |
+
+Completed quest lines disappear from `questLines`, so its absence is never
+completion evidence. Empty, missing or oversized membership (over 256 rows)
+cannot prove completion; membership stays pinned to the published build.
+Other Characters' quests, reputation, currencies and bags never count.
+
+Snapshot ingestion checks every Character of the Account, including on the
+first upload. A progress read also checks completion, covering content published
+after the last upload. The first observation of all required goals (at least one)
+records `path_completion` in Player history. Its ref is the content version row id;
+its body includes kind, slug, locale, version, title, done and total. Current
+progress can fall when currency is spent or an item is lost; `completedAt` remains
+the first completion time. No addon UI or active Path selection is added here.
+
+Migration `0017_path_completions.sql` adds only a uniqueness guard referencing
+the existing Character and content version. It survives the 13-month Player
+history retention window and cascades away when Forget my data erases the
+Character. Completion and history writes share the upload/read transaction and
+Account lock. No new content store or production data import is needed. Existing
+snapshots are evaluated by the next upload or progress read. SQLite has no site
+content; its HTTP/MCP progress endpoint reports unavailable. The SQLite transfer
+still copies 23 tables; the new Postgres-only guard must be empty on its target.
+
 ### Game DB: Planner lookups
 
 The owner and a live Plan runner lease can call:
