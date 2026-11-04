@@ -1,3 +1,4 @@
+import type { BlizzardIds } from "./blizzard.ts";
 import { type Db, fromJson } from "./db.ts";
 import {
   GAME_CONTENT_SQLITE_SCHEMA,
@@ -20,6 +21,11 @@ export const GAME_SQLITE_SCHEMA =
   CREATE TABLE IF NOT EXISTS game_achievements (
     build TEXT NOT NULL REFERENCES game_builds(build), id INTEGER NOT NULL,
     name_en TEXT NOT NULL, name_ru TEXT NOT NULL, PRIMARY KEY (build, id)
+  );
+  CREATE TABLE IF NOT EXISTS game_quest_names (
+    build TEXT NOT NULL REFERENCES game_builds(build), id INTEGER NOT NULL,
+    locale TEXT NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL,
+    PRIMARY KEY (build, id, locale)
   );
   CREATE TABLE IF NOT EXISTS game_watch (
     id INTEGER PRIMARY KEY CHECK (id = 1), live_build TEXT,
@@ -74,6 +80,43 @@ export class GameDb {
       id,
     );
     return found ? { build: found.build, fields: fromJson<GameFields>(found.body)! } : undefined;
+  }
+
+  /** DB2 titles take precedence; API evidence belongs only to this build and locale. */
+  async questName(
+    id: number,
+    locale: "enUS" | "ruRU",
+    build: string,
+    api?: BlizzardIds,
+    signal?: AbortSignal,
+  ) {
+    const title = (await this.row("QuestV2CliTask", id, locale, build))?.fields.QuestTitle_lang;
+    if (typeof title === "string" && title.trim())
+      return { name: title, source: gameSource(build, "QuestV2CliTask", locale) };
+    const table = this.db.pg ? "game.quest_names" : "game_quest_names";
+    const cached = await this.db.get<{ name: string; url: string }>(
+      `SELECT name, url FROM ${table} WHERE build = ? AND id = ? AND locale = ?`,
+      build,
+      id,
+      locale,
+    );
+    if (cached)
+      return {
+        name: cached.name,
+        source: { kind: "Blizzard Game Data API", build, locale, url: cached.url },
+      };
+    const found = await api?.questName(id, locale, signal);
+    if (!found) return { name: null, source: null };
+    await this.db.run(
+      `INSERT INTO ${table} (build, id, locale, name, url) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (build, id, locale) DO UPDATE SET name = excluded.name, url = excluded.url`,
+      build,
+      id,
+      locale,
+      found.name,
+      found.source.url,
+    );
+    return { name: found.name, source: { ...found.source, build } };
   }
 
   /** Exact localized names; SQL wildcard characters are literal. */
@@ -237,4 +280,14 @@ export class GameDb {
 
 function buildNumber(build: string) {
   return Number(build.split(".")[3]);
+}
+
+export function gameSource(build: string | undefined, table: GameTable, locale: string) {
+  return {
+    kind: "Game DB",
+    build: build ?? null,
+    table,
+    locale,
+    url: build ? `https://wago.tools/db2/${table}/csv?build=${build}&locale=${locale}` : null,
+  };
 }

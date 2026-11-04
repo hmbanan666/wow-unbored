@@ -620,7 +620,7 @@ export function createApp(
   });
 
   // Authored site content (ADR 0072, 0074): save a checked draft, then publish it.
-  const content = new ContentStore(store.db, store.game);
+  const content = new ContentStore(store.db, store.game, undefined, gameIds);
   const contentFailed = (c: Parameters<typeof requireRole>[0], error: unknown) => {
     if (error instanceof ContentError)
       return c.json({ error: error.message, problems: error.problems }, 400);

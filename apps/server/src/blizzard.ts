@@ -339,6 +339,37 @@ export class BlizzardIds {
     }
   }
 
+  /** Localized quest title from an exact quest document; never infer it from another field. */
+  async questName(questID: number, locale: "enUS" | "ruRU", signal?: AbortSignal) {
+    if (!this.config || signal?.aborted) return undefined;
+    const token = await this.accessToken(signal);
+    if (!token || signal?.aborted) return undefined;
+    const region = this.config.region;
+    const language = locale === "ruRU" ? "ru_RU" : "en_US";
+    const url = `https://${region}.api.blizzard.com/data/wow/quest/${questID}?namespace=static-${region}&locale=${language}`;
+    try {
+      const response = await this.fetchImpl(url, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), ...(signal ? [signal] : [])]),
+      });
+      if (!response.ok) return undefined;
+      const body = (await response.json()) as { id?: unknown; title?: unknown } | null;
+      if (
+        !body ||
+        body.id !== questID ||
+        typeof body.title !== "string" ||
+        !body.title.trim() ||
+        body.title.length > 500 ||
+        Buffer.byteLength(JSON.stringify(body)) > 64_000
+      )
+        return undefined;
+      return { name: body.title, source: { kind: "Blizzard Game Data API", url, locale } };
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Search journal loot by item id, then verify every returned relation independently. */
   async itemSources(itemID: number, locale: "enUS" | "ruRU") {
     if (!this.config) return undefined;
@@ -401,7 +432,7 @@ export class BlizzardIds {
     }
   }
 
-  private async accessToken(): Promise<string | null> {
+  private async accessToken(signal?: AbortSignal): Promise<string | null> {
     const config = this.config;
     if (!config) return null;
     if (this.token && this.token.until > this.now()) return this.token.value;
@@ -414,7 +445,7 @@ export class BlizzardIds {
           "content-type": "application/x-www-form-urlencoded",
         },
         body: "grant_type=client_credentials",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), ...(signal ? [signal] : [])]),
       });
       if (!response.ok) return null;
       const body = (await response.json()) as { access_token?: unknown; expires_in?: unknown };

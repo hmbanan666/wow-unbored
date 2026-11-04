@@ -324,7 +324,7 @@ export function createMcpServer(
       async () => text(null),
     );
 
-  const content = new ContentStore(store.db, store.game);
+  const content = new ContentStore(store.db, store.game, undefined, gameIds);
   const contentKey = {
     kind: z.enum(CONTENT_KINDS),
     slug: z
@@ -897,13 +897,13 @@ export function createMcpServer(
     {
       title: "Read quests of a quest line",
       description:
-        "Imported quest-line membership in OrderIndex order, with localized names and source. Missing names stay null. Ambiguous or oversized order is unavailable; the client order does not prove prerequisites, availability or a connecting story.",
+        "Imported quest-line membership in OrderIndex order, with localized names and per-quest nameSource. Missing DB2 titles use the Blizzard quest API, cached per build and locale; unavailable titles stay null with a reason. Ambiguous or oversized order is unavailable; the client order does not prove prerequisites, availability or a connecting story.",
       inputSchema: {
         questLineID: z.number().int().positive().max(2147483647),
         locale: z.enum(["enUS", "ruRU"]).default("enUS"),
       },
     },
-    async (query) => text(await getQuestLine(store.game, query)),
+    async (query) => text(await getQuestLine(store.game, query, gameIds)),
   );
 
   registerTool(

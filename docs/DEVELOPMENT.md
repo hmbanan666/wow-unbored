@@ -176,7 +176,7 @@ The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postg
 snapshots and the Catalog. Startup migration `0011_game_content.sql` extends
 `0007_game.sql` with `game.rows` and `game.imports`; SQLite uses the corresponding
 `game_rows` and `game_imports` tables. The existing SQLite-to-Postgres transfer
-copies both (23 tables for a current file), and still accepts older files.
+copies both (24 tables for a current file), and still accepts older files.
 
 The import selects these 23 DB2 tables from wago.tools for one explicit retail
 build. The field allowlist is in
@@ -373,7 +373,7 @@ Character. Completion and history writes share the upload/read transaction and
 Account lock. No new content store or production data import is needed. Existing
 snapshots are evaluated by the next upload or progress read. SQLite has no site
 content; its HTTP/MCP progress endpoint reports unavailable. The SQLite transfer
-still copies 23 tables; the new Postgres-only guard must be empty on its target.
+copies 24 tables; the new Postgres-only guard must be empty on its target.
 
 ### Active Path and Continue Idea
 
@@ -392,7 +392,7 @@ Migration `0018_active_paths.sql` uses one row per Character and the same
 Account lock as uploads and erasure. Selection follows the latest published
 version of its kind/slug/language, survives completion and is removed by Forget
 my data. SQLite reports this feature unavailable. This Postgres-only table is
-excluded from SQLite transfer, so its workflow count stays **23**.
+excluded from SQLite transfer, so it adds no tables to the current workflow count of **24**.
 
 Suggestions prepend one `kind: "path"` Idea for the active Path while required
 goals remain. It uses `path-progress.ts` and `content.ts` directly at delivery,
@@ -442,7 +442,7 @@ Accepting a Plan does not mark its Path goal done. The later Game data snapshot
 moves progress and records completion through the existing ingestion flow.
 `path-plan.test.ts` exercises runner claims, correction in the same lease,
 version preservation, every submission route, and Path / Collection progress.
-No migration or new import is needed; transfer/workflow counts remain **23**.
+No migration or new import is needed; transfer/workflow counts are now **24**.
 The existing documented content validate/save/publish command remains the
 production import entry point.
 
@@ -483,12 +483,36 @@ The API search endpoint is documented in [Blizzard's static-search announcement]
 Catalog item ids and URLs are exported from the references already vetted in
 `addon/Data/Farm.lua`; rows without an explicit item reference are not guessed.
 
-Migration `0014_game_tools.sql` adds indexes through normal startup. No new
-tables are added: transfer/workflow counts remain 23. Existing imported builds
-need no re-import. On an empty installation, use the operator-run command already
-shown above: `node apps/server/scripts/import-game.ts <current-live-build>`.
-Run it with the documented owner authentication on the target installation;
-local development and tests never import into production.
+Migration `0014_game_tools.sql` adds indexes through normal startup. Migration
+`0019_quest_names.sql` adds `game.quest_names` (`game_quest_names` on SQLite)
+for successful Blizzard quest titles, keyed by build, quest id and locale, with
+the exact API source URL. SQLite transfer/workflow counts are now **24**.
+
+`get_quest_line` prefers imported `QuestV2CliTask` titles, then this persistent
+cache, then `/data/wow/quest/{id}` in the configured region's static namespace
+(`en_US` or `ru_RU`). Each quest's `nameSource` identifies the Game DB table or
+Blizzard API URL, build and locale; it is null when no title is verified.
+Credentials, OAuth reuse, injected fetch and four-second HTTP timeouts come from
+the existing Blizzard client. Quest-line reads and content checks each share a
+ten-second deadline across all quest-title HTTP requests, including OAuth;
+remaining titles still use local DB2/cache evidence after it expires.
+Missing credentials, HTTP failures and malformed
+or mismatched quest documents leave the name null and add an unavailable reason.
+Failures are not cached, so a later lookup can recover. A new build uses a fresh
+cache; cached titles remain readable without credentials. API titles never
+replace imported DB2 rows or establish quest existence, order or prerequisites.
+
+English quest Path goal name checks use the same lookup on both owner HTTP and
+MCP draft saves and publication. As with other content kinds, a known title must
+match; an unavailable title adds no invented name and leaves the existing
+verified-id check in force. Other goal kinds and Russian content name-check
+policy are unchanged. This is the sourced Game DB supplement described in ADR 0071.
+
+Existing builds need no re-import or production backfill: titles fill lazily on
+lookup. On an empty installation, use the documented operator-run command
+`node apps/server/scripts/import-game.ts <current-live-build>` with owner
+authentication on the target installation. Local development and fixture tests
+never call the live quest API or import into production.
 
 ### Game DB: Plan checks
 
@@ -515,8 +539,8 @@ geometry groups cannot establish a destination. No validation downloads CSV.
 Migration `0012_game_validation.sql` adds relationship indexes to `game.rows`;
 SQLite creates equivalent indexes. Migration and import publication refresh
 PostgreSQL statistics so new relationship indexes cannot turn id lookups into
-full group scans before automatic analysis runs. It adds no tables, so transfer counts stay
-at 23. The existing import command above prepares all required tables; there
+full group scans before automatic analysis runs. It adds no tables, so transfer counts are
+now 24. The existing import command above prepares all required tables; there
 is no separate data import for these checks.
 
 Before the first import, existing structural checks and optional remote id
@@ -545,8 +569,8 @@ to keep the collectible in `bonus`, choose a near-guaranteed outcome and retry.
 individual Catalog rows expose their own verdict. Blizzard matches still have
 `guaranteed: null`; failures and partial searches cannot turn missing evidence
 into a refusal. Submissions use local evidence and make no new API calls.
-No tables, columns or migrations are needed; transfer/workflow counts stay at
-23. Existing imports already contain the required fields. For an empty
+No tables, columns or migrations are needed; transfer/workflow counts are now
+24. Existing imports already contain the required fields. For an empty
 installation the documented operator command remains
 `node apps/server/scripts/import-game.ts <current-live-build>`; development
 does not run it against production.
@@ -1035,7 +1059,7 @@ Heartbeat comfortably before 180 seconds; an attempt has a 15-minute hard cap. A
 
 `get_place` and `get_instance_guide` read one build of the Game DB per call, including enUS or ruRU names. Place lookup projects only the requested quest and flight points; guides traverse indexed achievement trees and journal relationships. `UiMapGroupMember` supplies journal floor labels. Journal creature evidence still uses the existing bounded Blizzard Game Data API adapter when configured; it never treats creature display ids as NPC ids.
 
-Migration `0013_game_guides.sql` adds relationship indexes through normal Server startup. No database tables are added: SQLite transfer/workflow counts remain **23**. The additional DB2 table is stored in the existing `game.rows`. The build watcher upgrades an earlier import of the same build automatically. An operator can prepare or refresh all tables explicitly with the existing command (do not run against production as part of development):
+Migration `0013_game_guides.sql` adds relationship indexes through normal Server startup. No database tables are added: SQLite transfer/workflow counts are now **24**. The additional DB2 table is stored in the existing `game.rows`. The build watcher upgrades an earlier import of the same build automatically. An operator can prepare or refresh all tables explicitly with the existing command (do not run against production as part of development):
 
 ```sh
 node apps/server/scripts/import-game.ts <current-live-build>

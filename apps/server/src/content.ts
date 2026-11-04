@@ -1,3 +1,4 @@
+import type { BlizzardIds } from "./blizzard.ts";
 import { planOutcomeSchema, type PlanOutcome } from "@unbored/contracts";
 import { createHash } from "node:crypto";
 import type { Db } from "./db.ts";
@@ -364,7 +365,13 @@ const GAME_KEY: Record<ItemKind, string> = {
 };
 
 /** Names the Game DB holds for an item kind: [table, field, id field]. */
-async function gameName(game: GameDb, item: ContentItem, build: string) {
+async function gameName(
+  game: GameDb,
+  item: ContentItem,
+  build: string,
+  api?: BlizzardIds,
+  signal?: AbortSignal,
+) {
   if (item.kind === "level") return undefined;
   if (item.kind === "rep" || item.kind === "renown")
     return (await game.row("Faction", item.id!, "enUS", build))?.fields.Name_lang;
@@ -373,7 +380,7 @@ async function gameName(game: GameDb, item: ContentItem, build: string) {
   if (item.kind === "questLine")
     return (await game.row("QuestLine", item.id!, "enUS", build))?.fields.Name_lang;
   if (item.kind === "quest")
-    return (await game.row("QuestV2CliTask", item.id!, "enUS", build))?.fields.QuestTitle_lang;
+    return (await game.questName(item.id!, "enUS", build, api, signal)).name ?? undefined;
   if (item.kind === "mount")
     return (await game.row("Mount", item.id!, "enUS", build))?.fields.Name_lang;
   if (item.kind === "achievement")
@@ -384,9 +391,14 @@ async function gameName(game: GameDb, item: ContentItem, build: string) {
 }
 
 /** Every id, zone and cost id against one build; English names must match it. */
-export async function checkContentIds(doc: ContentDoc, game: GameDb): Promise<string> {
+export async function checkContentIds(
+  doc: ContentDoc,
+  game: GameDb,
+  api?: BlizzardIds,
+): Promise<string> {
   const build = await game.currentBuild();
   if (!build) throw new ContentError("The Game DB is not imported yet.");
+  const nameDeadline = AbortSignal.timeout(10_000);
   const problems: string[] = [];
   for (const [index, item] of doc.items.entries()) {
     const at = `items[${index}] ${item.name}`;
@@ -408,7 +420,7 @@ export async function checkContentIds(doc: ContentDoc, game: GameDb): Promise<st
     const missing = await game.missing(keys, build);
     for (const key of missing) problems.push(`${at}: ${key} is not in build ${build}`);
     if (missing.size === 0 && doc.locale === "en") {
-      const name = await gameName(game, item, build);
+      const name = await gameName(game, item, build, api, nameDeadline);
       if (name !== undefined && String(name) !== item.name)
         problems.push(`${at}: the game calls ${item.kind}:${item.id} "${String(name)}"`);
     }
@@ -465,11 +477,18 @@ export class ContentStore {
   private readonly db: Db;
   private readonly game: GameDb;
   private readonly now: () => number;
+  private readonly gameIds?: BlizzardIds;
 
-  constructor(db: Db, game: GameDb, now: () => number = () => Math.floor(Date.now() / 1000)) {
+  constructor(
+    db: Db,
+    game: GameDb,
+    now: () => number = () => Math.floor(Date.now() / 1000),
+    gameIds?: BlizzardIds,
+  ) {
     this.db = db;
     this.game = game;
     this.now = now;
+    this.gameIds = gameIds;
   }
 
   get available(): boolean {
@@ -552,7 +571,7 @@ export class ContentStore {
   async saveDraft(input: unknown): Promise<SaveResult> {
     if (!this.available) throw new ContentError("Site content needs the Postgres Server.");
     const doc = parseContent(input);
-    const build = await checkContentIds(doc, this.game);
+    const build = await checkContentIds(doc, this.game, this.gameIds);
     const hash = hashOf(doc);
     const body: Body = { topics: doc.topics, blocks: doc.blocks, items: doc.items, build, hash };
     return this.db.tx(async () => {
@@ -639,7 +658,7 @@ export class ContentStore {
         items: stored.items,
       });
       await this.checkPrerequisite(doc);
-      const build = await checkContentIds(doc, this.game);
+      const build = await checkContentIds(doc, this.game, this.gameIds);
       const now = this.now();
       await this.db.run(
         `UPDATE content.paths SET status = 'retired', updated_at = ?

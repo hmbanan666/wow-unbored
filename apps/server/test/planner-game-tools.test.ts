@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import type { GameDataFetch } from "../src/blizzard.ts";
+import { GameDb } from "../src/game-db.ts";
+import { getQuestLine } from "../src/game-tools.ts";
 import { createApp } from "../src/app.ts";
 import { coreCsv } from "./game-content-fixture.ts";
-import { BACKENDS, postgresPerFile, type Backend } from "./postgres-db.ts";
+import { BACKENDS, hasPostgres, postgresPerFile, type Backend } from "./postgres-db.ts";
 
 const pg = postgresPerFile();
 const build = "12.0.1.66337";
@@ -34,6 +36,7 @@ async function fixture(backend: Backend, blizzardFetch?: GameDataFetch) {
     });
   return {
     ...server,
+    dir,
     tables,
     load,
     async call(name: string, args: Record<string, unknown>) {
@@ -77,6 +80,59 @@ test("item sources explain the chance-only verdict used by Plan submission", asy
     await app.close();
   }
 });
+
+for (const backend of BACKENDS) {
+  test(`quest names prefer Game DB and cache localized API evidence per build (${backend})`, async () => {
+    let online = true;
+    let revision = "First";
+    const app = await fixture(backend, async (input) => {
+      const url = new URL(String(input));
+      if (!online) throw new Error("fixture offline");
+      if (url.hostname === "oauth.battle.net")
+        return Response.json({ access_token: "fixture", expires_in: 3600 });
+      assert.equal(url.pathname, "/data/wow/quest/90002");
+      assert.equal(url.searchParams.get("namespace"), "static-us");
+      const locale = url.searchParams.get("locale");
+      assert.ok(locale === "en_US" || locale === "ru_RU");
+      return Response.json({
+        id: 90002,
+        title: locale === "ru_RU" ? "Путешествие" : `${revision} adventure`,
+      });
+    });
+    try {
+      app.tables.QuestV2 += "90002,43\n";
+      app.tables.QuestLineXQuest += "12,10,90002,1\n";
+      await app.load();
+      const line = await app.call("get_quest_line", { questLineID: 10 });
+      assert.equal(line.quests[0].name, "A small adventure");
+      assert.equal(line.quests[0].nameSource.kind, "Game DB");
+      assert.equal(line.quests[1].name, "First adventure");
+      assert.equal(line.quests[1].nameSource.kind, "Blizzard Game Data API");
+      assert.equal(line.quests[1].nameSource.build, build);
+      assert.equal(line.quests[1].nameSource.locale, "enUS");
+      assert.match(line.quests[1].nameSource.url, /quest\/90002/);
+      assert.deepEqual(line.unavailable, []);
+      const ru = await app.call("get_quest_line", { questLineID: 10, locale: "ruRU" });
+      assert.equal(ru.quests[1].name, "Путешествие");
+      online = false;
+      const reopened = new GameDb(app.store.db, app.dir);
+      assert.deepEqual(await getQuestLine(reopened, { questLineID: 10, locale: "enUS" }), line);
+      assert.deepEqual(await app.call("get_quest_line", { questLineID: 10 }), line);
+      await app.load("12.0.1.66338");
+      const unavailable = await app.call("get_quest_line", { questLineID: 10 });
+      assert.equal(unavailable.quests[1].name, null);
+      assert.equal(unavailable.quests[1].nameSource, null);
+      assert.ok(unavailable.unavailable.some((reason: string) => reason.includes("90002")));
+      online = true;
+      revision = "New";
+      const fresh = await app.call("get_quest_line", { questLineID: 10 });
+      assert.equal(fresh.quests[1].name, "New adventure");
+      assert.equal(fresh.quests[1].nameSource.build, "12.0.1.66338");
+    } finally {
+      await app.close();
+    }
+  });
+}
 
 for (const backend of BACKENDS) {
   test(`Planner finds exact localized entity names with source and ambiguity (${backend})`, async () => {
@@ -128,15 +184,26 @@ for (const backend of BACKENDS) {
         "ID,QuestLineID,QuestID,OrderIndex\n11,10,90002,3\n12,10,90001,1\n";
       await app.load();
       const line = await app.call("get_quest_line", { questLineID: 10 });
-      assert.deepEqual(line.quests, [
-        { questID: 90001, order: 1, name: "A small adventure" },
-        { questID: 90002, order: 3, name: null },
-      ]);
+      assert.deepEqual(
+        line.quests.map(
+          ({ questID, order, name }: { questID: number; order: number; name: string | null }) => ({
+            questID,
+            order,
+            name,
+          }),
+        ),
+        [
+          { questID: 90001, order: 1, name: "A small adventure" },
+          { questID: 90002, order: 3, name: null },
+        ],
+      );
       assert.equal(line.source.build, build);
       const localized = await app.call("get_quest_line", { questLineID: 10, locale: "ruRU" });
       assert.equal(localized.name, "Новое начало");
       assert.equal(localized.quests[0].name, "Небольшое приключение");
-      assert.ok(line.unavailable.includes("quest name: 90002"));
+      assert.ok(
+        line.unavailable.includes("quest name: 90002 (Blizzard Game Data API unavailable)"),
+      );
       assert.equal((await app.call("get_quest_line", { questLineID: 999 })).name, null);
       // A tied order is not evidence for an invented sequence.
       app.tables.QuestLineXQuest =
@@ -261,7 +328,16 @@ for (const backend of BACKENDS) {
       assert.equal(limited.entities.length, 50);
       assert.equal(limited.truncated, true);
       const line = await app.call("get_quest_line", { questLineID: 10 });
-      assert.deepEqual(line.quests, []);
+      assert.deepEqual(
+        line.quests.map(
+          ({ questID, order, name }: { questID: number; order: number; name: string | null }) => ({
+            questID,
+            order,
+            name,
+          }),
+        ),
+        [],
+      );
       assert.ok(line.unavailable.includes("quest line: result limit"));
     } finally {
       await app.close();
@@ -306,3 +382,179 @@ test("item sources preserve Catalog evidence through API errors and expose parti
     await app.close();
   }
 });
+
+test.skipIf(!hasPostgres)("Path owner save and publish checks use API quest titles", async () => {
+  let title = "A verified adventure";
+  const app = await fixture("postgres", async (input) => {
+    if (String(input).includes("oauth.battle.net"))
+      return Response.json({ access_token: "fixture", expires_in: 3600 });
+    return Response.json({ id: 90002, title });
+  });
+  const document = {
+    kind: "path",
+    slug: "quest-names",
+    title: "Quest names",
+    tier: "basic",
+    description: "A sourced quest goal.",
+    blocks: [],
+    items: [
+      {
+        kind: "quest",
+        id: 90002,
+        name: "Invented name",
+        source: { type: "quest", text: "Quest" },
+        chance: false,
+        note: "Finish the quest.",
+      },
+    ],
+  };
+  const save = () =>
+    app.app.request("/owner/content", {
+      method: "PUT",
+      headers: { authorization: "Bearer owner", "content-type": "application/json" },
+      body: JSON.stringify(document),
+    });
+  try {
+    app.tables.QuestV2 += "90002,43\n";
+    await app.load();
+    const wrong = await save();
+    assert.equal(wrong.status, 400);
+    assert.match(JSON.stringify(await wrong.json()), /A verified adventure/);
+    document.items[0].name = "A verified adventure";
+    assert.equal((await save()).status, 200);
+    const saved = await app.call("save_content_draft", { document });
+    assert.equal(saved.unchanged, true);
+    title = "New build title";
+    await app.load("12.0.1.66338");
+    const rejected = await app.app.request("/owner/content/path/quest-names/publish", {
+      method: "POST",
+      headers: { authorization: "Bearer owner" },
+    });
+    assert.equal(rejected.status, 400);
+    assert.match(JSON.stringify(await rejected.json()), /New build title/);
+    document.items[0].name = title;
+    await app.call("save_content_draft", { document });
+    assert.equal(
+      (await app.call("publish_content", { kind: "path", slug: "quest-names" })).status,
+      "published",
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test.each([
+  "http",
+  "timeout",
+  "wrong id",
+  "empty",
+  "missing title",
+  "object",
+  "invalid json",
+  "oversized",
+  "token",
+])(
+  "unavailable quest API (%s) leaves names null with a reason and permits retry",
+  async (failure) => {
+    let recovered = false;
+    const app = await fixture("sqlite", async (input) => {
+      if (String(input).includes("oauth.battle.net"))
+        return failure === "token" && !recovered
+          ? new Response(null, { status: 503 })
+          : Response.json({ access_token: "fixture", expires_in: 3600 });
+      if (recovered) return Response.json({ id: 90002, title: "Recovered title" });
+      if (failure === "http") return new Response(null, { status: 503 });
+      if (failure === "timeout") throw new DOMException("fixture timeout", "TimeoutError");
+      if (failure === "wrong id") return Response.json({ id: 90003, title: "Wrong quest" });
+      if (failure === "empty") return Response.json({ id: 90002, title: "   " });
+      if (failure === "missing title") return Response.json({ id: 90002, name: "Not a title" });
+      if (failure === "object") return Response.json({ id: 90002, title: { en_US: "Unexpected" } });
+      if (failure === "invalid json") return new Response("{");
+      return Response.json({ id: 90002, title: "x".repeat(501) });
+    });
+    try {
+      app.tables.QuestV2 += "90002,43\n";
+      app.tables.QuestLineXQuest += "12,10,90002,1\n";
+      await app.load();
+      const result = await app.call("get_quest_line", { questLineID: 10 });
+      assert.equal(result.quests[1].name, null);
+      assert.equal(result.quests[1].nameSource, null);
+      assert.ok(
+        result.unavailable.includes("quest name: 90002 (Blizzard Game Data API unavailable)"),
+      );
+      recovered = true;
+      const retry = await app.call("get_quest_line", { questLineID: 10 });
+      assert.equal(retry.quests[1].name, "Recovered title");
+    } finally {
+      await app.close();
+    }
+  },
+);
+
+for (const scenario of ["line", "OAuth", "content"] as const) {
+  test.skipIf(scenario === "content" && !hasPostgres)(
+    `slow quest names have one deadline across ${scenario} lookups`,
+    async () => {
+      let requests = 0;
+      const app = await fixture(
+        scenario === "content" ? "postgres" : "sqlite",
+        async (input, init) => {
+          if (String(input).includes("oauth.battle.net") && scenario !== "OAuth")
+            return Response.json({ access_token: "fixture", expires_in: 3600 });
+          requests++;
+          await new Promise<void>((_resolve, reject) => {
+            init.signal!.addEventListener("abort", () => reject(init.signal!.reason), {
+              once: true,
+            });
+          });
+          throw new Error("Expected cancellation");
+        },
+      );
+      const timeout = AbortSignal.timeout.bind(AbortSignal);
+      try {
+        for (let id = 90002; id <= 90009; id++) {
+          app.tables.QuestV2 += `${id},${id}\n`;
+          app.tables.QuestLineXQuest += `${id},10,${id},${id}\n`;
+        }
+        await app.load();
+        // Accelerate only the HTTP and aggregate timeouts; the fixture waits for real cancellation.
+        vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => timeout(ms === 4000 ? 20 : 30));
+        if (scenario === "content") {
+          const response = await app.app.request("/owner/content", {
+            method: "PUT",
+            headers: { authorization: "Bearer owner", "content-type": "application/json" },
+            body: JSON.stringify({
+              kind: "path",
+              slug: "slow-quests",
+              title: "Slow quests",
+              tier: "basic",
+              description: "Quest checks remain available during an outage.",
+              blocks: [],
+              items: [90002, 90003, 90004, 90005, 90006, 90007, 90008, 90009, 90001].map((id) => ({
+                kind: "quest",
+                id,
+                name: "Unverified title",
+                source: { type: "quest", text: "Quest" },
+                chance: false,
+                note: "Complete the quest.",
+              })),
+            }),
+          });
+          assert.equal(response.status, 400);
+          assert.match(JSON.stringify(await response.json()), /A small adventure/);
+        } else {
+          const result = await app.call("get_quest_line", { questLineID: 10 });
+          assert.equal(result.quests.length, 9);
+          assert.equal(result.quests[0].name, "A small adventure");
+          assert.ok(
+            result.quests.slice(1).every((quest: { name: string | null }) => quest.name === null),
+          );
+        }
+        assert.ok(requests <= 2, `Expected one shared deadline, received ${requests} requests`);
+      } finally {
+        vi.restoreAllMocks();
+        await app.close();
+      }
+    },
+  );
+}
