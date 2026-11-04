@@ -1182,6 +1182,22 @@ do
   C_WeeklyRewards.GetActivities = saved
 end
 
+-- The criteria probe asks an achievement that has criteria; index 1 of one
+-- without criteria raises in the real client (12.1.5 self-check report).
+do
+  local savedCount, savedInfo = GetAchievementNumCriteria, GetAchievementCriteriaInfo
+  GetAchievementNumCriteria = function(id) return id == 42 and 12 or 0 end
+  GetAchievementCriteriaInfo = function(id, index)
+    if index > GetAchievementNumCriteria(id) then error("index out of range") end
+    return "Criterion", 0, false, 0, 1, "", 0, 0, "", 1001
+  end
+  UnboredDB.errors = {}
+  ns.SelfCheck.Run()
+  local stack = S.Body("errors").rows[1].stack
+  check(stack:find("GetAchievementCriteriaInfo ok", 1, true), "criteria probe uses an achievement with criteria")
+  GetAchievementNumCriteria, GetAchievementCriteriaInfo = savedCount, savedInfo
+end
+
 -- All probes succeed, one throws, and one disappears. Stubs sit at game APIs;
 -- assertions read the public completion and the real errors upload Section.
 do
