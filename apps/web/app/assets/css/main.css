@@ -226,3 +226,196 @@ h1 {
 .actions .gold-button:hover {
   filter: brightness(1.08);
 }
+
+/* Navigation, breadcrumbs and catalog lists (docs/site-structure.md). */
+.site-nav,
+.footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.1rem;
+}
+
+.site-nav a,
+.footer-nav a {
+  color: var(--lamp-muted);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current="page"],
+.footer-nav a:hover {
+  color: var(--lamp-gold-light);
+}
+
+.footer-nav {
+  margin-bottom: 0.75rem;
+}
+
+.page-wide {
+  max-width: 52rem;
+}
+
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  color: var(--lamp-muted);
+  font-size: 0.9rem;
+}
+
+.breadcrumbs li + li::before {
+  content: "›";
+  margin-right: 0.4rem;
+  color: var(--lamp-line);
+}
+
+.breadcrumbs a {
+  color: var(--lamp-muted);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--lamp-line);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--lamp-glow) 70%, transparent);
+  color: var(--lamp-text);
+  text-decoration: none;
+}
+
+.catalog-card:hover {
+  border-color: var(--lamp-gold);
+  color: var(--lamp-text);
+}
+
+.catalog-card strong {
+  color: var(--lamp-gold-light);
+  font-size: 1.1rem;
+}
+
+.card-kind,
+.card-text {
+  color: var(--lamp-muted);
+  font-size: 0.9rem;
+}
+
+.home-section {
+  max-width: 52rem;
+  margin: 2rem auto 0;
+}
+
+.home-section h2,
+.track h2 {
+  color: var(--lamp-gold-light);
+  font-size: 1.35rem;
+}
+
+.steps {
+  padding-left: 1.25rem;
+  line-height: 1.55;
+}
+
+.steps li + li {
+  margin-top: 0.5rem;
+}
+
+.items {
+  margin: 1.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  gap: 1rem;
+  padding: 1.1rem 0;
+  border-top: 1px solid var(--lamp-line);
+}
+
+.item-rank {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--lamp-gold);
+  border-radius: 50%;
+  color: var(--lamp-gold);
+  font-weight: 650;
+  line-height: 2.15rem;
+  text-align: center;
+}
+
+.item-body {
+  min-width: 0;
+}
+
+.page .item h2 {
+  margin: 0.1rem 0 0.35rem;
+}
+
+.item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+}
+
+.page .item-tags span {
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--lamp-line);
+  border-radius: 999px;
+  color: var(--lamp-muted);
+  font-size: 0.8rem;
+}
+
+.page .item-tags .tag-sure {
+  border-color: var(--lamp-gold-700, #a87820);
+  color: var(--lamp-gold);
+}
+
+.page .item-tags .tag-chance {
+  border-color: #7a5a18;
+  color: #d9b98a;
+}
+
+.item-how {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 2px solid var(--lamp-gold);
+  background: color-mix(in srgb, var(--lamp-glow) 60%, transparent);
+}
+
+.item-how-label {
+  color: var(--lamp-gold-light);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.item-how ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.item-source {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.track {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--lamp-line);
+}

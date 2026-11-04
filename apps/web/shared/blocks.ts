@@ -11,11 +11,11 @@ export type Block =
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/** A catalog href on this site: home, a Path, or a Collection. Nothing else. */
+/** A page on this site (home, an index, install, a Path or a Collection) or https. */
 export function allowedHref(href: string): boolean {
   const value = href.trim();
   if (value.startsWith("/") && !value.startsWith("//")) {
-    if (value === "/") return true;
+    if (["/", "/paths", "/collections", "/install"].includes(value)) return true;
     const match = /^\/(paths|collections)\/([^/]+)$/.exec(value);
     return Boolean(match && match[2]!.length <= 80 && SLUG.test(match[2]!));
   }

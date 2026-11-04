@@ -8,7 +8,7 @@ export default defineNuxtConfig({
     colorMode: false,
   },
   site: {
-    url: "https://unbored.kosarev.space",
+    url: "https://playunbored.com",
     name: "Unbored",
     description: "Bory gives you one step at a time in World of Warcraft.",
     defaultLocale: "en",
@@ -18,6 +18,7 @@ export default defineNuxtConfig({
   },
   sitemap: {
     sources: ["/api/__sitemap__/urls"],
+    exclude: ["/my", "/enter/**"],
   },
   nitro: {
     preset: "node-server",

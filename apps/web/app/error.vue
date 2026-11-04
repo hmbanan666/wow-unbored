@@ -16,6 +16,7 @@ const line = computed(() => {
 });
 
 useSeoMeta({
+  robots: "noindex",
   title: () => line.value,
   ogTitle: () => line.value,
 });
@@ -23,9 +24,7 @@ useSeoMeta({
 
 <template>
   <div class="site">
-    <header class="site-header">
-      <NuxtLink class="wordmark" to="/">Unbored</NuxtLink>
-    </header>
+    <SiteHeader />
     <main class="page">
       <div class="portrait" aria-hidden="true">
         <img class="bory" src="/bory.png" alt="" />
@@ -33,8 +32,9 @@ useSeoMeta({
       </div>
       <h1>{{ line }}</h1>
       <p>
-        <NuxtLink to="/">Back home</NuxtLink>
+        <NuxtLink to="/">Back home</NuxtLink> · <NuxtLink to="/collections">Collections</NuxtLink>
       </p>
     </main>
+    <SiteFooter />
   </div>
 </template>
