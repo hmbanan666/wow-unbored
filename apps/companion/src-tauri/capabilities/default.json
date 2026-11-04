@@ -25,6 +25,7 @@
     "allow-fetch-plan",
     "allow-rescan-progress",
     "allow-open-privacy",
+    "allow-open-my-page",
     "allow-forget-my-data",
     "allow-connect-again"
   ]

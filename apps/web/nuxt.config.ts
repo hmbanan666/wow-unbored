@@ -22,6 +22,10 @@ export default defineNuxtConfig({
   nitro: {
     preset: "node-server",
   },
+  runtimeConfig: {
+    /** Server base URL for sign-in. Empty uses this request's origin. */
+    serverUrl: "",
+  },
   typescript: {
     strict: true,
   },

@@ -123,6 +123,7 @@ function paint(state: UiState) {
   });
   setup.hidden = phase !== "setup";
   reconnect.hidden = !state.canReconnect;
+  el("my-page").hidden = state.pairing !== "approved";
   document.title = state.mascot || "Unbored";
 
   if (document.activeElement !== url) url.value = state.settings.endpointUrl || "";
@@ -226,6 +227,7 @@ async function confirmForget() {
 }
 
 el("connect-again").addEventListener("click", () => run(() => invoke("connect_again")));
+el("open-my-page").addEventListener("click", () => run(() => invoke("open_my_page")));
 el("forget").addEventListener("click", () =>
   run(async () => {
     if (!(await confirmForget())) return invoke("get_state");
