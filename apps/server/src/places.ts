@@ -22,7 +22,7 @@ function positive(value: number): boolean {
 }
 
 /** UiMapAssignment world axes are swapped and reversed. Ambiguous mappings stay unknown. */
-function project(
+export function projectGamePoint(
   assignments: readonly Row[],
   mapID: number,
   worldMapID: number,
@@ -101,7 +101,7 @@ async function load(
       const group = rows("QuestPOIPoint", blob.ID);
       const point =
         number(blob.NumPoints) === 1 && group.length === 1
-          ? project(
+          ? projectGamePoint(
               rows("UiMapAssignment", `${mapID}:${worldMapID}`),
               mapID,
               worldMapID,
@@ -121,7 +121,7 @@ async function load(
       await yieldTurn();
       for (const row of rows("TaxiNodes", world)) {
         if (!row.Name_lang || !(number(row.Flags) & 3)) continue;
-        const point = project(
+        const point = projectGamePoint(
           rows("UiMapAssignment", `${mapID}:${world}`),
           mapID,
           world,

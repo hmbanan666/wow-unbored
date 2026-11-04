@@ -1,3 +1,4 @@
+import { checkGameOutcome, checkGameCompletions, gameMarkupCheck } from "./game-plan.ts";
 import { GameDb, GAME_SQLITE_SCHEMA } from "./game-db.ts";
 import { readPlaceData } from "./places.ts";
 import { DatabaseSync } from "node:sqlite";
@@ -316,7 +317,13 @@ export class Store {
     check: MarkupCheck = {},
     requestId?: string,
   ): Promise<StoredPlan> {
+    const build = check.gameBuild ?? (await this.game.currentBuild());
+    if (build) check = await gameMarkupCheck(raw, this.game, build, check);
     const plan = cleanPlan(raw, nowSeconds, check);
+    if (build) {
+      await checkGameOutcome(plan, this.game, build);
+      await checkGameCompletions(plan, this.game, build, check.warnings);
+    }
     const completionMaps = (complete: Record<string, unknown> | undefined): number[] => {
       if (!complete) return [];
       return [

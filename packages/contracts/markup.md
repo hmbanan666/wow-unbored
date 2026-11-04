@@ -43,7 +43,11 @@ Npc names and places live in a side table on the Plan (or the answer), not insid
 
 ## What the Server does
 
-`put_plan` and `answer_request` check every token. `check_ids` confirms mount, toy and pet ids against the player's own collection data. An unknown type, a malformed id, an npc without an entity, a pin out of range or a token past the 12th is replaced by its label, or dropped when it has none, and each one is listed in `warnings` in the reply. Entities nobody links to are dropped. When the Server has Blizzard Game Data API credentials (`BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`) it also checks that each item, quest, achievement, spell, mount, pet and npc (creature) id exists, with a cache; without them only the structure is checked.
+`put_plan` and `answer_request` check every token. `check_ids` confirms mount, toy and pet ids against the player's own collection data. An unknown type, a malformed id, an npc without an entity, a pin out of range or a token past the 12th is replaced by its label, or dropped when it has none, and each one is listed in `warnings` in the reply. Entities nobody links to are dropped.
+
+With an imported Game DB, ids and points are checked against that build, without remote reads. Unknown ids become plain text; unsupported pins, NPC points and route points are dropped with warnings. Toy ids are item ids. Spell and NPC verification currently covers mount source spells and pet summon spells/creatures; other ids have no imported evidence and become plain text. Missing outcome targets reject the submission before storage. See [Plan checks](../../docs/DEVELOPMENT.md#game-db-plan-checks) for the supported sources and limits.
+
+Before the first import, replies carry an informational `notes` entry that Game DB checks are unavailable. Existing optional Blizzard Game Data API checks still apply in that state. The markup syntax and delivered payload shapes are unchanged.
 
 ## What the addon does
 

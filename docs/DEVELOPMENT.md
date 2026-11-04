@@ -210,8 +210,7 @@ fields in `body` (jsonb; `body_json` text on SQLite). `GameDb.row(table, id,
 locale)` reads one record from the current build and returns `{build, fields}`,
 or `undefined`; it never downloads or falls back to an older build. Unlocalized
 tables use the same record for both locales. The existing MCP `get_game_entity`
-continues to return Achievement names through `game.achievements`. More tools
-and Plan validation belong to subsequent tickets.
+continues to return Achievement names through `game.achievements`.
 
 The owner triggers all tables with `POST /owner/game/import`, JSON
 `{"build":"<current-live-build>"}`, using the existing owner/planner bearer.
@@ -265,6 +264,50 @@ and 50.2 ms maximum lag. It included 175,791 items, 172,732 quest points,
 not a production import. The larger generated fixture covers growth beyond
 those observed counts.
 
+
+### Game DB: Plan checks
+
+`put_plan`, `answer_request` (including its optional Plan), and `PUT /v1/plan`
+check against one imported build for each submission. Existing ownership checks
+still reject targets already reached by the Character or Account. Missing
+Game DB outcome targets are errors: no Plan or Answer is stored and the Request
+remains pending. An outcome also listed as a chance bonus is rejected.
+
+Unknown Entity tokens become their label, or disappear without a label, with
+field-specific warnings. Invalid rewards and Reward contents are dropped.
+Structured completion and Condition checks use the same ids; unsupported
+completion becomes manual, and an unsupported Condition keeps its text.
+Toy tokens use `Toy.ItemID`, not the Toy row id. Spell ids are verified from
+mount source spells and pet summon spells; NPC ids from pet creature references.
+Other spells and NPCs have no imported evidence yet and become plain text.
+Planner-supplied NPC names and points never establish that an id exists.
+
+Points use imported map assignments, quest geometry, flight nodes and journal
+encounters. A unique quest destination more than 5% away on the same map
+corrects a Step destination; unsupported points are dropped from Steps,
+completion checks, routes, NPC entities and pin tokens. Ambiguous or oversized
+geometry groups cannot establish a destination. No validation downloads CSV.
+Migration `0012_game_validation.sql` adds relationship indexes to `game.rows`;
+SQLite creates equivalent indexes. Migration and import publication refresh
+PostgreSQL statistics so new relationship indexes cannot turn id lookups into
+full group scans before automatic analysis runs. It adds no tables, so transfer counts stay
+at 23. The existing import command above prepares all required tables; there
+is no separate data import for these checks.
+
+Before the first import, existing structural checks and optional remote id
+checks remain available, and submission replies explicitly report the missing
+Game DB in `notes`. Once imported, Game DB checks are authoritative and do not
+fall back to another build. Acquisition guarantees are not in the current
+source tables: source categories do not prove that a drop is chance-only.
+Source-based chance-only rejection remains a TODO until sourced acquisition
+facts are available; the Planner must still verify near-guaranteed outcomes
+under ADR 0068.
+
+`game-plan.test.ts` exercises MCP submissions, HTTP rejection, warning payloads,
+current-build changes and unchanged Request state after a rejected Answer on
+both storage backends. `postgres.test.ts` checks automatic migration and
+concurrent startup. Existing shared Plan fixtures continue through the
+contract, addon and delivery suites.
 
 ### Game DB: automatic build watching
 

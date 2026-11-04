@@ -78,14 +78,16 @@ for (const backend of BACKENDS) {
         assert.equal((await store.game.row("QuestPOIPoint", 750_000))?.fields.X, 25);
         // The SQL lookup is also a public boundary for future tools/checks.
         if (backend === "postgres") {
-          const plan = await pg(backend)!.unsafe(`EXPLAIN (FORMAT JSON)
-            SELECT body FROM game.rows WHERE build = (SELECT build FROM game.builds ORDER BY build_number DESC LIMIT 1)
-            AND table_name = 'ItemSparse' AND locale = 'enUS' AND id = 300000`);
-          assert.match(
-            JSON.stringify(plan),
-            /rows_pkey/,
-            "id lookup uses the composite primary index",
-          );
+          for (const table of ["ItemSparse", "QuestPOIPoint"]) {
+            const plan = await pg(backend)!.unsafe(`EXPLAIN (FORMAT JSON)
+              SELECT build, body FROM game.rows WHERE build = '12.0.1.66337'
+              AND table_name = '${table}' AND locale = 'enUS' AND id = 300000`);
+            assert.match(
+              JSON.stringify(plan),
+              /rows_pkey/,
+              `${table} id lookup uses the composite primary index immediately after import`,
+            );
+          }
         }
         const lookupStart = performance.now();
         for (let id = 1; id <= 100; id++) await store.game.row("QuestPOIPoint", id * 7000);

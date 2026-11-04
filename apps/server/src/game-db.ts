@@ -1,6 +1,7 @@
 import { type Db, fromJson } from "./db.ts";
 import {
   GAME_CONTENT_SQLITE_SCHEMA,
+  GAME_TABLES,
   importGameContent,
   gameLocalized,
   type GameFields,
@@ -63,15 +64,64 @@ export class GameDb {
     });
   }
 
-  async row(table: GameTable, id: number, locale: "enUS" | "ruRU" = "enUS") {
+  async row(table: GameTable, id: number, locale: "enUS" | "ruRU" = "enUS", build?: string) {
     const rows = this.db.pg ? "game.rows" : "game_rows";
     const found = await this.db.get<{ build: string; body: unknown }>(
-      `SELECT build, ${this.db.body} AS body FROM ${rows} WHERE build = (SELECT build FROM ${this.builds} ORDER BY build_number DESC LIMIT 1) AND table_name = ? AND locale = ? AND id = ?`,
+      `SELECT build, ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = ? AND id = ?`,
+      build ?? (await this.currentBuild()) ?? "",
       table,
       gameLocalized(table) ? locale : "enUS",
       id,
     );
     return found ? { build: found.build, fields: fromJson<GameFields>(found.body)! } : undefined;
+  }
+
+  /** Bounded relationship lookup. A full group is required to prove unique geometry. */
+  async related(table: GameTable, field: string, id: number, build: string): Promise<GameFields[]> {
+    if (!(GAME_TABLES[table] as readonly string[]).includes(field))
+      throw new Error("Unknown game field");
+    const rows = this.db.pg ? "game.rows" : "game_rows";
+    const value = this.db.pg
+      ? `body ->> '${field}'`
+      : `CAST(json_extract(body_json, '$.${field}') AS TEXT)`;
+    const found = await this.db.all<{ body: unknown }>(
+      `SELECT ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = 'enUS' AND ${value} = ? LIMIT 257`,
+      build,
+      table,
+      String(id),
+    );
+    return found.map((row) => fromJson<GameFields>(row.body)!);
+  }
+
+  /** Resolve only ids present in the imported build; never infer from player claims. */
+  async missing(keys: Iterable<string>, build: string): Promise<Set<string>> {
+    const tables: Record<string, GameTable> = {
+      item: "ItemSparse",
+      quest: "QuestV2",
+      ach: "Achievement",
+      currency: "CurrencyTypes",
+      mount: "Mount",
+      pet: "BattlePetSpecies",
+      zone: "UiMap",
+      instance: "JournalInstance",
+    };
+    const missing = new Set<string>();
+    for (const key of new Set(keys)) {
+      const [kind, id] = key.split(":");
+      const table = tables[kind];
+      let found = table ? !!(await this.row(table, Number(id), "enUS", build)) : false;
+      if (kind === "toy")
+        found = (await this.related("Toy", "ItemID", Number(id), build)).length > 0;
+      if (kind === "spell")
+        found =
+          (await this.related("Mount", "SourceSpellID", Number(id), build)).length > 0 ||
+          (await this.related("BattlePetSpecies", "SummonSpellID", Number(id), build)).length > 0;
+      if (kind === "npc")
+        found =
+          (await this.related("BattlePetSpecies", "CreatureID", Number(id), build)).length > 0;
+      if (!found) missing.add(key);
+    }
+    return missing;
   }
 
   async currentBuild() {
