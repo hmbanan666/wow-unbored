@@ -267,7 +267,9 @@ test("the Request's level is usable snapshot evidence when no char Section exist
       "level-context",
     );
     assert.equal(accepted.isError, false, accepted.text);
-    assert.deepEqual(JSON.parse(accepted.text).notes, []);
+    assert.deepEqual(JSON.parse(accepted.text).notes, [
+      "Game DB is not imported; ids and outcome existence remain unverified.",
+    ]);
     await app.store.putSnapshot(snapshot({ char: { body: { level: 79 } } }), "pc");
     const newerRequest = await app.call(
       { ...plan, outcome: { kind: "level", level: 80 } },

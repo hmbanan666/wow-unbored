@@ -76,6 +76,16 @@ export const GAME_CONTENT_SQLITE_SCHEMA = `
     locale TEXT NOT NULL, id INTEGER NOT NULL, body_json TEXT NOT NULL,
     PRIMARY KEY (build, table_name, locale, id)
   );
+CREATE INDEX IF NOT EXISTS game_toy_itemid ON game_rows (build, locale, CAST(json_extract(body_json, '$.ItemID') AS TEXT)) WHERE table_name = 'Toy';
+CREATE INDEX IF NOT EXISTS game_mount_sourcespellid ON game_rows (build, locale, CAST(json_extract(body_json, '$.SourceSpellID') AS TEXT)) WHERE table_name = 'Mount';
+CREATE INDEX IF NOT EXISTS game_battlepetspecies_summonspellid ON game_rows (build, locale, CAST(json_extract(body_json, '$.SummonSpellID') AS TEXT)) WHERE table_name = 'BattlePetSpecies';
+CREATE INDEX IF NOT EXISTS game_battlepetspecies_creatureid ON game_rows (build, locale, CAST(json_extract(body_json, '$.CreatureID') AS TEXT)) WHERE table_name = 'BattlePetSpecies';
+CREATE INDEX IF NOT EXISTS game_uimapassignment_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'UiMapAssignment';
+CREATE INDEX IF NOT EXISTS game_questpoiblob_questid ON game_rows (build, locale, CAST(json_extract(body_json, '$.QuestID') AS TEXT)) WHERE table_name = 'QuestPOIBlob';
+CREATE INDEX IF NOT EXISTS game_questpoiblob_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'QuestPOIBlob';
+CREATE INDEX IF NOT EXISTS game_questpoipoint_questpoiblobid ON game_rows (build, locale, CAST(json_extract(body_json, '$.QuestPOIBlobID') AS TEXT)) WHERE table_name = 'QuestPOIPoint';
+CREATE INDEX IF NOT EXISTS game_taxinodes_continentid ON game_rows (build, locale, CAST(json_extract(body_json, '$.ContinentID') AS TEXT)) WHERE table_name = 'TaxiNodes';
+CREATE INDEX IF NOT EXISTS game_journalencounter_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'JournalEncounter';
   CREATE TABLE IF NOT EXISTS game_imports (
     build TEXT PRIMARY KEY REFERENCES game_builds(build), body_json TEXT NOT NULL
   );

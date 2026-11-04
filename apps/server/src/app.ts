@@ -642,13 +642,16 @@ export function createApp(
         asked,
       );
       const warnings: string[] = [];
-      const missing = await gameIds.missing(planMarkupIds(plan));
+      const build = await store.game.currentBuild();
+      if (!build)
+        notes.push("Game DB is not imported; ids and outcome existence remain unverified.");
+      const missing = build ? undefined : await gameIds.missing(planMarkupIds(plan));
       // One transaction: Forget my data cannot erase the Request between the two.
       const { stored, request } = await store.tx(async () => {
         const stored = await store.putPlan(
           plan,
           undefined,
-          { missing, warnings, context: asked?.context, wish: asked?.wish },
+          { gameBuild: build, missing, warnings, context: asked?.context, wish: asked?.wish },
           requestId,
         );
         const request = requestId ? await store.fulfillRequest(requestId, stored.id) : undefined;

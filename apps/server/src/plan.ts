@@ -42,7 +42,9 @@ export class PlanError extends Error {}
 
 /** How markup is checked while a plan or answer is cleaned (packages/contracts/markup.md). */
 export type MarkupCheck = {
-  /** `type:id` the Blizzard Game Data API says do not exist. */
+  /** Imported build used for this submission, including an Answer with a Plan. */
+  gameBuild?: string;
+  /** `type:id` that could not be verified. */
   missing?: ReadonlySet<string>;
   /** Filled with one line per correction to the plan or answer. */
   warnings?: string[];
@@ -53,6 +55,13 @@ export type MarkupCheck = {
   /** Only points read from cached game tables, never Planner claims. */
   places?: PlaceData;
 };
+
+function verifiedPoint(point: Waypoint, check: MarkupCheck): boolean {
+  return (
+    !atPlayerPosition(point, check.context) &&
+    !!check.places?.knownPoints.some((p) => p.mapID === point.mapID && distance(p, point) <= 0.005)
+  );
+}
 
 function atPlayerPosition(
   point: Partial<Waypoint>,
@@ -282,6 +291,17 @@ type MarkupScope = {
 function markupScope(raw: unknown, check: MarkupCheck, where: string): MarkupScope {
   const { entities, issues } = cleanEntities(raw);
   for (const issue of issues) check.warnings?.push(`${where}: ${issue}`);
+  if (check.gameBuild && entities.npc) {
+    for (const [id, entity] of Object.entries(entities.npc)) {
+      if (entity.mapID === undefined || entity.x === undefined || entity.y === undefined) continue;
+      if (!verifiedPoint({ mapID: entity.mapID, x: entity.x / 100, y: entity.y / 100 }, check)) {
+        delete entity.mapID;
+        delete entity.x;
+        delete entity.y;
+        check.warnings?.push(`${where} npc ${id}: unsupported point dropped`);
+      }
+    }
+  }
   return { entities, npcs: new Set(), check };
 }
 
@@ -299,6 +319,23 @@ function cleanText(
   });
   for (const issue of result.issues) {
     scope.check.warnings?.push(`${where}: ${issue.raw} ${issue.problem}; kept the label only`);
+  }
+  if (scope.check.gameBuild) {
+    return parseMarkup(result.text)
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (
+          part.type === "pin" &&
+          !verifiedPoint({ mapID: part.mapID!, x: part.x! / 100, y: part.y! / 100 }, scope.check)
+        ) {
+          scope.check.warnings?.push(
+            `${where}: ${part.raw} unsupported point; kept the label only`,
+          );
+          return part.label ?? "";
+        }
+        return part.raw;
+      })
+      .join("");
   }
   return result.text;
 }
@@ -846,15 +883,17 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
       check.warnings?.push(`Step ${index} point is the player's own position; dropped`);
       return;
     }
-    if (
-      check.places!.knownPoints.some((p) => p.mapID === point.mapID && distance(p, point) <= 0.005)
-    )
-      return point;
     const candidates = check.places!.questPoints.filter(
       (p) => quests.has(p.questID) && p.mapID === point.mapID,
     );
+    const correctQuest = !route && candidates.length === 1 && distance(point, candidates[0]) > 0.05;
+    if (
+      !(check.gameBuild && correctQuest) &&
+      check.places!.knownPoints.some((p) => p.mapID === point.mapID && distance(p, point) <= 0.005)
+    )
+      return point;
     // Multiple quest destinations or objective areas cannot prove which one this Step means.
-    if (!route && candidates.length === 1 && distance(point, candidates[0]) > 0.05) {
+    if (correctQuest) {
       check.warnings?.push(`Step ${index} point replaced with the known quest point on this map`);
       const { mapID, x, y } = candidates[0];
       return validate({ mapID, x, y });
@@ -878,6 +917,20 @@ function validateTaskPlaces(task: Task, index: number, check: MarkupCheck): void
     }
   }
   const completion = (raw: Record<string, unknown>): Record<string, unknown> | undefined => {
+    if (
+      check.gameBuild &&
+      raw.kind === "vignette" &&
+      raw.x !== undefined &&
+      raw.y !== undefined &&
+      !verifiedPoint(raw as Waypoint, check)
+    ) {
+      const kept = { ...raw };
+      delete kept.mapID;
+      delete kept.x;
+      delete kept.y;
+      check.warnings?.push(`Step ${index} unsupported vignette point dropped`);
+      return kept;
+    }
     if (raw.kind === "proximity") {
       const point = destination ?? validate(raw as Waypoint);
       return point ? { ...raw, ...point } : undefined;
@@ -1046,7 +1099,16 @@ export function cleanAnswer(
   const kept = usedEntities(scope);
   if (kept) answer.entities = kept;
   const points = cleanWaypoints(waypoints, "Answer");
-  if (points) answer.waypoints = points;
+  if (points) {
+    const kept = check.gameBuild
+      ? points.filter((point) => {
+          if (verifiedPoint(point, check)) return true;
+          check.warnings?.push("Answer: unsupported route point dropped");
+          return false;
+        })
+      : points;
+    if (kept.length) answer.waypoints = kept;
+  }
   return answer;
 }
 

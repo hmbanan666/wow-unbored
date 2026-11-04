@@ -1,3 +1,4 @@
+import { gameMarkupCheck } from "./game-plan.ts";
 import { getPlace } from "./places.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -411,13 +412,17 @@ export function createMcpServer(
         await settle(asked?.account);
         const notes = await checkOutcome(plan.outcome, store.data, asked);
         const warnings: string[] = [];
-        const missing = gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
+        const build = await store.game.currentBuild();
+        if (!build)
+          notes.push("Game DB is not imported; ids and outcome existence remain unverified.");
+        const missing = !build && gameIds ? await gameIds.missing(planMarkupIds(plan)) : undefined;
         // One transaction: Forget my data cannot erase the Request between the two.
         const { stored, request } = await store.tx(async () => {
           const stored = await store.putPlan(
             plan,
             undefined,
             {
+              gameBuild: build,
               missing,
               warnings,
               wish: asked?.wish,
@@ -1042,9 +1047,19 @@ export function createMcpServer(
         const notes = plan ? await checkOutcome(plan.outcome, store.data, asked) : [];
         const warnings: string[] = [];
         const ids = [...markupIds(message), ...(plan ? planMarkupIds(plan) : [])];
-        const missing = gameIds ? await gameIds.missing(ids) : undefined;
+        const build = await store.game.currentBuild();
+        if (!build)
+          notes.push("Game DB is not imported; ids and outcome existence remain unverified.");
+        const missing = !build && gameIds ? await gameIds.missing(ids) : undefined;
         const now = Math.floor(Date.now() / 1000);
-        const answer = cleanAnswer(message, waypoints, now, entities, { missing, warnings });
+        const check = build
+          ? await gameMarkupCheck({ message, waypoints, entities, plan }, store.game, build, {
+              missing,
+              warnings,
+              context: asked.context,
+            })
+          : { missing, warnings };
+        const answer = cleanAnswer(message, waypoints, now, entities, check);
         // One transaction: Forget my data cannot erase the Request between the two.
         const { stored, request } = await store.tx(async () => {
           const stored = plan
@@ -1052,8 +1067,7 @@ export function createMcpServer(
                 plan,
                 now,
                 {
-                  missing,
-                  warnings,
+                  ...check,
                   wish: asked.wish,
                   context: asked.context,
                 },
