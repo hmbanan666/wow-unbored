@@ -176,16 +176,26 @@ test.skipIf(!hasPostgres)(
       await store.syncPage({
         items: [{ kind: "currency", id: 1, name: "Coin", media: { icon: 99 } }],
       });
-      now += 26 * 86400;
+      now += 24 * 86400;
+      await store.syncPage({
+        items: [{ kind: "currency", id: 2, name: "Other coin", media: { icon: 99 } }],
+      });
+      assert.equal(downloads, 1, "a new reference reuses still-fresh source bytes");
+      now += 2 * 86400;
       await store.refresh();
       assert.equal(downloads, 2);
       const [renewed] = await database.sql`SELECT fetched_at, checked_at FROM content.media`;
       assert.equal(renewed.fetched_at, now);
       assert.equal(renewed.checked_at, now);
+      assert.ok(
+        (await database.sql`SELECT fetched_at FROM content.media`).every(
+          (row) => row.fetched_at === now,
+        ),
+      );
       unavailable = true;
       now += 26 * 86400;
       await store.refresh();
-      assert.equal((await database.sql`SELECT * FROM content.media`).length, 1);
+      assert.equal((await database.sql`SELECT * FROM content.media`).length, 2);
       now += 5 * 86400;
       await store.refresh();
       assert.equal((await database.sql`SELECT * FROM content.media`).length, 0);

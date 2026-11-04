@@ -224,7 +224,8 @@ export class MediaStore {
     let after = 0;
     while (!this.stopped) {
       const rows = await this.db.all<AssetRow>(
-        "SELECT * FROM content.media WHERE source = 'blizzard' AND checked_at < ? AND id > ? ORDER BY id LIMIT 20",
+        "SELECT * FROM content.media WHERE source = 'blizzard' AND (checked_at < ? OR fetched_at < ?) AND id > ? ORDER BY id LIMIT 20",
+        this.now() - 25 * DAY,
         this.now() - 25 * DAY,
         after,
       );

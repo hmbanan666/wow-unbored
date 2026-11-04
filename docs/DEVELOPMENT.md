@@ -1112,7 +1112,8 @@ After owner HTTP or MCP publication commits, a bounded in-process queue syncs it
 hero, figures and inline references. Publishing never waits for downloads. Restarting can
 lose pending work; the explicit sync command retries it. Failures log a short message and
 leave existing art available. A daily job (also run at startup) visits Blizzard rows older
-than 25 days in batches of 20. A 404 removes the missing art; transient failures retry on
+than 25 days in batches of 20, considering both the check and download timestamps so
+sharing an older source cannot extend its lifetime. A 404 removes the missing art; transient failures retry on
 the next pass, and assets that cannot be refreshed are removed at 30 days. Stop waits for
 current work before closing the database. Own images are never automatically refreshed.
 
