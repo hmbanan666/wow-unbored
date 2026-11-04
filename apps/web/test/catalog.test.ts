@@ -4,6 +4,7 @@ import { test } from "vite-plus/test";
 import { allowedHref, cleanBlocks } from "../shared/blocks.ts";
 import {
   catalogHref,
+  cleanItems,
   isCatalogKind,
   isEntityPath,
   isSlug,
@@ -15,7 +16,7 @@ import {
 test("paths and collections share the catalog, and objects have no page", () => {
   assert.deepEqual(
     PUBLIC_ROUTES.map((route) => route.pattern),
-    ["/", "/paths/:slug", "/collections/:slug"],
+    ["/", "/paths", "/paths/:slug", "/collections", "/collections/:slug", "/install"],
   );
   assert.equal(catalogHref("path", "midnight-basic"), "/paths/midnight-basic");
   assert.equal(catalogHref("collection", "first-mounts"), "/collections/first-mounts");
@@ -63,4 +64,62 @@ test("authored blocks keep https and catalog links, and drop object links", () =
     pageMessage({ message: PUBLIC_COPY.notPublished }, null, "x"),
     PUBLIC_COPY.notPublished,
   );
+});
+
+test("list items keep verified fields and drop anything malformed", () => {
+  const items = cleanItems({
+    items: [
+      {
+        kind: "mount",
+        id: 460,
+        name: "Grand Expedition Yak",
+        source: {
+          type: "vendor",
+          text: "Vendor: Uncle Bigpocket\nZone: Kun-Lai Summit",
+          zone: 379,
+        },
+        chance: false,
+        note: "Two vendors on a mount.",
+        url: "https://www.wowhead.com/spell=122708",
+      },
+      {
+        kind: "npc",
+        id: 1,
+        name: "Nope",
+        source: { type: "vendor", text: "x" },
+        chance: false,
+        note: "x",
+      },
+      { kind: "pet", id: 2, name: "No note", source: { type: "drop", text: "x" }, chance: true },
+      {
+        kind: "pet",
+        id: 3,
+        name: "Bad link",
+        source: { type: "drop", text: "Drop" },
+        chance: true,
+        note: "Luck.",
+        url: "javascript:alert(1)",
+      },
+    ],
+  });
+  assert.deepEqual(items, [
+    {
+      kind: "mount",
+      id: 460,
+      name: "Grand Expedition Yak",
+      source: { type: "vendor", lines: ["Vendor: Uncle Bigpocket", "Zone: Kun-Lai Summit"] },
+      chance: false,
+      note: "Two vendors on a mount.",
+      url: "https://www.wowhead.com/spell=122708",
+    },
+    {
+      kind: "pet",
+      id: 3,
+      name: "Bad link",
+      source: { type: "drop", lines: ["Drop"] },
+      chance: true,
+      note: "Luck.",
+    },
+  ]);
+  assert.deepEqual(cleanItems({ blocks: [] }), []);
 });

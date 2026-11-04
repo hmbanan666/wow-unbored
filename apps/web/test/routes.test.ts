@@ -18,11 +18,20 @@ function files(dir: string): string[] {
   return out;
 }
 
-test("public pages are home, paths and collections", () => {
+test("public pages are home, install, paths and collections", () => {
   const pages = path.join(web, "app/pages");
-  assert.deepEqual(readdirSync(pages).sort(), ["collections", "index.vue", "my.vue", "paths"]);
-  assert.deepEqual(readdirSync(path.join(pages, "paths")), ["[slug].vue"]);
-  assert.deepEqual(readdirSync(path.join(pages, "collections")), ["[slug].vue"]);
+  assert.deepEqual(readdirSync(pages).sort(), [
+    "collections",
+    "index.vue",
+    "install.vue",
+    "my.vue",
+    "paths",
+  ]);
+  assert.deepEqual(readdirSync(path.join(pages, "paths")).sort(), ["[slug].vue", "index.vue"]);
+  assert.deepEqual(readdirSync(path.join(pages, "collections")).sort(), [
+    "[slug].vue",
+    "index.vue",
+  ]);
 });
 
 test("player text is not stored as markdown", () => {
