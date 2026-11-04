@@ -271,7 +271,11 @@ export function createMcpServer(
             )
               throw new Error("Advice may only be written for the leased Request's Character.");
             if (name === "get_request")
-              return text({ ...publicRequest(request), context: request.context });
+              return text({
+                ...publicRequest(request),
+                context: request.context,
+                path: await store.requestPath(request),
+              });
             if (name === "get_current_plan") {
               const stored = request.account
                 ? await store.latestPlanForAccount(request.account)
@@ -314,7 +318,8 @@ export function createMcpServer(
       "get_request",
       {
         title: "Get the leased Request",
-        description: "The one Request this lease may answer, with its Player context.",
+        description:
+          "The one Request this lease may answer, with its Player context. For a Path pick, path.nextGoals lists unfinished required goals in authored order from the picked publication, with sources and notes. Only goals with an outcome are eligible Plan targets; quests may guide Steps and chance goals remain bonuses. A path.reason explains unavailable data; if no eligible goal remains, use fail_request.",
       },
       async () => text(null),
     );
@@ -661,6 +666,7 @@ export function createMcpServer(
         const delivery = await store.webhookDelivery(request.id);
         requests.push({
           ...publicRequest(request),
+          path: await store.requestPath(request),
           runner: await store.runnerStatus(request.id),
           webhook: delivery
             ? {

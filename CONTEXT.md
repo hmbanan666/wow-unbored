@@ -238,7 +238,7 @@ A group of goals inside a Path, such as mounts, achievements or PvP.
 _Avoid_: branch, category, tag.
 
 **Path goal**
-One goal of a Path: an outcome target, quest or quest line, with verified ids where the target has one. Required goals define completion; a chance drop can count toward completion but is only a bonus in Plans.
+One goal of a Path: an outcome target, quest or quest line, with verified ids where the target has one. Required goals define completion. A Path Plan takes its outcome from an unfinished required goal; quests and quest lines may guide Steps, and chance drops may count toward completion, but neither supplies a Plan outcome.
 _Avoid_: step (that is a Plan's), task, objective.
 
 **Path completion**
