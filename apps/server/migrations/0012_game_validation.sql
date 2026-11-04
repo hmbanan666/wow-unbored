@@ -9,3 +9,6 @@ CREATE INDEX game_questpoiblob_uimapid ON game.rows (build, locale, (body ->> 'U
 CREATE INDEX game_questpoipoint_questpoiblobid ON game.rows (build, locale, (body ->> 'QuestPOIBlobID')) WHERE table_name = 'QuestPOIPoint';
 CREATE INDEX game_taxinodes_continentid ON game.rows (build, locale, (body ->> 'ContinentID')) WHERE table_name = 'TaxiNodes';
 CREATE INDEX game_journalencounter_uimapid ON game.rows (build, locale, (body ->> 'UiMapID')) WHERE table_name = 'JournalEncounter';
+
+-- Existing imports need expression statistics as soon as these indexes are available.
+ANALYZE game.rows;

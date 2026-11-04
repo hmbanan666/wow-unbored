@@ -49,7 +49,10 @@ export async function gamePlaces(
     }
     for (const [questID, group] of quests) {
       if (uncertain.has(questID) || !(await game.row("QuestV2", questID, "enUS", build))) continue;
-      if (result.questPoints.length + group.length <= PLACE_LIMIT) {
+      if (
+        result.questPoints.length + group.length <= PLACE_LIMIT &&
+        result.knownPoints.length + group.length <= PLACE_LIMIT
+      ) {
         result.questPoints.push(...group);
         result.knownPoints.push(...group);
       }
@@ -58,14 +61,15 @@ export async function gamePlaces(
     for (const row of encounters.slice(0, PLACE_LIMIT)) {
       const x = Number(row.Map_0),
         y = Number(row.Map_1);
-      if (x >= 0 && x <= 1 && y >= 0 && y <= 1) result.knownPoints.push({ mapID, x, y });
+      if (x >= 0 && x <= 1 && y >= 0 && y <= 1 && result.knownPoints.length < PLACE_LIMIT)
+        result.knownPoints.push({ mapID, x, y });
     }
     for (const world of new Set(assignments.map((row) => Number(row.MapID)))) {
       const flights = await game.related("TaxiNodes", "ContinentID", world, build);
       for (const row of flights.slice(0, PLACE_LIMIT)) {
         if (!(Number(row.Flags) & 3)) continue;
         const point = project(world, Number(row.Pos_0), Number(row.Pos_1));
-        if (point) result.knownPoints.push(point);
+        if (point && result.knownPoints.length < PLACE_LIMIT) result.knownPoints.push(point);
       }
     }
   }

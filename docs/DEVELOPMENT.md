@@ -288,7 +288,9 @@ corrects a Step destination; unsupported points are dropped from Steps,
 completion checks, routes, NPC entities and pin tokens. Ambiguous or oversized
 geometry groups cannot establish a destination. No validation downloads CSV.
 Migration `0012_game_validation.sql` adds relationship indexes to `game.rows`;
-SQLite creates equivalent indexes. It adds no tables, so transfer counts stay
+SQLite creates equivalent indexes. Migration and import publication refresh
+PostgreSQL statistics so new relationship indexes cannot turn id lookups into
+full group scans before automatic analysis runs. It adds no tables, so transfer counts stay
 at 23. The existing import command above prepares all required tables; there
 is no separate data import for these checks.
 

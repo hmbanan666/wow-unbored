@@ -348,3 +348,41 @@ test("a chance bonus cannot also be the promised outcome", async () => {
     await api.dispose();
   }
 });
+
+test("destination evidence remains bounded across several maps", async () => {
+  const api = await setup();
+  try {
+    await api.store.game.importBuild("12.0.1.70001", async (input) => {
+      const table = new URL(String(input)).pathname.split("/")[2];
+      if (table === "UiMap")
+        return new Response(
+          "ID,Name_lang,ParentUiMapID,Type\n84,First city,13,3\n85,Second city,13,3\n",
+        );
+      if (table === "JournalEncounter")
+        return new Response(
+          "ID,Name_lang,JournalInstanceID,DungeonEncounterID,OrderIndex,UiMapID,Map_0,Map_1\n" +
+            Array.from(
+              { length: 256 },
+              (_, i) => `${i + 1},A boss,63,2970,0,84,${i / 512},0.5\n`,
+            ).join("") +
+            "257,Another boss,63,2971,0,85,0.9,0.9\n",
+        );
+      return coreResponse(input);
+    });
+    const result = await api.call("put_plan", {
+      plan: {
+        ...base,
+        tasks: [
+          { id: "first", title: "Visit the first city", mapID: 84, x: 0.1, y: 0.5 },
+          { id: "second", title: "Visit the second city", mapID: 85, x: 0.9, y: 0.9 },
+        ],
+      },
+    });
+    assert.equal(result.error, false);
+    assert.equal(result.value.stored.tasks[0].mapID, 84);
+    assert.equal(result.value.stored.tasks[1].mapID, undefined);
+    assert.match(result.value.warnings.join(" "), /unsupported travel point/);
+  } finally {
+    await api.dispose();
+  }
+});
