@@ -269,3 +269,60 @@ test.skipIf(!hasPostgres)(
     }
   },
 );
+
+test.skipIf(!hasPostgres)(
+  "a recorded completion stays quiet after spending currency, but a new version can continue",
+  async () => {
+    const { store, api, content, close } = await setup();
+    const currencyPath = {
+      ...collection,
+      kind: "path",
+      slug: "spending",
+      tier: "basic",
+      items: [
+        {
+          kind: "currency",
+          id: 2000,
+          amount: 50,
+          name: "Test currency",
+          required: true,
+          source: { type: "vendor", text: "Earn it" },
+          chance: false,
+          note: "Collect it.",
+        },
+      ],
+    };
+    const current = () => store.suggestionsForDevice("device");
+    try {
+      await content.saveDraft(currencyPath);
+      await content.publish("path", "spending");
+      await api("PUT", { ...who, path: { kind: "path", slug: "spending", locale: "en" } });
+      assert.equal((await current()).characters["Realm-Mira"][0].kind, "path");
+      await store.putSnapshot(
+        snapshot(
+          { currencies: { at: NOW + 1, body: { list: [{ id: 2000, quantity: 50 }] } } },
+          { savedAt: NOW + 1 },
+        ),
+        "device",
+        NOW + 1,
+      );
+      await store.putSnapshot(
+        snapshot(
+          { currencies: { at: NOW + 2, body: { list: [{ id: 2000, quantity: 10 }] } } },
+          { savedAt: NOW + 2 },
+        ),
+        "device",
+        NOW + 2,
+      );
+      assert.ok(
+        !(await current()).characters["Realm-Mira"]?.some((idea) => idea.kind === "path"),
+        "a completed version does not return after spending its currency",
+      );
+      await content.saveDraft({ ...currencyPath, title: "More currency" });
+      await content.publish("path", "spending");
+      assert.equal((await current()).characters["Realm-Mira"][0].path?.version, 2);
+    } finally {
+      close();
+    }
+  },
+);

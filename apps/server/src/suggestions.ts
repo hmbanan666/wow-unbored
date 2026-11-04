@@ -1017,17 +1017,8 @@ export class SuggestionStore {
     const list = (stored?.list ?? []).filter(
       (item) => item.kind !== "path" && (item.expiresAt === undefined || item.expiresAt > now),
     );
-    const active =
-      this.db.pg && this.activePaths
-        ? (
-            await this.activePaths.get({
-              account: row.accountId,
-              character: row.name,
-              realm: row.realm,
-            })
-          ).path
-        : null;
-    if (active && active.total > 0 && active.done < active.total) {
+    const active = this.db.pg && this.activePaths ? await this.activePaths.forCharacter(row) : null;
+    if (active && active.completedAt === null && active.total > 0 && active.done < active.total) {
       const section = await this.data.section("char", row.id, "char");
       const lang = ideaLang(section?.body.lang) ?? (await this.lastRequestLang(row)) ?? "en";
       const id = `path:${active.id}`;

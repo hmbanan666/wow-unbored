@@ -1,22 +1,13 @@
+import { pathReferenceSchema } from "@unbored/contracts";
 import { z } from "zod";
 import { ContentStore } from "./content.ts";
-import type { DataStore } from "./data.ts";
+import type { CharacterRow, DataStore } from "./data.ts";
 import type { Db } from "./db.ts";
 import type { GameDb } from "./game-db.ts";
 import { createPathProgressReader } from "./path-progress.ts";
 import { accountKey } from "./store.ts";
 
-export const pathSelectionSchema = z
-  .object({
-    kind: z.enum(["path", "collection"]),
-    slug: z
-      .string()
-      .min(1)
-      .max(80)
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-    locale: z.enum(["en", "ru"]),
-  })
-  .strict();
+export const pathSelectionSchema = pathReferenceSchema.omit({ version: true });
 export const pathCharacterSchema = z
   .object({
     account: z.string().trim().min(1).max(80),
@@ -56,23 +47,37 @@ export class ActivePaths {
     return this.db.tx(async () => {
       await this.db.lockKey(`account:${accountKey(who.account)}`);
       const character = await this.character(who);
+      return { ...who, path: await this.forCharacter(character) };
+    });
+  }
+
+  /** Delivery may still hold a Character row after Forget my data removed it. */
+  async forCharacter(character: CharacterRow) {
+    if (!this.db.pg) return null;
+    return this.db.tx(async () => {
+      await this.db.lockKey(`account:${character.accountId}`);
       const selected = await this.db.get<Selection>(
         "SELECT kind, slug, locale FROM active_paths WHERE character_id = ?",
         character.id,
       );
-      if (!selected) return { ...who, path: null };
+      if (!selected) return null;
       const path = (await new ContentStore(this.db, this.game).publishedPaths()).find(
         (path) =>
           path.kind === selected.kind &&
           path.slug === selected.slug &&
           path.locale === selected.locale,
       );
-      if (!path) return { ...who, path: null };
+      if (!path) return null;
       const [progress] = await createPathProgressReader(this.game)(
         [path],
         await this.data.sectionsFor(character),
       );
-      return { ...who, path: progress! };
+      const completed = await this.db.get<{ at: number }>(
+        "SELECT at FROM path_completions WHERE character_id = ? AND content_id = ?",
+        character.id,
+        path.id,
+      );
+      return { ...progress!, completedAt: completed?.at ?? null };
     });
   }
 

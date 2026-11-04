@@ -383,7 +383,7 @@ required, and the Character must already belong to that Account. PUT accepts
 `{ account, character, realm, path: { kind: "path" | "collection", slug, locale: "en" | "ru" } }`;
 `path: null` clears the selection. Both return `{ account, character, realm,
 path }`, with `path` null or the current published version and progress
-(`id`, `kind`, `slug`, `locale`, `version`, `title`, `done`, `total`, `goals`).
+(`id`, `kind`, `slug`, `locale`, `version`, `title`, `done`, `total`, `completedAt`, `goals`).
 MCP `get_active_path` and `set_active_path` accept the same fields and are owner
 only; runner leases cannot change the player's selection. Invalid, draft,
 Guide or unknown selections return an error without changing the current Path.
@@ -398,7 +398,9 @@ Suggestions prepend one `kind: "path"` Idea for the active Path while required
 goals remain. It uses `path-progress.ts` and `content.ts` directly at delivery,
 so selection, publication and snapshot changes appear without waiting for the
 normal Suggestion cache; the ten-Idea limit still applies. A completed, empty
-or unavailable Path offers no Continue Idea. Repeated reads of unchanged data
+or unavailable Path offers no Continue Idea; a recorded completion stays quiet
+even after currency is spent or an item is lost. A newly published version can
+be continued independently. Repeated reads of unchanged data
 do not change the payload just because the clock advances.
 
 The addon shows **Continue your Path / Продолжи свой Путь** with X / Y and
