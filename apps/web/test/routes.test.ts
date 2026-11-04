@@ -20,11 +20,7 @@ function files(dir: string): string[] {
 
 test("public pages are home, paths and collections", () => {
   const pages = path.join(web, "app/pages");
-<<<<<<< HEAD
   assert.deepEqual(readdirSync(pages).sort(), ["collections", "index.vue", "my.vue", "paths"]);
-=======
-  assert.deepEqual(readdirSync(pages).sort(), ["collections", "index.vue", "paths"]);
->>>>>>> origin/main
   assert.deepEqual(readdirSync(path.join(pages, "paths")), ["[slug].vue"]);
   assert.deepEqual(readdirSync(path.join(pages, "collections")), ["[slug].vue"]);
 });
