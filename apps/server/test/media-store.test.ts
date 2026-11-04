@@ -11,7 +11,7 @@ test.skipIf(!hasPostgres)(
   "media sync deduplicates sources, refresh deletes missing art, own images survive and gc observes grace",
   async () => {
     const database = await testDatabase();
-    const dir = await mkdtemp(".scratch/media-store-");
+    const dir = await mkdtemp(`${import.meta.dirname}/.media-store-`);
     const bytes = await sharp({ create: { width: 56, height: 56, channels: 3, background: "red" } })
       .png()
       .toBuffer();
@@ -78,7 +78,7 @@ test.skipIf(!hasPostgres)(
   async () => {
     const { createApp } = await import("../src/app.ts");
     const database = await testDatabase();
-    const dir = await mkdtemp(".scratch/media-publish-");
+    const dir = await mkdtemp(`${import.meta.dirname}/.media-publish-`);
     let release: (() => void) | undefined;
     let entered: (() => void) | undefined;
     const enteredDownload = new Promise<void>((resolve) => {
@@ -152,7 +152,7 @@ test.skipIf(!hasPostgres)(
   "refresh renews stale bytes and retains transient failures only within 30 days",
   async () => {
     const database = await testDatabase();
-    const dir = await mkdtemp(".scratch/media-refresh-");
+    const dir = await mkdtemp(`${import.meta.dirname}/.media-refresh-`);
     const bytes = await sharp({
       create: { width: 20, height: 20, channels: 3, background: "blue" },
     })

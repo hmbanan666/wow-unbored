@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { test } from "vite-plus/test";
 import { serveMedia } from "../server/utils/media-file.ts";
 
 test("media streams valid files with immutable caching and all misses have short caching", async () => {
-  const directory = await mkdtemp(".scratch/web-media-");
+  const root = await mkdtemp(`${import.meta.dirname}/.web-media-`);
+  const directory = `${root}/media`;
+  await mkdir(directory);
   try {
     const file = "0123456789abcdef-56.webp";
     await writeFile(`${directory}/${file}`, "image bytes");
+    await writeFile(`${root}/${file}`, "outside media");
+    await writeFile(`${directory}/bad.jpg`, "not a variant");
+    await writeFile(`${directory}/${file}\n`, "not a variant");
     const good = await serveMedia(file, directory);
     assert.equal(good.status, 200);
     assert.equal(good.headers.get("content-type"), "image/webp");
@@ -15,6 +20,7 @@ test("media streams valid files with immutable caching and all misses have short
     assert.equal(await good.text(), "image bytes");
     for (const bad of [
       "bad.jpg",
+      file + "\n",
       "../" + file,
       "%2e%2e%2f" + file,
       file + "/..",
@@ -27,6 +33,6 @@ test("media streams valid files with immutable caching and all misses have short
       assert.equal(response.headers.get("cache-control"), "public, max-age=60");
     }
   } finally {
-    await rm(directory, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });

@@ -80,7 +80,7 @@ test("conversion writes hashed AVIF/WebP variants atomically without enlarging i
   const { default: sharp } = await import("sharp");
   const { mkdtemp, readdir, rm, readFile } = await import("node:fs/promises");
   const { convertMedia } = await import("../src/media-files.ts");
-  const dir = await mkdtemp(".scratch/media-test-");
+  const dir = await mkdtemp(`${import.meta.dirname}/.media-test-`);
   try {
     const bytes = await sharp({ create: { width: 56, height: 56, channels: 3, background: "red" } })
       .png()
@@ -142,7 +142,7 @@ test("renders trim the flat border before resizing and content hashes identify s
   const { default: sharp } = await import("sharp");
   const { mkdtemp, rm } = await import("node:fs/promises");
   const { convertMedia } = await import("../src/media-files.ts");
-  const dir = await mkdtemp(".scratch/media-trim-");
+  const dir = await mkdtemp(`${import.meta.dirname}/.media-trim-`);
   try {
     const subject = await sharp({
       create: { width: 20, height: 10, channels: 3, background: "red" },
