@@ -14,10 +14,10 @@ const documents: Record<string, unknown> = {
     assets: [{ key: "icon", value: `${cdn}/icons/56/616692.jpg`, file_data_id: 616692 }],
   },
   "media/achievement/6": { assets: [{ key: "icon", value: `${cdn}/icons/56/616692.jpg` }] },
-  "toy/1131": { item: { id: 84101 }, media: { id: 999 } },
   "media/journal-instance/100": { assets: [{ key: "tile", value: `${cdn}/zones/test-small.jpg` }] },
 };
 
+// Content stores toys by item id, so a toy reads /media/item/{itemId} like an item.
 test("resolver follows the documented media endpoints and authored overrides", async () => {
   const calls: string[] = [];
   const fake: typeof fetch = async (input, init) => {
@@ -45,7 +45,7 @@ test("resolver follows the documented media endpoints and authored overrides", a
   for (const [kind, id] of [
     ["achievement", 6],
     ["item", 84101],
-    ["toy", 1131],
+    ["toy", 84101],
   ] as const) {
     assert.equal((await resolver.resolve({ kind, id }))[0].url, `${cdn}/icons/56/616692.jpg`);
   }
