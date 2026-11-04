@@ -1,19 +1,25 @@
 import type { H3Event } from "h3";
 
-import { browserLang, SIGN_IN_COPY, type PageLang } from "#shared/sign-in";
+import { browserLang, SESSION_DAYS, SIGN_IN_COPY, type PageLang } from "#shared/sign-in";
 import { db, type Sql } from "./db";
 
 export type LiveAccount = { accountId: string; lang: PageLang };
 
-/** The sealed session is live only while its row is still open for that Account. */
+/**
+ * The sealed session is live only while its row is still open for that Account,
+ * younger than SESSION_DAYS, and the PC that opened it is still connected.
+ */
 export async function sessionIsLive(
   sql: Sql,
   sessionId: string,
   accountId: string,
+  now = Math.floor(Date.now() / 1000),
 ): Promise<boolean> {
   const [row] = await sql<{ account_id: string }[]>`
-    SELECT account_id FROM web.sessions
-    WHERE id = ${sessionId} AND ended_at IS NULL`;
+    SELECT s.account_id FROM web.sessions s
+    JOIN devices d ON d.id = s.device_id AND d.status = 'approved'
+    WHERE s.id = ${sessionId} AND s.ended_at IS NULL
+      AND s.created_at > ${now - SESSION_DAYS * 86400}`;
   return row?.account_id === accountId;
 }
 

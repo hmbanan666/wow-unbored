@@ -350,11 +350,7 @@ export function createApp(
       deviceId: device.id,
       accountId,
       now: Math.floor(Date.now() / 1000),
-      origin: pageOrigin(
-        c.req.header("x-forwarded-proto"),
-        c.req.header("x-forwarded-host") || c.req.header("host"),
-        config.webOrigin,
-      ),
+      origin: config.webOrigin || DEFAULT_WEB_ORIGIN,
     });
     return c.json(link);
   });
@@ -738,17 +734,8 @@ export function createApp(
   };
 }
 
-function pageOrigin(
-  protoHeader: string | undefined,
-  host: string | undefined,
-  configured?: string,
-): string {
-  if (configured) return configured;
-  const proto = (protoHeader || "https").split(",")[0]?.trim() || "https";
-  const name = (host || "").split(",")[0]?.trim();
-  if (name) return `${proto}://${name}`;
-  return "https://unbored.kosarev.space";
-}
+/** Sign-in links never take their origin from request headers. */
+const DEFAULT_WEB_ORIGIN = "https://unbored.kosarev.space";
 
 function requestIdOf(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;

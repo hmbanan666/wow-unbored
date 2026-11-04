@@ -35,19 +35,27 @@ async function ensureSqlite(db: Db): Promise<void> {
   )`);
 }
 
-/** The Account this Device has been sending, newest Character first. */
+/**
+ * A salted Account hash from the Companion (ADR 0044). Older unhashed keys are
+ * WTF folder names that others could guess, so they never open a site session.
+ */
+export function isHashedAccount(value: string | undefined): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+/** The hashed Account this Device has been sending, newest Character first. */
 export async function accountForDevice(db: Db, deviceId: string): Promise<string | undefined> {
   const character = await db.get<{ account_id: string }>(
-    `SELECT account_id FROM characters WHERE device_id = ? AND account_id <> '' ORDER BY last_seen DESC LIMIT 1`,
+    `SELECT account_id FROM characters WHERE device_id = ? AND length(account_id) = 64 ORDER BY last_seen DESC LIMIT 1`,
     deviceId,
   );
-  if (character?.account_id) return character.account_id;
+  if (isHashedAccount(character?.account_id)) return character.account_id;
   const request = await db.get<{ account: string }>(
-    `SELECT account FROM requests WHERE device_id = ? AND account <> '' ORDER BY updated_at DESC LIMIT 1`,
+    `SELECT account FROM requests WHERE device_id = ? AND length(account) = 64 ORDER BY updated_at DESC LIMIT 1`,
     deviceId,
   );
   const key = request?.account ? accountId(request.account) : "";
-  return key || undefined;
+  return isHashedAccount(key) ? key : undefined;
 }
 
 export async function issuePageLink(
@@ -87,6 +95,11 @@ export async function redeemPageLink(db: Db, token: string, now: number): Promis
       now,
     );
     if (row) {
+      const device = await db.get<{ status: string }>(
+        `SELECT status FROM devices WHERE id = ?`,
+        row.device_id,
+      );
+      if (device?.status !== "approved") return { ok: false as const, error: "unknown" as const };
       const sessionId = randomBytes(18).toString("base64url");
       await db.run(
         `INSERT INTO ${sessions} (id, account_id, device_id, created_at) VALUES (?, ?, ?, ?)`,

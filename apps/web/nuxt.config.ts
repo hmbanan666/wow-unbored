@@ -23,8 +23,13 @@ export default defineNuxtConfig({
     preset: "node-server",
   },
   runtimeConfig: {
-    /** Server base URL for sign-in. Empty uses this request's origin. */
+    /** Server base URL for sign-in (NUXT_SERVER_URL). Empty uses this request's origin. */
     serverUrl: "",
+    /** Sealed cookie, httpOnly, secure, SameSite=Lax; the row in web.sessions decides. */
+    session: {
+      maxAge: 60 * 60 * 24 * 30,
+      cookie: { sameSite: "lax", secure: true, httpOnly: true },
+    },
   },
   typescript: {
     strict: true,
