@@ -11,9 +11,9 @@
     "lint:js": "pnpm exec vp check",
     "lint:companion": "cargo fmt --manifest-path apps/companion/src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features -- -D warnings",
     "lint:companion:all": "cargo clippy --manifest-path apps/companion/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
-    "typecheck": "pnpm exec tsc -p apps/server/tsconfig.json --noEmit && pnpm exec tsc -p apps/server/tsconfig.tests.json --noEmit && pnpm exec tsc -p packages/contracts/tsconfig.json --noEmit && pnpm exec tsc -p apps/companion/ui/tsconfig.json --noEmit",
+    "typecheck": "pnpm exec tsc -p apps/server/tsconfig.json --noEmit && pnpm exec tsc -p apps/server/tsconfig.tests.json --noEmit && pnpm exec tsc -p packages/contracts/tsconfig.json --noEmit && pnpm exec tsc -p apps/companion/ui/tsconfig.json --noEmit && pnpm --filter @unbored/web typecheck",
     "lint": "pnpm run typecheck && pnpm run lint:js && (cd addon && luacheck .) && pnpm run lint:companion",
-    "build": "pnpm --filter @unbored/server build && pnpm --filter @unbored/companion build",
+    "build": "pnpm --filter @unbored/server build && pnpm --filter @unbored/companion build && pnpm --filter @unbored/web build",
     "check-version": "bash scripts/check-version.sh"
   },
   "devDependencies": {
