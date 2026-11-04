@@ -1,4 +1,5 @@
 import { type GameDb, validGameBuild } from "./game-db.ts";
+import { downloadGameText } from "./game-download.ts";
 
 export const GAME_WATCH_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -41,28 +42,12 @@ export class GameWatch {
   private async check() {
     let build: string;
     try {
-      const response = await this.fetchImpl("https://wago.tools/api/builds/wow/latest", {
-        signal: AbortSignal.timeout(30_000),
-        redirect: "error",
-      });
-      if (!response.ok || !response.body) throw new Error("Build check failed");
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          size += value.byteLength;
-          if (size > 64 * 1024) throw new Error("Build response too large");
-          chunks.push(value);
-        }
-      } finally {
-        void reader.cancel().catch(() => {});
-        reader.releaseLock();
-      }
       const body = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)),
+        await downloadGameText(
+          "https://wago.tools/api/builds/wow/latest",
+          64 * 1024,
+          this.fetchImpl,
+        ),
       );
       if (!validGameBuild(body?.version) || body.product !== "wow")
         throw new Error("Invalid live build");

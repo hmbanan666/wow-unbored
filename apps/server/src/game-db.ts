@@ -1,5 +1,6 @@
 import type { Db } from "./db.ts";
 import { CSV_MAX_BYTES, parseCsv } from "./criteria.ts";
+import { downloadGameText } from "./game-download.ts";
 
 export const GAME_LAG_THRESHOLD_SECONDS = 6 * 60 * 60;
 
@@ -25,33 +26,12 @@ export function validGameBuild(value: unknown): value is string {
 export class GameImportError extends Error {}
 
 async function achievements(build: string, locale: string, fetchImpl: typeof fetch) {
-  const response = await fetchImpl(
+  const csv = await downloadGameText(
     `https://wago.tools/db2/Achievement/csv?build=${build}&locale=${locale}`,
-    {
-      signal: AbortSignal.timeout(30_000),
-      redirect: "error",
-    },
+    CSV_MAX_BYTES,
+    fetchImpl,
   );
-  if (!response.ok || !response.body) throw new Error("Download unavailable");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > CSV_MAX_BYTES) throw new Error("Download too large");
-      chunks.push(value);
-    }
-  } finally {
-    void reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
-  const [header = [], ...rows] = parseCsv(
-    new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)),
-    true,
-  );
+  const [header = [], ...rows] = parseCsv(csv, true);
   const idColumn = header.indexOf("ID");
   const nameColumn = header.indexOf("Title_lang");
   if (idColumn < 0 || nameColumn < 0 || !rows.length)
@@ -109,11 +89,7 @@ export class GameDb {
           : build;
       const behind = !before.build || buildNumber(before.build) < buildNumber(live);
       const now = Math.floor(Date.now() / 1000);
-      const since = behind
-        ? before.lagSeconds
-          ? now - before.lagSeconds
-          : (before.pendingSince ?? now)
-        : null;
+      const since = behind ? (before.pendingSince ?? now) : null;
       await this.db.run(
         `INSERT INTO ${this.watch} (id, live_build, pending_since, checked_at, last_error)
          VALUES (1, ?, ?, ?, NULL) ON CONFLICT (id) DO UPDATE SET
