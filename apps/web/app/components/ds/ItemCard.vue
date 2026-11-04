@@ -19,6 +19,7 @@ defineProps<{
     <DsChipRow>
       <DsChip v-for="chip in chips" :key="chip.label" :tone="chip.tone">{{ chip.label }}</DsChip>
     </DsChipRow>
+    <slot />
     <p v-if="note" class="ds-item__note">{{ note }}</p>
     <div v-if="how.length" class="ds-item__how">
       <span class="ds-item__how-label">How to get it</span>

@@ -116,6 +116,7 @@ export type CatalogItem = {
 };
 
 export type PublicPage = {
+  version?: number;
   kind: "page" | CatalogKind;
   slug: string;
   title: string;

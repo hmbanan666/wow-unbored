@@ -1,6 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: "2026-11-04",
   modules: ["@nuxt/fonts", "@nuxtjs/seo", "nuxt-auth-utils"],
+  auth: { loadStrategy: "client-only" },
   css: ["~/assets/css/main.css"],
   devServer: { port: 3001 },
   /** Dark only: no UI kit and no color-mode script, so no toggle and no light flash. */

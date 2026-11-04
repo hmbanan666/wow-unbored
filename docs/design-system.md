@@ -86,3 +86,13 @@ Domain components map data onto these: `PageView` (home, Collection, Path and Gu
 ## Checking a change
 
 Build the site and run the checks at 360, 390, 768 and 1280px with headless Chromium: no horizontal scroll, no tap target under 44px outside running text, the Menu opens and closes. Lighthouse mobile performance stays at 90 or above.
+
+Personal Path controls use the same tokens and layout:
+
+- `DsSelect`: a labelled native select with a generated label association, full-width mobile layout, and a minimum `--tap` height. The Character switcher lists only the signed-in Account's Characters.
+- `DsProgress`: visible X / Y text and a labelled native progress element. With zero required goals it renders the text alone.
+- `DsConfirm`: a native modal dialog with a labelled heading, focus containment, Escape to cancel, initial focus on cancel, and native return of focus to its opener. Both actions use `DsButton`.
+- `DsButton` also renders a native `button` when `to` is absent, with disabled support for pending actions.
+- `DsItemCard` accepts a slot for personal done/not-done and optional-goal chips. Public item text still renders without JavaScript.
+
+`PersonalPaths` composes these controls for a detail page or catalog. It fetches personal data only after mounting, announces loading/save/error states, and never changes public metadata or server-rendered content.

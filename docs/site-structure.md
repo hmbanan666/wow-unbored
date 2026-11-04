@@ -14,7 +14,7 @@ How playunbored.com is organised (ADRs 0072-0074). The site is an authored porta
 | `/paths` | Every published Path, grouped by content and tier (Basic, Deeper, Complete) | yes |
 | `/paths/<slug>` | One Path: what it covers, goals by Topic, how to finish each | yes |
 | `/install` | Get the addon and the Companion (the GitHub release feed), what Bory knows about you | yes |
-| `/my` | My page: your characters, Plans and progress, after signing in from the Companion | no |
+| `/my` | My page: your Characters, active Paths with progress, Path completion history, Plans and Wins, after signing in from the Companion | no |
 
 Header: Guides, Collections, Paths, Install, My page. Footer: the same links, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
 
@@ -37,3 +37,5 @@ All texts live in Postgres (`content.paths` and its goals, `web.pages`), version
 ## Guides
 
 A Guide is the third kind in `content.paths` (`kind = 'guide'`, migration 0016), authored through the same `/owner/content` route. Its blocks may include `heading` (an H2). Items are optional; when present they follow the Collection item rules. Every game fact in a Guide (names, vendors, costs, achievement titles) comes from the Game DB build it was checked against; anything that cannot be checked is left out. A Guide links to at least one Collection, and the Collections it points at link back.
+
+Signed-in additions to `/paths`, `/paths/<slug>` and `/collections/<slug>` load after mounting: a Character switcher, progress, and (on detail pages) active Path selection with replacement confirmation. These additions never enter public SSR HTML or shared caches; no new public URLs are introduced.

@@ -63,6 +63,10 @@ test("the route table keeps Companion paths on the Server", () => {
   assert.match(server, /priority:\s*100/);
   const image = readFileSync(path.join(web, "Dockerfile"), "utf8");
   assert.match(image, /node", "server\/index\.mjs"/);
+  assert.match(
+    image,
+    /^COPY packages\/contracts\/src\/web-session\.ts packages\/contracts\/src\/web-session\.ts$/m,
+  );
   assert.equal(image.includes("NUXT_APP_SECRET="), false);
   assert.equal(image.includes("NUXT_SESSION_PASSWORD="), false);
   assert.equal(image.includes("DATABASE_URL="), false);
@@ -119,4 +123,14 @@ test("ds Card renders a real link when it has a target", () => {
   const card = readFileSync(path.join(web, "app/components/ds/Card.vue"), "utf8");
   assert.match(card, /const NuxtLink = resolveComponent\("NuxtLink"\)/);
   assert.match(card, /:is="to \? NuxtLink : 'div'"/);
+});
+
+test("public SSR never fetches a player session or personal Path data", () => {
+  const config = readFileSync(path.join(web, "nuxt.config.ts"), "utf8");
+  assert.match(config, /loadStrategy:\s*"client-only"/);
+  const paths = readFileSync(path.join(web, "app/composables/usePaths.ts"), "utf8");
+  assert.match(paths, /onMounted\(/);
+  assert.equal(paths.includes("useFetch"), false);
+  const my = readFileSync(path.join(web, "app/pages/my.vue"), "utf8");
+  assert.match(my, /useFetch<Me>\("\/api\/me",\s*\{ server: false \}\)/);
 });

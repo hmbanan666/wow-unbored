@@ -1,6 +1,8 @@
 import type { Sql } from "./db";
 import {
   characterView,
+  completionView,
+  type MyCompletion,
   planTitle,
   winTitle,
   type MyCharacter,
@@ -32,7 +34,12 @@ export async function readMyPage(
   sql: Sql,
   accountId: string,
   lang: PageLang,
-): Promise<{ characters: MyCharacter[]; plans: MyEntry[]; wins: MyEntry[] }> {
+): Promise<{
+  characters: MyCharacter[];
+  plans: MyEntry[];
+  wins: MyEntry[];
+  completions: MyCompletion[];
+}> {
   const characters = await sql<CharacterRow[]>`
     SELECT id, name, realm, class, level
     FROM characters
@@ -60,12 +67,24 @@ export async function readMyPage(
       WHEN (h.body->>'planId') ~ '^[0-9]+$' THEN (h.body->>'planId')::bigint
       ELSE NULL
     END
-    WHERE h.account = ${accountId} AND h.kind IN ('plan', 'win')
+    WHERE h.account = ${accountId} AND h.kind IN ('plan', 'win', 'path_completion')
     ORDER BY h.at DESC
     LIMIT 40`;
   const plans: MyEntry[] = [];
   const wins: MyEntry[] = [];
+  const completions: MyCompletion[] = [];
   for (const row of history) {
+    if (row.kind === "path_completion") {
+      const completion = completionView(row.body);
+      if (completion)
+        completions.push({
+          ...completion,
+          at: Number(row.at),
+          character: row.character_name,
+          realm: row.realm,
+        });
+      continue;
+    }
     const title =
       row.kind === "win" ? winTitle(row.body, lang) : planTitle(row.body, row.plan_body);
     if (!title) continue;
@@ -93,5 +112,6 @@ export async function readMyPage(
     }),
     plans,
     wins,
+    completions,
   };
 }

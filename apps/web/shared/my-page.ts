@@ -1,3 +1,4 @@
+import { catalogHref, isSlug } from "./catalog";
 import type { PageLang } from "./sign-in";
 
 export const MY_PAGE_COPY = {
@@ -9,6 +10,8 @@ export const MY_PAGE_COPY = {
     renown: "Renown",
     plans: "Plans",
     wins: "Wins",
+    completions: "Finished Paths",
+    emptyCompletions: "No finished Paths yet. Pick a Path and Bory will help you along.",
     emptyCharacters: "Bory hasn't seen your characters yet. Play once, and they'll show up here.",
     emptyPlans: "No plans yet. Pick one with Bory in the game.",
     emptyWins: "Nothing from a plan has come home yet.",
@@ -29,6 +32,8 @@ export const MY_PAGE_COPY = {
     renown: "Известность",
     plans: "Планы",
     wins: "Победы",
+    completions: "Завершённые Пути",
+    emptyCompletions: "Завершённых Путей пока нет. Выбери Путь — Бори поможет пройти его.",
     emptyCharacters: "Бори ещё не видел твоих персонажей. Поиграй разок, и они появятся здесь.",
     emptyPlans: "Планов пока нет. Выбери один с Бори в игре.",
     emptyWins: "Пока ничего из плана не пришло.",
@@ -144,4 +149,25 @@ export function winTitle(body: unknown, lang: PageLang): string {
 export function formatDay(at: number): string {
   if (!Number.isFinite(at) || at <= 0) return "";
   return new Date(at * 1000).toISOString().slice(0, 10);
+}
+
+export type MyCompletion = MyEntry & { href: string; version: number };
+
+export function completionView(
+  body: unknown,
+): Pick<MyCompletion, "title" | "href" | "version"> | null {
+  if (!body || typeof body !== "object") return null;
+  const row = body as Record<string, unknown>;
+  if (
+    (row.kind !== "path" && row.kind !== "collection") ||
+    !isSlug(row.slug) ||
+    !text(row.title) ||
+    !whole(row.version)
+  )
+    return null;
+  return {
+    title: text(row.title),
+    href: catalogHref(row.kind, row.slug)!,
+    version: whole(row.version)!,
+  };
 }

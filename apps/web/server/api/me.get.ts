@@ -5,6 +5,7 @@ import { db } from "../utils/db";
 import { liveAccount } from "../utils/session";
 
 export default defineEventHandler(async (event) => {
+  setResponseHeader(event, "cache-control", "private, no-store");
   const lang = browserLang(getRequestHeader(event, "accept-language"));
   const prior = await getUserSession(event);
   const account = await liveAccount(event);

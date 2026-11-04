@@ -1,14 +1,23 @@
 <script setup lang="ts">
 /** A link that looks like a button. External https links open in a new tab. */
 const props = withDefaults(
-  defineProps<{ to: string; variant?: "primary" | "secondary" | "ghost"; block?: boolean }>(),
+  defineProps<{
+    to?: string;
+    disabled?: boolean;
+    variant?: "primary" | "secondary" | "ghost";
+    block?: boolean;
+  }>(),
   { variant: "primary" },
 );
-const external = computed(() => /^https?:/.test(props.to));
+const NuxtLink = resolveComponent("NuxtLink");
+const external = computed(() => /^https?:/.test(props.to || ""));
 </script>
 
 <template>
-  <NuxtLink
+  <component
+    :is="to ? NuxtLink : 'button'"
+    :type="to ? undefined : 'button'"
+    :disabled="disabled"
     :to="to"
     class="ds-button"
     :class="[`ds-button--${variant}`, { 'ds-button--block': block }]"
@@ -17,7 +26,7 @@ const external = computed(() => /^https?:/.test(props.to));
     :external="external"
   >
     <slot />
-  </NuxtLink>
+  </component>
 </template>
 
 <style scoped>
@@ -40,6 +49,11 @@ const external = computed(() => /^https?:/.test(props.to));
     filter 0.15s,
     border-color 0.15s,
     background-color 0.15s;
+}
+
+.ds-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .ds-button--primary {

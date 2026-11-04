@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ITEM_KIND_LABEL, SOURCE_LABEL, type CatalogItem } from "#shared/catalog";
 
-defineProps<{ items: CatalogItem[] }>();
+import { PATH_COPY, type PathProgress } from "#shared/personal-paths";
+
+defineProps<{
+  items: CatalogItem[];
+  progress?: PathProgress;
+  copy?: typeof PATH_COPY.en | typeof PATH_COPY.ru;
+}>();
 
 function chips(item: CatalogItem) {
   return [
@@ -28,7 +34,14 @@ function chips(item: CatalogItem) {
         :note="item.note"
         :how="item.source.lines"
         :source="item.url"
-      />
+      >
+        <DsChipRow v-if="progress && copy">
+          <DsChip :tone="progress.goals[index]?.done ? 'gold' : 'neutral'">{{
+            progress.goals[index]?.done ? copy.done : copy.notDone
+          }}</DsChip>
+          <DsChip v-if="progress.goals[index]?.required === false">{{ copy.optional }}</DsChip>
+        </DsChipRow>
+      </DsItemCard>
     </li>
   </DsItemList>
 </template>

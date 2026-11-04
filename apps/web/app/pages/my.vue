@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { formatDay, MY_PAGE_COPY, type MyCharacter, type MyEntry } from "#shared/my-page";
+import {
+  formatDay,
+  MY_PAGE_COPY,
+  type MyCharacter,
+  type MyEntry,
+  type MyCompletion,
+} from "#shared/my-page";
+import { catalogHref } from "#shared/catalog";
 import { SIGN_IN_COPY } from "#shared/sign-in";
 
 type Me =
@@ -9,10 +16,17 @@ type Me =
       characters: MyCharacter[];
       plans: MyEntry[];
       wins: MyEntry[];
+      completions: MyCompletion[];
     }
   | { ok: false; lang: "en" | "ru"; closed: boolean; message: string };
 
-const { data } = await useFetch<Me>("/api/me");
+const { data, status, refresh } = await useFetch<Me>("/api/me", { server: false });
+const paths = usePaths();
+function activeFor(character: MyCharacter) {
+  return paths.data.value?.characters.find(
+    (row) => row.character === character.name && row.realm === character.realm,
+  )?.active;
+}
 const lang = computed(() => data.value?.lang || "en");
 const copy = computed(() => MY_PAGE_COPY[lang.value]);
 const signedOut = computed(() => {
@@ -33,11 +47,20 @@ useSeoMeta({
 <template>
   <DsPage>
     <DsEmptyState
-      v-if="signedOut || !data || !data.ok"
+      v-if="status === 'pending' || status === 'idle'"
       :level="1"
       :title="copy.title"
-      :text="signedOut"
+      :text="paths.copy.value.loading"
     />
+    <DsEmptyState
+      v-else-if="signedOut || !data || !data.ok"
+      :level="1"
+      :title="copy.title"
+      :text="signedOut || paths.copy.value.failed"
+      ><DsButton v-if="!data" @click="refresh()">{{
+        paths.copy.value.retry
+      }}</DsButton></DsEmptyState
+    >
     <template v-else>
       <DsPageHeader :title="copy.title" />
       <p v-if="!data.characters.length">{{ copy.emptyCharacters }}</p>
@@ -58,8 +81,43 @@ useSeoMeta({
               >{{ copy.renown }} {{ faction.level }} · {{ faction.name }}</DsChip
             >
           </DsChipRow>
+          <p v-if="paths.loading.value" role="status">{{ paths.copy.value.loading }}</p>
+          <template v-else-if="paths.message.value">
+            <p role="status">{{ paths.message.value }}</p>
+            <DsButton v-if="!paths.signedOut.value" @click="paths.refresh">{{
+              paths.copy.value.retry
+            }}</DsButton>
+          </template>
+          <template v-else-if="activeFor(character)">
+            <DsButton
+              :to="catalogHref(activeFor(character)!.kind, activeFor(character)!.slug)!"
+              variant="ghost"
+              >{{ paths.copy.value.active }}: {{ activeFor(character)!.title }}</DsButton
+            >
+            <DsProgress
+              :done="activeFor(character)!.done"
+              :total="activeFor(character)!.total"
+              :label="paths.copy.value.required"
+            />
+          </template>
+          <template v-else>
+            <p>{{ paths.copy.value.none }}</p>
+            <DsButton to="/paths" variant="ghost">{{ paths.copy.value.browse }}</DsButton>
+          </template>
         </DsCard>
       </DsCardGrid>
+      <DsSection :title="copy.completions">
+        <p v-if="!data.completions.length">{{ copy.emptyCompletions }}</p>
+        <DsCardGrid v-else>
+          <DsCard
+            v-for="entry in data.completions"
+            :key="`${entry.at}-${entry.character}-${entry.href}-${entry.version}`"
+            :to="entry.href"
+            :title="entry.title"
+            :eyebrow="`${formatDay(entry.at)} · ${entry.character} · ${entry.realm}`"
+          />
+        </DsCardGrid>
+      </DsSection>
       <DsSection :title="copy.plans">
         <p v-if="!data.plans.length" class="ds-meta">{{ copy.emptyPlans }}</p>
         <DsProse v-else>

@@ -24,10 +24,16 @@ useSchemaOrg([defineWebPage({ "@type": "CollectionPage", name: title, descriptio
       title="Paths"
       lead="A Path is a curated set of goals for one piece of content, in tiers: Basic, then Deeper, then Complete. Topic branches cover mounts, achievements and PvP."
     />
-    <CatalogGrid
-      :pages="pages"
-      empty="The first Paths are being written. Until then, start with a collection."
-      :empty-link="{ label: 'Browse collections', to: '/collections' }"
-    />
+    <PersonalPaths>
+      <template #default="{ paths, copy }">
+        <CatalogGrid
+          :progress="paths"
+          :progress-label="copy.required"
+          :pages="pages"
+          empty="The first Paths are being written. Until then, start with a collection."
+          :empty-link="{ label: 'Browse collections', to: '/collections' }"
+        />
+      </template>
+    </PersonalPaths>
   </DsPage>
 </template>

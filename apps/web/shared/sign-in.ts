@@ -37,7 +37,7 @@ export function isLinkToken(value: unknown): value is string {
 }
 
 /** A site session lasts at most this long; then My page asks for a new link. */
-export const SESSION_DAYS = 30;
+export { WEB_SESSION_DAYS as SESSION_DAYS } from "@unbored/contracts/web-session";
 
 export type RedeemBody = { sessionId?: unknown; accountId?: unknown; error?: unknown };
 

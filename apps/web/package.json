@@ -14,6 +14,7 @@
     "@nuxt/fonts": "^1.2.0",
     "@nuxtjs/seo": "^6.0.1",
     "@resvg/resvg-js": "^2.6.2",
+    "@unbored/contracts": "workspace:*",
     "nuxt": "^4.6.4",
     "nuxt-auth-utils": "^0.6.0",
     "postgres": "^3.4.9",
