@@ -4,7 +4,7 @@ import postgres from "postgres";
 import { test } from "vite-plus/test";
 
 import { connectPostgres, migrate } from "../../server/src/postgres.ts";
-import { readHome, readPublished } from "../server/utils/content.ts";
+import { readHome, readPublished, listPublished } from "../server/utils/content.ts";
 
 const adminUrl = process.env.UNBORED_WEB_TEST_DATABASE_URL?.trim();
 const dbTest = test.skipIf(!adminUrl);
@@ -46,6 +46,47 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
     const collection = await readPublished(sql, "collection", "first-mounts");
     assert.equal(collection?.kind, "collection");
     assert.equal(collection?.tier, null);
+
+    const body = {
+      hero: { kind: "mount", id: 460 },
+      blocks: [
+        { type: "paragraph", text: "Try [[pet:1890]]." },
+        { type: "figure", image: "fedcba9876543210", alt: "Our screenshot" },
+      ],
+      items: Array.from({ length: 8 }, (_, index) => ({
+        kind: "item",
+        id: index + 1,
+        name: `Item ${index + 1}`,
+        source: { type: "vendor", text: "A vendor" },
+        note: "Visit.",
+        chance: false,
+        media: { icon: 123 },
+      })),
+    };
+    const variants = [{ file: "0123456789abcdef-56.webp", width: 56, height: 56, format: "webp" }];
+    for (const [kind, id, role] of [
+      ["mount", 460, "render"],
+      ["pet", 1890, "icon"],
+      ...body.items.map((item) => [item.kind, item.id, "icon"]),
+    ] as [string, number, string][]) {
+      await sql`INSERT INTO content.media (ref_kind, ref_id, role, source, source_url, hash, width, height, variants, name, alt, fetched_at, checked_at)
+        VALUES (${kind}, ${id}, ${role}, 'blizzard', 'https://render.worldofwarcraft.com/eu/icon.jpg', '0123456789abcdef', 56, 56, ${JSON.stringify(variants)}::jsonb, 'Game name', 'Game art', 1, 1)`;
+    }
+    await sql`INSERT INTO content.media (ref_kind, role, source, hash, width, height, variants, alt, fetched_at, checked_at)
+      VALUES ('screenshot', 'image', 'own', 'fedcba9876543210', 56, 56, ${JSON.stringify(variants)}::jsonb, 'Our screenshot', 1, 1)`;
+    await sql`UPDATE content.paths SET body = ${JSON.stringify(body)}::jsonb WHERE slug = 'first-mounts'`;
+    const page = await readPublished(sql, "collection", "first-mounts");
+    assert.deepEqual(page?.hero, body.hero);
+    assert.equal(page?.media["mount:460"].render?.width, 56);
+    assert.equal(page?.media["pet:1890"].icon?.name, "Game name");
+    assert.equal(page?.media["image:fedcba9876543210"].image?.alt, "Our screenshot");
+    assert.deepEqual(page?.items[0].media, { icon: 123 });
+    const cards = await listPublished(sql, "collection");
+    assert.deepEqual(
+      cards[0].icons.map((icon) => icon.id),
+      [1, 2, 3, 4, 5, 6],
+    );
+    assert.deepEqual(cards[0].icons[0].icon.variants, variants);
 
     await assert.rejects(
       sql`

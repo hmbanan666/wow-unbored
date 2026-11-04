@@ -3,6 +3,7 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  sharp: true
   esbuild: true
   vue-demi: true
 
