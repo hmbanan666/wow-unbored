@@ -32,7 +32,11 @@ else if (!base || !token) {
   process.exitCode = 2;
 } else if (command === "save" && args.length === 1) {
   await call("PUT", "/owner/content", await readFile(args[0], "utf8"));
-} else if (command === "publish" && args.length === 2 && /^(path|collection|guide)$/.test(args[0])) {
+} else if (
+  command === "publish" &&
+  args.length === 2 &&
+  /^(path|collection|guide)$/.test(args[0])
+) {
   await call("POST", `/owner/content/${args[0]}/${encodeURIComponent(args[1])}/publish`);
 } else {
   console.error(usage);
