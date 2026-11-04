@@ -365,7 +365,13 @@ const GAME_KEY: Record<ItemKind, string> = {
 };
 
 /** Names the Game DB holds for an item kind: [table, field, id field]. */
-async function gameName(game: GameDb, item: ContentItem, build: string, api?: BlizzardIds) {
+async function gameName(
+  game: GameDb,
+  item: ContentItem,
+  build: string,
+  api?: BlizzardIds,
+  signal?: AbortSignal,
+) {
   if (item.kind === "level") return undefined;
   if (item.kind === "rep" || item.kind === "renown")
     return (await game.row("Faction", item.id!, "enUS", build))?.fields.Name_lang;
@@ -374,7 +380,7 @@ async function gameName(game: GameDb, item: ContentItem, build: string, api?: Bl
   if (item.kind === "questLine")
     return (await game.row("QuestLine", item.id!, "enUS", build))?.fields.Name_lang;
   if (item.kind === "quest")
-    return (await game.questName(item.id!, "enUS", build, api)).name ?? undefined;
+    return (await game.questName(item.id!, "enUS", build, api, signal)).name ?? undefined;
   if (item.kind === "mount")
     return (await game.row("Mount", item.id!, "enUS", build))?.fields.Name_lang;
   if (item.kind === "achievement")
@@ -392,6 +398,7 @@ export async function checkContentIds(
 ): Promise<string> {
   const build = await game.currentBuild();
   if (!build) throw new ContentError("The Game DB is not imported yet.");
+  const nameDeadline = AbortSignal.timeout(10_000);
   const problems: string[] = [];
   for (const [index, item] of doc.items.entries()) {
     const at = `items[${index}] ${item.name}`;
@@ -413,7 +420,7 @@ export async function checkContentIds(
     const missing = await game.missing(keys, build);
     for (const key of missing) problems.push(`${at}: ${key} is not in build ${build}`);
     if (missing.size === 0 && doc.locale === "en") {
-      const name = await gameName(game, item, build, api);
+      const name = await gameName(game, item, build, api, nameDeadline);
       if (name !== undefined && String(name) !== item.name)
         problems.push(`${at}: the game calls ${item.kind}:${item.id} "${String(name)}"`);
     }

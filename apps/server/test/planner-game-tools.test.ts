@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import type { GameDataFetch } from "../src/blizzard.ts";
 import { GameDb } from "../src/game-db.ts";
 import { getQuestLine } from "../src/game-tools.ts";
@@ -201,7 +201,9 @@ for (const backend of BACKENDS) {
       const localized = await app.call("get_quest_line", { questLineID: 10, locale: "ruRU" });
       assert.equal(localized.name, "Новое начало");
       assert.equal(localized.quests[0].name, "Небольшое приключение");
-      assert.ok(line.unavailable.includes("quest name: 90002"));
+      assert.ok(
+        line.unavailable.includes("quest name: 90002 (Blizzard Game Data API unavailable)"),
+      );
       assert.equal((await app.call("get_quest_line", { questLineID: 999 })).name, null);
       // A tied order is not evidence for an invented sequence.
       app.tables.QuestLineXQuest =
@@ -488,3 +490,71 @@ test.each([
     }
   },
 );
+
+for (const scenario of ["line", "OAuth", "content"] as const) {
+  test.skipIf(scenario === "content" && !hasPostgres)(
+    `slow quest names have one deadline across ${scenario} lookups`,
+    async () => {
+      let requests = 0;
+      const app = await fixture(
+        scenario === "content" ? "postgres" : "sqlite",
+        async (input, init) => {
+          if (String(input).includes("oauth.battle.net") && scenario !== "OAuth")
+            return Response.json({ access_token: "fixture", expires_in: 3600 });
+          requests++;
+          await new Promise<void>((_resolve, reject) => {
+            init.signal!.addEventListener("abort", () => reject(init.signal!.reason), {
+              once: true,
+            });
+          });
+          throw new Error("Expected cancellation");
+        },
+      );
+      const timeout = AbortSignal.timeout.bind(AbortSignal);
+      try {
+        for (let id = 90002; id <= 90009; id++) {
+          app.tables.QuestV2 += `${id},${id}\n`;
+          app.tables.QuestLineXQuest += `${id},10,${id},${id}\n`;
+        }
+        await app.load();
+        // Accelerate only the HTTP and aggregate timeouts; the fixture waits for real cancellation.
+        vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => timeout(ms === 4000 ? 20 : 30));
+        if (scenario === "content") {
+          const response = await app.app.request("/owner/content", {
+            method: "PUT",
+            headers: { authorization: "Bearer owner", "content-type": "application/json" },
+            body: JSON.stringify({
+              kind: "path",
+              slug: "slow-quests",
+              title: "Slow quests",
+              tier: "basic",
+              description: "Quest checks remain available during an outage.",
+              blocks: [],
+              items: [90002, 90003, 90004, 90005, 90006, 90007, 90008, 90009, 90001].map((id) => ({
+                kind: "quest",
+                id,
+                name: "Unverified title",
+                source: { type: "quest", text: "Quest" },
+                chance: false,
+                note: "Complete the quest.",
+              })),
+            }),
+          });
+          assert.equal(response.status, 400);
+          assert.match(JSON.stringify(await response.json()), /A small adventure/);
+        } else {
+          const result = await app.call("get_quest_line", { questLineID: 10 });
+          assert.equal(result.quests.length, 9);
+          assert.equal(result.quests[0].name, "A small adventure");
+          assert.ok(
+            result.quests.slice(1).every((quest: { name: string | null }) => quest.name === null),
+          );
+        }
+        assert.ok(requests <= 2, `Expected one shared deadline, received ${requests} requests`);
+      } finally {
+        vi.restoreAllMocks();
+        await app.close();
+      }
+    },
+  );
+}

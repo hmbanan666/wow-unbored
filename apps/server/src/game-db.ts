@@ -83,7 +83,13 @@ export class GameDb {
   }
 
   /** DB2 titles take precedence; API evidence belongs only to this build and locale. */
-  async questName(id: number, locale: "enUS" | "ruRU", build: string, api?: BlizzardIds) {
+  async questName(
+    id: number,
+    locale: "enUS" | "ruRU",
+    build: string,
+    api?: BlizzardIds,
+    signal?: AbortSignal,
+  ) {
     const title = (await this.row("QuestV2CliTask", id, locale, build))?.fields.QuestTitle_lang;
     if (typeof title === "string" && title.trim())
       return { name: title, source: gameSource(build, "QuestV2CliTask", locale) };
@@ -99,7 +105,7 @@ export class GameDb {
         name: cached.name,
         source: { kind: "Blizzard Game Data API", build, locale, url: cached.url },
       };
-    const found = await api?.questName(id, locale);
+    const found = await api?.questName(id, locale, signal);
     if (!found) return { name: null, source: null };
     await this.db.run(
       `INSERT INTO ${table} (build, id, locale, name, url) VALUES (?, ?, ?, ?, ?)

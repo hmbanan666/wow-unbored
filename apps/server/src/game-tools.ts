@@ -39,6 +39,7 @@ export async function getQuestLine(
 ) {
   const build = await game.currentBuild();
   const source = gameSource(build, "QuestLineXQuest", "enUS");
+  const nameDeadline = AbortSignal.timeout(10_000);
   const line = build
     ? await game.row("QuestLine", query.questLineID, query.locale, build)
     : undefined;
@@ -66,9 +67,8 @@ export async function getQuestLine(
           unavailable.push(`quest not found: ${questID}`);
           continue;
         }
-        const title = await game.questName(questID, query.locale, build, api);
+        const title = await game.questName(questID, query.locale, build, api, nameDeadline);
         if (!title.name) {
-          unavailable.push(`quest name: ${questID}`);
           unavailable.push(`quest name: ${questID} (Blizzard Game Data API unavailable)`);
         }
         quests.push({
