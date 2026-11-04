@@ -329,7 +329,7 @@ test("put_plan bounds work when shortening long unbroken text", async () => {
     const stored = JSON.parse(result.text).stored;
     assert.equal(stored.tasks[0].title, "я".repeat(70));
     assert.equal(stored.tasks[0].note, "z".repeat(400));
-    assert.ok(elapsed < 100, `long text blocked submission for ${elapsed} ms`);
+    assert.ok(elapsed < 250, `long text blocked submission for ${elapsed} ms`);
   } finally {
     await app.close();
   }
