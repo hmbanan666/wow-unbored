@@ -23,6 +23,11 @@ export const LEGACY_TABLES = new Set(["profiles", "profile_snapshots"]);
 const WEBSITE_SQLITE = new Set(["web_sign_in_links", "web_sessions"]);
 /** Postgres-only tables: not in SQLite, must be empty before a transfer. */
 const POSTGRES_ONLY = new Set(["raw_uploads"]);
+/** Game DB was added after the original cutover; older SQLite files lack it. */
+const GAME_TABLES: Record<string, string> = {
+  game_builds: "game.builds",
+  game_achievements: "game.achievements",
+};
 const PARTITIONED = new Set(["section_history", "history"]);
 
 export type TransferOptions = {
@@ -112,6 +117,9 @@ function comparable(value: unknown, json: boolean): unknown {
   return value;
 }
 
+const targetName = (table: string) => GAME_TABLES[table] ?? table;
+const quoteTarget = (table: string) => targetName(table).split(".").map(quote).join(".");
+
 const quote = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
 function sqliteTables(db: DatabaseSync): string[] {
@@ -126,12 +134,13 @@ function sqliteTables(db: DatabaseSync): string[] {
 
 async function plan(db: DatabaseSync, sql: Sql): Promise<{ plans: Plan[]; skipped: string[] }> {
   const pgColumns = await sql<{ table: string; column: string; type: string; identity: string }[]>`
-    SELECT c.table_name AS table, c.column_name AS column, c.data_type AS type,
+    SELECT CASE WHEN c.table_schema = 'game' THEN 'game_' || c.table_name ELSE c.table_name END AS table,
+      c.column_name AS column, c.data_type AS type,
       c.is_identity AS identity
     FROM information_schema.columns c
     JOIN pg_class k ON k.relname = c.table_name AND NOT k.relispartition
     JOIN pg_namespace n ON n.oid = k.relnamespace AND n.nspname = c.table_schema
-    WHERE c.table_schema = current_schema() AND c.table_name <> 'schema_migrations'`;
+    WHERE c.table_schema IN ('public', 'game') AND c.table_name <> 'schema_migrations'`;
   const byTable = new Map<string, Map<string, { type: string; identity: boolean }>>();
   for (const row of pgColumns) {
     if (!byTable.has(row.table)) byTable.set(row.table, new Map());
@@ -166,10 +175,12 @@ async function plan(db: DatabaseSync, sql: Sql): Promise<{ plans: Plan[]; skippe
     plans.push({ table, columns, key, identity });
   }
   for (const table of byTable.keys()) {
-    if (!seen.has(table) && !POSTGRES_ONLY.has(table)) {
+    if (!seen.has(table) && !POSTGRES_ONLY.has(table) && !GAME_TABLES[table]) {
       throw new TransferError(`Postgres table ${table} is missing in the SQLite file.`);
     }
   }
+  // Build rows must exist before the Achievement foreign keys are inserted.
+  plans.sort((a, b) => Number(b.table === "game_builds") - Number(a.table === "game_builds"));
   return { plans, skipped };
 }
 
@@ -211,10 +222,14 @@ export async function transfer(options: TransferOptions): Promise<TransferReport
     try {
       await options.sql.begin(async (tx) => {
         await tx`SET LOCAL statement_timeout = 0`;
-        const targets = [...plans.map((p) => p.table), ...POSTGRES_ONLY];
+        const targets = [
+          ...new Set([...plans.map((p) => p.table), ...POSTGRES_ONLY, ...Object.keys(GAME_TABLES)]),
+        ];
         const busy: string[] = [];
         for (const table of targets) {
-          const [row] = await tx.unsafe(`SELECT EXISTS (SELECT 1 FROM ${quote(table)}) AS any`);
+          const [row] = await tx.unsafe(
+            `SELECT EXISTS (SELECT 1 FROM ${quoteTarget(table)}) AS any`,
+          );
           if (row.any) busy.push(table);
         }
         if (busy.length && !options.force) {
@@ -224,7 +239,7 @@ export async function transfer(options: TransferOptions): Promise<TransferReport
         }
         if (busy.length) {
           log(`--force: emptying ${busy.join(", ")}`);
-          await tx.unsafe(`TRUNCATE ${targets.map(quote).join(", ")} RESTART IDENTITY`);
+          await tx.unsafe(`TRUNCATE ${targets.map(quoteTarget).join(", ")} RESTART IDENTITY`);
         }
 
         let partitions = 0;
@@ -254,7 +269,7 @@ export async function transfer(options: TransferOptions): Promise<TransferReport
           let bytes = 0;
           const flush = async () => {
             if (!batch.length) return;
-            await tx`INSERT INTO ${tx(p.table)} ${tx(batch as never, pgColumns)}`;
+            await tx`INSERT INTO ${tx(targetName(p.table))} ${tx(batch as never, pgColumns)}`;
             batch = [];
             bytes = 0;
           };
@@ -282,14 +297,14 @@ export async function transfer(options: TransferOptions): Promise<TransferReport
           await flush();
           if (p.identity) {
             await tx.unsafe(
-              `SELECT setval(pg_get_serial_sequence($1, 'id'), max(id)) FROM ${quote(p.table)} HAVING max(id) IS NOT NULL`,
-              [p.table],
+              `SELECT setval(pg_get_serial_sequence($1, 'id'), max(id)) FROM ${quoteTarget(p.table)} HAVING max(id) IS NOT NULL`,
+              [targetName(p.table)],
             );
           }
 
           const target = new Checksum();
           const read = tx.unsafe(
-            `SELECT ${pgColumns.map(quote).join(", ")} FROM ${quote(p.table)}`,
+            `SELECT ${pgColumns.map(quote).join(", ")} FROM ${quoteTarget(p.table)}`,
           );
           for await (const rows of read.cursor(1000)) {
             for (const row of rows) {

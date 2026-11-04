@@ -28,11 +28,9 @@ if (onPostgres) {
   });
   beforeEach(async () => {
     const tables = await db!.sql<{ name: string }[]>`
-      SELECT tablename AS name FROM pg_tables
-      WHERE schemaname = 'public' AND tablename <> 'schema_migrations'`;
-    await db!.sql.unsafe(
-      `TRUNCATE ${tables.map((t) => `"${t.name}"`).join(", ")} RESTART IDENTITY`,
-    );
+      SELECT '"' || schemaname || '"."' || tablename || '"' AS name FROM pg_tables
+      WHERE schemaname IN ('public', 'game') AND tablename <> 'schema_migrations'`;
+    await db!.sql.unsafe(`TRUNCATE ${tables.map((t) => t.name).join(", ")} RESTART IDENTITY`);
   });
 }
 

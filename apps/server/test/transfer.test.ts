@@ -62,6 +62,8 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
     INSERT INTO webhook_deliveries VALUES ('r1', 1, ${now}, NULL, 200, NULL, ${now});
     INSERT INTO chain_progress VALUES ('c1', 5492, 3, ${now});
     INSERT INTO suggestions VALUES ('A', 'c1', ${now}, '{"list":[]}');
+    INSERT INTO game_builds VALUES ('12.0.1.66337', 66337, ${now}, 1);
+    INSERT INTO game_achievements VALUES ('12.0.1.66337', 964, 'Going Down?', 'Летим!');
     INSERT INTO game_ids VALUES ('achievement', 6, 1, ${now});
     INSERT INTO creature_names VALUES (1, 'enUS', NULL, ${now});
     INSERT INTO profiles (character_name, realm, device_id, saved_at, updated_at, body_json, account)
@@ -73,6 +75,25 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
   return file;
 }
 
+pg("a pre-Game-DB SQLite file still transfers to the current schema", async () => {
+  const file = await fixture((db) =>
+    db.exec("DROP TABLE game_achievements; DROP TABLE game_builds;"),
+  );
+  const db = await testDatabase();
+  try {
+    const report = await transfer({ sqlitePath: file, sql: db.sql });
+    assert.equal(report.tables.length, 18);
+    const store = new Store(path.dirname(file), { postgres: db.sql });
+    try {
+      assert.equal(await store.game.entity("achievement", 964), undefined);
+    } finally {
+      store.close();
+    }
+  } finally {
+    await db.drop();
+  }
+});
+
 pg("every table is copied, JSON as jsonb objects, partitions back to the oldest row", async () => {
   const file = await fixture();
   const db = await testDatabase({ migrated: false });
@@ -80,7 +101,18 @@ pg("every table is copied, JSON as jsonb objects, partitions back to the oldest 
     const lines: string[] = [];
     const report = await transfer({ sqlitePath: file, sql: db.sql, log: (l) => lines.push(l) });
     assert.equal(report.committed, true);
-    assert.equal(report.tables.length, 18);
+    const stored = new Store(path.dirname(file), { postgres: db.sql });
+    try {
+      assert.deepEqual(await stored.game.entity("achievement", 964), {
+        kind: "achievement",
+        id: 964,
+        build: "12.0.1.66337",
+        names: { enUS: "Going Down?", ruRU: "Летим!" },
+      });
+    } finally {
+      stored.close();
+    }
+    assert.equal(report.tables.length, 20);
     assert.deepEqual(report.skipped, [
       { table: "profile_snapshots", rows: 0 },
       { table: "profiles", rows: 1 },
@@ -226,9 +258,9 @@ pg("the script runs under node as in the Docker image, URL from the environment 
       },
     );
     const dry = await node(["--sqlite", file, "--dry-run"], { DATABASE_URL: db.url });
-    assert.match(dry.stdout, /Dry run ok, rolled back: 18 tables, \d+ rows verified/);
+    assert.match(dry.stdout, /Dry run ok, rolled back: 20 tables, \d+ rows verified/);
     const real = await node([], { DATABASE_URL: db.url, UNBORED_DATA_DIR: path.dirname(file) });
-    assert.match(real.stdout, /Committed: 18 tables/);
+    assert.match(real.stdout, /Committed: 20 tables/);
     await assert.rejects(
       node(["--sqlite", file], { DATABASE_URL: db.url }),
       (error: { code: number; stderr: string }) => {
