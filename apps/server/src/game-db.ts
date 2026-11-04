@@ -86,7 +86,7 @@ export class GameDb {
       )
       .join(", ")})`;
     const found = await this.db.all<{ body: unknown }>(
-      `SELECT ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = ? AND ${expression} = ? ORDER BY id LIMIT 51`,
+      `SELECT ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = ? AND ${expression} IS NOT NULL AND ${expression} = ? ORDER BY id LIMIT 51`,
       build,
       table,
       locale,

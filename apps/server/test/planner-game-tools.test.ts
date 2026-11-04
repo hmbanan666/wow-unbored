@@ -26,7 +26,10 @@ async function fixture(backend: Backend, blizzardFetch?: GameDataFetch) {
       const url = new URL(String(input));
       let csv = tables[url.pathname.split("/")[2]];
       if (url.searchParams.get("locale") === "ruRU")
-        csv = csv.replaceAll("Thunderfury", "Громовая Ярость");
+        csv = csv
+          .replaceAll("Thunderfury", "Громовая Ярость")
+          .replaceAll("A new beginning", "Новое начало")
+          .replaceAll("A small adventure", "Небольшое приключение");
       return new Response(csv);
     });
   return {
@@ -115,6 +118,9 @@ for (const backend of BACKENDS) {
         { questID: 90002, order: 3, name: null },
       ]);
       assert.equal(line.source.build, build);
+      const localized = await app.call("get_quest_line", { questLineID: 10, locale: "ruRU" });
+      assert.equal(localized.name, "Новое начало");
+      assert.equal(localized.quests[0].name, "Небольшое приключение");
       assert.ok(line.unavailable.includes("quest name: 90002"));
       assert.equal((await app.call("get_quest_line", { questLineID: 999 })).name, null);
       // A tied order is not evidence for an invented sequence.
@@ -141,7 +147,7 @@ for (const backend of BACKENDS) {
       const place = await app.call("get_place", { mapID: 900 });
       assert.deepEqual(place.zone, { mapID: 84, name: "Stormwind City" });
       assert.deepEqual(place.continent, { mapID: 13, name: "Eastern Kingdoms" });
-      assert.deepEqual(place.expansion, { id: 0 });
+      assert.deepEqual(place.expansion, { id: 0, scope: "worldMap" });
       assert.equal(place.source.build, build);
       // Conflicting world-map assignments do not justify choosing an expansion.
       app.tables.UiMapAssignment += "3,900,530,0,0,0,100,100,0,0,1,1\n";

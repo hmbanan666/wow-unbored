@@ -279,9 +279,10 @@ The owner and a live Plan runner lease can call:
   conflicting order returns no sequence. Missing quests/names are reported,
   never reconstructed. Client order does not establish prerequisites.
 - `get_place {mapID, questID?, npcID?, lang?}`: the existing destination lookup
-  also returns the nearest zone ancestor and an expansion `{id}` from
+  also returns the nearest zone ancestor and an expansion `{id, scope: "worldMap"}` from
   `UiMapAssignment` → `Map.ExpansionID` when all assignments agree. Map zero
-  is valid. No expansion label is invented. The source identifies the build,
+  is valid. This is world-map metadata, not a zone/content release: a later
+  zone on an older continent can share its world map. No expansion label is invented. The source identifies the build,
   locale and tables, including existing quest/flight geometry.
 - `get_item_sources {itemID, locale?}`: exact item references from Blizzard's
   journal encounter search plus sourced Catalog Farm rows. Every match carries

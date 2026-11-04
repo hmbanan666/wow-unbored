@@ -1165,7 +1165,7 @@ export function createMcpServer(
     {
       title: "Look up a place",
       description:
-        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name, parent zone and continent, and a verified Map.ExpansionID when assignments agree, imported single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Reads one imported Game DB build with bounded indexed lookups; no CSV downloads during a request.",
+        "Call for any destination outside the player's continent; use the returned label. Returns localized UiMap name, parent zone and continent, and a verified Map.ExpansionID when assignments agree (world-map metadata only, never the content release of a zone), imported single-point quest POIs and flight points. mapID is a UiMap id. Nearest flight point is measured on that map only when questID has one unambiguous point; it does not promise faction access or an unlocked flight. No NPC positions, expansion labels, entrance or portal routes are available. Missing, oversized or ambiguous data is explicitly unavailable, never invented. Reads one imported Game DB build with bounded indexed lookups; no CSV downloads during a request.",
       inputSchema: {
         mapID: z.number().int().positive(),
         questID: z.number().int().positive().optional(),

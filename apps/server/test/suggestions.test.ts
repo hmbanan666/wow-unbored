@@ -268,6 +268,8 @@ test("Glacial Tidestorm belongs to Mythic Jaina in Battle of Dazar'alor", () => 
   assert.deepEqual(rows[0]!.mountSources![1219], {
     boss: "Lady Jaina Proudmoore",
     difficulty: "mythic",
+    itemID: 166705,
+    source: "https://www.wowhead.com/item=166705/glacial-tidestorm",
   });
   assert.ok(!catalog.farm.some((row) => row.id === "farm-palace"));
 });

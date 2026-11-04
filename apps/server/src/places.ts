@@ -177,7 +177,8 @@ export async function getPlace(game: GameDb, query: PlaceQuery) {
       else expansions.add(id);
     }
   }
-  const expansion = complete && expansions.size === 1 ? { id: [...expansions][0] } : null;
+  const expansion =
+    complete && expansions.size === 1 ? { id: [...expansions][0], scope: "worldMap" } : null;
   const name = map?.Name_lang || null;
   const questPoints =
     query.questID === undefined ? [] : await data.questPoints(query.mapID, query.questID);
