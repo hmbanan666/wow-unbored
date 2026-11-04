@@ -12,7 +12,7 @@ Start Postgres and the Server once so migrations run, then the site against the 
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/unbored pnpm --filter @unbored/web dev
 ```
 
-The dev server listens on port 3001. `NUXT_PUBLIC_SITE_URL` overrides the canonical origin (default `https://unbored.kosarev.space`). `NUXT_SESSION_PASSWORD` (32 characters or more) seals the later sign-in cookie. Do not commit either secret.
+The dev server listens on port 3001. `NUXT_PUBLIC_SITE_URL` overrides the canonical origin (default `https://unbored.kosarev.space`). `NUXT_APP_SECRET` (32 characters or more) seals the sign-in cookie; `/ready` answers 503 without it. Do not commit either secret.
 
 `GET /ready` is this process. `GET /health` stays on the Server.
 

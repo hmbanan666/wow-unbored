@@ -59,7 +59,7 @@ jobs:
         run: |
           docker build -f apps/web/Dockerfile -t unbored-web .
           docker run -d --name unbored-web -p 3996:3000 \
-            -e NUXT_SESSION_PASSWORD=ci-session-password-not-a-secret-value \
+            -e NUXT_APP_SECRET=ci-app-secret-not-a-secret-value-000000 \
             unbored-web
           for _ in $(seq 1 40); do
             if curl -fsS http://127.0.0.1:3996/ready; then
