@@ -2,5 +2,13 @@ packages:
   - "apps/*"
   - "packages/*"
 
+allowBuilds:
+  esbuild: true
+  vue-demi: true
+
+overrides:
+  "@nuxt/fonts": "^1.2.0"
+  "vue-tsc>typescript": "5.9.3"
+
 catalog:
   vite-plus: 1.4.0

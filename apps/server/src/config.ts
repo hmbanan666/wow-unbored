@@ -12,6 +12,8 @@ export type Config = {
   /** PostgreSQL (ADR 0057). Unset: the Server stays on SQLite. */
   databaseUrl?: string;
   databasePoolMax: number;
+  /** Public origin of the site, for sign-in links. Unset: derived from the request. */
+  webOrigin?: string;
 };
 
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
@@ -52,6 +54,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
   if (!Number.isInteger(databasePoolMax) || databasePoolMax < 1 || databasePoolMax > 100) {
     throw new Error("DATABASE_POOL_MAX must be a whole number from 1 to 100.");
   }
+  const webOrigin = cleanWebOrigin(env.UNBORED_WEB_ORIGIN);
   return {
     companionToken,
     plannerToken,
@@ -62,10 +65,23 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
     port,
     databaseUrl,
     databasePoolMax,
+    webOrigin,
   };
 }
 
 export function sqlitePath(dataDir: string): string {
   mkdirSync(dataDir, { recursive: true });
   return path.join(dataDir, "unbored.sqlite");
+}
+
+function cleanWebOrigin(value: string | undefined): string | undefined {
+  const origin = value?.trim().replace(/\/$/, "") ?? "";
+  if (!origin) return undefined;
+  if (
+    /^https:\/\/[^/]+$/.test(origin) ||
+    /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+  ) {
+    return origin;
+  }
+  throw new Error("UNBORED_WEB_ORIGIN must be an https origin, or http://localhost.");
 }

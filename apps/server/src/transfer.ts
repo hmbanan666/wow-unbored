@@ -19,6 +19,8 @@ import { migrate, type Sql } from "./postgres.ts";
 
 /** Legacy tables (D57): already backfilled, they stay only in the SQLite file. */
 export const LEGACY_TABLES = new Set(["profiles", "profile_snapshots"]);
+/** Sign-in tables the Server creates in SQLite only when a link is issued. */
+const WEBSITE_SQLITE = new Set(["web_sign_in_links", "web_sessions"]);
 /** Postgres-only tables: not in SQLite, must be empty before a transfer. */
 const POSTGRES_ONLY = new Set(["raw_uploads"]);
 /** Game DB was added after the original cutover; older SQLite files lack it. */
@@ -149,7 +151,7 @@ async function plan(db: DatabaseSync, sql: Sql): Promise<{ plans: Plan[]; skippe
   const skipped: string[] = [];
   const seen = new Set<string>();
   for (const table of sqliteTables(db)) {
-    if (LEGACY_TABLES.has(table)) {
+    if (LEGACY_TABLES.has(table) || WEBSITE_SQLITE.has(table)) {
       skipped.push(table);
       continue;
     }

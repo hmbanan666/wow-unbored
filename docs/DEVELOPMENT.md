@@ -9,8 +9,8 @@ Read [`CONTEXT.md`](../CONTEXT.md) (the words we use) and [`docs/adr/`](adr/) (t
 - **The addon** (`addon/`): Bory, the Bubble, Quick plans from the Providers, tooltip Advice, local answers. Lua for the Retail client, no required libraries. It is not a JavaScript package.
 - **The Companion** (`apps/companion/`): a Windows tray app (Tauri, Rust, window in `ui/`). It installs and updates the addon, sends Requests and profiles from SavedVariables to the Server, and writes `Interface/AddOns/Unbored_Plan/Plan.lua`, `Advice.lua` and `Suggestions.lua`. See [`apps/companion/README.md`](../apps/companion/README.md).
 - **The Server** (`apps/server/`): Node, Hono and SQLite at `https://unbored.kosarev.space`. Devices, Requests, Plans, Player profiles, history, Personal advice, and the MCP tools the Planner uses. Contract: [`companion-api.md`](companion-api.md), plan format: [`plan-format.md`](plan-format.md).
+- **The website** (`apps/web/`): Nuxt 4, server-rendered. It reads the same Postgres (`web` and `content` schemas) and calls the Server for anything with business rules. See [Website](#website).
 - **Shared types** (`packages/contracts/`): Request, Plan, and Player profile types and JSON Schema. The Server and the Companion window import them. The Rust contract test reads the JSON Schema.
-- **`apps/web/`**: a placeholder for a future player website. No app yet.
 
 ## Requirements
 
@@ -23,7 +23,7 @@ Read [`CONTEXT.md`](../CONTEXT.md) (the words we use) and [`docs/adr/`](adr/) (t
 addon/            Lua addon (Unbored.toc, Core, Data, Providers, UI, Media, tests)
 apps/companion/   Windows tray app (ui/ is the window, src-tauri/ is Rust)
 apps/server/      planner backend
-apps/web/         placeholder README for a future player website
+apps/web/         player website (Nuxt). Page text is in Postgres, not in this folder
 packages/contracts/  shared Request, Plan, and Player profile types
 docs/             ADRs, API contract, plan format
 art/              builds Media portraits and Companion icons
@@ -239,7 +239,7 @@ cannot lower the last observed live build. Multiple Server processes may downloa
 the same build, but the import transaction publishes it once. Existing reads
 continue to use the previous complete build until the transaction commits.
 
-Startup migration `0008_game_watch.sql` adds `game.watch`; SQLite adds
+Startup migration `0010_game_watch.sql` adds `game.watch`; SQLite adds
 `game_watch`. This small shared record survives restarts and transfers with the
 other Game DB tables. No operator migration or production import is needed
 outside the normal Server startup; the documented import command above is also
@@ -553,6 +553,22 @@ A farm run. `instanceID` is the 14th return of `GetSavedInstanceInfo`. `mounts` 
 ```
 
 Each mode is a provider in `Providers/` with `Build(ctx)` returning tasks `{ id, title, mapID, x, y, estMinutes, note, complete }`. `complete.kind` is documented in the plan format.
+
+## Website
+
+The site is `apps/web` (Nuxt 4, Vue, Nuxt UI, `@nuxtjs/seo`, `nuxt-auth-utils`). It is a separate Dokploy app on the same host as the Server ([ADR 0073](adr/0073-website-and-account-link.md)). Traefik sends `/v1`, `/mcp`, `/health` and `/owner` to the Server and every other path to the site. The route table is [`apps/web/deploy/traefik.yml`](../apps/web/deploy/traefik.yml). The Companion's base URL stays `https://unbored.kosarev.space`. Applying the rules is manual; nothing in CI deploys the site.
+
+The image is `docker build -f apps/web/Dockerfile .`. The container listens on 3000 and answers `GET /ready`. `GET /health` is the Server, including through the public host.
+
+Page text and SEO fields are rows in the same Postgres, not markdown files. `web.pages` is the home page. `content.paths` is the public catalog: `kind` is `path` or `collection`, with draft and published versions ([ADR 0072](adr/0072-paths.md), [ADR 0074](adr/0074-public-path-pages.md)). Public URLs are `/paths/<slug>` and `/collections/<slug>`. There is no page for one item, mount, NPC or other object. The Server migration `0008_web_content.sql` creates both schemas; they sit outside `public`, so the SQLite transfer does not copy them. Topics and Path goals are not in that migration.
+
+Locally, apply migrations by starting the Server once with `DATABASE_URL`, then:
+
+```
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/unbored pnpm --filter @unbored/web dev
+```
+
+Dev listens on port 3001. `NUXT_PUBLIC_SITE_URL` is the canonical origin. `NUXT_SESSION_PASSWORD` (at least 32 characters) seals the My page cookie. `NUXT_SERVER_URL` is how the site reaches the Server to redeem a sign-in link; when it is empty the site uses its own origin, which works when `/v1` on that origin is the Server. `UNBORED_WEB_ORIGIN` on the Server is the origin written into the link. All three belong in Dokploy env, not in the repo. In production the site connects as a read-only Postgres role (`unbored_web`, `default_transaction_read_only`) with SELECT on `web`, `content`, `characters`, `sections_latest`, `history`, `plans` and `devices (id, status)`; the Server's role owns and migrates every table. The site typecheck uses TypeScript 5.9 (`vue-tsc`); the rest of the repo stays on TypeScript 7. Website tests that read Postgres use `UNBORED_WEB_TEST_DATABASE_URL` (not `UNBORED_TEST_DATABASE_URL`, which also turns on the Server's Postgres backends).
 
 ## Server deploys
 

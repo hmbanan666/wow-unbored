@@ -39,6 +39,7 @@ import {
   type SectionChange,
   type SnapshotResult,
 } from "./data.ts";
+import { endPageSessions } from "./page-link.ts";
 import type { Holdings } from "./holdings.ts";
 import type { ProfileUpload } from "./profile.ts";
 import type { Sql } from "./postgres.ts";
@@ -1490,6 +1491,7 @@ export class Store {
         reconnect,
         deviceId,
       );
+      await endPageSessions(this.db, { accounts: [...accounts], deviceId, now: nowSeconds });
       return { ...totals, revoked: true };
     });
   }
