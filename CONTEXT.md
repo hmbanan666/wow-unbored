@@ -213,4 +213,28 @@ _Avoid_: loot table, drops, drop chance.
 Steps of a Plan that can be done in any order (several rares in one zone). The card flips between them with two arrows; Skip in a group means "won't do" (ADR 0056). Contract field `group`.
 _Avoid_: unordered, batch, subplan.
 
+**Game DB**
+The Server's own copy of client game tables for the live build, plus sourced extras, that tools and Plan checks read (ADR 0071).
+_Avoid_: wiki, cache, catalog (that is the vetted addon list).
+
+**Path**
+A curated set of goals for one piece of content, in a tier (Basic, Deeper, Complete), shown as done of total. Russian: Путь (ADR 0072).
+_Avoid_: quest line, guide, checklist, roadmap.
+
+**Topic**
+A group of goals inside a Path, such as mounts, achievements or PvP.
+_Avoid_: branch, category, tag.
+
+**Path goal**
+One goal of a Path: an outcome or a quest, with verified ids.
+_Avoid_: step (that is a Plan's), task, objective.
+
+**Path completion**
+The record that a Character reached every required goal of a Path version.
+_Avoid_: badge, trophy, achievement (the game's word).
+
+**My page**
+The player's page on the website, opened from the Companion with one click (ADR 0073).
+_Avoid_: dashboard, profile, account, login.
+
 **Avoid in anything user-facing**: success story, digest, telemetry, crash report, tracker, All steps (window), wizard, token, URL, server address, API key, registration, login, delete (Advice never says it), Ask, chat, wish.
