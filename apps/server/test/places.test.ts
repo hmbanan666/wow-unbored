@@ -121,6 +121,27 @@ test("quest points correct distant Steps, unsupported travel points disappear, s
   }
 });
 
+test("identical assignment projections preserve quest and flight points", async () => {
+  const { game, close, write, places } = await fixture();
+  try {
+    await write(
+      "UiMapAssignment",
+      "ID,UiMapID,MapID,AreaID,Region_0,Region_1,Region_3,Region_4,UiMin_0,UiMin_1,UiMax_0,UiMax_1\n1,102,530,14717,0,0,1000,1000,0,0,1,1\n2,102,530,0,0,0,1000,1000,0,0,1,1\n",
+    );
+    const questPoint = { mapID: 102, x: 0.2, y: 0.4, questID: 9726 };
+    const flightPoint = { mapID: 102, x: 0.21, y: 0.4, id: 9, name: "Known flight point" };
+    const place = await getPlace(game, { mapID: 102, questID: 9726 });
+    assert.deepEqual(place.questPoints, [questPoint]);
+    assert.deepEqual(place.flightPoints, [flightPoint]);
+    assert.deepEqual(place.nearestFlightPoint, flightPoint);
+    const data = await places([102]);
+    assert.deepEqual(data.questPoints, [questPoint]);
+    assert.deepEqual(data.knownPoints, [questPoint, { mapID: 102, x: 0.21, y: 0.4 }]);
+  } finally {
+    await close();
+  }
+});
+
 test("quest polygons, ambiguous assignments and different maps never supply correction points", async () => {
   const { game, close, write } = await fixture();
   try {
@@ -134,7 +155,7 @@ test("quest polygons, ambiguous assignments and different maps never supply corr
     await write("QuestPOIBlob", "ID,QuestID,UiMapID,MapID,NumPoints\n1,9726,102,530,1\n");
     await write(
       "UiMapAssignment",
-      "ID,UiMapID,MapID,AreaID,Region_0,Region_1,Region_3,Region_4,UiMin_0,UiMin_1,UiMax_0,UiMax_1\n1,102,530,0,0,0,1000,1000,0,0,1,1\n2,102,530,0,0,0,1000,1000,0,0,1,1\n",
+      "ID,UiMapID,MapID,AreaID,Region_0,Region_1,Region_3,Region_4,UiMin_0,UiMin_1,UiMax_0,UiMax_1\n1,102,530,0,0,0,1000,1000,0,0,1,1\n2,102,530,0,0,0,2000,1000,0,0,1,1\n",
     );
     place = await getPlace(game, { mapID: 102, questID: 9726 });
     assert.deepEqual(place.questPoints, []);
