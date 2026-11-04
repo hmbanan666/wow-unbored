@@ -529,6 +529,7 @@ export class ContentStore {
     if (!row) return null;
     const body = fromJson<Body>(row.body)!;
     return {
+      id: Number(row.id),
       version: row.version,
       status: row.status,
       build: body.build,

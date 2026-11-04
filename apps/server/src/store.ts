@@ -1,3 +1,4 @@
+import { checkPathOutcome, readRequestPath } from "./path-plan.ts";
 import { ActivePaths } from "./active-path.ts";
 import { ContentStore } from "./content.ts";
 import { createPathProgressReader } from "./path-progress.ts";
@@ -322,6 +323,10 @@ export class Store {
     });
   }
 
+  async requestPath(request: PlanRequest) {
+    return readRequestPath(request, new ContentStore(this.db, this.game), this.data, this.game);
+  }
+
   async putPlan(
     raw: unknown,
     nowSeconds = Math.floor(Date.now() / 1000),
@@ -345,6 +350,10 @@ export class Store {
       // transaction as the insert and never insert a private Plan as direct.
       if (requestId && !(await this.lockRequest(requestId, "share")))
         throw new PlanError("No request with that id.");
+      if (requestId) {
+        const request = (await this.requestById(requestId))!;
+        checkPathOutcome(plan.outcome, await this.requestPath(request));
+      }
       const row = await this.db.get<{ id: number }>(
         `INSERT INTO plans (player_key, created_at, ${this.db.body}, unb1, generated_at, request_id)
          VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,

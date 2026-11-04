@@ -413,8 +413,38 @@ format or per-message Refresh is required.
 
 Content remains in the existing store. The documented `scripts/content.ts`
 validate/save/publish command above remains the production import entry point;
-this feature needs no separate content import. Selecting Paths on the site and
-building Plans from their unfinished goals belong to later tickets.
+this feature needs no separate content import. Selecting Paths on the site
+belongs to a later ticket.
+
+### Plans from a Path
+
+For a Path Request, runner MCP `get_request` and owner MCP `list_requests`
+include `path`: the picked `reference`, title, current required-goal `done` /
+`total`, and `nextGoals` in authored order. Each remaining required goal includes
+its zero-based `position`, authored source, note and target fields. `outcome`
+is present only for eligible Plan targets; quests and quest lines may guide
+Steps, and chance goals are bonuses. Optional and finished goals are omitted.
+Non-Path Requests have `path: null`. An unavailable publication or missing
+Character snapshot returns an empty `nextGoals` with a `reason` for the Planner.
+
+The publication is the exact kind, slug, language and version picked by the
+Request, including a retired publication after a newer version replaces it.
+Changing or clearing the active selection does not change that Request. Progress
+uses this Character's latest Sections and Account collections through the same
+reader as active Paths. A Plan outcome must exactly match one eligible goal,
+including its threshold; submissions re-read progress before storing. HTTP
+`PUT /v1/plan`, MCP `put_plan` and the Plan in `answer_request` share this check.
+A rejected submission leaves the Request pending and the runner lease available:
+read `get_request` and retry with an eligible outcome, or use `fail_request` when
+none remains. Existing Game DB and acquisition checks still apply.
+
+Accepting a Plan does not mark its Path goal done. The later Game data snapshot
+moves progress and records completion through the existing ingestion flow.
+`path-plan.test.ts` exercises runner claims, correction in the same lease,
+version preservation, every submission route, and Path / Collection progress.
+No migration or new import is needed; transfer/workflow counts remain **23**.
+The existing documented content validate/save/publish command remains the
+production import entry point.
 
 ### Game DB: Planner lookups
 
