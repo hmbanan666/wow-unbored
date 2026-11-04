@@ -16,12 +16,18 @@ export default defineNuxtConfig({
   robots: {
     disallow: [],
   },
+  /** Content-Signal is not a robots.txt directive validators know; leave it out. */
+  aiReady: {
+    contentSignal: false,
+  },
   sitemap: {
     sources: ["/api/__sitemap__/urls"],
     exclude: ["/my", "/enter/**"],
   },
   nitro: {
     preset: "node-server",
+    /** Ship .br/.gz next to every built asset; the node server picks them by Accept-Encoding. */
+    compressPublicAssets: true,
   },
   runtimeConfig: {
     /** Server base URL for sign-in (NUXT_SERVER_URL). Empty uses this request's origin. */
