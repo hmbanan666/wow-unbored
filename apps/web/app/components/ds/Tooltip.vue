@@ -74,7 +74,9 @@ function inputChanged() {
 }
 onMounted(() => {
   query = window.matchMedia("(hover: hover) and (pointer: fine)");
+  const focused = document.activeElement === trigger.value;
   fine.value = query.matches;
+  if (focused && fine.value) nextTick(() => trigger.value?.focus());
   query.addEventListener("change", inputChanged);
   document.addEventListener("pointerdown", outside);
   document.addEventListener("keydown", key);

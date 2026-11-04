@@ -71,11 +71,17 @@ const blank =
   height: 100%;
 }
 .ds-game-art--render {
+  position: relative;
   background: radial-gradient(ellipse at 50% 55%, var(--lamp-glow), var(--lamp-bg) 72%);
 }
 .ds-game-art--render img {
   object-fit: contain;
-  mix-blend-mode: lighten;
-  mask-image: radial-gradient(ellipse, black 50%, transparent 75%);
+}
+.ds-game-art--render::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse, transparent 45%, var(--lamp-bg) 85%);
 }
 </style>

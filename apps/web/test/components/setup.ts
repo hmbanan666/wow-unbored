@@ -23,6 +23,7 @@ for (const [path, component] of Object.entries(modules)) {
   const name = (path.includes("/ds/") ? "Ds" : "") + path.split("/").pop()!.replace(".vue", "");
   config.global.components[name] = component as vue.Component;
 }
+config.global.components.LazyCollectionItems = config.global.components.CollectionItems!;
 config.global.components.NuxtLink = vue.defineComponent({
   props: ["to"],
   setup:

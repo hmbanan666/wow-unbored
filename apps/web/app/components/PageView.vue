@@ -111,7 +111,8 @@ if (props.page && props.page.kind !== "page") {
       <EntryBody :blocks="page.blocks" :media="page.media" :items="page.items" />
       <PersonalPaths v-if="page.kind === 'path' || page.kind === 'collection'" :page="page">
         <template #default="{ progress, copy }">
-          <CollectionItems
+          <LazyCollectionItems
+            :hydrate-on-visible="{ rootMargin: '200px' }"
             v-if="page.items.length"
             :items="page.items"
             :media="page.media"
@@ -120,7 +121,12 @@ if (props.page && props.page.kind !== "page") {
           />
         </template>
       </PersonalPaths>
-      <CollectionItems v-else-if="page.items.length" :items="page.items" :media="page.media" />
+      <LazyCollectionItems
+        :hydrate-on-visible="{ rootMargin: '200px' }"
+        v-else-if="page.items.length"
+        :items="page.items"
+        :media="page.media"
+      />
       <DsSection
         divided
         :title="page.kind === 'guide' ? 'Let Bory pick the next step' : 'Track this list in game'"

@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vite-plus/test";
 import { mount, config } from "@vue/test-utils";
-import { createSSRApp, h } from "vue";
+import { createSSRApp, h, nextTick } from "vue";
 import { renderToString } from "@vue/server-renderer";
 import Tooltip from "../../app/components/ds/Tooltip.vue";
 
@@ -124,4 +124,27 @@ test("Escape cancels a pending hover; removing an open trigger releases the acti
   const second = tooltip(false);
   await second.get("button").trigger("click");
   expect(second.get("button").attributes("aria-expanded")).toBe("true");
+});
+
+test("keyboard focus survives desktop hydration of a server-rendered trigger", async () => {
+  vi.spyOn(window, "matchMedia").mockReturnValue({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  } as unknown as MediaQueryList);
+  const view = { render: () => h(Tooltip, {}, { default: () => "Yak", panel: () => "Vendor" }) };
+  const host = document.createElement("div");
+  host.innerHTML = await renderToString(createSSRApp(view));
+  document.body.append(host);
+  host.querySelector("button")!.focus();
+  const app = createSSRApp(view);
+  app.mount(host);
+  try {
+    await nextTick();
+    await nextTick();
+    expect(document.activeElement).toBe(host.querySelector('[tabindex="0"]'));
+    expect(host.querySelector('[role="tooltip"]')?.getAttribute("data-open")).toBe("true");
+  } finally {
+    app.unmount();
+  }
 });
