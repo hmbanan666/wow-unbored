@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 import { storage } from "./backend.ts";
-import { coreResponse } from "./game-content-fixture.ts";
+import { coreCsv, coreResponse } from "./game-content-fixture.ts";
 
 const base = {
   title: "A small adventure",
@@ -12,7 +12,7 @@ const base = {
   tasks: [{ id: "go", title: "Take a look" }],
 };
 
-async function setup() {
+async function setup(fetchImpl: typeof fetch | null = coreResponse) {
   const dataDir = mkdtempSync(path.join(import.meta.dirname, ".game-plan-"));
   const built = createApp({
     ...storage(),
@@ -21,7 +21,7 @@ async function setup() {
     companionToken: "companion-test-token",
     log: () => {},
   });
-  await built.store.game.importBuild("12.0.0.70000", coreResponse);
+  if (fetchImpl) await built.store.game.importBuild("12.0.0.70000", fetchImpl);
   return {
     ...built,
     async call(name: string, args: Record<string, unknown>) {
@@ -50,6 +50,231 @@ async function setup() {
     },
   };
 }
+
+test("Ashes of Al'ar cannot be promised as a Plan outcome", async () => {
+  const api = await setup(async (input) => {
+    if (new URL(String(input)).pathname.includes("/Mount/"))
+      return new Response(
+        "ID,Name_lang,SourceSpellID,SourceTypeEnum\n183,Ashes of Al'ar,40192,0\n",
+      );
+    return coreResponse(input);
+  });
+  try {
+    const result = await api.call("put_plan", {
+      plan: { ...base, outcome: { kind: "mount", id: 183 } },
+    });
+    assert.equal(result.error, true);
+    assert.match(JSON.stringify(result.value), /chance-only.*bonus.*retry/i);
+    assert.equal(await api.store.latestPlan(), undefined);
+  } finally {
+    await api.dispose();
+  }
+});
+
+test("an unknown acquisition source is accepted with a note, never a warning", async () => {
+  const api = await setup();
+  try {
+    const result = await api.call("put_plan", {
+      plan: { ...base, outcome: { kind: "item", id: 19019 } },
+    });
+    assert.equal(result.error, false);
+    assert.match(result.value.notes.join(" "), /acquisition.*unknown.*accepted/i);
+    assert.deepEqual(result.value.warnings, []);
+    assert.deepEqual(result.value.stored.outcome, { kind: "item", id: 19019 });
+  } finally {
+    await api.dispose();
+  }
+});
+
+test("a vendor mount is accepted without an unknown acquisition note", async () => {
+  const api = await setup(async (input) => {
+    if (new URL(String(input)).pathname.includes("/Mount/"))
+      return new Response("ID,Name_lang,SourceSpellID,SourceTypeEnum\n6,Brown Horse,458,2\n");
+    return coreResponse(input);
+  });
+  try {
+    const result = await api.call("put_plan", {
+      plan: { ...base, outcome: { kind: "mount", id: 6 } },
+    });
+    assert.equal(result.error, false);
+    assert.doesNotMatch(result.value.notes.join(" "), /acquisition/i);
+    assert.deepEqual(result.value.warnings, []);
+  } finally {
+    await api.dispose();
+  }
+});
+
+test("quest and achievement collectibles and vendor toys have guaranteed sources", async () => {
+  const api = await setup(async (input) => {
+    const table = new URL(String(input)).pathname.split("/")[2];
+    if (table === "Mount") return new Response(coreCsv.Mount + "7,Achievement mount,459,5\n");
+    if (table === "BattlePetSpecies")
+      return new Response(coreCsv.BattlePetSpecies + "40,7391,10696,1,5\n");
+    if (table === "Toy")
+      return new Response("ID,ItemID,SourceTypeEnum\n1,1973,2\n2,1974,5\n3,1975,1\n");
+    if (table === "ItemSparse") return new Response(coreCsv.ItemSparse + "1973,Vendor toy\n");
+    return coreResponse(input);
+  });
+  try {
+    for (const [kind, id] of [
+      ["mount", 6],
+      ["mount", 7],
+      ["pet", 39],
+      ["pet", 40],
+      ["toy", 1973],
+      ["toy", 1974],
+      ["toy", 1975],
+      ["item", 1973],
+    ]) {
+      const result = await api.call("put_plan", { plan: { ...base, outcome: { kind, id } } });
+      assert.equal(result.error, false, JSON.stringify(result.value));
+      assert.doesNotMatch(result.value.notes.join(" "), /acquisition/i);
+    }
+  } finally {
+    await api.dispose();
+  }
+});
+
+test("uncertain drop and unsupported categories stay notes across collectible kinds", async () => {
+  const api = await setup(async (input) => {
+    const table = new URL(String(input)).pathname.split("/")[2];
+    if (table === "Mount")
+      return new Response(
+        "ID,Name_lang,SourceSpellID,SourceTypeEnum\n6,A drop,458,0\n7,Unknown,459,99\n",
+      );
+    if (table === "BattlePetSpecies")
+      return new Response(
+        "ID,CreatureID,SummonSpellID,PetTypeEnum,SourceTypeEnum\n39,7390,10695,1,0\n",
+      );
+    if (table === "Toy") return new Response("ID,ItemID,SourceTypeEnum\n1,1973,0\n");
+    return coreResponse(input);
+  });
+  try {
+    for (const [kind, id] of [
+      ["mount", 6],
+      ["mount", 7],
+      ["pet", 39],
+      ["toy", 1973],
+    ]) {
+      const result = await api.call("put_plan", { plan: { ...base, outcome: { kind, id } } });
+      assert.equal(result.error, false);
+      assert.match(result.value.notes.join(" "), /acquisition.*unknown.*accepted/i);
+      assert.deepEqual(result.value.warnings, []);
+    }
+  } finally {
+    await api.dispose();
+  }
+});
+
+test("chance-only item rejection preserves the previous Plan and pending Request on every submission path", async () => {
+  const api = await setup(async (input) => {
+    if (new URL(String(input)).pathname.includes("/ItemSparse/"))
+      return new Response(coreCsv.ItemSparse + "32458,Ashes of Al'ar\n");
+    return coreResponse(input);
+  });
+  try {
+    await api.call("put_plan", { plan: base });
+    const previous = await api.store.latestPlan();
+    await api.app.request("/v1/requests", {
+      method: "POST",
+      headers: { authorization: "Bearer companion-test-token", "content-type": "application/json" },
+      body: JSON.stringify({ id: "chance", character: "Mira", mode: "fun" }),
+    });
+    const plan = { ...base, outcome: { kind: "item", id: 32458 } };
+    for (const name of ["put_plan", "answer_request"]) {
+      const result = await api.call(name, {
+        requestId: "chance",
+        plan,
+        ...(name === "answer_request" ? { message: "Let's go!" } : {}),
+      });
+      assert.equal(result.error, true);
+      assert.match(JSON.stringify(result.value), /chance-only.*bonus.*retry/i);
+      assert.equal((await api.store.requestById("chance"))?.status, "pending");
+      assert.deepEqual(await api.store.latestPlan(), previous);
+    }
+    const response = await api.app.request("/v1/plan", {
+      method: "PUT",
+      headers: { authorization: "Bearer planner-test-token", "content-type": "application/json" },
+      body: JSON.stringify({ ...plan, requestId: "chance" }),
+    });
+    assert.equal(response.status, 400);
+    assert.match(JSON.stringify(await response.json()), /chance-only/);
+    assert.equal((await api.store.requestById("chance"))?.status, "pending");
+    assert.deepEqual(await api.store.latestPlan(), previous);
+    const corrected = await api.call("answer_request", {
+      requestId: "chance",
+      message: "Let's go!",
+      plan: { ...base, bonus: ["{item:32458}"] },
+    });
+    assert.equal(corrected.error, false);
+    assert.equal(corrected.value.request.status, "fulfilled");
+  } finally {
+    await api.dispose();
+  }
+});
+
+test("Catalog rejection and unknown-source notes also work before a Game DB import", async () => {
+  const api = await setup(null);
+  try {
+    const rejected = await api.call("put_plan", {
+      plan: { ...base, outcome: { kind: "mount", id: 183 } },
+    });
+    assert.equal(rejected.error, true);
+    assert.match(JSON.stringify(rejected.value), /chance-only/);
+    const unknown = await api.call("put_plan", {
+      plan: { ...base, outcome: { kind: "mount", id: 6 } },
+    });
+    assert.equal(unknown.error, false);
+    assert.match(unknown.value.notes.join(" "), /acquisition.*unknown.*accepted/i);
+  } finally {
+    await api.dispose();
+  }
+});
+
+test("a vetted Catalog achievement reward is accepted with a known acquisition", async () => {
+  const api = await setup(async (input) => {
+    if (new URL(String(input)).pathname.includes("/Mount/"))
+      return new Response(
+        "ID,Name_lang,SourceSpellID,SourceTypeEnum\n758,Infernal Direwolf,186305,-1\n",
+      );
+    return coreResponse(input);
+  });
+  try {
+    const result = await api.call("put_plan", {
+      plan: { ...base, outcome: { kind: "mount", id: 758 } },
+    });
+    assert.equal(result.error, false);
+    assert.doesNotMatch(result.value.notes.join(" "), /acquisition/i);
+  } finally {
+    await api.dispose();
+  }
+});
+
+test("a new guaranteed source in the current build prevents a chance-only rejection", async () => {
+  const api = await setup(async (input) => {
+    if (new URL(String(input)).pathname.includes("/Mount/"))
+      return new Response(
+        "ID,Name_lang,SourceSpellID,SourceTypeEnum\n183,Ashes of Al'ar,40192,0\n",
+      );
+    return coreResponse(input);
+  });
+  try {
+    const plan = { ...base, outcome: { kind: "mount", id: 183 } };
+    assert.equal((await api.call("put_plan", { plan })).error, true);
+    await api.store.game.importBuild("12.0.1.70001", async (input) => {
+      if (new URL(String(input)).pathname.includes("/Mount/"))
+        return new Response(
+          "ID,Name_lang,SourceSpellID,SourceTypeEnum\n183,A vendor reward,40192,2\n",
+        );
+      return coreResponse(input);
+    });
+    const result = await api.call("put_plan", { plan });
+    assert.equal(result.error, false);
+    assert.doesNotMatch(result.value.notes.join(" "), /acquisition/i);
+  } finally {
+    await api.dispose();
+  }
+});
 
 test("put_plan replaces an unknown Game DB token with its label and warns", async () => {
   const api = await setup();

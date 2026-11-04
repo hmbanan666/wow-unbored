@@ -430,6 +430,7 @@ export function createMcpServer(
               gameBuild: build,
               missing,
               warnings,
+              notes,
               wish: asked?.wish,
               context: asked?.context,
             },
@@ -750,7 +751,7 @@ export function createMcpServer(
         locale: z.enum(["enUS", "ruRU"]).default("enUS"),
       },
     },
-    async ({ itemID, locale }) => text(await getItemSources(itemID, locale, gameIds)),
+    async ({ itemID, locale }) => text(await getItemSources(itemID, locale, gameIds, store.game)),
   );
 
   registerTool(
@@ -1121,6 +1122,7 @@ export function createMcpServer(
                 now,
                 {
                   ...check,
+                  notes,
                   wish: asked.wish,
                   context: asked.context,
                 },

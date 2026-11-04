@@ -103,6 +103,7 @@
       "mapID": 109,
       "mountSources": {
         "183": {
+          "acquisition": "chance-only",
           "boss": "Kael'thas Sunstrider",
           "itemID": 32458,
           "source": "https://www.wowhead.com/item=32458/ashes-of-alar"
@@ -293,7 +294,9 @@
           "source": "https://www.wowhead.com/item=123890/felsteel-annihilator"
         },
         "758": {
-          "achievementID": 10149
+          "achievementID": 10149,
+          "acquisition": "guaranteed",
+          "source": "https://www.wowhead.com/achievement=10149/glory-of-the-hellfire-raider"
         }
       },
       "mounts": [751, 758],

@@ -48,6 +48,8 @@ export type MarkupCheck = {
   missing?: ReadonlySet<string>;
   /** Filled with one line per correction to the plan or answer. */
   warnings?: string[];
+  /** Nonblocking uncertainty for the Planner, never player-facing text. */
+  notes?: string[];
   /** The Request's wish, so a title that only repeats it is flagged. */
   wish?: string | null;
   /** The Request's position, so a copied starting point can be dropped. */

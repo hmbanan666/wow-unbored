@@ -191,7 +191,7 @@ for (const backend of BACKENDS) {
       assert.equal(lease.attempt, 1);
       assert.equal(lease.expiresAt, app.now() + 180);
       assert.match(lease.leaseToken, /^[A-Za-z0-9_-]{43}$/);
-      assert.equal(lease.prompt.version, "fda9b00e489c");
+      assert.equal(lease.prompt.version, "3585081689dc");
       assert.match(lease.prompt.text, /^# Unbored planner\n/);
       assert.equal(lease.mcpPath, "/mcp");
       assert.equal((await app.claim()).status, 204);
@@ -616,6 +616,36 @@ for (const backend of BACKENDS) {
   });
 
   for (const tool of ["put_plan", "answer_request"]) {
+    test(`${tool} keeps the lease after chance-only rejection and finishes with an unknown-source note (${backend})`, async () => {
+      const app = build(backend);
+      try {
+        await app.add();
+        const lease = await (await app.claim()).json();
+        const call = (id: number) =>
+          mcp(app, lease.leaseToken, "tools/call", {
+            name: tool,
+            arguments: {
+              requestId: "runner-first",
+              ...(tool === "answer_request" ? { message: "Your next adventure awaits." } : {}),
+              plan: { ...plan, outcome: { kind: "mount", id } },
+            },
+          });
+        const rejected = await call(183);
+        assert.equal(rejected.body.result.isError, true);
+        assert.match(rejected.body.result.content[0].text, /chance-only/);
+        assert.equal((await app.store.runnerStatus("runner-first"))?.state, "leased");
+        assert.equal((await app.store.requestById("runner-first"))?.status, "pending");
+        const accepted = await call(6);
+        assert.equal(accepted.body.result.isError, false);
+        const result = JSON.parse(accepted.body.result.content[0].text);
+        assert.match(result.notes.join(" "), /acquisition.*unknown.*accepted/i);
+        assert.deepEqual(result.warnings, []);
+        assert.equal((await app.store.runnerStatus("runner-first"))?.state, "done");
+      } finally {
+        await app.close();
+      }
+    });
+
     test(`${tool} warns about missing directions and accepts a rewrite in the same lease (${backend})`, async () => {
       const app = build(backend);
       try {

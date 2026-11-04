@@ -7,6 +7,8 @@ local _, ns = ...
 -- Mount journal ids: https://warcraft.wiki.gg/wiki/MountID
 -- Each mountSources entry names one verified way to earn that mount here.
 -- itemID and source expose the existing item reference to Planner tools.
+-- acquisition, when vetted, describes the target: guaranteed or chance-only.
+-- A boss name alone never establishes a chance-only target.
 -- difficulty is required when the chosen boss only awards it in that mode.
 -- condition records encounter requirements beyond difficulty.
 -- Entrance coordinates are the Wowhead "Dungeon and Raid Entrances" guide
@@ -51,6 +53,7 @@ ns.Data.Farm = {
       [183] = {
         itemID = 32458,
         source = "https://www.wowhead.com/item=32458/ashes-of-alar",
+        acquisition = "chance-only",
         boss = "Kael'thas Sunstrider",
       },
     },
@@ -240,7 +243,11 @@ ns.Data.Farm = {
       },
       -- https://warcraft.wiki.gg/wiki/Infernal_Direwolf
       -- https://www.wowhead.com/achievement=10149/glory-of-the-hellfire-raider
-      [758] = { achievementID = 10149 },
+      [758] = {
+        achievementID = 10149,
+        source = "https://www.wowhead.com/achievement=10149/glory-of-the-hellfire-raider",
+        acquisition = "guaranteed",
+      },
     },
   },
   {

@@ -80,7 +80,12 @@ type CatalogRare = {
   mapID?: number;
   questID?: number;
 };
-type MountSource = { itemID?: number; source?: string } & (
+type MountSource = {
+  itemID?: number;
+  source?: string;
+  /** Target-wide verdict, not a drop rate for just this boss. */
+  acquisition?: "guaranteed" | "chance-only";
+} & (
   | { achievementID: number }
   | {
       boss: string;

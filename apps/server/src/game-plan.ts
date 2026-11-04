@@ -3,6 +3,7 @@ import type { GameDb } from "./game-db.ts";
 import { OutcomeError } from "./outcome.ts";
 import type { MarkupCheck } from "./plan.ts";
 import { gamePlaces } from "./game-places.ts";
+import { acquisition } from "./acquisition.ts";
 
 /** Player ownership is checked separately; this checks whether the promised target exists. */
 export async function checkGameOutcome(plan: Plan, game: GameDb, build: string): Promise<void> {
@@ -23,12 +24,29 @@ export async function checkGameOutcome(plan: Plan, game: GameDb, build: string):
       throw new OutcomeError(
         "Plan outcome is also a chance bonus. Choose a near-guaranteed outcome and retry.",
       );
-    // TODO: Reject chance-only sources when sourced acquisition guarantees are imported.
-    // DB2 source categories alone do not distinguish guaranteed drops from chance drops.
   }
   if (missing)
     throw new OutcomeError(
       `Plan outcome target is missing from Game DB build ${build}. Choose a verified target and retry.`,
+    );
+}
+
+export async function checkOutcomeAcquisition(
+  plan: Plan,
+  game: GameDb,
+  build?: string,
+  notes?: string[],
+) {
+  const outcome = plan.outcome;
+  if (!outcome || !("id" in outcome)) return;
+  const evidence = await acquisition(outcome.kind, outcome.id, game, build);
+  if (evidence.acquisition === "chance-only")
+    throw new OutcomeError(
+      `Plan outcome rejected: ${outcome.kind} ${outcome.id} is known to be chance-only (${evidence.sources.join(", ")}). Keep it in bonus, choose a near-guaranteed outcome and retry in this session.`,
+    );
+  if (evidence.acquisition === "unknown")
+    notes?.push(
+      `Acquisition for outcome ${outcome.kind} ${outcome.id} is unknown; accepted without an acquisition guarantee. Verify a near-guaranteed source before promising it.`,
     );
 }
 

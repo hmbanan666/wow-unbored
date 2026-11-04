@@ -63,6 +63,21 @@ async function fixture(backend: Backend, blizzardFetch?: GameDataFetch) {
   };
 }
 
+test("item sources explain the chance-only verdict used by Plan submission", async () => {
+  const app = await fixture("sqlite");
+  try {
+    const result = await app.call("get_item_sources", { itemID: 32458 });
+    assert.equal(result.acquisition, "chance-only");
+    assert.equal(result.sources[0].acquisition, "chance-only");
+    assert.equal(result.sources[0].guaranteed, false);
+    assert.match(result.sources[0].source.url, /32458/);
+    const unknown = await app.call("get_item_sources", { itemID: 999999 });
+    assert.equal(unknown.acquisition, "unknown");
+  } finally {
+    await app.close();
+  }
+});
+
 for (const backend of BACKENDS) {
   test(`Planner finds exact localized entity names with source and ambiguity (${backend})`, async () => {
     const app = await fixture(backend);

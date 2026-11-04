@@ -217,6 +217,10 @@ _Avoid_: unordered, batch, subplan.
 The Server's own copy of client game tables for the live build, plus sourced extras, that tools and Plan checks read (ADR 0071).
 _Avoid_: wiki, cache, catalog (that is the vetted addon list).
 
+**Acquisition**
+How an item or collectible can be obtained: guaranteed when a known source awards it on meeting its requirements, chance-only when obtaining it is known to depend on chance, or unknown when the evidence does not decide. A guaranteed source does not mean this Character meets its requirements. Code and Planner word, not player-facing copy (ADR 0071).
+_Avoid_: drop rate (a probability, not an acquisition verdict).
+
 **Path**
 A curated set of goals for one piece of content, in a tier (Basic, Deeper, Complete), shown as done of total. Russian: Путь (ADR 0072).
 _Avoid_: quest line, guide, checklist, roadmap.

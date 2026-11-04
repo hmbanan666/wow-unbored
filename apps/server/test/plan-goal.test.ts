@@ -204,7 +204,7 @@ test("absent snapshot kinds are accepted with notes, including when another Acco
   try {
     await app.store.putSnapshot(
       snapshot(
-        { mounts: { body: { ids: packIds([183]) } } },
+        { mounts: { body: { ids: packIds([6]) } } },
         { account: "other", character: "Other" },
       ),
       "other-pc",
@@ -222,7 +222,7 @@ test("absent snapshot kinds are accepted with notes, including when another Acco
     });
     for (const outcome of [
       { kind: "achievement", achievementID: 546 },
-      { kind: "mount", id: 183 },
+      { kind: "mount", id: 6 },
       { kind: "pet", id: 39 },
       { kind: "toy", id: 54438 },
       { kind: "rep", factionID: 970, standing: 6 },
