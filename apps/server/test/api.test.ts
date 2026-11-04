@@ -286,6 +286,7 @@ test("mcp lists the planner tools", async () => {
       "fail_request",
       "find_game_entity",
       "get_account_overview",
+      "get_active_path",
       "get_content",
       "get_current_plan",
       "get_data_changes",
@@ -313,6 +314,7 @@ test("mcp lists the planner tools", async () => {
       "resolve_criteria",
       "revoke_device",
       "save_content_draft",
+      "set_active_path",
     ]);
     const put = tools.find((tool) => tool.name === "put_plan");
     assert.ok(put?.description.includes("0 to 1"));

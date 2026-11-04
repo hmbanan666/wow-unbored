@@ -1,3 +1,4 @@
+import { ActivePaths } from "./active-path.ts";
 import { ContentStore } from "./content.ts";
 import { createPathProgressReader } from "./path-progress.ts";
 import {
@@ -232,6 +233,7 @@ export class Store {
   readonly game: GameDb;
   readonly data: DataStore;
   readonly suggestions: SuggestionStore;
+  readonly activePaths: ActivePaths;
   readonly gameIds: IdCache;
   readonly creatureNames: NameCache;
   /** The upload inbox and its worker (ADR 0057 step 4); Postgres only. */
@@ -271,7 +273,13 @@ export class Store {
     }
     this.game = new GameDb(this.db, dataDir);
     this.data = new DataStore(this.db, options.log);
-    this.suggestions = new SuggestionStore(this.db, this.data, this.creatureNames);
+    this.activePaths = new ActivePaths(this.db, this.data, this.game);
+    this.suggestions = new SuggestionStore(
+      this.db,
+      this.data,
+      this.creatureNames,
+      this.activePaths,
+    );
     this.inbox = inbox;
   }
 

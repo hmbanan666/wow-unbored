@@ -17,7 +17,7 @@ S.MORE = 6
 S.SERVER_MAX = 10
 S.LOCAL_MAX = 3
 S.LOCAL_SECONDS = 30
-S.KINDS = { event = true, achievement = true, rare = true, collection = true, chain = true }
+S.KINDS = { event = true, achievement = true, rare = true, collection = true, chain = true, path = true }
 -- What kind of plan an idea asks for, with no time (D110).
 S.MODE = { event = "events", achievement = "fun", rare = "roam", collection = "farm", chain = "quests" }
 
@@ -100,6 +100,16 @@ local function action(raw)
   end
 end
 
+local function pathReference(raw)
+  if type(raw) ~= "table" or (raw.kind ~= "path" and raw.kind ~= "collection")
+    or (raw.locale ~= "en" and raw.locale ~= "ru") or not int(raw.version)
+    or type(raw.slug) ~= "string" or #raw.slug == 0 or #raw.slug > 80
+    or not raw.slug:match("^[a-z0-9][a-z0-9%-]*$") or raw.slug:find("%-%-") or raw.slug:sub(-1) == "-" then
+    return nil
+  end
+  return { kind = raw.kind, slug = raw.slug, locale = raw.locale, version = int(raw.version) }
+end
+
 -- One idea as the Bubble may show it, or nil when a field is broken.
 function S.Clean(raw)
   if type(raw) ~= "table" or not S.KINDS[raw.kind] then
@@ -111,12 +121,17 @@ function S.Clean(raw)
   if not id or not title or not goal then
     return nil
   end
+  local path = raw.kind == "path" and pathReference(raw.path) or nil
+  if raw.kind == "path" and not path then
+    return nil
+  end
   local request = type(raw.request) == "table" and raw.request or {}
   return {
     id = id,
     kind = raw.kind,
+    path = path,
     displayKind = (S.KINDS[raw.displayKind] or raw.displayKind == "mount") and raw.displayKind or nil,
-    action = action(raw.action),
+    action = raw.kind == "path" and ns.T("PATH_ACTION") or action(raw.action),
     progress = cleanProgress(raw.progress),
     title = title,
     titleToken = type(raw.titleToken) == "string" and #raw.titleToken <= 60
@@ -502,6 +517,9 @@ end
 -- The title in the player's language: the game's own name for an achievement or
 -- a dungeon when it has one, else the title the idea came with.
 function S.Title(idea)
+  if idea.kind == "path" then
+    return ns.T("PATH_CONTINUE")
+  end
   local named = idea.titleToken and ns.Markup.Plain(idea.titleToken)
   if type(named) == "string" and named ~= "" then
     return named
@@ -522,5 +540,6 @@ function S.Copy(idea)
     mapID = idea.mapID,
     expiresAt = idea.expiresAt,
     chain = ns.DeepCopy(idea.chain, 1),
+    path = ns.DeepCopy(idea.path, 1),
   }
 end

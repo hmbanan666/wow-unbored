@@ -77,6 +77,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0072. Paths](0072-paths.md)
 - [0073. Website and account link](0073-website-and-account-link.md)
 - [0074. Public Path pages](0074-public-path-pages.md)
+- [0075. Active Path selection](0075-active-path-selection.md)
 
 The site sections, navigation and SEO rules are in [`docs/site-structure.md`](../site-structure.md).
 

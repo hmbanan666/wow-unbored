@@ -1,3 +1,4 @@
+import type { ActivePaths } from "./active-path.ts";
 import { readFileSync } from "node:fs";
 
 import {
@@ -188,6 +189,7 @@ const TEXT: Record<
       collection: "Run it for a missing mount",
       event: "Complete the event activities",
       rare: "Find and defeat this rare",
+      path: "Take the next step",
     },
     generic: {
       ach: "an achievement",
@@ -238,6 +240,7 @@ const TEXT: Record<
       collection: "Пройди ради маунта",
       event: "Выполни дела события",
       rare: "Найди и победи",
+      path: "Сделай следующий шаг",
     },
     generic: {
       ach: "достижение",
@@ -873,12 +876,14 @@ export class SuggestionStore {
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly tables: SuggestionTables;
   names: NameLookup | undefined;
+  private activePaths: ActivePaths | undefined;
 
   /** `db` is the Store's database: Requests and progress for the taste bonus and the last Request's language. */
-  constructor(db: Db, data: DataStore, names?: NameLookup) {
+  constructor(db: Db, data: DataStore, names?: NameLookup, activePaths?: ActivePaths) {
     this.db = db;
     this.data = data;
     this.names = names;
+    this.activePaths = activePaths;
     this.tables = new SuggestionTables(db);
   }
 
@@ -1009,9 +1014,41 @@ export class SuggestionStore {
 
   async forCharacter(row: CharacterRow, now = Math.floor(Date.now() / 1000)) {
     const stored = await this.tables.read(row.id);
-    if (!stored) return undefined;
-    const list = stored.list.filter((item) => item.expiresAt === undefined || item.expiresAt > now);
-    return { character: row.name, realm: row.realm, computedAt: stored.computedAt, list };
+    const list = (stored?.list ?? []).filter(
+      (item) => item.kind !== "path" && (item.expiresAt === undefined || item.expiresAt > now),
+    );
+    const active = this.db.pg && this.activePaths ? await this.activePaths.forCharacter(row) : null;
+    if (active && active.completedAt === null && active.total > 0 && active.done < active.total) {
+      const section = await this.data.section("char", row.id, "char");
+      const lang = ideaLang(section?.body.lang) ?? (await this.lastRequestLang(row)) ?? "en";
+      const id = `path:${active.id}`;
+      const title = lang === "ru" ? "Продолжи свой Путь" : "Continue your Path";
+      const goal = fit(active.title, SUGGESTION_LIMITS.goal, bytes);
+      list.unshift({
+        id,
+        kind: "path",
+        displayKind: "path",
+        title,
+        goal,
+        rewards: [],
+        action: TEXT[lang].action.path,
+        progress: { done: active.done, total: active.total },
+        path: {
+          kind: active.kind,
+          slug: active.slug,
+          locale: active.locale as "en" | "ru",
+          version: active.version,
+        },
+        request: { topic: "suggestion", suggestionId: id, wish: `${title}: ${goal}` },
+      });
+    }
+    if (!stored && list.length === 0) return undefined;
+    return {
+      character: row.name,
+      realm: row.realm,
+      computedAt: Math.max(stored?.computedAt ?? 0, active ? row.lastSeen : 0),
+      list: list.slice(0, SUGGESTION_LIMITS.perCharacter),
+    };
   }
 
   /** `{ v = 1, computedAt, characters = { ["Realm-Name"] = list } }` (D106). */

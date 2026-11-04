@@ -53,6 +53,8 @@ for (const { name, body } of requests.cases) {
       } else {
         assert.equal(stored.mode, "");
       }
+      const suggestion = body.suggestion as { path?: unknown } | undefined;
+      if (suggestion?.path) assert.deepEqual(stored.suggestion?.path, suggestion.path);
       const again = await post(app, body);
       assert.equal(again.status, 200);
     } finally {

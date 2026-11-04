@@ -1,3 +1,4 @@
+import { pathCharacterSchema, setActivePathSchema } from "./active-path.ts";
 import { CONTENT_KINDS, ContentError, ContentStore } from "./content.ts";
 import { getItemSources } from "./item-sources.ts";
 import { ENTITY_TABLES, findGameEntity, getQuestLine } from "./game-tools.ts";
@@ -645,7 +646,7 @@ export function createMcpServer(
     "list_requests",
     {
       title: "List in-game plan requests",
-      description: `List requests the player made in game, newest first. Pending is the default. The player never types anything (0.9): every request is a pick. type is plan (a preset chip, Surprise me, or one of Bory's ideas: mode; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). Addons 0.8 and older may still send topic "custom" with the player's own words in wish and minutes in budget, and question requests (free text in question): answer them as before. topic "suggestion" means the player picked one of Bory's ideas (get_suggestions): suggestionId names it and suggestion is a copy of it (title, goal, rewards, mapID); its tokens are ground truth for ids, so build the plan around them and do not swap in other ids. A suggestion with kind "chain" is an unfinished quest chain: suggestion.chain carries questLineID, nextQuestID, done and total from the game, so plan from nextQuestID on (the questLines Section in get_game_data has the same row) and never guess the chain's quests. lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Order Steps from what is closest to that position; each point is a destination, never a copy of the player's position. ${PLAN_SCOPE}`,
+      description: `List requests the player made in game, newest first. Pending is the default. The player never types anything (0.9): every request is a pick. type is plan (a preset chip, Surprise me, or one of Bory's ideas: mode; topic names the preset: nearby = stay in this zone, mount = get a mount, collect = pets/toys/transmog/achievements in this zone, grind = level/renown/reputation, gold = gold or crafting mats, surprise = anything fun), or item (What is this item: item.itemID, and item.name, item.link, item.bag/slot when known). Addons 0.8 and older may still send topic "custom" with the player's own words in wish and minutes in budget, and question requests (free text in question): answer them as before. topic "suggestion" means the player picked one of Bory's ideas (get_suggestions): suggestionId names it and suggestion is a copy of it (title, goal, rewards, mapID); its tokens are ground truth for ids, so build the plan around them and do not swap in other ids. A suggestion with kind "chain" is an unfinished quest chain: suggestion.chain carries questLineID, nextQuestID, done and total from the game, so plan from nextQuestID on (the questLines Section in get_game_data has the same row) and never guess the chain's quests. A suggestion of kind path carries suggestion.path {kind, slug, locale, version}, identifying the exact published Path or Collection the player picked; preserve that identity even if the active selection changes. lang is the language of the question (en or ru): answer in it. account links the character to its Account; get_player_profile with that account shows every Alt (professions, bags, banks). Every request carries the full context (subzone, faction, class, spec, ilvl, gold, skyriding, canFly, inInstance, hearth, trackedQuests, plan progress). The full player profile is in get_player_profile and past requests and answers in get_player_history. webhook says whether the planner webhook reached it (attempts, deliveredAt, lastError; null when it was never tried). Answer plan requests with put_plan and requestId; answer item and question requests with answer_request. Order Steps from what is closest to that position; each point is a destination, never a copy of the player's position. ${PLAN_SCOPE}`,
       inputSchema: {
         status: z
           .enum(["pending", "fulfilled", "failed"])
@@ -775,6 +776,42 @@ export function createMcpServer(
     character: z.string().max(80).optional().describe("Character name."),
     realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
   };
+
+  registerTool(
+    "get_active_path",
+    {
+      title: "Get active Path",
+      description:
+        "Read one Character's selected Path or Collection and its current required-goal progress. Returns null when none is selected or published. Supply the exact Account, Character and realm.",
+      inputSchema: pathCharacterSchema.shape,
+    },
+    async (input) => {
+      await settle(input.account);
+      try {
+        return text(await store.activePaths.get(input));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  registerTool(
+    "set_active_path",
+    {
+      title: "Set active Path",
+      description:
+        "Select or replace the one active published Path or Collection for an exact Character on an Account. path is { kind, slug, locale }, or null to clear it. Selection follows new published versions. Owner only; this changes the player's Continue your Path Idea.",
+      inputSchema: setActivePathSchema.shape,
+    },
+    async (input) => {
+      await settle(input.account);
+      try {
+        return text(await store.activePaths.set(input));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
 
   registerTool(
     "get_path_progress",
@@ -972,7 +1009,7 @@ export function createMcpServer(
     {
       title: "Get Bory's ideas",
       description:
-        "The Suggestions the Server made for a Character from its own Game data and the addon's catalog (no guessing): current events (on now or starting within 3 days) with rewards still missing, unfinished quest chains (chain: questLineID, nextQuestID, done, total), achievements near where the player plays, rares not looted yet, and mounts nobody on the Account owns. Each has id, kind (event, chain, achievement, rare, collection), title, goal, rewards (link tokens), why, reason, and the request it sends when picked; up to 10 per Character. Expired ones are left out. Pass account for every Character of that Account, or character (and realm) for one; without arguments you get the most recently seen Character. computedAt is when they were made (after each upload, 30 s after the last one). They are written in the Character's language (en or ru: its char Section, else its last Request).",
+        "The Suggestions the Server made for a Character from its own Game data and the addon's catalog (no guessing): current events (on now or starting within 3 days) with rewards still missing, unfinished quest chains (chain: questLineID, nextQuestID, done, total), achievements near where the player plays, rares not looted yet, and mounts nobody on the Account owns. An unfinished active Path comes first as kind path, with current required-goal progress and path {kind, slug, locale, version}; published Path titles supply its goal. Each has id, kind (event, chain, achievement, rare, collection, path), title, goal, rewards (link tokens), why, reason, and the request it sends when picked; up to 10 per Character. Expired ones are left out. Pass account for every Character of that Account, or character (and realm) for one; without arguments you get the most recently seen Character. computedAt is when they were made (after each upload, 30 s after the last one). They are written in the Character's language (en or ru: its char Section, else its last Request).",
       inputSchema: whoSchema,
     },
     async (who) => {

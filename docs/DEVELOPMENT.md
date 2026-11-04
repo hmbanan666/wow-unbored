@@ -364,7 +364,7 @@ after the last upload. The first observation of all required goals (at least one
 records `path_completion` in Player history. Its ref is the content version row id;
 its body includes kind, slug, locale, version, title, done and total. Current
 progress can fall when currency is spent or an item is lost; `completedAt` remains
-the first completion time. No addon UI or active Path selection is added here.
+the first completion time.
 
 Migration `0017_path_completions.sql` adds only a uniqueness guard referencing
 the existing Character and content version. It survives the 13-month Player
@@ -374,6 +374,47 @@ Account lock. No new content store or production data import is needed. Existing
 snapshots are evaluated by the next upload or progress read. SQLite has no site
 content; its HTTP/MCP progress endpoint reports unavailable. The SQLite transfer
 still copies 23 tables; the new Postgres-only guard must be empty on its target.
+
+### Active Path and Continue Idea
+
+`GET /v1/paths/active?account=<key>&character=<name>&realm=<realm>` and
+`PUT /v1/paths/active` use the planner bearer. All three Character fields are
+required, and the Character must already belong to that Account. PUT accepts
+`{ account, character, realm, path: { kind: "path" | "collection", slug, locale: "en" | "ru" } }`;
+`path: null` clears the selection. Both return `{ account, character, realm,
+path }`, with `path` null or the current published version and progress
+(`id`, `kind`, `slug`, `locale`, `version`, `title`, `done`, `total`, `completedAt`, `goals`).
+MCP `get_active_path` and `set_active_path` accept the same fields and are owner
+only; runner leases cannot change the player's selection. Invalid, draft,
+Guide or unknown selections return an error without changing the current Path.
+
+Migration `0018_active_paths.sql` uses one row per Character and the same
+Account lock as uploads and erasure. Selection follows the latest published
+version of its kind/slug/language, survives completion and is removed by Forget
+my data. SQLite reports this feature unavailable. This Postgres-only table is
+excluded from SQLite transfer, so its workflow count stays **23**.
+
+Suggestions prepend one `kind: "path"` Idea for the active Path while required
+goals remain. It uses `path-progress.ts` and `content.ts` directly at delivery,
+so selection, publication and snapshot changes appear without waiting for the
+normal Suggestion cache; the ten-Idea limit still applies. A completed, empty
+or unavailable Path offers no Continue Idea; a recorded completion stays quiet
+even after currency is spent or an item is lost. A newly published version can
+be continued independently. Repeated reads of unchanged data
+do not change the payload just because the clock advances.
+
+The addon shows **Continue your Path / Продолжи свой Путь** with X / Y and
+opens the existing Send now confirmation. The shared `suggestion.path` reference
+contains `{ kind, slug, locale, version }` through SavedVariables, Companion,
+HTTP storage and planner Request reads. It keeps the version the player picked,
+even if publication or selection changes before upload. Addons 0.12 ignore the
+new `path` kind and retain their other Ideas. No new version of the helper-file
+format or per-message Refresh is required.
+
+Content remains in the existing store. The documented `scripts/content.ts`
+validate/save/publish command above remains the production import entry point;
+this feature needs no separate content import. Selecting Paths on the site and
+building Plans from their unfinished goals belong to later tickets.
 
 ### Game DB: Planner lookups
 

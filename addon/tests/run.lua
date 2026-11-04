@@ -1004,6 +1004,44 @@ C_Calendar, C_DateAndTime = savedCalendar, savedDate
 ns.AchievementState, ns.MountState, ns.QuestDone = savedAch, savedMount, savedQuestDone
 ns.Suggestions.Invalidate()
 
+-- A Path Idea uses the same confirmation flow and preserves the published version.
+local oldIdeas = UnboredSuggestions
+assert(loadfile("../packages/contracts/fixtures/path-suggestions.lua"))()
+local pathIdea = ns.Suggestions.Read()[1]
+check(pathIdea and pathIdea.kind == "path", "a Path Idea reaches the choice Bubble")
+if pathIdea then
+  check(pathIdea.progress.done == 2 and pathIdea.progress.total == 5, "a Path shows required-goal progress")
+  check(ns.Suggestions.Title(pathIdea) == "Continue your Path", "the Path chip has its English title")
+  local oldLanguage = ns.L
+  ns.L = ns.Locales.ru
+  check(ns.Suggestions.Title(pathIdea) == "Продолжи свой Путь", "the Path chip has its Russian title")
+  ns.L = oldLanguage
+  local oldRequest, oldState = UnboredCharDB.request, ns.Session.state
+  UnboredCharDB.request = nil
+  ns.Session:BeginSuggestion(pathIdea)
+  check(ns.Session:FlowState() == "confirm", "picking a Path asks for Send now")
+  local request = ns.Session:BuildRequest(ns.Session.Flow())
+  check(request.suggestion.path.slug == "first-mounts" and request.suggestion.path.version == 1,
+    "the Request keeps the picked Path and version")
+  check(request.suggestion.path.kind == "collection" and request.budget == nil,
+    "a Collection is a Path pick with no time budget")
+  ns.Session:Send()
+  check(UnboredCharDB.request.suggestion.path.version == 1, "Send now writes the Path reference")
+  UnboredCharDB.request, ns.Session.state = oldRequest, oldState
+  local connected = ns.UI.HasCompanion
+  ns.UI.HasCompanion = function() return false end
+  UnboredCharDB.request = nil
+  ns.Session:BeginSuggestion(pathIdea)
+  check(ns.Session:FlowState() == "confirm" and ns.Session.Flow().suggestion.path.version == 1,
+    "a Path pick keeps its Request when the Companion is unavailable")
+  UnboredCharDB.request, ns.Session.state = oldRequest, oldState
+  ns.UI.HasCompanion = connected
+  local broken = ns.DeepCopy(pathIdea, 4)
+  broken.path = nil
+  check(ns.Suggestions.Clean(broken) == nil, "a Path without its reference is ignored")
+end
+UnboredSuggestions = oldIdeas
+
 -- Picking a Server idea: straight to Confirm, then a Request with its copy and no time.
 local keepRequest, keepState = UnboredCharDB.request, ns.Session.state
 UnboredCharDB.request = nil

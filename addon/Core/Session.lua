@@ -830,7 +830,7 @@ end
 function ns.Session:BeginSuggestion(idea)
   local mode = ns.Suggestions.MODE[idea.kind] or "roam"
   local companion = ns.UI and ns.UI.HasCompanion()
-  if idea.quick or not companion then
+  if idea.kind ~= "path" and (idea.quick or not companion) then
     local steps = ideaSteps(idea)
     if ns.IsCombat() then
       self:QuickPlan({ id = "suggestion", mode = mode })

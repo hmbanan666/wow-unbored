@@ -2,6 +2,7 @@ import { requireOutcome } from "./outcome.ts";
 import { distance, type PlaceData } from "./places.ts";
 import {
   CONDITION_KINDS,
+  pathReferenceSchema,
   cleanEntities,
   cleanMarkup,
   markupIds,
@@ -1263,6 +1264,11 @@ export function cleanSuggestion(raw: unknown): RequestSuggestion | null {
       )
     : [];
   const out: RequestSuggestion = { id, kind, title, goal, rewards: rewards.slice(0, 3) };
+  if (kind === "path") {
+    const path = pathReferenceSchema.safeParse(body.path);
+    if (!path.success) throw new PlanError("A Path Idea needs a valid published Path reference.");
+    out.path = path.data;
+  }
   const why = shortText(body.why, 200);
   if (why) out.why = why;
   const mapID = integer(body.mapID, 1, 10_000_000);

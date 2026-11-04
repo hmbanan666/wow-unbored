@@ -119,6 +119,37 @@
           "mapID": 109
         }
       }
+    },
+    {
+      "name": "active Path Idea",
+      "savedVariables": "path-request.lua",
+      "account": "12345678#1",
+      "body": {
+        "id": "req-path-1",
+        "createdAt": 1793361600,
+        "character": "Mira",
+        "realm": "Silvermoon",
+        "type": "plan",
+        "mode": "roam",
+        "topic": "suggestion",
+        "wish": "Continue your Path: First mounts",
+        "lang": "en",
+        "account": "12345678#1",
+        "suggestionId": "path:1",
+        "suggestion": {
+          "id": "path:1",
+          "kind": "path",
+          "title": "Continue your Path",
+          "goal": "First mounts",
+          "rewards": [],
+          "path": {
+            "kind": "collection",
+            "slug": "first-mounts",
+            "locale": "en",
+            "version": 1
+          }
+        }
+      }
     }
   ]
 }
