@@ -47,7 +47,7 @@ import {
   type SectionChange,
   type SnapshotResult,
 } from "./data.ts";
-import { endPageSessions } from "./page-link.ts";
+import { endPageSessions, erasePageData } from "./page-link.ts";
 import type { Holdings } from "./holdings.ts";
 import type { ProfileUpload } from "./profile.ts";
 import type { Sql } from "./postgres.ts";
@@ -1437,7 +1437,8 @@ export class Store {
 
   /**
    * Erases one Account (D62): Game data, profiles, Player history, advice and
-   * ideas, and by default its Requests and the plans made for them. Used by the
+   * ideas, website sessions and sign-in links, and by default its Requests
+   * and the plans made for them. Used by the
    * owner (delete_account_data) and by the player (Forget my data). One
    * transaction, Suggestions included.
    */
@@ -1452,6 +1453,7 @@ export class Store {
     await this.db.lockKey(`account:${key}`);
     const names = (await this.data.characters(key)).map((row) => [row.name, row.realm] as const);
     const removed = await this.data.deleteAccount(key);
+    const website = await erasePageData(this.db, key);
     let legacy = 0;
     for (const table of this.legacyTables()) {
       legacy += await this.db.run(`DELETE FROM ${table} WHERE account = ?`, key);
@@ -1491,7 +1493,7 @@ export class Store {
       }
       erased = await this.deleteRequests([...ids]);
     }
-    return { account: key, ...removed, legacyRows: legacy, suggestions, ...erased };
+    return { account: key, ...removed, legacyRows: legacy, suggestions, ...erased, ...website };
   }
 
   /** Requests by id, with their webhook rows and the plans made for them. */
