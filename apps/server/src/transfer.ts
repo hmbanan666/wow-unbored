@@ -25,6 +25,7 @@ const POSTGRES_ONLY = new Set(["raw_uploads"]);
 const GAME_TABLES: Record<string, string> = {
   game_builds: "game.builds",
   game_achievements: "game.achievements",
+  game_watch: "game.watch",
 };
 const PARTITIONED = new Set(["section_history", "history"]);
 

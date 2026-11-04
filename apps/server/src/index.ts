@@ -23,11 +23,12 @@ if (config.databaseUrl) {
     `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); every table on Postgres, the SQLite file untouched`,
   );
 }
-const { app, webhook, inbox, runner, startReconnectCleanup, close } = createApp({
+const { app, webhook, inbox, runner, gameWatch, startReconnectCleanup, close } = createApp({
   ...config,
   database,
 });
 runner?.start();
+gameWatch.start();
 webhook.start();
 startReconnectCleanup();
 if (inbox) {

@@ -1,4 +1,5 @@
 import { GameImportError, validGameBuild } from "./game-db.ts";
+import { GameWatch } from "./game-watch.ts";
 import { gunzipSync } from "node:zlib";
 
 import { Hono } from "hono";
@@ -105,6 +106,7 @@ export function createApp(
     runnerNow: config.runnerNow,
   });
   const inbox = config.ingest === "inline" ? undefined : store.inbox;
+  const gameWatch = new GameWatch(store.game, config.gameDbFetch, log);
   const tokens = { companion: config.companionToken, planner: config.plannerToken };
   const registerLimiter = new RegisterLimiter();
   const app = new Hono();
@@ -195,8 +197,13 @@ export function createApp(
     }),
   );
 
-  app.get("/health", (c) =>
-    c.json({ ok: true, planner: store.plannerRoute, webhook: webhook.enabled ? "on" : "off" }),
+  app.get("/health", async (c) =>
+    c.json({
+      ok: true,
+      planner: store.plannerRoute,
+      webhook: webhook.enabled ? "on" : "off",
+      gameDb: await store.game.status(),
+    }),
   );
 
   app.use("/v1/runner/*", async (c, next) => {
@@ -545,7 +552,10 @@ export function createApp(
   app.get("/owner/data", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
-    return c.json(await store.data.catalog({ account: c.req.query("account") || undefined }));
+    return c.json({
+      ...(await store.data.catalog({ account: c.req.query("account") || undefined })),
+      gameDb: await store.game.status(),
+    });
   });
 
   app.post("/owner/game/import", async (c) => {
@@ -675,15 +685,17 @@ export function createApp(
     store,
     webhook,
     runner,
+    gameWatch,
     startReconnectCleanup,
     /** The upload worker; index.ts starts it. Undefined on SQLite or inline ingest. */
     inbox,
-    close: () => {
+    close: async () => {
       clearInterval(reconnectTimer);
       reconnectTimer = undefined;
       runner?.stop();
       webhook.stop();
-      if (reconnectCleanup) return reconnectCleanup.then(() => store.close());
+      await gameWatch.stop();
+      await reconnectCleanup;
       store.close();
     },
   };

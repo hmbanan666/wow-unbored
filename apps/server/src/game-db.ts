@@ -1,6 +1,8 @@
 import type { Db } from "./db.ts";
 import { CSV_MAX_BYTES, parseCsv } from "./criteria.ts";
 
+export const GAME_LAG_THRESHOLD_SECONDS = 6 * 60 * 60;
+
 export const GAME_SQLITE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS game_builds (
     build TEXT PRIMARY KEY, build_number INTEGER NOT NULL UNIQUE,
@@ -9,6 +11,10 @@ export const GAME_SQLITE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS game_achievements (
     build TEXT NOT NULL REFERENCES game_builds(build), id INTEGER NOT NULL,
     name_en TEXT NOT NULL, name_ru TEXT NOT NULL, PRIMARY KEY (build, id)
+  );
+  CREATE TABLE IF NOT EXISTS game_watch (
+    id INTEGER PRIMARY KEY CHECK (id = 1), live_build TEXT,
+    pending_since INTEGER, checked_at INTEGER, last_error TEXT
   );
 `;
 
@@ -72,6 +78,7 @@ async function achievements(build: string, locale: string, fetchImpl: typeof fet
 export class GameDb {
   private readonly builds: string;
   private readonly achievements: string;
+  private readonly watch: string;
 
   private readonly db: Db;
 
@@ -79,6 +86,85 @@ export class GameDb {
     this.db = db;
     this.builds = db.pg ? "game.builds" : "game_builds";
     this.achievements = db.pg ? "game.achievements" : "game_achievements";
+    this.watch = db.pg ? "game.watch" : "game_watch";
+  }
+
+  async currentBuild() {
+    return (
+      await this.db.get<{ build: string }>(
+        `SELECT build FROM ${this.builds} ORDER BY build_number DESC LIMIT 1`,
+      )
+    )?.build;
+  }
+
+  /** A high-water mark: a stale response must not hide an outstanding import. */
+  async observeLiveBuild(build: string) {
+    if (!validGameBuild(build)) throw new GameImportError("Invalid build.");
+    return this.db.tx(async () => {
+      await this.db.lockKey("game-watch");
+      const before = await this.status();
+      const live =
+        before.liveBuild && buildNumber(before.liveBuild) > buildNumber(build)
+          ? before.liveBuild
+          : build;
+      const behind = !before.build || buildNumber(before.build) < buildNumber(live);
+      const now = Math.floor(Date.now() / 1000);
+      const since = behind
+        ? before.lagSeconds
+          ? now - before.lagSeconds
+          : (before.pendingSince ?? now)
+        : null;
+      await this.db.run(
+        `INSERT INTO ${this.watch} (id, live_build, pending_since, checked_at, last_error)
+         VALUES (1, ?, ?, ?, NULL) ON CONFLICT (id) DO UPDATE SET
+         live_build = excluded.live_build, pending_since = excluded.pending_since,
+         checked_at = excluded.checked_at, last_error = NULL`,
+        live,
+        since,
+        now,
+      );
+      return live;
+    });
+  }
+
+  async watchFailed(error: "discovery_failed" | "import_failed") {
+    await this.db.run(
+      `INSERT INTO ${this.watch} (id, last_error) VALUES (1, ?)
+       ON CONFLICT (id) DO UPDATE SET last_error = excluded.last_error`,
+      error,
+    );
+  }
+
+  /** No network on health/catalog reads; timestamps are Unix seconds. */
+  async status() {
+    const row = await this.db.get<{
+      build: string | null;
+      imported_at: number | null;
+      live_build: string | null;
+      pending_since: number | null;
+      checked_at: number | null;
+      last_error: string | null;
+    }>(`SELECT b.build, b.imported_at, w.live_build, w.pending_since, w.checked_at, w.last_error
+        FROM (SELECT 1 AS id) singleton
+        LEFT JOIN ${this.watch} w ON w.id = singleton.id
+        LEFT JOIN ${this.builds} b ON b.build = (SELECT build FROM ${this.builds} ORDER BY build_number DESC LIMIT 1)`);
+    const behind =
+      row!.live_build !== null &&
+      (row!.build === null || buildNumber(row!.build) < buildNumber(row!.live_build));
+    const pendingSince = behind ? row!.pending_since : null;
+    const lagSeconds =
+      pendingSince === null ? 0 : Math.max(0, Math.floor(Date.now() / 1000) - pendingSince);
+    return {
+      build: row!.build,
+      importedAt: row!.imported_at,
+      liveBuild: row!.live_build,
+      checkedAt: row!.checked_at,
+      pendingSince,
+      lagSeconds,
+      lagThresholdSeconds: GAME_LAG_THRESHOLD_SECONDS,
+      lagging: lagSeconds > GAME_LAG_THRESHOLD_SECONDS,
+      lastError: row!.last_error,
+    };
   }
 
   async importAchievements(build: string, fetchImpl: typeof fetch = fetch) {
@@ -130,4 +216,8 @@ export class GameDb {
       ? { kind, id, build: row.build, names: { enUS: row.name_en, ruRU: row.name_ru } }
       : undefined;
   }
+}
+
+function buildNumber(build: string) {
+  return Number(build.split(".")[3]);
 }

@@ -216,10 +216,57 @@ translation is invented. Older builds remain stored but are not used as a fallba
 The owner and a live Plan runner lease may read it; Companion credentials and
 the runner claim token cannot. Import remains owner-only.
 
-Build watching, lag reporting, additional tables, and Plan validation are later
-roadmap slices. This command does not discover the live build automatically.
+Additional tables and Plan validation are later roadmap slices. This command
+remains available for an immediate import or retry of a known live build.
 Tests replace only the HTTP download boundary and exercise import, storage and
 MCP on SQLite and PostgreSQL; they do not contact the live data source.
+
+### Game DB: automatic build watching
+
+At Server startup and every hour, the watcher checks
+`https://wago.tools/api/builds/wow/latest` for the retail product `wow`. The
+response supplies `product` and `version` (the product-specific endpoint is also
+used by [the WoW API documentation tooling](https://github.com/Ketho/vscode-wow-api/blob/master/wowdoc/wago.lua)).
+It excludes PTR, beta and Classic. Discovery has a 30-second timeout and 64 KB
+response cap; the locale imports retain the limits above. Startup and requests
+do not wait for downloads. Overlapping ticks share one run, and shutdown stops
+the timer and waits for that run before closing storage.
+
+A newer numeric build imports both Achievement locales through the existing
+atomic importer. Unchanged or older builds do not download again; failed
+discovery or import retries on the next hourly check. A stale upstream response
+cannot lower the last observed live build. Multiple Server processes may download
+the same build, but the import transaction publishes it once. Existing reads
+continue to use the previous complete build until the transaction commits.
+
+Startup migration `0008_game_watch.sql` adds `game.watch`; SQLite adds
+`game_watch`. This small shared record survives restarts and transfers with the
+other Game DB tables. No operator migration or production import is needed
+outside the normal Server startup; the documented import command above is also
+available for operator use after deployment.
+
+`GET /health`, owner `GET /owner/data`, and MCP `data_catalog` include `gameDb`:
+
+- `build`, `importedAt`: the current complete build and its import time, or null.
+- `liveBuild`, `checkedAt`: the highest observed retail build and time of the
+  last successful discovery, or null before any successful discovery.
+- `pendingSince`, `lagSeconds`: when an outstanding newer build was first
+  observed and seconds since then. This measures observed import lag, not time
+  since the game release. It stays pending across failures, newer observations
+  and restarts; it becomes null / zero as soon as reads catch up.
+- `lagThresholdSeconds: 21600`, `lagging`: true when observed lag exceeds six
+  hours. All timestamps are Unix seconds.
+- `lastError`: `discovery_failed`, `import_failed`, or null. Upstream bodies and
+  raw errors are never exposed. It clears on the next successful discovery;
+  a subsequent import failure sets it again. A manual import removes lag as soon
+  as it commits, but the last watcher error remains until its next check.
+
+Health retains HTTP 200 and `ok: true` while an old complete build is usable;
+monitor `gameDb.lagging` and `lastError`, and check `checkedAt` for stale discovery.
+Null `liveBuild` means unknown, not verified current. These read paths query
+storage only and never trigger upstream requests. Tests cover newer-build
+fixtures, partial and failed imports, restart persistence, scheduling, shutdown,
+and lag on both supported backends.
 
 ### Local Postgres
 
