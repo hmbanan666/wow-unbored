@@ -21,7 +21,7 @@ const TREE_URL = "https://wago.tools/db2/CriteriaTree/csv";
 const ACH_URL = "https://wago.tools/db2/Achievement/csv";
 export const CSV_MAX_BYTES = 20_000_000;
 
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, strict = false): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -34,12 +34,15 @@ export function parseCsv(text: string): string[][] {
           cell += '"';
           i += 1;
         } else {
+          if (strict && i + 1 < text.length && !",\r\n".includes(text[i + 1]))
+            throw new Error("Unexpected text after a quoted CSV field.");
           quoted = false;
         }
       } else {
         cell += char;
       }
     } else if (char === '"') {
+      if (strict && cell.length) throw new Error("Unexpected quote in a CSV field.");
       quoted = true;
     } else if (char === ",") {
       row.push(cell);
@@ -53,6 +56,7 @@ export function parseCsv(text: string): string[][] {
       cell += char;
     }
   }
+  if (strict && quoted) throw new Error("Unfinished quoted CSV field.");
   if (cell.length > 0 || row.length > 0) {
     row.push(cell);
     rows.push(row);

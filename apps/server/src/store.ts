@@ -1,3 +1,4 @@
+import { GameDb, GAME_SQLITE_SCHEMA } from "./game-db.ts";
 import { readPlaceData } from "./places.ts";
 import { DatabaseSync } from "node:sqlite";
 
@@ -222,6 +223,7 @@ export class Store {
   private readonly placeDataDir: string;
   private readonly log: (line: string) => void;
   private readonly runnerNow: () => number;
+  readonly game: GameDb;
   readonly data: DataStore;
   readonly suggestions: SuggestionStore;
   readonly gameIds: IdCache;
@@ -262,6 +264,7 @@ export class Store {
       this.gameIds = new SqliteIdCache(raw);
       this.creatureNames = new SqliteNameCache(raw);
     }
+    this.game = new GameDb(this.db);
     this.data = new DataStore(this.db, options.log);
     this.suggestions = new SuggestionStore(this.db, this.data, this.creatureNames);
     this.inbox = inbox;
@@ -1901,6 +1904,7 @@ function isUniqueViolation(error: unknown): boolean {
 
 /** The SQLite tables, columns and one-time moves of the store.ts tables (SQLite only). */
 function prepareSqlite(db: DatabaseSync): void {
+  db.exec(GAME_SQLITE_SCHEMA);
   db.exec(SQLITE_SCHEMA);
   addColumns(db, "profiles", [["account", "TEXT"]]);
   addColumns(db, "requests", [

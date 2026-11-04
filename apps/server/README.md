@@ -177,3 +177,9 @@ runner req=req-4 attempt=3 failed attempts exhausted, retry in 0s
 ```
 
 A `retry in 0s` on lease expiry describes immediate reclaim; on exhausted attempts without a webhook it records the terminal failure. Runner-supplied error text stays in storage, never in logs.
+
+### Game DB
+
+The owner can import the current live build's Achievement names in enUS and
+ruRU with `POST /owner/game/import`; MCP `get_game_entity` reads them by kind
+and id with their build. See the [import command and operations notes](../../docs/DEVELOPMENT.md#game-db-achievement-imports).

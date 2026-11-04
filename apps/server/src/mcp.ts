@@ -169,6 +169,7 @@ const LEASE_TOOLS = new Set([
   "resolve_criteria",
   "get_instance_guide",
   "get_place",
+  "get_game_entity",
   "put_plan",
   "answer_request",
   "fail_request",
@@ -726,6 +727,17 @@ export function createMcpServer(
       }
       return text({ accounts: out });
     },
+  );
+
+  registerTool(
+    "get_game_entity",
+    {
+      title: "Look up a Game DB entity",
+      description:
+        "Read an achievement from the newest imported build, with its enUS and ruRU names. Returns entity: null when the id is absent. No download on lookup.",
+      inputSchema: { kind: z.literal("achievement"), id: z.number().int().min(1).max(2147483647) },
+    },
+    async ({ kind, id }) => text((await store.game.entity(kind, id)) ?? { entity: null }),
   );
 
   registerTool(

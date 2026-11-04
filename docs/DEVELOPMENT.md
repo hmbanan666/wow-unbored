@@ -170,6 +170,57 @@ On Ubuntu the luacheck package is `lua-check`.
 
 The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postgres-storage-and-async-ingest.md)). The PostgreSQL schema is the numbered SQL files in `apps/server/migrations/`; the Server applies the missing ones at startup under an advisory lock and records them in `schema_migrations`. `DATABASE_POOL_MAX` sets the pool size (default 10). With `DATABASE_URL` set, every table is read and written in Postgres and the SQLite file is not opened; without it the Server runs on SQLite as before. Both go through one async layer (`apps/server/src/db.ts`); Forget and the Account migration run in one transaction on either. On Postgres `POST /v1/snapshot` queues the checked upload in `raw_uploads` and answers 202; a worker in the Server (`apps/server/src/inbox.ts`: `FOR UPDATE SKIP LOCKED`, the oldest upload of each Account first, `questLog`/`bags` uploads before others, woken by `LISTEN raw_uploads` and every 5 s, 5 attempts with backoff, then `failed` in the MCP tool `list_failed_uploads`) ingests it. SQLite keeps the inline 200. Tests that compare the backends run once per each (`BACKENDS` in `apps/server/test/postgres-db.ts`), and `UNBORED_TEST_BACKEND=postgres` runs the whole Server suite on Postgres (`apps/server/test/backend.ts`; CI does both). The Postgres tests run when `UNBORED_TEST_DATABASE_URL` points at a server where that user may create databases; each test file gets its own database copied from a migrated template. In CI they run against a `postgres:18` service container in `server.yml`, which sets `UNBORED_REQUIRE_POSTGRES=1` so they cannot silently skip. Without `UNBORED_TEST_DATABASE_URL` the Postgres tests are skipped and everything else runs on SQLite.
 
+### Game DB: Achievement imports
+
+Issue #94 implements the first slice of [ADR 0071](adr/0071-game-db.md). The Server
+stores `game.builds` and `game.achievements` on PostgreSQL; startup applies
+`0007_game.sql` through the existing migration runner. SQLite uses
+`game_builds` and `game_achievements` in its normal file. The SQLite-to-PostgreSQL
+transfer also copies these tables; a pre-Game-DB SQLite file still transfers.
+This data is separate from player snapshots and the Catalog.
+
+The owner triggers an import with `POST /owner/game/import`, JSON
+`{"build":"12.0.1.66337"}`, using the existing owner/planner bearer. Supply the
+**current live retail build**, including all four components, from the installed
+client or the build selector at [wago.tools](https://wago.tools/db2/Achievement).
+The example build is a fixture, not a claim about the current live build.
+
+From the repo root, with `UNBORED_SERVER_URL` and `UNBORED_PLANNER_TOKEN` already
+set in the operator's environment, run:
+
+```sh
+node apps/server/scripts/import-game.ts <current-live-build>
+```
+
+The command invokes the running Server, so it needs no database access. On
+production, run it only after the Server containing this migration has been
+deployed. Credentials stay in the environment, outside command arguments and
+output. The response is `{build, status: "imported" | "unchanged", achievements}`.
+401 means the bearer was refused, 400 means the build was malformed, and 502
+means the upstream download or locale data was invalid; retry after resolving
+that cause. The command exits 0 on success, 1 on request failure, 2 on invalid
+arguments or missing environment settings.
+
+The Server downloads only `Achievement/csv?build=<build>&locale=enUS` and
+`Achievement/csv?build=<build>&locale=ruRU` from wago.tools, with a 30-second timeout
+and 20 MB cap per file. Both locale id sets must agree. It publishes the build
+and its names in one transaction after validation; a failed import leaves the
+previous complete build available. Repeating a completed build does no download
+and changes no rows. Concurrent imports of one build publish once.
+
+MCP `get_game_entity` takes `{"kind":"achievement","id":964}` and returns
+`{kind, id, build, names: {enUS, ruRU}}`. It reads the highest imported numeric
+build, never downloads, and returns `{"entity":null}` if that build lacks the id
+or no build exists. Names are copied as supplied, including empty titles; no
+translation is invented. Older builds remain stored but are not used as a fallback.
+The owner and a live Plan runner lease may read it; Companion credentials and
+the runner claim token cannot. Import remains owner-only.
+
+Build watching, lag reporting, additional tables, and Plan validation are later
+roadmap slices. This command does not discover the live build automatically.
+Tests replace only the HTTP download boundary and exercise import, storage and
+MCP on SQLite and PostgreSQL; they do not contact the live data source.
+
 ### Local Postgres
 
 `apps/server/compose.yaml` runs the same `postgres:18` image as CI on port 5432, user and password `postgres`:
