@@ -103,16 +103,24 @@ if (props.page && props.page.kind !== "page") {
         :meta="meta"
       />
       <EntryBody :blocks="page.blocks" />
-      <CollectionItems v-if="page.items.length" :items="page.items" />
+      <PersonalPaths v-if="page.kind === 'path' || page.kind === 'collection'" :page="page">
+        <template #default="{ progress, copy }">
+          <CollectionItems
+            v-if="page.items.length"
+            :items="page.items"
+            :progress="progress"
+            :copy="copy"
+          />
+        </template>
+      </PersonalPaths>
+      <CollectionItems v-else-if="page.items.length" :items="page.items" />
       <DsSection
         divided
         :title="page.kind === 'guide' ? 'Let Bory pick the next step' : 'Track this list in game'"
       >
         <p>
           Install Unbored and Bory, a calm ginger cat, gives you the next step in game, one at a
-          time, with a pin on the map.<template v-if="page.kind !== 'guide'">
-            Ticking off this list on My page is coming next.</template
-          >
+          time, with a pin on the map.
         </p>
         <DsActions>
           <DsButton to="/install">Get Unbored</DsButton>

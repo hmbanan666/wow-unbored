@@ -66,3 +66,42 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
     await root.end();
   }
 });
+
+dbTest("My page shows Path completions with safe links, scoped to its Account", async () => {
+  const root = postgres(adminUrl!, { max: 1, onnotice: () => {} });
+  const name = `unbored_history_${randomBytes(4).toString("hex")}`;
+  await root.unsafe(`CREATE DATABASE "${name}"`);
+  const url = new URL(adminUrl!);
+  url.pathname = `/${name}`;
+  const sql = connectPostgres(url.toString(), { max: 2 });
+  try {
+    await migrate(sql);
+    const body = {
+      kind: "collection",
+      slug: "first-mounts",
+      title: "First mounts",
+      version: 1,
+      done: 2,
+      total: 2,
+    };
+    await sql`INSERT INTO history (at, account, character_name, realm, kind, body) VALUES
+      (1762300001, ${mine}, 'Mine', 'Realm', 'path_completion', ${JSON.stringify(body)}::jsonb),
+      (1762300002, ${theirs}, 'Other', 'Realm', 'path_completion', ${JSON.stringify({ ...body, title: "Other completion" })}::jsonb)`;
+    const page = await readMyPage(sql, mine, "ru");
+    assert.deepEqual(page.completions, [
+      {
+        at: 1762300001,
+        character: "Mine",
+        realm: "Realm",
+        title: "First mounts",
+        href: "/collections/first-mounts",
+        version: 1,
+      },
+    ]);
+    assert.equal(JSON.stringify(page).includes("Other completion"), false);
+  } finally {
+    await sql.end();
+    await root.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+    await root.end();
+  }
+});

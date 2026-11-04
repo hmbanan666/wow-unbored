@@ -85,7 +85,7 @@ dbTest("My page reads one Account and hides the other", async () => {
     assert.equal("accountId" in mine, false);
 
     const empty = await readMyPage(sql, "nobody", "ru");
-    assert.deepEqual(empty, { characters: [], plans: [], wins: [] });
+    assert.deepEqual(empty, { characters: [], plans: [], wins: [], completions: [] });
   } finally {
     await sql.end();
     await root.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);

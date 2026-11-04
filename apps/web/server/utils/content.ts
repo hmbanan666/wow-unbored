@@ -20,6 +20,7 @@ type PageRow = {
 };
 
 type CatalogRow = {
+  version: number;
   kind: string;
   slug: string;
   title: string;
@@ -58,6 +59,7 @@ function catalogFrom(row: CatalogRow): PublicPage | undefined {
   if (!isCatalogKind(row.kind) || !isSlug(row.slug)) return undefined;
   return {
     kind: row.kind,
+    version: row.version,
     slug: row.slug,
     title: row.title,
     description: row.description,
@@ -87,7 +89,7 @@ export async function readPublished(
 ): Promise<PublicPage | undefined> {
   if (!isSlug(slug)) return undefined;
   const [row] = await sql<CatalogRow[]>`
-    SELECT kind, slug, title, description, tier, body, published_at
+    SELECT kind, slug, title, description, tier, body, published_at, version
     FROM content.paths
     WHERE kind = ${kind} AND slug = ${slug} AND locale = 'en' AND status = 'published'`;
   return row ? catalogFrom(row) : undefined;

@@ -38,7 +38,8 @@ export default defineEventHandler(async (event) => {
     });
   }
   await setUserSession(event, {
-    user: { sessionId: result.sessionId, accountId: result.accountId },
+    user: { signedIn: true },
+    secure: { sessionId: result.sessionId, accountId: result.accountId },
   });
   return sendRedirect(event, "/my", 303);
 });

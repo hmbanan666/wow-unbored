@@ -26,7 +26,7 @@ export async function sessionIsLive(
 export async function liveAccount(event: H3Event): Promise<LiveAccount | undefined> {
   const lang = browserLang(getRequestHeader(event, "accept-language"));
   const session = await getUserSession(event);
-  const user = session.user;
+  const user = sessionCredentials(session);
   const sql = db();
   if (!user?.sessionId || !user.accountId || !sql) return undefined;
   if (!(await sessionIsLive(sql, user.sessionId, user.accountId))) {
@@ -38,4 +38,12 @@ export async function liveAccount(event: H3Event): Promise<LiveAccount | undefin
 
 export function signedOutLine(lang: PageLang, closed: boolean): string {
   return closed ? SIGN_IN_COPY[lang].closed : SIGN_IN_COPY[lang].missing;
+}
+
+/** Keep existing sealed cookies working while new ones use server-only session data. */
+export function sessionCredentials(session: {
+  secure?: { sessionId: string; accountId: string };
+  user?: { sessionId?: string; accountId?: string };
+}) {
+  return session.secure ?? session.user;
 }

@@ -120,3 +120,13 @@ test("ds Card renders a real link when it has a target", () => {
   assert.match(card, /const NuxtLink = resolveComponent\("NuxtLink"\)/);
   assert.match(card, /:is="to \? NuxtLink : 'div'"/);
 });
+
+test("public SSR never fetches a player session or personal Path data", () => {
+  const config = readFileSync(path.join(web, "nuxt.config.ts"), "utf8");
+  assert.match(config, /loadStrategy:\s*"client-only"/);
+  const paths = readFileSync(path.join(web, "app/composables/usePaths.ts"), "utf8");
+  assert.match(paths, /onMounted\(/);
+  assert.equal(paths.includes("useFetch"), false);
+  const my = readFileSync(path.join(web, "app/pages/my.vue"), "utf8");
+  assert.match(my, /useFetch<Me>\("\/api\/me",\s*\{ server: false \}\)/);
+});

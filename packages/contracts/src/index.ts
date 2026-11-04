@@ -630,3 +630,5 @@ export const suggestionsBodySchema = z
   .passthrough();
 
 export * from "./markup.ts";
+
+export { WEB_SESSION_DAYS } from "./web-session.ts";

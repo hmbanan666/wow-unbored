@@ -1,3 +1,4 @@
+import { registerWebPaths } from "./web-paths.ts";
 import { ActivePathError, pathCharacterSchema, setActivePathSchema } from "./active-path.ts";
 import { GameImportError, validGameBuild } from "./game-db.ts";
 import { ContentError, ContentStore } from "./content.ts";
@@ -714,6 +715,8 @@ export function createApp(
       throw error;
     }
   });
+
+  registerWebPaths(app, store, config.webOrigin || DEFAULT_WEB_ORIGIN);
 
   app.get("/v1/paths/active", async (c) => {
     const denied = requireRole(c, "planner", tokens);
