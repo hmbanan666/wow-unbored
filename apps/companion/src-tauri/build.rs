@@ -17,6 +17,7 @@ fn main() {
         "fetch_plan",
         "rescan_progress",
         "open_privacy",
+        "open_my_page",
         "forget_my_data",
         "connect_again",
     ]);

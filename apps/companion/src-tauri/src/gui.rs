@@ -17,7 +17,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::account::{self, AccountSeal};
 use crate::addon::{install_addon_zip, installed_version, select_addon_zip, should_update};
 use crate::device::{self, registration_json, DeviceCredential};
-use crate::endpoint::{join_url, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL};
+use crate::endpoint::{
+    join_url, page_link_from_response, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL,
+};
 use crate::i18n::{self, tr, trf};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
 use crate::plan::{
@@ -572,6 +574,43 @@ fn set_account(app: AppHandle, state: State<AppState>, account: String) -> Resul
 #[tauri::command]
 fn open_privacy() -> Result<(), Shown> {
     Ok(open_in_browser(i18n::privacy_url(i18n::current()))?)
+}
+
+fn request_page_link(url: &str, secret: &str) -> Result<String, String> {
+    let client = http_client(Duration::from_secs(20))?;
+    let response = client
+        .post(join_url(url, "v1/devices/me/page-link"))
+        .bearer_auth(secret)
+        .send()
+        .map_err(|_| tr("MY_PAGE_OFFLINE"))?;
+    let status = response.status().as_u16();
+    let body = response.text().unwrap_or_default();
+    page_link_from_response(status, &body).map_err(|key| {
+        if key == "MY_PAGE_FAILED" {
+            trf("MY_PAGE_FAILED", &[&status.to_string()])
+        } else {
+            tr(key)
+        }
+    })
+}
+
+/// My page: one sign-in link, then the browser (ADR 0073).
+#[tauri::command]
+fn open_my_page(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown> {
+    let session = SyncSession::capture(&state)?;
+    let approved = session
+        .apply(&app, |model| model.approved)?
+        .unwrap_or(false);
+    if !approved {
+        return Err(tr("MY_PAGE_NOT_READY").into());
+    }
+    let url = effective_url(&session.settings);
+    validate_endpoint(&url)?;
+    let page = request_page_link(&url, &session.device.secret)?;
+    open_in_browser(&page)?;
+    session.apply(&app, |model| model.status = tr("MY_PAGE_OPENED"))?;
+    let model = state.inner.lock().map_err(|err| err.to_string())?;
+    Ok(snapshot(&app, &model))
 }
 
 #[cfg(windows)]
@@ -1930,6 +1969,7 @@ pub fn run() {
             fetch_plan,
             rescan_progress,
             open_privacy,
+            open_my_page,
             forget_my_data,
             connect_again
         ])

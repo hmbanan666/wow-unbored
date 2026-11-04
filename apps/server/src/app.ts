@@ -30,6 +30,7 @@ import {
   Store,
   type PlanRequest,
 } from "./store.ts";
+import { accountForDevice, issuePageLink, redeemPageLink } from "./page-link.ts";
 import { PlannerWebhook, webhookFromEnv, type FetchLike, type WebhookConfig } from "./webhook.ts";
 
 function limitOf(value: string | undefined, fallback: number): number {
@@ -89,6 +90,8 @@ export function createApp(
     log?: (line: string) => void;
     /** Postgres from DATABASE_URL, migrated (ADR 0057); the caller closes it. */
     database?: Sql;
+    /** Public site origin for sign-in links. Falls back to the request host. */
+    webOrigin?: string;
     /**
      * How `POST /v1/snapshot` stores an upload on Postgres: "inbox" (the
      * default) queues it and answers 202; "inline" ingests on the request
@@ -327,6 +330,48 @@ export function createApp(
       return c.json({ error: 'Send {"confirm": true} as JSON.' }, 400);
     }
     return c.json({ ok: true, ...(await store.forgetDevice(device.id)) });
+  });
+
+  const redeemLimiter = new RegisterLimiter();
+  app.post("/v1/devices/me/page-link", async (c) => {
+    const presented = presentedBearer(c.req.header("authorization"));
+    if (!presented) return c.json({ error: "Unauthorized" }, 401);
+    if (tokenMatches(presented, tokens.companion)) {
+      return c.json({ error: "My page needs a paired Companion, not the shared token." }, 403);
+    }
+    const device = await store.authenticateDevice(sha256Hex(presented));
+    if (!device) return c.json({ error: "Unauthorized" }, 401);
+    if (device.status !== "approved") {
+      return c.json({ error: "This PC is not connected yet." }, 403);
+    }
+    const accountId = await accountForDevice(store.db, device.id);
+    if (!accountId) return c.json({ error: "no_characters" }, 409);
+    const link = await issuePageLink(store.db, {
+      deviceId: device.id,
+      accountId,
+      now: Math.floor(Date.now() / 1000),
+      origin: config.webOrigin || DEFAULT_WEB_ORIGIN,
+    });
+    return c.json(link);
+  });
+
+  app.post("/v1/page-links/redeem", async (c) => {
+    const ip = clientIp(c.req.header("x-forwarded-for"), c.req.header("x-real-ip"));
+    if (!redeemLimiter.allow(ip)) return c.json({ error: "Too many attempts." }, 429);
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "unknown" }, 404);
+    }
+    const token = (body as { token?: unknown } | null)?.token;
+    if (typeof token !== "string") return c.json({ error: "unknown" }, 404);
+    const result = await redeemPageLink(store.db, token, Math.floor(Date.now() / 1000));
+    if (!result.ok) {
+      const status = result.error === "unknown" ? 404 : 410;
+      return c.json({ error: result.error }, status);
+    }
+    return c.json({ sessionId: result.sessionId, accountId: result.accountId });
   });
 
   app.post("/v1/requests", async (c) => {
@@ -688,6 +733,9 @@ export function createApp(
     },
   };
 }
+
+/** Sign-in links never take their origin from request headers. */
+const DEFAULT_WEB_ORIGIN = "https://unbored.kosarev.space";
 
 function requestIdOf(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;

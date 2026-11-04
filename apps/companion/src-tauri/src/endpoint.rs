@@ -30,6 +30,32 @@ pub fn join_url(base: &str, path: &str) -> String {
     format!("{base}/{path}")
 }
 
+/// The sign-in URL from `POST /v1/devices/me/page-link`, or the i18n key to show.
+pub fn page_link_from_response(status: u16, body: &str) -> Result<String, &'static str> {
+    match status {
+        200 => {
+            let value: serde_json::Value =
+                serde_json::from_str(body).map_err(|_| "MY_PAGE_FAILED")?;
+            let url = value
+                .get("url")
+                .and_then(|item| item.as_str())
+                .unwrap_or("");
+            let lower = url.to_ascii_lowercase();
+            if lower.starts_with("https://")
+                || lower.starts_with("http://127.0.0.1")
+                || lower.starts_with("http://localhost")
+            {
+                Ok(url.to_string())
+            } else {
+                Err("MY_PAGE_FAILED")
+            }
+        }
+        401 | 403 => Err("MY_PAGE_NOT_READY"),
+        409 => Err("MY_PAGE_NO_CHARACTERS"),
+        _ => Err("MY_PAGE_FAILED"),
+    }
+}
+
 pub fn progress_payload(file: &CharacterFile, progress: &SessionProgress) -> Value {
     let mut payload = json!({
         "account": file.account,
@@ -124,5 +150,25 @@ mod tests {
             join_url("https://planner.example/unbored/", "/v1/plan"),
             "https://planner.example/unbored/v1/plan"
         );
+    }
+
+    #[test]
+    fn page_link_is_one_https_url() {
+        let url = page_link_from_response(
+            200,
+            r#"{"url":"https://unbored.test/enter/abc","expiresAt":10}"#,
+        )
+        .unwrap();
+        assert_eq!(url, "https://unbored.test/enter/abc");
+        assert_eq!(
+            page_link_from_response(200, r#"{"url":"http://example.com/enter/abc"}"#),
+            Err("MY_PAGE_FAILED")
+        );
+        assert_eq!(page_link_from_response(403, "{}"), Err("MY_PAGE_NOT_READY"));
+        assert_eq!(
+            page_link_from_response(409, r#"{"error":"no_characters"}"#),
+            Err("MY_PAGE_NO_CHARACTERS")
+        );
+        assert_eq!(page_link_from_response(500, ""), Err("MY_PAGE_FAILED"));
     }
 }
