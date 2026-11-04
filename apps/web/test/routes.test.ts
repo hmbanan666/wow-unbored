@@ -105,3 +105,18 @@ test("pages are built from the design system, with no page styles", () => {
   const doc = readFileSync(path.join(root, "docs/design-system.md"), "utf8");
   for (const name of ds) assert.ok(doc.includes(`Ds${name.replace(".vue", "")}`), name);
 });
+
+test("components never resolve components by name inside templates", () => {
+  const vue = files(path.join(web, "app")).filter((file) => file.endsWith(".vue"));
+  for (const file of vue) {
+    const template = readFileSync(file, "utf8").split("<template>")[1] ?? "";
+    assert.doesNotMatch(template, /resolveComponent\(/, file);
+    assert.doesNotMatch(template, /:is="[^"]*['`](NuxtLink|nuxt-link|Nuxt[A-Z]\w*)['`]/, file);
+  }
+});
+
+test("ds Card renders a real link when it has a target", () => {
+  const card = readFileSync(path.join(web, "app/components/ds/Card.vue"), "utf8");
+  assert.match(card, /const NuxtLink = resolveComponent\("NuxtLink"\)/);
+  assert.match(card, /:is="to \? NuxtLink : 'div'"/);
+});

@@ -179,3 +179,16 @@ code {
     transition: none !important;
   }
 }
+
+/* No double-tap zoom delay on mobile; pinch zoom stays available. */
+html,
+body,
+a,
+button,
+input,
+select,
+textarea,
+label,
+summary {
+  touch-action: manipulation;
+}
