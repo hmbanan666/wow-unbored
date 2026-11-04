@@ -1,4 +1,4 @@
--- Website catalog and home page (ADR 0073, 0074, 0075).
+-- Website catalog and home page (ADR 0072, 0073, 0074).
 -- Paths and collections share one versioned table. Topics, Path goals and
 -- the owner tools that check ids stay with the Path work; they should
 -- reference content.paths.id. Do not add a table per mount, item or NPC:

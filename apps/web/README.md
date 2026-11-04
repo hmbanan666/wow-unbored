@@ -1,6 +1,6 @@
 # Player website
 
-Nuxt 4 site in this monorepo ([ADR 0073](../../docs/adr/0073-website-and-account-link.md)). Public pages are English. Paths and collections share one catalog ([ADR 0075](../../docs/adr/0075-collections-are-paths.md)): `/paths/<slug>` and `/collections/<slug>`. There are no pages for a single item, mount or NPC.
+Nuxt 4 site in this monorepo ([ADR 0073](../../docs/adr/0073-website-and-account-link.md)). Public pages are English. Paths and collections share one catalog ([ADR 0072](../../docs/adr/0072-paths.md)): `/paths/<slug>` and `/collections/<slug>`. There are no pages for a single item, mount or NPC.
 
 Page text and SEO fields live in Postgres (`web.pages`, `content.paths`), not in markdown files. The Server applies the migration. Business rules stay on the Server API.
 

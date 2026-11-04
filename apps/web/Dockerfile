@@ -1,4 +1,4 @@
-# Player website (ADR 0073, 0074, 0075).
+# Player website (ADR 0072, 0073, 0074).
 # Build context is the repo root: docker build -f apps/web/Dockerfile .
 
 FROM node:26-bookworm-slim AS build

@@ -1,6 +1,6 @@
 import type { Block } from "./blocks";
 
-/** A Collection is a Path with the other kind (ADR 0075). */
+/** A Collection is a Path with kind `collection` (ADR 0072). */
 export const CATALOG_KINDS = ["path", "collection"] as const;
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
 

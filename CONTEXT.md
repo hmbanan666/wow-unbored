@@ -218,12 +218,12 @@ The Server's own copy of client game tables for the live build, plus sourced ext
 _Avoid_: wiki, cache, catalog (that is the vetted addon list).
 
 **Path**
-A curated set of goals for one piece of content, in a tier (Basic, Deeper, Complete), shown as done of total. A Collection is a Path with kind collection (ADR 0075). Russian: Путь (ADR 0072).
+A curated set of goals for one piece of content, in a tier (Basic, Deeper, Complete), shown as done of total. Russian: Путь (ADR 0072).
 _Avoid_: quest line, guide, checklist, roadmap.
 
 **Collection**
-A Path of kind collection: one curated set, such as mounts to get first, with its own page. Russian: Подборка (ADR 0075).
-_Avoid_: guide, listicle, top list.
+A Path of kind `collection`: an authored, ordered top list of Game DB targets, such as "Top 50 mounts to get first", with progress X / Y. Russian: Подборка (ADR 0072).
+_Avoid_: database, wiki, list of all mounts.
 
 **Topic**
 A group of goals inside a Path, such as mounts, achievements or PvP.

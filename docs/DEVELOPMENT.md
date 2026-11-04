@@ -462,7 +462,7 @@ The site is `apps/web` (Nuxt 4, Vue, Nuxt UI, `@nuxtjs/seo`, `nuxt-auth-utils`).
 
 The image is `docker build -f apps/web/Dockerfile .`. The container listens on 3000 and answers `GET /ready`. `GET /health` is the Server, including through the public host.
 
-Page text and SEO fields are rows in the same Postgres, not markdown files. `web.pages` is the home page. `content.paths` is the public catalog: `kind` is `path` or `collection`, with draft and published versions ([ADR 0074](adr/0074-public-path-pages.md), [ADR 0075](adr/0075-collections-are-paths.md)). Public URLs are `/paths/<slug>` and `/collections/<slug>`. There is no page for one item, mount, NPC or other object. The Server migration `0007_web_content.sql` creates both schemas; they sit outside `public`, so the SQLite transfer does not copy them. Topics and Path goals are not in that migration.
+Page text and SEO fields are rows in the same Postgres, not markdown files. `web.pages` is the home page. `content.paths` is the public catalog: `kind` is `path` or `collection`, with draft and published versions ([ADR 0072](adr/0072-paths.md), [ADR 0074](adr/0074-public-path-pages.md)). Public URLs are `/paths/<slug>` and `/collections/<slug>`. There is no page for one item, mount, NPC or other object. The Server migration `0007_web_content.sql` creates both schemas; they sit outside `public`, so the SQLite transfer does not copy them. Topics and Path goals are not in that migration.
 
 Locally, apply migrations by starting the Server once with `DATABASE_URL`, then:
 
