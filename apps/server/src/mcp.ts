@@ -211,7 +211,7 @@ export function createMcpServer(
   };
   const server = new McpServer({
     name: "unbored",
-    version: "0.12.0",
+    version: "0.13.0",
   });
 
   function registerTool<S extends z.ZodRawShape>(
