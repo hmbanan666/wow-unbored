@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const usage = `Usage:
   node apps/server/scripts/content.ts save FILE.json      save or update the draft (ids are checked)
-  node apps/server/scripts/content.ts publish KIND SLUG   publish the newest draft (KIND: path or collection)
+  node apps/server/scripts/content.ts publish KIND SLUG   publish the newest draft (KIND: path, collection or guide)
 UNBORED_SERVER_URL and UNBORED_PLANNER_TOKEN must be set.`;
 
 const [command, ...args] = process.argv.slice(2);
@@ -32,7 +32,7 @@ else if (!base || !token) {
   process.exitCode = 2;
 } else if (command === "save" && args.length === 1) {
   await call("PUT", "/owner/content", await readFile(args[0], "utf8"));
-} else if (command === "publish" && args.length === 2 && /^(path|collection)$/.test(args[0])) {
+} else if (command === "publish" && args.length === 2 && /^(path|collection|guide)$/.test(args[0])) {
   await call("POST", `/owner/content/${args[0]}/${encodeURIComponent(args[1])}/publish`);
 } else {
   console.error(usage);
