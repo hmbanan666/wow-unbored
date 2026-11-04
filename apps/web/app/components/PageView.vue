@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PublicPage } from "#shared/catalog";
-import { PUBLIC_COPY, SITE_NAV, TIER_LABEL } from "#shared/catalog";
+import { CATALOG_SECTION, PUBLIC_COPY, TIER_LABEL } from "#shared/catalog";
 
 const props = defineProps<{
   page: PublicPage | null;
@@ -9,11 +9,7 @@ const props = defineProps<{
 
 const tier = computed(() => (props.page?.tier ? TIER_LABEL[props.page.tier] : ""));
 const section = computed(() =>
-  props.page?.kind === "path"
-    ? { label: "Paths", to: "/paths" }
-    : props.page?.kind === "collection"
-      ? { label: "Collections", to: "/collections" }
-      : undefined,
+  props.page && props.page.kind !== "page" ? CATALOG_SECTION[props.page.kind] : undefined,
 );
 const trail = computed(() =>
   section.value && props.page
@@ -91,15 +87,19 @@ if (props.page && props.page.kind !== "page") {
       <EntryBody :blocks="page.blocks" />
       <CollectionItems v-if="page.items.length" :items="page.items" />
       <section v-if="page.kind !== 'page'" class="track">
-        <h2>Track this list in game</h2>
+        <h2>
+          {{ page.kind === "guide" ? "Let Bory pick the next step" : "Track this list in game" }}
+        </h2>
         <p>
           Install Unbored and Bory, a calm ginger cat, gives you the next step in game, one at a
-          time, with a pin on the map. Ticking off this list on My page is coming next.
+          time, with a pin on the map.<template v-if="page.kind !== 'guide'">
+            Ticking off this list on My page is coming next.</template
+          >
         </p>
         <div class="actions">
           <UButton to="/install" color="primary" size="lg" class="gold-button">Get Unbored</UButton>
-          <UButton :to="SITE_NAV[0].to" color="neutral" variant="outline" size="lg"
-            >More collections</UButton
+          <UButton :to="section?.to" color="neutral" variant="outline" size="lg"
+            >More {{ section?.label.toLowerCase() }}</UButton
           >
         </div>
       </section>

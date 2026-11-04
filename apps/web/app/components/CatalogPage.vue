@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { pageMessage, PUBLIC_COPY, type PublicPage } from "#shared/catalog";
+import { pageMessage, PUBLIC_COPY, type CatalogKind, type PublicPage } from "#shared/catalog";
 
-const props = defineProps<{ kind: "path" | "collection" }>();
+const props = defineProps<{ kind: CatalogKind }>();
 const route = useRoute();
 const slug = computed(() => String(route.params.slug ?? ""));
 

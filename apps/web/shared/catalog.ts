@@ -1,7 +1,7 @@
 import type { Block } from "./blocks";
 
-/** A Collection is a Path with kind `collection` (ADR 0072). */
-export const CATALOG_KINDS = ["path", "collection"] as const;
+/** A Collection is a Path with kind `collection` (ADR 0072); a Guide is an authored article. */
+export const CATALOG_KINDS = ["path", "collection", "guide"] as const;
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
 export const TIERS = ["basic", "deeper", "complete"] as const;
@@ -22,11 +22,14 @@ export const PUBLIC_ROUTES = [
   { name: "path", pattern: "/paths/:slug" },
   { name: "collections", pattern: "/collections" },
   { name: "collection", pattern: "/collections/:slug" },
+  { name: "guides", pattern: "/guides" },
+  { name: "guide", pattern: "/guides/:slug" },
   { name: "install", pattern: "/install" },
 ] as const;
 
 /** Header and footer links (docs/site-structure.md). */
 export const SITE_NAV = [
+  { label: "Guides", to: "/guides" },
   { label: "Collections", to: "/collections" },
   { label: "Paths", to: "/paths" },
   { label: "Install", to: "/install" },
@@ -36,6 +39,13 @@ export const SITE_NAV = [
 export const RELEASES_URL = "https://github.com/hmbanan666/wow-unbored/releases/latest";
 export const REPO_URL = "https://github.com/hmbanan666/wow-unbored";
 export const PRIVACY_URL = "https://github.com/hmbanan666/wow-unbored#what-bory-knows-about-you";
+
+/** Where each kind lives and what it is called in breadcrumbs and cards. */
+export const CATALOG_SECTION: Record<CatalogKind, { label: string; to: string; one: string }> = {
+  path: { label: "Paths", to: "/paths", one: "Path" },
+  collection: { label: "Collections", to: "/collections", one: "Collection" },
+  guide: { label: "Guides", to: "/guides", one: "Guide" },
+};
 
 export const ITEM_KINDS = ["mount", "pet", "toy", "achievement", "item"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -172,7 +182,7 @@ export const PUBLIC_COPY = {
 } as const;
 
 export function isCatalogKind(value: unknown): value is CatalogKind {
-  return value === "path" || value === "collection";
+  return value === "path" || value === "collection" || value === "guide";
 }
 
 export function isSlug(value: unknown): value is string {
@@ -185,7 +195,7 @@ export function cleanTier(value: unknown): Tier | null {
 
 export function catalogHref(kind: CatalogKind, slug: string): string | undefined {
   if (!isSlug(slug)) return undefined;
-  return kind === "path" ? `/paths/${slug}` : `/collections/${slug}`;
+  return `/${CATALOG_SECTION[kind].to.slice(1)}/${slug}`;
 }
 
 /** Wowhead-style object pages are not part of the site. */

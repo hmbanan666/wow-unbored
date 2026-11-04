@@ -70,6 +70,28 @@ test("content documents need a slug, items with sources and a note", () => {
   assert.equal(parseContent(collection).items[0].source.cost?.length, 2);
 });
 
+test("a guide is an article of headings and paragraphs with optional items", () => {
+  const guide = parseContent({
+    kind: "guide",
+    slug: "first-steps",
+    title: "First steps",
+    description: "Where to start.",
+    blocks: [
+      { type: "heading", text: "Start here" },
+      { type: "paragraph", text: "One step at a time." },
+      { type: "link", label: "Mounts", href: "/collections/top-mounts-to-get-first" },
+      { type: "link", label: "All guides", href: "/guides" },
+    ],
+  });
+  assert.equal(guide.kind, "guide");
+  assert.deepEqual(guide.blocks[0], { type: "heading", text: "Start here" });
+  assert.equal(guide.items.length, 0);
+  assert.throws(
+    () => parseContent({ ...collection, kind: "guide", tier: "basic" }),
+    (error) => problems(error).includes("a guide has no tier"),
+  );
+});
+
 test("the owner content route needs the planner bearer and Postgres", async () => {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-content-"));
   const { app, close } = createApp({

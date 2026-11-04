@@ -23,6 +23,7 @@ const collections = computed(() =>
   (catalog.value?.pages ?? []).filter((item) => item.kind === "collection"),
 );
 const paths = computed(() => (catalog.value?.pages ?? []).filter((item) => item.kind === "path"));
+const guides = computed(() => (catalog.value?.pages ?? []).filter((item) => item.kind === "guide"));
 
 useSchemaOrg([
   defineSoftwareApp({
@@ -54,6 +55,14 @@ useSchemaOrg([
           get tonight, with a pin on the map for every step.
         </li>
       </ol>
+    </section>
+    <section v-if="guides.length" class="home-section">
+      <h2>Guides</h2>
+      <p class="meta">Short guides, checked against the game's own data.</p>
+      <div class="cards">
+        <CatalogCard v-for="item in guides" :key="item.href" :page="item" />
+      </div>
+      <p><NuxtLink to="/guides">All guides</NuxtLink></p>
     </section>
     <section v-if="collections.length" class="home-section">
       <h2>Collections</h2>

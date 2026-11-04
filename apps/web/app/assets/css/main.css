@@ -419,3 +419,7 @@ h1 {
   padding-top: 1rem;
   border-top: 1px solid var(--lamp-line);
 }
+
+.page .entry-heading {
+  margin-top: 2rem;
+}
