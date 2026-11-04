@@ -13,6 +13,7 @@ COPY apps/web apps/web
 COPY apps/server/package.json apps/server/package.json
 COPY apps/companion/package.json apps/companion/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/contracts/src/web-session.ts packages/contracts/src/web-session.ts
 
 RUN pnpm install --frozen-lockfile --filter @unbored/web...
 RUN pnpm --filter @unbored/web build

@@ -63,6 +63,10 @@ test("the route table keeps Companion paths on the Server", () => {
   assert.match(server, /priority:\s*100/);
   const image = readFileSync(path.join(web, "Dockerfile"), "utf8");
   assert.match(image, /node", "server\/index\.mjs"/);
+  assert.match(
+    image,
+    /^COPY packages\/contracts\/src\/web-session\.ts packages\/contracts\/src\/web-session\.ts$/m,
+  );
   assert.equal(image.includes("NUXT_APP_SECRET="), false);
   assert.equal(image.includes("NUXT_SESSION_PASSWORD="), false);
   assert.equal(image.includes("DATABASE_URL="), false);
