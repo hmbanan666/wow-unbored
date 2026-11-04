@@ -22,9 +22,6 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
   const sql = connectPostgres(url.toString(), { max: 2 });
   try {
     await migrate(sql);
-    await sql.unsafe(
-      `CREATE TABLE IF NOT EXISTS history_my_test PARTITION OF history FOR VALUES FROM (0) TO (4000000000)`,
-    );
     await sql`
       INSERT INTO characters (id, account_id, name, realm, class, level, last_seen, device_id)
       VALUES ('Realm/Mine', ${mine}, 'Mine', 'Realm', 'MAGE', 80, 1762300000, 'pc-mine'),
