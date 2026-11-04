@@ -1,5 +1,5 @@
 import { ContentStore } from "./content.ts";
-import { pathProgress } from "./path-progress.ts";
+import { createPathProgressReader } from "./path-progress.ts";
 import {
   checkGameOutcome,
   checkGameCompletions,
@@ -1065,44 +1065,51 @@ export class Store {
           (!filter.realm || row.realm === filter.realm),
       );
       const results = [];
+      const readProgress = createPathProgressReader(this.game);
       for (const character of characters) {
-        const sections = await this.data.sectionsFor(character);
+        const sections = paths.length ? await this.data.sectionsFor(character) : new Map();
+        const completed = new Map(
+          (paths.length
+            ? await this.db.all<{ content_id: number; at: number }>(
+                `SELECT content_id, at FROM path_completions WHERE character_id = ?`,
+                character.id,
+              )
+            : []
+          ).map((row) => [Number(row.content_id), row.at]),
+        );
         const progress = [];
-        for (const path of paths) {
-          const current = await pathProgress(path, sections, this.game);
-          if (current.total > 0 && current.done === current.total) {
+        for (const current of await readProgress(paths, sections)) {
+          let completedAt = completed.get(current.id) ?? null;
+          if (completedAt === null && current.total > 0 && current.done === current.total) {
             const inserted = await this.db.run(
               `INSERT INTO path_completions (character_id, content_id, at) VALUES (?, ?, ?)
                ON CONFLICT (character_id, content_id) DO NOTHING`,
               character.id,
-              path.id,
+              current.id,
               nowSeconds,
             );
-            if (inserted)
+            if (inserted) {
+              completedAt = nowSeconds;
               await this.addHistory({
                 at: nowSeconds,
                 account: character.accountId,
                 character: character.name,
                 realm: character.realm,
                 kind: "path_completion",
-                ref: String(path.id),
+                ref: String(current.id),
                 body: {
-                  kind: path.kind,
-                  slug: path.slug,
-                  locale: path.locale,
-                  version: path.version,
-                  title: path.title,
+                  kind: current.kind,
+                  slug: current.slug,
+                  locale: current.locale,
+                  version: current.version,
+                  title: current.title,
                   done: current.done,
                   total: current.total,
                 },
               });
+            }
           }
-          const completion = await this.db.get<{ at: number }>(
-            `SELECT at FROM path_completions WHERE character_id = ? AND content_id = ?`,
-            character.id,
-            path.id,
-          );
-          progress.push({ ...current, completedAt: completion?.at ?? null });
+          progress.push({ ...current, completedAt });
         }
         results.push({
           account: character.accountId,

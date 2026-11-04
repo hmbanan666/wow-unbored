@@ -6,7 +6,7 @@ import { packIds } from "@unbored/contracts";
 
 import { ContentStore } from "../src/content.ts";
 import { Store } from "../src/store.ts";
-import { coreResponse } from "./game-content-fixture.ts";
+import { coreCsv, coreResponse } from "./game-content-fixture.ts";
 import { snapshot, packCounts, NOW, ACCOUNT_KEY } from "./helpers.ts";
 import { hasPostgres, postgresPerFile } from "./postgres-db.ts";
 import { goalFixtures } from "./path-progress-fixtures.ts";
@@ -352,6 +352,99 @@ for (const section of ["bags", "bank", "reagentBank", "warband"]) {
         (await store.pathProgress({ account: ACCOUNT_KEY, character: "Alt" }))[0].paths[0].done,
         section === "warband" ? 1 : 0,
       );
+    } finally {
+      close();
+    }
+  });
+}
+
+test.skipIf(!hasPostgres)(
+  "a quest line needs every member and stays on its published build",
+  async () => {
+    const { store, content, close } = await setup();
+    try {
+      await store.game.importBuild("12.0.1.66338", async (input) => {
+        const table = new URL(String(input)).pathname.split("/")[2];
+        return new Response(
+          table === "QuestLineXQuest"
+            ? "ID,QuestLineID,QuestID,OrderIndex\n11,10,90001,0\n12,10,90002,1\n"
+            : table === "QuestV2"
+              ? "ID,UniqueBitFlag\n90001,42\n90002,43\n"
+              : coreCsv[table],
+        );
+      });
+      const goal = goalFixtures.find((row) => row.goal.kind === "questLine")!.goal;
+      const doc = {
+        ...collection,
+        kind: "path",
+        tier: "basic",
+        items: [mount, { ...mount, ...goal }],
+      };
+      await content.saveDraft(doc);
+      await content.publish("path", doc.slug);
+      await store.putSnapshot(
+        snapshot({
+          mounts: { body: { ids: packIds([6]) } },
+          questsDone: { body: { ids: packIds([90001]) } },
+        }),
+        "device",
+        NOW,
+      );
+      const progress = async () => (await store.pathProgress({ account: ACCOUNT_KEY }))[0].paths[0];
+      assert.equal((await progress()).done, 1);
+      assert.equal((await progress()).total, 2);
+      assert.equal((await progress()).completedAt, null);
+      // The newest build has only one member; it cannot change an existing version.
+      await store.game.importBuild("12.0.1.66339", coreResponse);
+      assert.equal((await progress()).done, 1);
+      await store.putSnapshot(
+        snapshot(
+          { questsDone: { at: NOW + 1, body: { ids: packIds([90001, 90002]) } } },
+          { savedAt: NOW + 1 },
+        ),
+        "device",
+        NOW + 1,
+      );
+      assert.equal((await progress()).done, 2);
+      assert.equal((await progress()).completedAt, NOW + 1);
+    } finally {
+      close();
+    }
+  },
+);
+
+for (const [name, membership] of [
+  ["empty", "11,20,90001,0\n"],
+  ["unverified", "11,10,90002,0\n"],
+  ["oversized", Array.from({ length: 257 }, (_, i) => `${i + 1},10,90001,${i}\n`).join("")],
+]) {
+  test.skipIf(!hasPostgres)(`${name} quest-line membership cannot record completion`, async () => {
+    const { store, content, close } = await setup();
+    try {
+      await store.game.importBuild("12.0.1.66338", async (input) => {
+        const table = new URL(String(input)).pathname.split("/")[2];
+        return new Response(
+          table === "QuestLineXQuest"
+            ? `ID,QuestLineID,QuestID,OrderIndex\n${membership}`
+            : coreCsv[table],
+        );
+      });
+      const goal = goalFixtures.find((row) => row.goal.kind === "questLine")!.goal;
+      await content.saveDraft({
+        ...collection,
+        kind: "path",
+        tier: "basic",
+        items: [{ ...mount, ...goal }],
+      });
+      await content.publish("path", collection.slug);
+      await store.putSnapshot(
+        snapshot({ questsDone: { body: { ids: packIds([90001, 90002]) } } }),
+        "device",
+        NOW,
+      );
+      const progress = (await store.pathProgress({ account: ACCOUNT_KEY }))[0].paths[0];
+      assert.equal(progress.done, 0);
+      assert.equal(progress.completedAt, null);
     } finally {
       close();
     }
