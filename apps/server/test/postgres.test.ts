@@ -114,9 +114,16 @@ pg("the schema has every SQLite table and column, but the legacy profiles", asyn
       )
         .map((column) => (column.name === "body_json" ? "body" : column.name))
         .sort();
+      const isGameTable = [
+        "game_builds",
+        "game_achievements",
+        "game_watch",
+        "game_rows",
+        "game_imports",
+      ].includes(table);
       const actual = (
         await db.sql`SELECT column_name FROM information_schema.columns
-          WHERE table_schema = ${["game_builds", "game_achievements", "game_watch", "game_rows", "game_imports"].includes(table) ? "game" : "public"} AND table_name = ${["game_builds", "game_achievements", "game_watch", "game_rows", "game_imports"].includes(table) ? table.slice(5) : table}`
+          WHERE table_schema = ${isGameTable ? "game" : "public"} AND table_name = ${isGameTable ? table.slice(5) : table}`
       )
         .map((row) => row.column_name as string)
         .sort();
