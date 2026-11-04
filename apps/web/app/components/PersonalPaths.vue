@@ -4,6 +4,7 @@ import {
   pathForPage,
   replacementFor,
   selectionOf,
+  selectionConflict,
   type PathProgress,
   type PathSelection,
 } from "#shared/personal-paths";
@@ -66,11 +67,12 @@ async function save(next: PathProgress, expectedActive: PathSelection | null) {
     character.active = result.path;
     notice.value = copy.value.saved;
   } catch (error) {
-    const failure = error as { statusCode?: number; data?: { current?: PathProgress } };
-    if (failure.statusCode === 409 && failure.data?.current) {
-      character.active = failure.data.current;
-      pending.value = { current: failure.data.current, next };
-      notice.value = "";
+    const failure = error as { statusCode?: number; data?: { current?: PathProgress | null } };
+    const conflict = selectionConflict(failure);
+    if (conflict) {
+      character.active = conflict.current;
+      pending.value = conflict.current ? { current: conflict.current, next } : null;
+      notice.value = conflict.current ? "" : copy.value.selectionChanged;
     } else if (failure.statusCode === 401) {
       data.value = null;
       signedOut.value = true;

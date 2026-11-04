@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { pathForPage, replacementFor, type PathProgress } from "../shared/personal-paths.ts";
+import {
+  selectionConflict,
+  pathForPage,
+  replacementFor,
+  type PathProgress,
+} from "../shared/personal-paths.ts";
 import { completionView } from "../shared/my-page.ts";
 
 const current: PathProgress = {
@@ -39,4 +44,12 @@ test("only a different active Path asks for replacement, including Collection pi
 test("completion links reject unexpected kinds and unsafe slugs", () => {
   assert.equal(completionView({ kind: "guide", slug: "safe", title: "Guide", version: 1 }), null);
   assert.equal(completionView({ kind: "path", slug: "../my", title: "Path", version: 1 }), null);
+});
+
+test("a cleared active Path is a selection conflict the page must reconcile", () => {
+  assert.deepEqual(selectionConflict({ statusCode: 409, data: { current: null } }), {
+    current: null,
+  });
+  assert.deepEqual(selectionConflict({ statusCode: 409, data: { current } }), { current });
+  assert.equal(selectionConflict({ statusCode: 503 }), undefined);
 });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { test } from "vite-plus/test";
+import { forwardPathRequest } from "../../web/server/utils/path-api.ts";
 import { createApp } from "../src/app.ts";
 import { ContentStore } from "../src/content.ts";
 import { coreResponse } from "./game-content-fixture.ts";
@@ -205,6 +206,11 @@ test.skipIf(!hasPostgres)(
         ).status,
         400,
       );
+      await store.activePaths.set({ account, character: "Mira", realm: "Realm", path: null });
+      const cleared = await api("active", "PUT", { ...chosen, expectedActive: next.path });
+      assert.equal(cleared.status, 409);
+      assert.equal((await cleared.json()).current, null);
+      assert.equal((await api("active", "PUT", { ...chosen, expectedActive: null })).status, 200);
     } finally {
       close();
     }
@@ -322,6 +328,80 @@ test.skipIf(!hasPostgres)(
       const conflict = await responses.find((response) => response.status === 409)!.json();
       assert.equal(conflict.current.slug, selected.path.slug);
     } finally {
+      close();
+    }
+  },
+);
+
+test.skipIf(!hasPostgres)(
+  "website proxy reads and selects through the Server with a session and Postgres",
+  async () => {
+    const { app, close } = await setup();
+    const transport: typeof fetch = async (input, init) => app.request(String(input), init);
+    const input = {
+      method: "GET" as const,
+      sessionId: "live-session",
+      serverUrl: "http://server",
+      siteOrigin: origin,
+      ip: "192.0.2.1",
+    };
+    try {
+      const read = await forwardPathRequest(input, transport);
+      assert.equal(read.status, 200);
+      assert.equal((await read.json()).characters.length, 2);
+      const body = { character: "Mira", realm: "Realm", path: selection };
+      const csrf = await forwardPathRequest({ ...input, method: "PUT", body }, transport);
+      assert.equal(csrf.status, 403);
+      const selected = await forwardPathRequest(
+        {
+          ...input,
+          method: "PUT",
+          origin,
+          fetchSite: "same-origin",
+          contentType: "application/json",
+          body,
+        },
+        transport,
+      );
+      assert.equal(selected.status, 200);
+      assert.equal(selected.headers.get("cache-control"), "private, no-store");
+      const updated = await (await forwardPathRequest(input, transport)).json();
+      assert.equal(
+        updated.characters.find((row: { character: string }) => row.character === "Mira").active
+          .slug,
+        selection.slug,
+      );
+    } finally {
+      close();
+    }
+  },
+);
+
+test.skipIf(!hasPostgres)(
+  "ending a session during an Account update denies an in-flight read without deadlocking",
+  async () => {
+    const { api, close } = await setup();
+    const sql = pg("postgres")!;
+    let read: Promise<Response> | undefined;
+    try {
+      // Another Device's erasure already owns this Account and will end its sessions.
+      await sql.begin(async (closing) => {
+        await closing`SELECT pg_advisory_xact_lock(hashtext(${`account:${account}`}))`;
+        read = Promise.resolve(api());
+        let waiting = false;
+        for (let attempt = 0; attempt < 100 && !waiting; attempt++) {
+          const rows = await sql`SELECT 1 FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+          WHERE a.datname = current_database() AND l.locktype = 'advisory' AND NOT l.granted`;
+          waiting = rows.length > 0;
+          if (!waiting) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        assert.equal(waiting, true, "the website read reached the pending Account update");
+        await closing`SET LOCAL statement_timeout = '500ms'`;
+        await closing`UPDATE web.sessions SET ended_at = 1 WHERE id = 'live-session'`;
+      });
+      assert.equal((await read!).status, 401);
+    } finally {
+      await read?.catch(() => {});
       close();
     }
   },

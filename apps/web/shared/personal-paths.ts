@@ -41,6 +41,16 @@ export function replacementFor(
     : null;
 }
 
+/** A concurrent clear is a real conflict too, even though its current Path is null. */
+export function selectionConflict(error: {
+  statusCode?: number;
+  data?: { current?: PathProgress | null };
+}) {
+  return error.statusCode === 409 && error.data?.current !== undefined
+    ? { current: error.data.current }
+    : undefined;
+}
+
 export const PATH_COPY = {
   en: {
     install: "Get Unbored",
@@ -65,6 +75,7 @@ export const PATH_COPY = {
     replaceText: "Your progress stays. Bory will continue the new Path in game.",
     limited: "A little pause, then another step. Try again in ten minutes.",
     saved: "All set. Bory can continue this Path in game.",
+    selectionChanged: "Your active Path changed. Choose again to continue.",
     changed: "This page has a newer version. Open it again to see the latest goals.",
     reopen: "Open latest page",
     browse: "Browse Paths",
@@ -93,6 +104,7 @@ export const PATH_COPY = {
     replaceText: "Прогресс сохранится. Бори продолжит новый Путь в игре.",
     limited: "Небольшая передышка. Попробуй снова через десять минут.",
     saved: "Готово. Бори может продолжить этот Путь в игре.",
+    selectionChanged: "Твой активный Путь изменился. Выбери Путь ещё раз.",
     changed: "У страницы новая версия. Открой её ещё раз, чтобы увидеть свежие цели.",
     reopen: "Открыть свежую страницу",
     browse: "Посмотреть Пути",

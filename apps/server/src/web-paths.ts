@@ -24,22 +24,25 @@ export function registerWebPaths(app: Hono, store: Store, origin: string) {
     if (!store.db.pg) return c.json({ error: "unavailable" }, 503);
     const id = presentedBearer(c.req.header("authorization"));
     if (!id) return unauthorized(c);
-    const session = await store.db.get<{ device_id: string }>(
-      "SELECT device_id FROM web.sessions WHERE id = ?",
+    const session = await store.db.get<{ device_id: string; account_id: string }>(
+      "SELECT device_id, account_id FROM web.sessions WHERE id = ?",
       id,
     );
     if (!session) return unauthorized(c);
     // Same device -> Account lock order as uploads and Forget my data.
     return (
       (await store.asDevice(session.device_id, async () => {
+        // Erasure on another Device locks the Account before closing every session.
+        await store.db.lockKey(`account:${session.account_id}`);
         const row = await store.db.get<{ account_id: string }>(
-          `SELECT account_id FROM web.sessions WHERE id = ? AND ended_at IS NULL
-         AND created_at > ? FOR SHARE`,
+          `SELECT account_id FROM web.sessions WHERE id = ? AND device_id = ? AND account_id = ?
+         AND ended_at IS NULL AND created_at > ? FOR SHARE`,
           id,
+          session.device_id,
+          session.account_id,
           Math.floor(Date.now() / 1000) - WEB_SESSION_DAYS * 86400,
         );
         if (!row) return unauthorized(c);
-        await store.db.lockKey(`account:${row.account_id}`);
         return work(row.account_id);
       })) ?? unauthorized(c)
     );
