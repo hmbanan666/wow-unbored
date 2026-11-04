@@ -1,3 +1,4 @@
+import { GameImportError, validGameBuild } from "./game-db.ts";
 import { gunzipSync } from "node:zlib";
 
 import { Hono } from "hono";
@@ -84,6 +85,7 @@ export function createApp(
     webhookNow?: () => number;
     blizzard?: BlizzardConfig | null;
     blizzardFetch?: GameDataFetch;
+    gameDbFetch?: typeof fetch;
     /** One line per request (docs/adr/0013). Defaults to stdout. */
     log?: (line: string) => void;
     /** Postgres from DATABASE_URL, migrated (ADR 0057); the caller closes it. */
@@ -348,11 +350,7 @@ export function createApp(
       deviceId: device.id,
       accountId,
       now: Math.floor(Date.now() / 1000),
-      origin: pageOrigin(
-        c.req.header("x-forwarded-proto"),
-        c.req.header("x-forwarded-host") || c.req.header("host"),
-        config.webOrigin,
-      ),
+      origin: config.webOrigin || DEFAULT_WEB_ORIGIN,
     });
     return c.json(link);
   });
@@ -595,6 +593,20 @@ export function createApp(
     return c.json(await store.data.catalog({ account: c.req.query("account") || undefined }));
   });
 
+  app.post("/owner/game/import", async (c) => {
+    const denied = requireRole(c, "planner", tokens);
+    if (denied) return denied;
+    const body = await c.req.json().catch(() => null);
+    if (!validGameBuild(body?.build))
+      return c.json({ error: "Supply a build such as 12.0.1.66337." }, 400);
+    try {
+      return c.json(await store.game.importAchievements(body.build, config.gameDbFetch));
+    } catch (error) {
+      if (error instanceof GameImportError) return c.json({ error: error.message }, 502);
+      throw error;
+    }
+  });
+
   app.put("/v1/plan", async (c) => {
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
@@ -722,17 +734,8 @@ export function createApp(
   };
 }
 
-function pageOrigin(
-  protoHeader: string | undefined,
-  host: string | undefined,
-  configured?: string,
-): string {
-  if (configured) return configured;
-  const proto = (protoHeader || "https").split(",")[0]?.trim() || "https";
-  const name = (host || "").split(",")[0]?.trim();
-  if (name) return `${proto}://${name}`;
-  return "https://unbored.kosarev.space";
-}
+/** Sign-in links never take their origin from request headers. */
+const DEFAULT_WEB_ORIGIN = "https://unbored.kosarev.space";
 
 function requestIdOf(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;

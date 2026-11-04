@@ -31,6 +31,14 @@ export function browserLang(header: string | undefined): PageLang {
   return "en";
 }
 
+/** Same shape the Server issues: 32 random bytes, base64url. */
+export function isLinkToken(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{20,200}$/.test(value);
+}
+
+/** A site session lasts at most this long; then My page asks for a new link. */
+export const SESSION_DAYS = 30;
+
 export type RedeemBody = { sessionId?: unknown; accountId?: unknown; error?: unknown };
 
 /** What the site does with the Server's redeem answer. */

@@ -93,9 +93,9 @@ export function postgresPerFile(): (backend: Backend) => Sql | undefined {
   beforeEach(async () => {
     if (!db) return;
     const tables = await db.sql<{ name: string }[]>`
-      SELECT tablename AS name FROM pg_tables
-      WHERE schemaname = 'public' AND tablename <> 'schema_migrations'`;
-    await db.sql.unsafe(`TRUNCATE ${tables.map((t) => `"${t.name}"`).join(", ")}`);
+      SELECT '"' || schemaname || '"."' || tablename || '"' AS name FROM pg_tables
+      WHERE schemaname IN ('public', 'game') AND tablename <> 'schema_migrations'`;
+    await db.sql.unsafe(`TRUNCATE ${tables.map((t) => t.name).join(", ")}`);
   });
   return (backend) => {
     if (backend === "sqlite") return undefined;

@@ -11,12 +11,15 @@ import { storage } from "./backend.ts";
 const companion = "companion-test-token";
 const planner = "planner-test-token";
 const secret = "device-secret-value";
-const fixture = JSON.parse(
+const legacyFixture = JSON.parse(
   readFileSync(
     new URL("../../../packages/contracts/fixtures/snapshot.json", import.meta.url),
     "utf8",
   ),
 );
+/** What a current Companion sends: the salted Account hash (ADR 0044). */
+const hashedAccount = "7333440414623d4053ac778ca99e938ae2cf885cd54333c1c5f053e4a896c4ee";
+const fixture = { ...legacyFixture, account: hashedAccount };
 
 function setup() {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-page-"));
@@ -45,6 +48,25 @@ function auth(secretValue: string) {
   return { authorization: `Bearer ${secretValue}`, "content-type": "application/json" };
 }
 
+async function waitForUpload(
+  built: ReturnType<typeof setup>,
+  posted: Response,
+  secretValue: string,
+): Promise<void> {
+  assert.ok(posted.status === 200 || posted.status === 202);
+  if (posted.status !== 202) return;
+  const upload = (await posted.json()) as { upload: string };
+  for (let i = 0; i < 40; i += 1) {
+    const status = await built.app.request(`/v1/uploads/${upload.upload}`, {
+      headers: auth(secretValue),
+    });
+    const body = (await status.json()) as { state: string };
+    if (body.state === "done") return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail("upload was not applied");
+}
+
 test("a sign-in link works once, expires, and Forget ends the session", async () => {
   const built = setup();
   await pair(built);
@@ -53,18 +75,7 @@ test("a sign-in link works once, expires, and Forget ends the session", async ()
     headers: auth(secret),
     body: JSON.stringify(fixture),
   });
-  assert.ok(posted.status === 200 || posted.status === 202);
-  if (posted.status === 202) {
-    const upload = (await posted.json()) as { upload: string };
-    for (let i = 0; i < 20; i += 1) {
-      const status = await built.app.request(`/v1/uploads/${upload.upload}`, {
-        headers: auth(secret),
-      });
-      const body = (await status.json()) as { state: string };
-      if (body.state === "done") break;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
+  await waitForUpload(built, posted, secret);
 
   const pending = await built.app.request("/v1/devices/me/page-link", {
     method: "POST",
@@ -90,8 +101,7 @@ test("a sign-in link works once, expires, and Forget ends the session", async ()
   assert.equal(redeem.status, 200);
   const session = (await redeem.json()) as { sessionId: string; accountId: string };
   assert.ok(session.sessionId);
-  assert.ok(session.accountId);
-  assert.equal(session.accountId.includes("#"), false);
+  assert.equal(session.accountId, hashedAccount);
 
   const again = await built.app.request("/v1/page-links/redeem", {
     method: "POST",
@@ -162,4 +172,67 @@ test("My page stays closed until this PC is connected and has characters", async
     headers: auth("other-device-secret"),
   });
   assert.equal(empty.status, 409);
+});
+
+test("an unhashed Account key never opens My page", async () => {
+  const built = setup();
+  const deviceId = "pc-page-03";
+  const registered = await built.app.request("/v1/devices/register", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.42" },
+    body: JSON.stringify({ deviceId, name: "PC", secret: "legacy-device-secret" }),
+  });
+  assert.equal(registered.status, 201);
+  await built.store.setDeviceStatus(deviceId, "approved");
+  const posted = await built.app.request("/v1/snapshot", {
+    method: "POST",
+    headers: auth("legacy-device-secret"),
+    body: JSON.stringify(legacyFixture),
+  });
+  assert.ok(posted.status === 200 || posted.status === 202);
+  await waitForUpload(built, posted, "legacy-device-secret");
+  const link = await built.app.request("/v1/devices/me/page-link", {
+    method: "POST",
+    headers: auth("legacy-device-secret"),
+  });
+  assert.equal(link.status, 409);
+});
+
+test("a link from a PC that was revoked afterwards does not open a session", async () => {
+  const built = setup();
+  await pair(built, "pc-page-04");
+  const posted = await built.app.request("/v1/snapshot", {
+    method: "POST",
+    headers: auth(secret),
+    body: JSON.stringify(fixture),
+  });
+  await waitForUpload(built, posted, secret);
+  const issued = (await (
+    await built.app.request("/v1/devices/me/page-link", { method: "POST", headers: auth(secret) })
+  ).json()) as { url: string };
+  await built.store.setDeviceStatus("pc-page-04", "revoked");
+  const redeem = await built.app.request("/v1/page-links/redeem", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.43" },
+    body: JSON.stringify({ token: issued.url.split("/enter/")[1] }),
+  });
+  assert.equal(redeem.status, 404);
+});
+
+test("sign-in links use the configured site origin, not request headers", async () => {
+  const built = setup();
+  await pair(built, "pc-page-05");
+  const posted = await built.app.request("/v1/snapshot", {
+    method: "POST",
+    headers: auth(secret),
+    body: JSON.stringify(fixture),
+  });
+  await waitForUpload(built, posted, secret);
+  const issued = (await (
+    await built.app.request("/v1/devices/me/page-link", {
+      method: "POST",
+      headers: { ...auth(secret), host: "evil.example", "x-forwarded-host": "evil.example" },
+    })
+  ).json()) as { url: string };
+  assert.match(issued.url, /^https:\/\/unbored\.test\/enter\//);
 });

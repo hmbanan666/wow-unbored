@@ -363,9 +363,9 @@ An approved device can call `GET /v1/plan` and `POST /v1/progress` only. It cann
 
 ### My page
 
-`POST {base}/v1/devices/me/page-link` with `Authorization: Bearer <device secret>` and no body ([ADR 0073](adr/0073-website-and-account-link.md)). The Device must be approved and must already have sent a Character. The answer is `{ "url", "expiresAt" }`. `url` is `{origin}/enter/{token}`: single use, 10 minutes. The origin is `UNBORED_WEB_ORIGIN`, or the request host when that is unset. A pending or revoked Device is `403`. No characters yet is `409` with `{ "error": "no_characters" }`. The shared companion token is `403`.
+`POST {base}/v1/devices/me/page-link` with `Authorization: Bearer <device secret>` and no body ([ADR 0073](adr/0073-website-and-account-link.md)). The Device must be approved and must already have sent a Character under a hashed Account key (ADR 0044); an older unhashed key is treated as no characters. The answer is `{ "url", "expiresAt" }`. `url` is `{origin}/enter/{token}`: single use, 10 minutes. The origin is `UNBORED_WEB_ORIGIN` (default `https://unbored.kosarev.space`), never a request header. A pending or revoked Device is `403`. No characters yet is `409` with `{ "error": "no_characters" }`. The shared companion token is `403`.
 
-`POST {base}/v1/page-links/redeem` with `{ "token" }` is what the site calls. One success returns `{ "sessionId", "accountId" }` and opens a session. Using it again is `410` `{ "error": "used" }`. After 10 minutes it is `410` `{ "error": "expired" }`. An unknown token is `404`.
+`POST {base}/v1/page-links/redeem` with `{ "token" }` is what the site calls. One success returns `{ "sessionId", "accountId" }` and opens a session. Using it again is `410` `{ "error": "used" }`. After 10 minutes it is `410` `{ "error": "expired" }`. An unknown token, or a link whose PC was revoked since, is `404`. Redeem is limited per player address; the site passes it as `x-forwarded-for` on the internal call. A site session lasts at most 30 days and ends with Forget or when its PC is revoked.
 
 ### Connect again
 

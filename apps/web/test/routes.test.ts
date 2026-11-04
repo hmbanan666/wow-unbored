@@ -34,7 +34,7 @@ test("player text is not stored as markdown", () => {
 });
 
 test("the catalog stores both kinds and no per-object tables", () => {
-  const sql = readFileSync(path.join(root, "apps/server/migrations/0007_web_content.sql"), "utf8");
+  const sql = readFileSync(path.join(root, "apps/server/migrations/0008_web_content.sql"), "utf8");
   assert.match(sql, /kind IN \('path', 'collection'\)/);
   assert.equal(/CREATE TABLE content\.(items|mounts|npcs|achievements)\b/.test(sql), false);
 });
