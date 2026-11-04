@@ -221,6 +221,10 @@ _Avoid_: wiki, cache, catalog (that is the vetted addon list).
 A curated set of goals for one piece of content, in a tier (Basic, Deeper, Complete), shown as done of total. Russian: Путь (ADR 0072).
 _Avoid_: quest line, guide, checklist, roadmap.
 
+**Collection**
+A Path of kind `collection`: an authored, ordered top list of Game DB targets, such as "Top 50 mounts to get first", with progress X / Y. Russian: Подборка (ADR 0072).
+_Avoid_: database, wiki, list of all mounts.
+
 **Topic**
 A group of goals inside a Path, such as mounts, achievements or PvP.
 _Avoid_: branch, category, tag.
