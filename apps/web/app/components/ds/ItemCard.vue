@@ -1,6 +1,10 @@
 <script setup lang="ts">
+import type { PageMedia } from "@unbored/contracts/game-media";
+import type { CatalogItem } from "#shared/catalog";
 /** One pick of a Collection: rank, name, chips, why it is worth it, how to get it, source. */
 defineProps<{
+  item?: CatalogItem;
+  media?: PageMedia[string];
   rank: number;
   name: string;
   chips: { label: string; tone?: "neutral" | "gold" | "chance" }[];
@@ -12,9 +16,28 @@ defineProps<{
 
 <template>
   <article class="ds-item">
+    <DsGameArt
+      v-if="media?.render && (item?.kind === 'mount' || item?.kind === 'pet')"
+      class="ds-item__render"
+      :media="media.render"
+      :alt="media.render.alt"
+      render
+      desktop-only
+      :max-width="320"
+      sizes="160px"
+    />
     <header class="ds-item__head">
       <span class="ds-item__rank" aria-hidden="true">{{ rank }}</span>
-      <DsHeading :level="3" tag="h2">{{ name }}</DsHeading>
+      <DsHeading :level="3" tag="h2">
+        <DsTooltip v-if="item">
+          <DsGameIcon class="ds-item__icon" :kind="item.kind" :media="media?.icon" size="md" />
+          <span>{{ name }}</span>
+          <template #panel="{ open }"
+            ><DsGameTooltip :name="name" :kind="item.kind" :media="media" :item="item" :open="open"
+          /></template>
+        </DsTooltip>
+        <template v-else>{{ name }}</template>
+      </DsHeading>
     </header>
     <DsChipRow>
       <DsChip v-for="chip in chips" :key="chip.label" :tone="chip.tone">{{ chip.label }}</DsChip>
@@ -35,6 +58,7 @@ defineProps<{
 
 <style scoped>
 .ds-item {
+  position: relative;
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-4) var(--space-3);
@@ -50,6 +74,33 @@ defineProps<{
   }
 }
 
+.ds-item__render {
+  display: none;
+}
+@media (min-width: 768px) {
+  .ds-item:has(.ds-item__render) {
+    padding-right: calc(160px + var(--space-6));
+  }
+  .ds-item__render {
+    display: block;
+    position: absolute;
+    right: var(--space-4);
+    top: var(--space-5);
+    width: 160px;
+    height: 120px;
+  }
+  .ds-item__render :deep(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .ds-item__icon {
+    --game-icon-size: 56px;
+  }
+}
+.ds-item__head > :deep(.ds-heading) {
+  min-width: 0;
+}
 .ds-item__head {
   display: flex;
   align-items: center;

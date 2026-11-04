@@ -8,6 +8,7 @@ const NuxtLink = resolveComponent("NuxtLink");
 <template>
   <component :is="to ? NuxtLink : 'div'" :to="to" class="ds-card" :class="{ 'ds-card--link': to }">
     <span v-if="eyebrow" class="ds-card__eyebrow">{{ eyebrow }}</span>
+    <slot name="visual" />
     <strong class="ds-card__title">{{ title }}</strong>
     <span v-if="text" class="ds-card__text">{{ text }}</span>
     <slot />

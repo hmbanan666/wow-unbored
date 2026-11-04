@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { articleImage, heroArt } from "#shared/game-media";
 import type { PublicPage } from "#shared/catalog";
 import { CATALOG_SECTION, PUBLIC_COPY, TIER_LABEL } from "#shared/catalog";
 
@@ -60,6 +61,7 @@ if (props.page && props.page.kind !== "page") {
   useSchemaOrg([
     defineArticle({
       headline: page.title,
+      image: articleImage(page, useSiteConfig().url || "https://playunbored.com"),
       description: page.description,
       ...(page.updatedAt ? { dateModified: new Date(page.updatedAt * 1000).toISOString() } : {}),
     }),
@@ -81,7 +83,9 @@ if (props.page && props.page.kind !== "page") {
 </script>
 
 <template>
-  <DsPage :width="page && page.kind === 'page' ? 'wide' : 'narrow'">
+  <DsPage
+    :width="page && (page.kind === 'page' || heroArt(page.hero, page.media)) ? 'wide' : 'narrow'"
+  >
     <DsEmptyState
       v-if="!page"
       :level="1"
@@ -90,30 +94,39 @@ if (props.page && props.page.kind !== "page") {
     />
     <template v-else-if="page.kind === 'page'">
       <DsHero :title="page.headline">
-        <EntryBody :blocks="page.blocks" />
+        <EntryBody :blocks="page.blocks" :media="page.media" :items="page.items" />
       </DsHero>
       <slot />
     </template>
     <template v-else>
-      <DsPageHeader
-        :trail="trail"
-        :eyebrow="eyebrow"
-        :title="page.headline"
-        :lead="page.description"
-        :meta="meta"
-      />
-      <EntryBody :blocks="page.blocks" />
+      <DsGameHeader :page="page">
+        <DsPageHeader
+          :trail="trail"
+          :eyebrow="eyebrow"
+          :title="page.headline"
+          :lead="page.description"
+          :meta="meta"
+        />
+      </DsGameHeader>
+      <EntryBody :blocks="page.blocks" :media="page.media" :items="page.items" />
       <PersonalPaths v-if="page.kind === 'path' || page.kind === 'collection'" :page="page">
         <template #default="{ progress, copy }">
-          <CollectionItems
+          <LazyCollectionItems
+            :hydrate-on-visible="{ rootMargin: '200px' }"
             v-if="page.items.length"
             :items="page.items"
+            :media="page.media"
             :progress="progress"
             :copy="copy"
           />
         </template>
       </PersonalPaths>
-      <CollectionItems v-else-if="page.items.length" :items="page.items" />
+      <LazyCollectionItems
+        :hydrate-on-visible="{ rootMargin: '200px' }"
+        v-else-if="page.items.length"
+        :items="page.items"
+        :media="page.media"
+      />
       <DsSection
         divided
         :title="page.kind === 'guide' ? 'Let Bory pick the next step' : 'Track this list in game'"

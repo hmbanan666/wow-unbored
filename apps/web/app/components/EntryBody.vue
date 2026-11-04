@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { gameText } from "#shared/game-media";
+import type { PageMedia } from "@unbored/contracts/game-media";
+import type { CatalogItem } from "#shared/catalog";
 import type { Block } from "#shared/blocks";
 
-const props = defineProps<{ blocks: Block[] }>();
+const props = defineProps<{ blocks: Block[]; media?: PageMedia; items?: CatalogItem[] }>();
 
 type LinkBlock = Extract<Block, { type: "link" }>;
 type Part =
@@ -34,10 +37,19 @@ const parts = computed(() => {
           >{{ link.label }}</DsButton
         >
       </DsActions>
+      <DsGameFigure v-else-if="part.block.type === 'figure'" :figure="part.block" :media="media" />
       <h2 v-else-if="part.block.type === 'heading'">{{ part.block.text }}</h2>
-      <p v-else-if="part.block.type === 'paragraph'">{{ part.block.text }}</p>
+      <p v-else-if="part.block.type === 'paragraph'">
+        <DsGameRef
+          v-for="(piece, n) in gameText(part.block.text, media, items)"
+          :key="n"
+          :part="piece"
+        />
+      </p>
       <ul v-else-if="part.block.type === 'list'">
-        <li v-for="item in part.block.items" :key="item">{{ item }}</li>
+        <li v-for="item in part.block.items" :key="item">
+          <DsGameRef v-for="(piece, n) in gameText(item, media, items)" :key="n" :part="piece" />
+        </li>
       </ul>
     </template>
   </DsProse>
