@@ -12,7 +12,11 @@ const icons = computed(() =>
 
 <template>
   <div v-if="art || icons.length" class="ds-game-header" :class="{ 'ds-game-header--hero': art }">
-    <div v-if="art" class="ds-game-header__art">
+    <div
+      v-if="art"
+      class="ds-game-header__art"
+      :class="{ 'ds-game-header__art--render': art.render }"
+    >
       <DsGameArt
         :media="art.media"
         :alt="art.alt"
@@ -42,18 +46,22 @@ const icons = computed(() =>
   gap: var(--space-4);
 }
 .ds-game-header__art {
+  position: relative;
   aspect-ratio: 16 / 9;
-  padding: var(--space-2);
   border: 1px solid var(--lamp-gold-dark);
   border-radius: var(--radius-md);
   background: var(--lamp-bg);
   overflow: hidden;
 }
-.ds-game-header__art :deep(picture),
-.ds-game-header__art :deep(img) {
+.ds-game-header__art--render {
+  background: var(--render-bg);
+}
+.ds-game-header__art :deep(picture) {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  border-radius: 0;
 }
 .ds-game-header__icons {
   display: flex;

@@ -1,8 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
+import { readFileSync } from "node:fs";
 import { mount } from "@vue/test-utils";
 import { createSSRApp, h } from "vue";
 import { renderToString } from "@vue/server-renderer";
 import GameIcon from "../../app/components/ds/GameIcon.vue";
+import GameArt from "../../app/components/ds/GameArt.vue";
+import gameArtSource from "../../app/components/ds/GameArt.vue?raw";
 import type { MediaAsset } from "@unbored/contracts/game-media";
 
 export const icon: MediaAsset = {
@@ -15,6 +18,31 @@ export const icon: MediaAsset = {
     { file: "0123456789abcdef-56.webp", width: 56, height: 56, format: "webp" },
   ],
 };
+
+test("render art uses the solid Blizzard background without gradients or a vignette", () => {
+  const wrapper = mount(GameArt, { props: { media: icon, alt: icon.alt, render: true } });
+  expect(wrapper.classes()).toContain("ds-game-art--render");
+  const tokens = readFileSync("apps/web/app/assets/css/main.css", "utf8");
+  expect(tokens).toContain("--render-bg: #181818;");
+  expect(gameArtSource).toMatch(/\.ds-game-art--render\s*\{[^}]*background: var\(--render-bg\)/);
+  expect(gameArtSource).not.toMatch(/gradient\(|::after|::before/);
+  expect(wrapper.findAll("picture, img, source")).toHaveLength(4);
+});
+
+test("photos fill a reserved frame with an overridable focal point while models stay centered", () => {
+  const photo = mount(GameArt, {
+    props: { media: icon, alt: "Our view" },
+    attrs: { style: { "--game-art-position": "right 30%" } },
+  });
+  expect(photo.classes()).toContain("ds-game-art--cover");
+  expect(photo.attributes("style")).toContain("--game-art-position: right 30%");
+  expect(gameArtSource).toMatch(/aspect-ratio: var\(--game-art-ratio, 16 \/ 9\)/);
+  expect(gameArtSource).toMatch(/\.ds-game-art--cover img\s*\{[^}]*object-fit: cover/);
+  expect(gameArtSource).toContain("object-position: var(--game-art-position, center 40%)");
+  expect(gameArtSource).toMatch(
+    /\.ds-game-art--render img\s*\{[^}]*object-fit: contain;[^}]*object-position: center/,
+  );
+});
 
 describe("game icons", () => {
   test("server renders AVIF then WebP with decorative, sized lazy images", async () => {

@@ -36,6 +36,7 @@ Line heights: `--leading-tight` 1.15 (headings), `--leading-snug` 1.3, `--leadin
 | `--lamp-deep` | `#140d0a` | page edge, text on gold |
 | `--lamp-bg` | `#1e1410` | background |
 | `--lamp-glow` | `#2a1c15` | top of the radial background |
+| `--render-bg` | `#181818` | solid inside of every creature-render frame, matching Blizzard's stored background |
 | `--lamp-surface` | glow at 72% | cards |
 | `--lamp-line` / `--lamp-line-soft` | `#4a3810` | borders, dividers |
 | `--lamp-text` | `#eadbc0` | body text |
@@ -85,7 +86,7 @@ Domain components map data onto these: `PageView` (home, Collection, Path and Gu
 
 ## Checking a change
 
-Build the site and run the checks at 360, 390, 768 and 1280px with headless Chromium: no horizontal scroll, no tap target under 44px outside running text, the Menu opens and closes. Lighthouse mobile performance stays at 90 or above.
+Build the site and run the checks at 360, 390, 640, 768, 1024 and 1280px with headless Chromium: no horizontal scroll, no tap target under 44px outside running text, the Menu opens and closes. Lighthouse mobile performance stays at 90 or above.
 
 Personal Path controls use the same tokens and layout:
 
@@ -99,7 +100,11 @@ Personal Path controls use the same tokens and layout:
 
 ## Game media
 
-Game art comes from the same-origin media store (ADR 0077), with AVIF before WebP and fixed dimensions. `DsGameIcon` has 32/44/56px sizes, a gold frame and drawn kind glyphs when art is missing; names beside icons make them decorative. `DsGameArt` selects appropriately sized variants, blends creature renders into the lamp background, and defaults to lazy loading. Only the hero uses eager loading and high fetch priority. Public home, Guide, Collection and Path HTML is also gzipped when the browser accepts it, with `Vary: Accept-Encoding`; personal pages and APIs keep their existing responses.
+Game art comes from the same-origin media store (ADR 0077), with AVIF before WebP and fixed dimensions. `DsGameIcon` has 32/44/56px sizes, a gold frame and drawn kind glyphs when art is missing; names beside icons make them decorative. `DsGameArt` selects appropriately sized variants and defaults to lazy loading. Only the hero uses eager loading and high fetch priority. Public home, Guide, Collection and Path HTML is also gzipped when the browser accepts it, with `Vary: Accept-Encoding`; personal pages and APIs keep their existing responses.
+
+Photos, instance tiles and own images fill their frames with `object-fit: cover` and `object-position: center 40%`. Set `--game-art-position` on a component to override its focal point. `DsGameArt` reserves a 16:9 photo box or a 4:3 render box before loading; `--game-art-ratio` overrides this for figures. Heroes keep their own 16:9 box at every breakpoint, with both picture and image filling its inside edge to edge.
+
+Creature renders (role `render`) always use centered `object-fit: contain`, so the whole creature stays visible. Their solid background is exactly `--render-bg: #181818`, matching Blizzard's stored pixels, throughout the picture, hero frame, tooltip render box and containing panel, Collection thumbnail and render figure including its caption. No render gradient, vignette or overlay is allowed; gold frame borders remain. Existing body, muted and gold text tokens retain AA contrast on this background (muted text is about 7.3:1). These are presentation rules only; stored media and the media pipeline are unchanged.
 
 `DsTooltip` owns hover (120ms), keyboard focus, touch toggle, outside tap and Escape. Only one opens at a time. Its server-rendered text is hidden with CSS; the fixed panel is measured once on open, flips vertically, clamps to 16px viewport gutters and closes on outside scrolling or resize. Hovering the panel keeps it open. `DsGameTooltip` supplies the compact game name, kind, sources, chance/guaranteed chip and note; its 320px render mounts only while open. Trigger slots must contain only phrasing content, with no links or other controls.
 
@@ -107,4 +112,4 @@ Game art comes from the same-origin media store (ADR 0077), with AVIF before Web
 
 `DsGameHeader` puts a framed hero above the heading on phones and alongside it from 768px. Collections and Paths without a hero show the first six icons; Guides keep their existing text header. `DsGameFigure` omits missing art and otherwise renders a framed image with authored alt and optional caption. `DsGameIconStrip` shows up to five overlapping decorative icons above a catalog card's title; the card remains one real link.
 
-Run `pnpm --filter @unbored/web test` for component rendering and interaction checks, alongside the repository checks and website build. Check media-rich pages locally at 360/390/768/1280px, including tooltip placement, touch dismissal, keyboard focus, no layout shifts and no hidden tooltip image requests.
+Run `pnpm --filter @unbored/web test` for component rendering and interaction checks, alongside the repository checks and website build. Check media-rich Guide, Collection and Path pages locally at 360/390/640/768/1024/1280px with render, tile and own-image heroes, Collection rows, figures and open tooltips. Check cover fitting and focal points, solid render interiors, tooltip placement, touch dismissal, keyboard focus, no layout shifts during delayed image loading and no hidden tooltip image requests.

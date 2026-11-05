@@ -89,11 +89,6 @@ defineProps<{
     width: 160px;
     height: 120px;
   }
-  .ds-item__render :deep(img) {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
   .ds-item__icon {
     --game-icon-size: 56px;
   }
