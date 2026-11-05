@@ -43,11 +43,19 @@ const eyebrow = computed(() =>
     .filter(Boolean)
     .join(" · "),
 );
+function evidenceDate(date: string): string {
+  return new Date(date).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
 const meta = computed(() =>
   [
     updated.value ? `Updated ${updated.value}` : "",
     props.page?.asOf
-      ? `Checked against build ${props.page.asOf.build} on ${props.page.asOf.date}`
+      ? `Checked against build ${props.page.asOf.build} on ${evidenceDate(props.page.asOf.date)}`
       : props.page?.build
         ? `Checked against game build ${props.page.build}`
         : "",
@@ -157,7 +165,7 @@ if (props.page && props.page.kind !== "page") {
               <a :href="source.url" target="_blank" rel="nofollow noopener noreferrer">{{
                 source.label
               }}</a>
-              <span class="ds-meta"> — Accessed {{ source.accessed }}</span>
+              <span class="ds-meta"> · Accessed {{ evidenceDate(source.accessed) }}</span>
             </li>
           </ul></DsProse
         >

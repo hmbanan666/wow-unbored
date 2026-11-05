@@ -630,7 +630,15 @@ test("Forever guides preserve sources, build checks and callouts", () => {
   assert.equal(parseContent(collection).game, "retail");
 });
 
-test("Forever rejects retail items, inline references and every image", () => {
+test("Forever accepts own-image heroes and figures", () => {
+  const hero = { image: "0123456789abcdef", alt: "Our Forever screenshot" };
+  const blocks = [{ type: "figure", image: "fedcba9876543210", alt: "Our view" }];
+  const doc = parseContent({ ...forever, hero, blocks });
+  assert.deepEqual(doc.hero, hero);
+  assert.deepEqual(doc.blocks, blocks);
+});
+
+test("Forever rejects retail items, inline references and Blizzard images", () => {
   for (const fields of [
     { kind: "collection" },
     { kind: "path", tier: "basic" },
@@ -639,9 +647,12 @@ test("Forever rejects retail items, inline references and every image", () => {
     { items: collection.items },
     { items: {} },
     { hero: { kind: "mount", id: 6 } },
-    { hero: { image: "0123456789abcdef", alt: "Screenshot" } },
+    { hero: { kind: "pet", id: 1 } },
+    { hero: { kind: "instance", id: 1 } },
+    { hero: { image: "invalid", alt: "Screenshot" } },
+    { hero: { image: "0123456789abcdef" } },
     { blocks: [{ type: "figure", ref: { kind: "mount", id: 6 }, alt: "Horse" }] },
-    { blocks: [{ type: "figure", image: "0123456789abcdef", alt: "Screenshot" }] },
+    { blocks: [{ type: "figure", image: "invalid", alt: "Screenshot" }] },
     ...["paragraph", "heading", "callout"].map((type) => ({
       blocks: [{ type, tone: "note", text: "Try [[mount:6]]." }],
     })),
@@ -654,6 +665,33 @@ test("Forever rejects retail items, inline references and every image", () => {
       JSON.stringify(fields),
     );
 });
+
+test.skipIf(!hasPostgres)(
+  "Forever publishes own images without queuing Blizzard media",
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".forever-images-"));
+    const sql = pg("postgres")!;
+    const store = new Store(dir, { postgres: sql });
+    let queued = 0;
+    const content = new ContentStore(store.db, store.game, undefined, undefined, () => queued++);
+    const hero = { image: "0123456789abcdef", alt: "Our Forever screenshot" };
+    const blocks = [{ type: "figure", image: "fedcba9876543210", alt: "Our view" }];
+    try {
+      await content.saveDraft({ ...forever, hero, blocks });
+      const published = await content.publish("guide", forever.slug);
+      assert.equal(published.status, "published");
+      assert.equal(published.build, null);
+      assert.equal(queued, 0);
+      const saved = await content.read("guide", forever.slug);
+      assert.deepEqual(saved?.document.hero, hero);
+      assert.deepEqual(saved?.document.blocks, blocks);
+    } finally {
+      store.close();
+      await sql`DELETE FROM content.paths WHERE slug = ${forever.slug}`;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test("guide evidence and callouts have bounded fields and real calendar dates for both games", () => {
   for (const game of ["retail", "forever"]) {

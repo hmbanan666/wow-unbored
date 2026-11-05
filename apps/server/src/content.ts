@@ -179,11 +179,8 @@ export function parseContent(input: unknown): ContentDoc {
     if (kind !== "guide") problems.push("WoW Forever supports guides only");
     if (raw.items !== undefined && (!Array.isArray(raw.items) || raw.items.length))
       problems.push("WoW Forever guides cannot have items");
-    if (raw.hero !== undefined) problems.push("WoW Forever guides cannot have images");
     if (/\[\[|\]\]/.test(JSON.stringify(raw)))
       problems.push("WoW Forever guides cannot have inline game references");
-    if (Array.isArray(raw.blocks) && raw.blocks.some((block) => block?.type === "figure"))
-      problems.push("WoW Forever guides cannot have figures");
   }
   const slug =
     typeof raw.slug === "string" && raw.slug.length <= 80 && SLUG.test(raw.slug)
@@ -241,12 +238,16 @@ export function parseContent(input: unknown): ContentDoc {
 
   const hero = cleanHero(raw.hero);
   if (raw.hero !== undefined && !hero) problems.push("hero is not valid");
+  if (game === "forever" && hero && !("image" in hero))
+    problems.push("WoW Forever heroes must use own images");
   let inlineCount = 0;
   const blocks: ContentBlock[] = [];
   const rawBlocks = Array.isArray(raw.blocks) ? raw.blocks : [];
   if (rawBlocks.length > MAX_BLOCKS) problems.push(`at most ${MAX_BLOCKS} blocks`);
   rawBlocks.forEach((block, index) => {
     const row = (block ?? {}) as Record<string, unknown>;
+    if (game === "forever" && row.type === "figure" && row.ref !== undefined)
+      problems.push("WoW Forever figures must use own images");
     const lines =
       row.type === "paragraph"
         ? [row.text]

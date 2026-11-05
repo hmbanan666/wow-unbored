@@ -73,12 +73,13 @@ function catalogFrom(row: CatalogRow): PublicPage | undefined {
   const body = (row.body ?? {}) as Record<string, unknown>;
   const sources = guideSourcesSchema.safeParse(body.sources);
   const asOf = guideAsOfSchema.safeParse(body.asOf);
+  const hero = heroOf(row.body);
   return {
     game: row.game,
     ...(row.kind === "guide" && sources.success ? { sources: sources.data } : {}),
     ...(row.kind === "guide" && asOf.success ? { asOf: asOf.data } : {}),
     media: {},
-    ...(row.game === "retail" && heroOf(row.body) ? { hero: heroOf(row.body) } : {}),
+    ...(hero && (row.game === "retail" || "image" in hero) ? { hero } : {}),
     kind: row.kind,
     version: row.version,
     slug: row.slug,
@@ -116,7 +117,7 @@ export async function readPublished(
     FROM content.paths
     WHERE kind = ${kind} AND slug = ${slug} AND locale = 'en' AND status = 'published'`;
   const page = row ? catalogFrom(row) : undefined;
-  if (page && page.game === "retail") page.media = await readPageMedia(sql, page);
+  if (page) page.media = await readPageMedia(sql, page);
   return page;
 }
 

@@ -1,4 +1,5 @@
 import { pageMediaRefs, type PageMedia, type MediaAsset } from "@unbored/contracts/game-media";
+import type { Game } from "@unbored/contracts/guide";
 import type { Sql } from "./db.ts";
 
 type Row = MediaAsset & {
@@ -12,14 +13,15 @@ type Row = MediaAsset & {
 /** All item, inline, hero and figure assets in one query, including own images. */
 export async function readPageMedia(
   sql: Sql,
-  page: Parameters<typeof pageMediaRefs>[0],
+  page: Parameters<typeof pageMediaRefs>[0] & { game?: Game },
 ): Promise<PageMedia> {
   const { refs, images } = pageMediaRefs(page);
-  if (!refs.length && !images.length) return {};
+  const gameRefs = page.game === "forever" ? [] : refs.map((ref) => `${ref.kind}:${ref.id}`);
+  if (!gameRefs.length && !images.length) return {};
   const rows = await sql<Row[]>`
     SELECT ref_kind, ref_id, role, source, hash, width, height, variants, alt, name
     FROM content.media
-    WHERE (source = 'blizzard' AND (ref_kind || ':' || ref_id::text) = ANY(${refs.map((ref) => `${ref.kind}:${ref.id}`)}::text[]))
+    WHERE (source = 'blizzard' AND (ref_kind || ':' || ref_id::text) = ANY(${gameRefs}::text[]))
        OR (source = 'own' AND hash = ANY(${images}::text[]))`;
   const out: PageMedia = {};
   for (const row of rows) {

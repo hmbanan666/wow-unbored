@@ -332,7 +332,8 @@ entry point for production content imports; never insert content with hand SQL.
 Migration `0022_content_game.sql` adds `content.paths.game`, `retail` by default or
 `forever`, on each version. Slug identity remains `(kind, slug, locale)`, so the same
 Guide slug cannot publish two games at once. Retail validation is unchanged; Forever
-supports text Guides only and does not read the Game DB or queue media. Its stored
+supports Guides with text and own images only, and does not read the Game DB or queue
+Blizzard media sync. Its stored
 validation `build` is null; `asOf.build` is an editorial claim about the Forever build,
 not a Retail validation result. Existing Retail content and hashes need no rewrite.
 
@@ -368,7 +369,12 @@ an actual checked source before publication):
 ```
 
 Omitted `items` and `topics` become empty lists; `tier` and `prerequisite` become
-null. Forever rejects nonempty items, any hero/figure and inline game references.
+null. Forever allows `hero: { image: '<16 lowercase hex>', alt }` and figure blocks
+with `image: '<16 lowercase hex>'` and `alt`, using own images imported with
+`apps/server/scripts/media.ts add-image`. It rejects nonempty items, Blizzard heroes
+(`kind`, `id`), figure `ref` and inline game references. The page API returns the
+referenced own images as `image:<hash>` media entries; heroes use the same CSS cover
+fitting as Retail, with no additional image processing.
 Publishing rechecks the saved document; a change to its sources or build note creates
 an ordinary new draft version. Sources are plain external links, never fetched by
 saving, publishing or rendering a Guide.

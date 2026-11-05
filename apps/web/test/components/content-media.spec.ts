@@ -223,6 +223,31 @@ test.each(["guide", "collection", "path"] as const)(
   },
 );
 
+test.each(["retail", "forever"] as const)("%s guide own images use cover fitting", (game) => {
+  const wrapper = mount(PageView, {
+    props: {
+      page: {
+        ...page,
+        game,
+        items: [],
+        hero: { image: "0123456789abcdef", alt: "Our screenshot" },
+        blocks: [{ type: "figure", image: "0123456789abcdef", alt: "Our view" }],
+        media: { "image:0123456789abcdef": { image: asset } },
+      },
+    },
+  });
+  expect(wrapper.get(".ds-game-header picture").classes()).toContain("ds-game-art--cover");
+  expect(wrapper.get(".ds-game-header img").attributes()).toMatchObject({
+    alt: "Our screenshot",
+    loading: "eager",
+  });
+  expect(wrapper.get("figure picture").classes()).toContain("ds-game-art--cover");
+  expect(wrapper.get("figure img").attributes()).toMatchObject({
+    alt: "Our view",
+    loading: "lazy",
+  });
+});
+
 test("tile and own-image figures use cover without render backgrounds", () => {
   const media = { "instance:42": { tile: asset }, "image:0123456789abcdef": { image: asset } };
   const wrapper = mount(EntryBody, {
@@ -278,14 +303,15 @@ test("Forever guide shows its own trail, evidence, badge and Article game withou
   expect(wrapper.get('nav[aria-label="Breadcrumb"]').text()).toContain("WoW Forever");
   expect(wrapper.get('nav[aria-label="Breadcrumb"] a[href="/forever"]').exists()).toBe(true);
   expect(wrapper.find(".ds-chip").text()).toBe("WoW Forever");
-  expect(wrapper.text()).toContain("Checked against build 1.60.1.x on 2026-11-05");
+  expect(wrapper.text()).toContain("Checked against build 1.60.1.x on 5 Nov 2026");
   expect(wrapper.text()).toContain("Launch build.");
   expect(wrapper.text()).toContain("Rankings are early forecasts.");
   expect(wrapper.get('a[href="https://example.com/launch"]').attributes()).toMatchObject({
     target: "_blank",
     rel: "nofollow noopener noreferrer",
   });
-  expect(wrapper.text()).toContain("Accessed 2026-11-05");
+  expect(wrapper.text()).toContain(" · Accessed 5 Nov 2026");
+  expect(wrapper.text()).not.toContain("\u2014");
   expect(wrapper.findComponent({ name: "PersonalPaths" }).exists()).toBe(false);
   expect(wrapper.find('a[href="/install"]').exists()).toBe(false);
   expect(wrapper.findAll("img, picture")).toHaveLength(0);

@@ -102,6 +102,20 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
     assert.deepEqual(guide?.blocks, forever.blocks);
     assert.deepEqual(guide?.media, {});
     assert.equal(guide?.build, null);
+    const hero = { image: "fedcba9876543210", alt: "Our Forever screenshot" };
+    const figure = { type: "figure", image: "abcdef0123456789", alt: "Our Forever view" };
+    await sql`INSERT INTO content.media (ref_kind, role, source, hash, width, height, variants, alt, fetched_at, checked_at)
+      VALUES ('screenshot', 'image', 'own', 'abcdef0123456789', 56, 56, ${JSON.stringify(variants)}::jsonb, 'Our Forever view', 1, 1)`;
+    await sql`UPDATE content.paths SET body = ${JSON.stringify({ ...forever, hero, blocks: [...forever.blocks, figure] })}::jsonb WHERE slug = 'forever-start'`;
+    const illustrated = await readPublished(sql, "guide", "forever-start");
+    assert.deepEqual(illustrated?.hero, hero);
+    assert.deepEqual(illustrated?.blocks.at(-1), figure);
+    assert.deepEqual(Object.keys(illustrated!.media).sort(), [
+      "image:abcdef0123456789",
+      "image:fedcba9876543210",
+    ]);
+    assert.deepEqual(illustrated?.media["image:fedcba9876543210"].image?.variants, variants);
+    assert.equal(illustrated?.media["image:abcdef0123456789"].image?.alt, "Our Forever view");
     assert.equal((await readPublished(sql, "guide", "retail-start"))?.game, "retail");
     assert.deepEqual(
       (await listPublished(sql, "guide", "forever")).map((p) => p.href),
@@ -114,6 +128,17 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
     assert.equal((await listPublished(sql, "guide")).length, 2);
     assert.equal((await listPublished(sql, "guide", "forever"))[0].game, "forever");
     vi.stubEnv("DATABASE_URL", url.toString());
+    vi.stubGlobal("defineEventHandler", (handler: unknown) => handler);
+    vi.stubGlobal("getRouterParam", (_event: unknown, key: string) =>
+      key === "kind" ? "guide" : "forever-start",
+    );
+    const { default: pageApi } = await import("../server/api/catalog/[kind]/[slug].get.ts");
+    assert.deepEqual(await (pageApi as unknown as () => Promise<unknown>)(), illustrated);
+
+    // Even an old body with Retail references must not expose Blizzard media for Forever.
+    await sql`UPDATE content.paths SET body = ${JSON.stringify({ ...body, hero, blocks: [...body.blocks, figure] })}::jsonb WHERE slug = 'forever-start'`;
+    const ownOnly = await readPublished(sql, "guide", "forever-start");
+    assert.deepEqual(ownOnly?.media, illustrated?.media);
     vi.stubGlobal("defineSitemapEventHandler", (handler: unknown) => handler);
     const { default: sitemap } = await import("../server/api/__sitemap__/urls.ts");
     const locations = (await (sitemap as unknown as () => Promise<{ loc: string }[]>)()).map(

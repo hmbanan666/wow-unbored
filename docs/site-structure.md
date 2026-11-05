@@ -33,7 +33,7 @@ Public pages are English, server-rendered, with one H1, a unique title and descr
 
 ## Content
 
-All texts live in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and are written through owner tools that check Retail ids against the Game DB. Migration 0022 adds a `game` column with default `retail`; existing rows need no content rewrite. WoW Forever never reads or validates against the Retail Game DB or media store (ADR 0079). No content in repo files.
+All texts live in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and are written through owner tools that check Retail ids against the Game DB. Migration 0022 adds a `game` column with default `retail`; existing rows need no content rewrite. WoW Forever never reads or validates against the Retail Game DB and reads only own images from the media store (ADR 0079). No content in repo files.
 
 ## Guides
 
@@ -41,8 +41,8 @@ A Guide is the third kind in `content.paths` (`kind = 'guide'`), authored throug
 
 Retail Guides may have items, inline game references, heroes and figures under the Collection and media rules. Every Retail game fact comes from the Game DB build it was checked against; anything that cannot be checked is left out. A Retail Guide links to at least one Collection, and the Collections it points at link back.
 
-WoW Forever supports Guides only, with no items, inline game references, heroes or figures. Facts are checked manually against Forever sources and its own build, never Retail ids. `/forever` lists only published Forever Guides; `/guides` lists only Retail Guides and links to `/forever`. Forever pages have a WoW Forever badge, no signed-in progress controls and no addon installation prompt.
+WoW Forever supports Guides only, with own-image heroes and figures imported through `scripts/media.ts add-image`. Items, inline game references, Blizzard heroes (`kind`, `id`) and figure `ref` are rejected. Publishing never queues Blizzard media sync; the page API returns referenced `image:<hash>` entries, and own-image heroes use the same CSS cover fitting as Retail without additional image processing. Facts are checked manually against Forever sources and its own build, never Retail ids. `/forever` lists only published Forever Guides; `/guides` lists only Retail Guides and links to `/forever`. Forever pages have a WoW Forever badge, no signed-in progress controls and no addon installation prompt.
 
-Both Games may carry `sources`: up to 20 `{label, url, accessed}` entries (label up to 120 characters, absolute HTTPS URL, real `YYYY-MM-DD` accessed date), rendered at the end under Sources. Links open in a new tab with `rel="nofollow noopener noreferrer"`. Optional `asOf: {date, build, note?}` records when facts were checked, with build text up to 60 and note up to 200 characters; the checked build/date line appears near the top. Evidence is versioned with the guide and does not replace Retail validation. No Forever images are supported yet.
+Both Games may carry `sources`: up to 20 `{label, url, accessed}` entries (label up to 120 characters, absolute HTTPS URL, real `YYYY-MM-DD` accessed date), rendered at the end under Sources. Links open in a new tab with `rel="nofollow noopener noreferrer"`, followed by `· Accessed 5 Nov 2026`. Optional `asOf: {date, build, note?}` records when facts were checked, with build text up to 60 and note up to 200 characters; the checked build/date line appears near the top with the same English date format. Evidence is versioned with the guide and does not replace Retail validation.
 
 Signed-in additions to `/paths`, `/paths/<slug>` and `/collections/<slug>` load after mounting: a Character switcher, progress, and (on detail pages) active Path selection with replacement confirmation. These additions never enter public SSR HTML or shared caches; no new public URLs are introduced.
