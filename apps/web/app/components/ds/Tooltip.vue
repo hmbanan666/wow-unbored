@@ -176,4 +176,7 @@ button.ds-tooltip__trigger {
   visibility: visible;
   pointer-events: auto;
 }
+.ds-tooltip__panel:has(.ds-game-tooltip__art) {
+  background: var(--render-bg);
+}
 </style>

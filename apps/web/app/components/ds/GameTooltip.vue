@@ -46,12 +46,11 @@ defineProps<{
   place-items: center;
   aspect-ratio: 4 / 3;
   overflow: hidden;
+  background: var(--render-bg);
 }
-.ds-game-tooltip__art :deep(picture),
-.ds-game-tooltip__art :deep(img) {
+.ds-game-tooltip__art :deep(picture) {
   width: 100%;
   height: 100%;
-  object-fit: contain;
 }
 .ds-game-tooltip__name {
   color: var(--lamp-gold-light);

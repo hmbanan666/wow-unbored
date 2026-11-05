@@ -1,18 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, utimes } from "node:fs/promises";
+import { copyFile, mkdtemp, rm, readdir, utimes } from "node:fs/promises";
 import sharp from "sharp";
 import { test } from "vite-plus/test";
 import { hasPostgres, testDatabase } from "./postgres-db.ts";
 import { PostgresDb } from "../src/db.ts";
 import { MediaResolver } from "../src/media.ts";
 import { MediaStore } from "../src/media-store.ts";
+import { MEDIA_PIPELINE } from "../src/media-files.ts";
 
 test.skipIf(!hasPostgres)(
   "media sync deduplicates sources, refresh deletes missing art, own images survive and gc observes grace",
   async () => {
     const database = await testDatabase();
     const dir = await mkdtemp(`${import.meta.dirname}/.media-store-`);
-    const bytes = await sharp({ create: { width: 56, height: 56, channels: 3, background: "red" } })
+    const bytes = await sharp({
+      create: { width: 100, height: 100, channels: 3, background: "red" },
+    })
       .png()
       .toBuffer();
     let downloads = 0;
@@ -50,6 +53,9 @@ test.skipIf(!hasPostgres)(
       assert.equal(rows[0].alt, "First, a World of Warcraft item");
       const own = await store.addImage(bytes, "screenshot", "Our screenshot");
       assert.match(own, /^[0-9a-f]{16}$/);
+      const [ownRow] =
+        await database.sql`SELECT pipeline_version FROM content.media WHERE source = 'own'`;
+      assert.equal(ownRow.pipeline_version, MEDIA_PIPELINE);
       now += 26 * 86400;
       missing = true;
       await store.refresh();
@@ -64,7 +70,7 @@ test.skipIf(!hasPostgres)(
       assert.equal(await store.gc(), 0);
       for (const file of await readdir(dir)) await utimes(`${dir}/${file}`, 1, 1);
       assert.equal(await store.gc(), 2);
-      assert.equal((await readdir(dir)).length, 4);
+      assert.equal((await readdir(dir)).length, 2);
     } finally {
       await store.stop();
       await database.drop();
@@ -199,6 +205,78 @@ test.skipIf(!hasPostgres)(
       now += 5 * 86400;
       await store.refresh();
       assert.equal((await database.sql`SELECT * FROM content.media`).length, 0);
+    } finally {
+      await store.stop();
+      await database.drop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(!hasPostgres)(
+  "sync replaces fresh legacy conversions, reuses only current files and leaves old files for gc",
+  async () => {
+    const database = await testDatabase();
+    const dir = await mkdtemp(`${import.meta.dirname}/.media-pipeline-`);
+    const bytes = await sharp({
+      create: { width: 600, height: 600, channels: 3, background: "#181818" },
+    })
+      .png()
+      .toBuffer();
+    let downloads = 0;
+    const fake: typeof fetch = async (url) => {
+      if (String(url).includes("api.blizzard.com"))
+        return Response.json({
+          assets: [{ key: "zoom", value: "https://render.worldofwarcraft.com/eu/npcs/test.jpg" }],
+        });
+      downloads++;
+      return new Response(bytes);
+    };
+    const store = new MediaStore(
+      new PostgresDb(database.sql),
+      new MediaResolver("eu", { accessToken: async () => "test" }, fake),
+      dir,
+      fake,
+      () => 2_000_000_000,
+    );
+    try {
+      const items = [
+        { kind: "mount", id: 1, name: "First", media: { display: 99 } },
+        { kind: "mount", id: 2, name: "Second", media: { display: 99 } },
+      ];
+      await store.syncPage({ items });
+      assert.equal(downloads, 1);
+      const [current] = await database.sql`SELECT * FROM content.media LIMIT 1`;
+      const legacyFiles = [];
+      for (const variant of current.variants) {
+        const file = variant.file.replace(current.hash, "1111111111111111");
+        await copyFile(`${dir}/${variant.file}`, `${dir}/${file}`);
+        await utimes(`${dir}/${file}`, 1, 1);
+        legacyFiles.push({ ...variant, file });
+      }
+      await database.sql`UPDATE content.media SET pipeline_version = CASE WHEN ref_id = 1 THEN NULL ELSE 1 END,
+        hash = '1111111111111111', variants = ${database.sql.json(legacyFiles)}`;
+      await store.syncPage({ items: [items[0]] });
+      assert.equal(downloads, 2, "fresh legacy rows cannot supply cached conversions");
+      let rows = await database.sql`SELECT * FROM content.media ORDER BY ref_id`;
+      assert.equal(rows[0].pipeline_version, MEDIA_PIPELINE);
+      assert.equal(rows[1].pipeline_version, 1);
+      // The unscoped command also upgrades stored art no published page currently references.
+      await store.syncPublished();
+      assert.equal(downloads, 2, "the second reference reuses the new conversion");
+      rows = await database.sql`SELECT * FROM content.media ORDER BY ref_id`;
+      for (const row of rows) {
+        assert.equal(row.pipeline_version, MEDIA_PIPELINE);
+        assert.equal(row.hash, current.hash);
+        assert.equal(row.width, 600);
+        assert.equal(row.height, 600);
+        assert.deepEqual(row.variants, current.variants);
+      }
+      await store.syncPage({ items });
+      assert.equal(downloads, 2, "current fresh rows need no download");
+      for (const { file } of legacyFiles) assert.ok((await readdir(dir)).includes(file));
+      assert.equal(await store.gc(), legacyFiles.length);
+      for (const { file } of legacyFiles) assert.ok(!(await readdir(dir)).includes(file));
     } finally {
       await store.stop();
       await database.drop();

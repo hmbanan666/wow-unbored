@@ -32,7 +32,11 @@ const blank =
 </script>
 
 <template>
-  <picture v-if="fallback" class="ds-game-art" :class="{ 'ds-game-art--render': render }">
+  <picture
+    v-if="fallback"
+    class="ds-game-art"
+    :class="render ? 'ds-game-art--render' : 'ds-game-art--cover'"
+  >
     <source
       v-if="srcset('avif')"
       type="image/avif"
@@ -61,27 +65,31 @@ const blank =
 
 <style scoped>
 .ds-game-art {
+  position: relative;
   display: block;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: var(--game-art-ratio, 16 / 9);
   overflow: hidden;
   border-radius: var(--radius-sm);
 }
 .ds-game-art img {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
 }
+.ds-game-art--cover img {
+  object-fit: cover;
+  object-position: var(--game-art-position, center 40%);
+}
 .ds-game-art--render {
-  position: relative;
-  background: radial-gradient(ellipse at 50% 55%, var(--lamp-glow), var(--lamp-bg) 72%);
+  aspect-ratio: var(--game-art-ratio, 4 / 3);
+  background: var(--render-bg);
 }
 .ds-game-art--render img {
   object-fit: contain;
-}
-.ds-game-art--render::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(ellipse, transparent 45%, var(--lamp-bg) 85%);
+  object-position: center;
 }
 </style>

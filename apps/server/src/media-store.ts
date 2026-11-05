@@ -1,7 +1,7 @@
 import { pageMediaRefs, type MediaRequest, type MediaVariant } from "@unbored/contracts/game-media";
 import type { Db } from "./db.ts";
 import { MediaMissing, MediaResolver, downloadMedia, type MediaRole } from "./media.ts";
-import { collectMediaFiles, convertMedia, mediaDirectory } from "./media-files.ts";
+import { collectMediaFiles, convertMedia, mediaDirectory, MEDIA_PIPELINE } from "./media-files.ts";
 
 type PageBody = Parameters<typeof pageMediaRefs>[0];
 type AssetRow = {
@@ -18,6 +18,7 @@ type AssetRow = {
   overrides: MediaRequest["media"];
   fetched_at: number;
   checked_at: number;
+  pipeline_version: number | null;
 };
 const DAY = 86_400;
 const LABEL = {
@@ -125,6 +126,7 @@ export class MediaStore {
     if (!slug || slug === "home")
       for (const page of await this.db.all<{ body: PageBody }>("SELECT body FROM web.pages"))
         await this.syncPage(page.body);
+    if (!slug) await this.refresh();
   }
   async syncPage(body: PageBody) {
     for (const ref of pageMediaRefs(body).refs) {
@@ -149,6 +151,7 @@ export class MediaStore {
       if (
         !refresh &&
         existing &&
+        existing.pipeline_version === MEDIA_PIPELINE &&
         existing.checked_at > this.now() - 25 * DAY &&
         existing.source_url === asset.url &&
         existing.name === asset.name &&
@@ -157,9 +160,10 @@ export class MediaStore {
         continue;
       // Reuse a fresh conversion of the same source, including another reference's icon.
       const cached = await this.db.get<AssetRow>(
-        "SELECT * FROM content.media WHERE source = 'blizzard' AND source_url = ? AND role = ? AND fetched_at > ? LIMIT 1",
+        "SELECT * FROM content.media WHERE source = 'blizzard' AND source_url = ? AND role = ? AND pipeline_version = ? AND fetched_at > ? LIMIT 1",
         asset.url,
         asset.role,
+        MEDIA_PIPELINE,
         this.now() - 25 * DAY,
       );
       let converted;
@@ -188,11 +192,12 @@ export class MediaStore {
         ? `${asset.name}, a World of Warcraft ${label}`
         : `World of Warcraft ${label}`;
       await this.db.run(
-        `INSERT INTO content.media (ref_kind, ref_id, role, source, source_url, hash, width, height, variants, name, alt, overrides, fetched_at, checked_at)
-        VALUES (?, ?, ?, 'blizzard', ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, CAST(? AS jsonb), ?, ?)
+        `INSERT INTO content.media (ref_kind, ref_id, role, source, source_url, hash, width, height, variants, name, alt, overrides, fetched_at, checked_at, pipeline_version)
+        VALUES (?, ?, ?, 'blizzard', ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, CAST(? AS jsonb), ?, ?, ?)
         ON CONFLICT (ref_kind, ref_id, role) WHERE source = 'blizzard' DO UPDATE SET source_url = excluded.source_url, hash = excluded.hash,
         width = excluded.width, height = excluded.height, variants = excluded.variants, name = excluded.name, alt = excluded.alt,
-        overrides = excluded.overrides, fetched_at = excluded.fetched_at, checked_at = excluded.checked_at`,
+        overrides = excluded.overrides, fetched_at = excluded.fetched_at, checked_at = excluded.checked_at,
+        pipeline_version = excluded.pipeline_version`,
         ref.kind,
         ref.id,
         asset.role,
@@ -206,6 +211,7 @@ export class MediaStore {
         JSON.stringify(ref.media ?? {}),
         cached?.fetched_at ?? this.now(),
         this.now(),
+        MEDIA_PIPELINE,
       );
     }
     if (refresh) {
@@ -224,9 +230,10 @@ export class MediaStore {
     let after = 0;
     while (!this.stopped) {
       const rows = await this.db.all<AssetRow>(
-        "SELECT * FROM content.media WHERE source = 'blizzard' AND (checked_at < ? OR fetched_at < ?) AND id > ? ORDER BY id LIMIT 20",
+        "SELECT * FROM content.media WHERE source = 'blizzard' AND (checked_at < ? OR fetched_at < ? OR pipeline_version IS DISTINCT FROM ?) AND id > ? ORDER BY id LIMIT 20",
         this.now() - 25 * DAY,
         this.now() - 25 * DAY,
+        MEDIA_PIPELINE,
         after,
       );
       if (!rows.length) break;
@@ -264,8 +271,8 @@ export class MediaStore {
       throw new Error("An image needs a ref-kind and alt text");
     const asset = await convertMedia(bytes, "image", this.directory);
     await this.db.run(
-      `INSERT INTO content.media (ref_kind, role, source, hash, width, height, variants, alt, fetched_at, checked_at)
-      VALUES (?, 'image', 'own', ?, ?, ?, CAST(? AS jsonb), ?, ?, ?)
+      `INSERT INTO content.media (ref_kind, role, source, hash, width, height, variants, alt, fetched_at, checked_at, pipeline_version)
+      VALUES (?, 'image', 'own', ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?)
       ON CONFLICT (hash, role) WHERE source = 'own' DO UPDATE SET alt = excluded.alt, ref_kind = excluded.ref_kind`,
       refKind,
       asset.hash,
@@ -275,6 +282,7 @@ export class MediaStore {
       alt.trim(),
       this.now(),
       this.now(),
+      MEDIA_PIPELINE,
     );
     return asset.hash;
   }

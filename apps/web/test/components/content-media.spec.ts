@@ -4,17 +4,21 @@ import EntryBody from "../../app/components/EntryBody.vue";
 import PageView from "../../app/components/PageView.vue";
 import CatalogCard from "../../app/components/CatalogCard.vue";
 import CollectionItems from "../../app/components/CollectionItems.vue";
+import gameHeaderSource from "../../app/components/ds/GameHeader.vue?raw";
+import gameFigureSource from "../../app/components/ds/GameFigure.vue?raw";
+import gameTooltipSource from "../../app/components/ds/GameTooltip.vue?raw";
+import tooltipSource from "../../app/components/ds/Tooltip.vue?raw";
 import { PATH_COPY } from "../../shared/personal-paths";
 import type { PublicPage } from "../../shared/catalog";
 
 const asset = {
   name: "Golden Yak",
   alt: "A golden yak",
-  width: 320,
-  height: 240,
+  width: 600,
+  height: 600,
   variants: [
-    { file: "0123456789abcdef-320.webp", width: 320, height: 240, format: "webp" as const },
-    { file: "0123456789abcdef-640.webp", width: 640, height: 480, format: "webp" as const },
+    { file: "0123456789abcdef-320.webp", width: 320, height: 320, format: "webp" as const },
+    { file: "0123456789abcdef-600.webp", width: 600, height: 600, format: "webp" as const },
   ],
 };
 const icon = {
@@ -67,7 +71,18 @@ test("paragraph/list references expose names and details without links or closed
   expect(wrapper.html()).not.toContain("320.webp");
   await wrapper.get("button").trigger("click");
   expect(wrapper.html()).toContain("320.webp");
-  expect(wrapper.html()).not.toContain("640.webp");
+  expect(wrapper.html()).not.toContain("600.webp");
+  expect(wrapper.get(".ds-game-tooltip__art img").attributes()).toMatchObject({
+    width: "600",
+    height: "600",
+  });
+  expect(wrapper.get(".ds-game-tooltip__art picture").classes()).toContain("ds-game-art--render");
+  expect(gameTooltipSource).toMatch(
+    /\.ds-game-tooltip__art\s*\{[^}]*background: var\(--render-bg\)/,
+  );
+  expect(tooltipSource).toMatch(
+    /\.ds-tooltip__panel:has\(\.ds-game-tooltip__art\)\s*\{[^}]*background: var\(--render-bg\)/,
+  );
 });
 test("figures have alt, caption and lazy pictures; absent media leaves no figure", () => {
   const blocks = [
@@ -82,6 +97,13 @@ test("figures have alt, caption and lazy pictures; absent media leaves no figure
   expect(wrapper.get("figure img").attributes("alt")).toBe("Yak at the summit");
   expect(wrapper.get("figure img").attributes("loading")).toBe("lazy");
   expect(wrapper.get("figcaption").text()).toBe("A good companion.");
+  expect(wrapper.get("figure").classes()).toContain("ds-game-figure--render");
+  expect(wrapper.get("figure picture").classes()).toContain("ds-game-art--render");
+  expect(gameFigureSource).toMatch(
+    /\.ds-game-figure--render\s*\{[^}]*background: var\(--render-bg\)/,
+  );
+  // Prose uses the same spacing once its client styles load.
+  expect(gameFigureSource).toContain("margin: var(--space-4) 0;");
   expect(mount(EntryBody, { props: { blocks } }).find("figure").exists()).toBe(false);
 });
 test("hero is the only eager image; guides without media preserve heading, prose, items and CTA", () => {
@@ -149,20 +171,70 @@ test("rich item rows keep chips, source, notes, progress and lazy desktop art", 
   expect(wrapper.text()).toContain("Guaranteed");
   expect(wrapper.text()).toContain("Bring gold.");
   expect(wrapper.get("a").attributes("href")).toBe(item.url);
+  expect(wrapper.get(".ds-item__render img").attributes()).toMatchObject({
+    width: "600",
+    height: "600",
+  });
   expect(wrapper.get(".ds-item__render img").attributes("loading")).toBe("lazy");
   expect(wrapper.get(".ds-item__render source").attributes("media")).toBe("(min-width: 768px)");
+  expect(wrapper.get(".ds-item__render").classes()).toContain("ds-game-art--render");
 });
 
-test("tile and own-image heroes keep their authored alt and figures omit missing art", () => {
+test.each(["guide", "collection", "path"] as const)(
+  "%s render hero has a solid matching frame",
+  (kind) => {
+    const wrapper = mount(PageView, {
+      props: { page: { ...page, kind } },
+      global: { stubs: { PersonalPaths: true } },
+    });
+    expect(wrapper.get(".ds-game-header img").attributes()).toMatchObject({
+      width: "600",
+      height: "600",
+    });
+    expect(wrapper.get(".ds-game-header__art").classes()).toContain("ds-game-header__art--render");
+    expect(wrapper.get(".ds-game-header picture").classes()).toContain("ds-game-art--render");
+    expect(gameHeaderSource).toMatch(
+      /\.ds-game-header__art--render\s*\{[^}]*background: var\(--render-bg\)/,
+    );
+  },
+);
+
+test.each(["guide", "collection", "path"] as const)(
+  "%s tile and own-image heroes fill the frame and keep their authored alt",
+  (kind) => {
+    const media = { "instance:42": { tile: asset }, "image:0123456789abcdef": { image: asset } };
+    for (const hero of [
+      { kind: "instance" as const, id: 42, alt: "The entrance" },
+      { image: "0123456789abcdef", alt: "Our view" },
+    ]) {
+      const wrapper = mount(PageView, {
+        props: { page: { ...page, kind, media, hero } },
+        global: { stubs: { PersonalPaths: true } },
+      });
+      expect(wrapper.get(".ds-game-header img").attributes("alt")).toBe(hero.alt);
+      expect(wrapper.find(".ds-game-header .ds-game-art--render").exists()).toBe(false);
+      expect(wrapper.get(".ds-game-header picture").classes()).toContain("ds-game-art--cover");
+      expect(wrapper.get(".ds-game-header__art").classes()).not.toContain(
+        "ds-game-header__art--render",
+      );
+    }
+    expect(gameHeaderSource).not.toContain("object-fit: contain");
+  },
+);
+
+test("tile and own-image figures use cover without render backgrounds", () => {
   const media = { "instance:42": { tile: asset }, "image:0123456789abcdef": { image: asset } };
-  for (const hero of [
-    { kind: "instance" as const, id: 42, alt: "The entrance" },
-    { image: "0123456789abcdef", alt: "Our view" },
-  ]) {
-    const wrapper = mount(PageView, { props: { page: { ...page, media, hero } } });
-    expect(wrapper.get(".ds-game-header img").attributes("alt")).toBe(hero.alt);
-    expect(wrapper.find(".ds-game-header .ds-game-art--render").exists()).toBe(false);
-  }
+  const wrapper = mount(EntryBody, {
+    props: {
+      media,
+      blocks: [
+        { type: "figure", ref: { kind: "instance", id: 42 }, alt: "The entrance" },
+        { type: "figure", image: "0123456789abcdef", alt: "Our view" },
+      ],
+    },
+  });
+  expect(wrapper.findAll("figure .ds-game-art--cover")).toHaveLength(2);
+  expect(wrapper.find(".ds-game-figure--render").exists()).toBe(false);
 });
 
 test("media rows retain personal done and optional goal chips", () => {
