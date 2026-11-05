@@ -272,7 +272,7 @@ by hand and no content lives in repo files. `PUT /owner/content` saves a draft
 (a new version after a published one, the same draft otherwise; the same
 document twice changes nothing), and `POST /owner/content/<kind>/<slug>/publish`
 publishes the newest draft and retires the previous published version. Both
-use the planner bearer and check every item id, zone, achievement and cost id
+use the planner bearer and check every Retail item id, zone, achievement and cost id
 against the current Game DB build; English names must match the game's name.
 A 400 lists every problem. With `UNBORED_SERVER_URL` and `UNBORED_PLANNER_TOKEN`
 set:
@@ -326,6 +326,52 @@ version body alongside `items`; no additional migration, import or table is
 needed. Published content stays unchanged when a new draft is saved; publishing
 that draft only retires the old version. The command above remains the operator
 entry point for production content imports; never insert content with hand SQL.
+
+### Guide games and evidence
+
+Migration `0022_content_game.sql` adds `content.paths.game`, `retail` by default or
+`forever`, on each version. Slug identity remains `(kind, slug, locale)`, so the same
+Guide slug cannot publish two games at once. Retail validation is unchanged; Forever
+supports text Guides only and does not read the Game DB or queue media. Its stored
+validation `build` is null; `asOf.build` is an editorial claim about the Forever build,
+not a Retail validation result. Existing Retail content and hashes need no rewrite.
+
+`PUT /owner/content`, `save_content_draft {document}`, and the `content.ts save`
+command accept the same document. `get_content` returns `game`, `sources` and `asOf`
+inside `document`. Public `/api/catalog?kind=guide&game=retail|forever` filters by Game;
+without `game` it returns both. Public `/api/catalog/guide/<slug>` returns the Game and
+guide evidence. Sources/asOf are optional for either Game; their bounds and callout
+shape are in [site structure](site-structure.md#guides).
+
+A complete Forever guide input (the example source is a placeholder to replace with
+an actual checked source before publication):
+
+```json
+{
+  "game": "forever",
+  "kind": "guide",
+  "slug": "forever-first-steps",
+  "locale": "en",
+  "title": "First steps in WoW Forever",
+  "description": "Where to start in WoW Forever.",
+  "blocks": [
+    { "type": "heading", "text": "Getting started" },
+    { "type": "paragraph", "text": "Choose the activities you want to try first." },
+    { "type": "callout", "tone": "forecast", "text": "Rankings are early forecasts." },
+    { "type": "link", "label": "WoW Forever guides", "href": "/forever" }
+  ],
+  "sources": [
+    { "label": "Launch notes", "url": "https://example.com/launch", "accessed": "2026-11-05" }
+  ],
+  "asOf": { "date": "2026-11-05", "build": "1.60.1.x", "note": "Launch build." }
+}
+```
+
+Omitted `items` and `topics` become empty lists; `tier` and `prerequisite` become
+null. Forever rejects nonempty items, any hero/figure and inline game references.
+Publishing rechecks the saved document; a change to its sources or build note creates
+an ordinary new draft version. Sources are plain external links, never fetched by
+saving, publishing or rendering a Guide.
 
 ### Path progress
 
@@ -654,51 +700,6 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/unbored \
 `POST /v1/snapshot` then answers 202 and the worker ingests in the background (`docs/companion-api.md`). `psql "$DATABASE_URL" -c "SELECT state, count(*) FROM raw_uploads GROUP BY 1"` shows the queue.
 
 
-### Guide games and evidence
-
-Migration `0022_content_game.sql` adds `content.paths.game`, `retail` by default or
-`forever`, on each version. Slug identity remains `(kind, slug, locale)`, so the same
-Guide slug cannot publish two games at once. Retail validation is unchanged; Forever
-supports text Guides only and does not read the Game DB or queue media. Its stored
-validation `build` is null; `asOf.build` is an editorial claim about the Forever build,
-not a Retail validation result. Existing Retail content and hashes need no rewrite.
-
-`PUT /owner/content`, `save_content_draft {document}`, and the `content.ts save`
-command accept the same document. `get_content` returns `game`, `sources` and `asOf`
-inside `document`. Public `/api/catalog?kind=guide&game=retail|forever` filters by Game;
-without `game` it returns both. Public `/api/catalog/guide/<slug>` returns the Game and
-guide evidence. Sources/asOf are optional for either Game; their bounds and callout
-shape are in [site structure](site-structure.md#guides).
-
-A complete Forever guide input (the example source is a placeholder to replace with
-an actual checked source before publication):
-
-```json
-{
-  "game": "forever",
-  "kind": "guide",
-  "slug": "forever-first-steps",
-  "locale": "en",
-  "title": "First steps in WoW Forever",
-  "description": "Where to start in WoW Forever.",
-  "blocks": [
-    { "type": "heading", "text": "Getting started" },
-    { "type": "paragraph", "text": "Choose the activities you want to try first." },
-    { "type": "callout", "tone": "forecast", "text": "Rankings are early forecasts." },
-    { "type": "link", "label": "WoW Forever guides", "href": "/forever" }
-  ],
-  "sources": [
-    { "label": "Launch notes", "url": "https://example.com/launch", "accessed": "2026-11-05" }
-  ],
-  "asOf": { "date": "2026-11-05", "build": "1.60.1.x", "note": "Launch build." }
-}
-```
-
-Omitted `items` and `topics` become empty lists; `tier` and `prerequisite` become
-null. Forever rejects nonempty items, any hero/figure and inline game references.
-Publishing rechecks the saved document; a change to its sources or build note creates
-an ordinary new draft version. Sources are plain external links, never fetched by
-saving, publishing or rendering a Guide.
 
 ## Commits and releases
 

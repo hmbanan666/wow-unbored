@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { CatalogSummary } from "#shared/catalog";
+import { PUBLIC_COPY, type CatalogSummary } from "#shared/catalog";
 
-const { data } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog", {
+const { data, error, refresh } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog", {
   query: { kind: "guide", game: "forever" },
 });
 const pages = computed(() => data.value?.pages ?? []);
@@ -36,6 +36,9 @@ useSchemaOrg([
       :title="title"
       :lead="description"
     />
-    <CatalogGrid :pages="pages" empty="The first WoW Forever guides are on their way." />
+    <DsEmptyState v-if="error" :text="PUBLIC_COPY.unavailable">
+      <DsButton @click="refresh()">Try again</DsButton>
+    </DsEmptyState>
+    <CatalogGrid v-else :pages="pages" empty="The first WoW Forever guides are on their way." />
   </DsPage>
 </template>
