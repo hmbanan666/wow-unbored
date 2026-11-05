@@ -24,7 +24,7 @@ export async function readRequestPath(
     reference.locale,
     reference.version,
   );
-  if (!path || path.status === "draft")
+  if (!path || path.status === "draft" || !path.build)
     return unavailable("The picked Path version is not a publication. Refresh the Path pick.");
   const character = request.account
     ? (await data.characters(request.account)).find(

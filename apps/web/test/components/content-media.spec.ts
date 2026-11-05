@@ -37,6 +37,7 @@ const item = {
   url: "https://example.com/source",
 };
 const page: PublicPage = {
+  game: "retail",
   kind: "guide",
   slug: "yak",
   title: "Meet the yak",
@@ -222,6 +223,31 @@ test.each(["guide", "collection", "path"] as const)(
   },
 );
 
+test.each(["retail", "forever"] as const)("%s guide own images use cover fitting", (game) => {
+  const wrapper = mount(PageView, {
+    props: {
+      page: {
+        ...page,
+        game,
+        items: [],
+        hero: { image: "0123456789abcdef", alt: "Our screenshot" },
+        blocks: [{ type: "figure", image: "0123456789abcdef", alt: "Our view" }],
+        media: { "image:0123456789abcdef": { image: asset } },
+      },
+    },
+  });
+  expect(wrapper.get(".ds-game-header picture").classes()).toContain("ds-game-art--cover");
+  expect(wrapper.get(".ds-game-header img").attributes()).toMatchObject({
+    alt: "Our screenshot",
+    loading: "eager",
+  });
+  expect(wrapper.get("figure picture").classes()).toContain("ds-game-art--cover");
+  expect(wrapper.get("figure img").attributes()).toMatchObject({
+    alt: "Our view",
+    loading: "lazy",
+  });
+});
+
 test("tile and own-image figures use cover without render backgrounds", () => {
   const media = { "instance:42": { tile: asset }, "image:0123456789abcdef": { image: asset } };
   const wrapper = mount(EntryBody, {
@@ -257,4 +283,51 @@ test("media rows retain personal done and optional goal chips", () => {
   });
   expect(wrapper.text()).toContain(PATH_COPY.en.done);
   expect(wrapper.text()).toContain(PATH_COPY.en.optional);
+});
+
+test("Forever guide shows its own trail, evidence, badge and Article game without progress or art", () => {
+  const schema = vi.fn();
+  vi.stubGlobal("useSchemaOrg", schema);
+  const forever: PublicPage = {
+    ...page,
+    game: "forever",
+    hero: undefined,
+    items: [],
+    media: {},
+    build: null,
+    blocks: [{ type: "callout", tone: "forecast", text: "Rankings are early forecasts." }],
+    sources: [{ label: "Launch notes", url: "https://example.com/launch", accessed: "2026-11-05" }],
+    asOf: { date: "2026-11-05", build: "1.60.1.x", note: "Launch build." },
+  };
+  const wrapper = mount(PageView, { props: { page: forever } });
+  expect(wrapper.get('nav[aria-label="Breadcrumb"]').text()).toContain("WoW Forever");
+  expect(wrapper.get('nav[aria-label="Breadcrumb"] a[href="/forever"]').exists()).toBe(true);
+  expect(wrapper.find(".ds-chip").text()).toBe("WoW Forever");
+  expect(wrapper.text()).toContain("Checked against build 1.60.1.x on 5 Nov 2026");
+  expect(wrapper.text()).toContain("Launch build.");
+  expect(wrapper.text()).toContain("Rankings are early forecasts.");
+  expect(wrapper.get('a[href="https://example.com/launch"]').attributes()).toMatchObject({
+    target: "_blank",
+    rel: "nofollow noopener noreferrer",
+  });
+  expect(wrapper.text()).toContain(" · Accessed 5 Nov 2026");
+  expect(wrapper.text()).not.toContain("\u2014");
+  expect(wrapper.findComponent({ name: "PersonalPaths" }).exists()).toBe(false);
+  expect(wrapper.find('a[href="/install"]').exists()).toBe(false);
+  expect(wrapper.findAll("img, picture")).toHaveLength(0);
+  const nodes = schema.mock.calls.flatMap((call) => call[0]);
+  expect(nodes.find((node) => node.headline)).toMatchObject({
+    about: { "@type": "VideoGame", name: "World of Warcraft: Forever" },
+  });
+  expect(nodes.find((node) => node.itemListElement?.[0]?.name === "Home").itemListElement).toEqual([
+    { name: "Home", item: "/" },
+    { name: "WoW Forever", item: "/forever" },
+    { name: page.title, item: "/guides/yak" },
+  ]);
+  schema.mockClear();
+  const retail = mount(PageView, { props: { page } });
+  expect(retail.get('nav[aria-label="Breadcrumb"]').text()).toContain("Guides");
+  expect(schema.mock.calls.flatMap((call) => call[0]).find((node) => node.headline)).toMatchObject({
+    about: { "@type": "VideoGame", name: "World of Warcraft" },
+  });
 });

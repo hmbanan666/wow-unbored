@@ -213,8 +213,11 @@ _Avoid_: loot table, drops, drop chance.
 Steps of a Plan that can be done in any order (several rares in one zone). The card flips between them with two arrows; Skip in a group means "won't do" (ADR 0056). Contract field `group`.
 _Avoid_: unordered, batch, subplan.
 
+**Game**
+The World of Warcraft game a piece of content describes: Retail (the live expansion game) or WoW Forever (the separate Classic-based game). Guides belong to one Game; their facts and sources never transfer between games.
+
 **Game DB**
-The Server's own copy of client game tables for the live build, plus sourced extras, that tools and Plan checks read (ADR 0071).
+The Server's own copy of Retail client game tables for the live build, plus sourced extras, that tools and Plan checks read (ADR 0071).
 _Avoid_: wiki, cache, catalog (that is the vetted addon list).
 
 **Acquisition**

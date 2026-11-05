@@ -37,6 +37,11 @@ const parts = computed(() => {
           >{{ link.label }}</DsButton
         >
       </DsActions>
+      <DsCard
+        v-else-if="part.block.type === 'callout'"
+        :title="part.block.tone === 'forecast' ? 'Early forecast' : 'Note'"
+        :text="part.block.text"
+      />
       <DsGameFigure v-else-if="part.block.type === 'figure'" :figure="part.block" :media="media" />
       <h2 v-else-if="part.block.type === 'heading'">{{ part.block.text }}</h2>
       <p v-else-if="part.block.type === 'paragraph'">

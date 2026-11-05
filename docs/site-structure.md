@@ -6,9 +6,10 @@ How playunbored.com is organised (ADRs 0072-0074). The site is an authored porta
 
 | URL | What it is | Indexed |
 | --- | --- | --- |
-| `/` | What Unbored is, how Bory works in three steps, featured Collections and Paths, install | yes |
-| `/guides` | Every published Guide: short articles such as "What to do at max level in Midnight" | yes |
-| `/guides/<slug>` | One Guide: headed sections of original text, checked facts, links to the Collections and Paths it points at | yes |
+| `/` | What Unbored is, how Bory works in three steps, featured Collections and Paths, a WoW Forever link when a guide is published, install | yes |
+| `/guides` | Published Retail Guides, plus one link card to `/forever`: short articles such as "What to do at max level in Midnight" | yes |
+| `/forever` | Published WoW Forever Guides, kept separate from Retail | yes |
+| `/guides/<slug>` | One Guide for either Game: headed sections of original text, checked facts, links to the Collections and Paths it points at | yes |
 | `/collections` | Every published Collection: authored top lists such as "Top mounts to get first" | yes |
 | `/collections/<slug>` | One Collection: why the list, then each item with what it is and exactly how to get it | yes |
 | `/paths` | Every published Path, grouped by content and tier (Basic, Deeper, Complete) | yes |
@@ -16,7 +17,7 @@ How playunbored.com is organised (ADRs 0072-0074). The site is an authored porta
 | `/install` | Get the addon and the Companion (the GitHub release feed), what Bory knows about you | yes |
 | `/my` | My page: your Characters, active Paths with progress, Path completion history, Plans and Wins, after signing in from the Companion | no |
 
-Header: Guides, Collections, Paths, Install, My page. Footer: the same links, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
+Header: Guides, WoW Forever, Collections, Paths, Install, My page. Footer: the same links, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
 
 ## A list item
 
@@ -28,14 +29,20 @@ Search result > a Collection or Path page > "Track this in game" > install, then
 
 ## SEO
 
-Public pages are English, server-rendered, with one H1, a unique title and description, a canonical URL on playunbored.com, an og-image, and structured data: `ItemList` for a Collection, `Article` plus `ItemList` for a Path, `BreadcrumbList` everywhere below the home. The sitemap lists the home, the two index pages, `/install` and every published Collection and Path; signed-in pages are `noindex`.
+Public pages are English, server-rendered, with one H1, a unique title and description, a canonical URL on playunbored.com, an og-image, and structured data: `ItemList` for a Collection, `Article` for a Guide, `Article` plus `ItemList` for a Path, `BreadcrumbList` everywhere below the home. Article `about` names the VideoGame: "World of Warcraft: Forever" for Forever, "World of Warcraft" for Retail. Forever guide breadcrumbs are Home > WoW Forever > Title, including `BreadcrumbList`, while their canonical URLs stay `/guides/<slug>`; Retail keeps Home > Guides > Title. The sitemap lists the home, `/guides`, `/forever`, `/collections`, `/paths`, `/install` and every published Guide, Collection and Path; signed-in pages are `noindex`.
 
 ## Content
 
-All texts live in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and are written through owner tools that check every id against the Game DB. No content in repo files.
+All texts live in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and are written through owner tools that check Retail ids against the Game DB. Migration 0022 adds a `game` column with default `retail`; existing rows need no content rewrite. WoW Forever never reads or validates against the Retail Game DB and reads only own images from the media store (ADR 0079). No content in repo files.
 
 ## Guides
 
-A Guide is the third kind in `content.paths` (`kind = 'guide'`, migration 0016), authored through the same `/owner/content` route. Its blocks may include `heading` (an H2). Items are optional; when present they follow the Collection item rules. Every game fact in a Guide (names, vendors, costs, achievement titles) comes from the Game DB build it was checked against; anything that cannot be checked is left out. A Guide links to at least one Collection, and the Collections it points at link back.
+A Guide is the third kind in `content.paths` (`kind = 'guide'`), authored through `/owner/content`, the owner MCP tools or `apps/server/scripts/content.ts`. Its Game is `retail` by default or `forever`. Both support headed text, lists, local/external links and `callout` blocks (`tone: note | forecast`, text up to 600 characters).
+
+Retail Guides may have items, inline game references, heroes and figures under the Collection and media rules. Every Retail game fact comes from the Game DB build it was checked against; anything that cannot be checked is left out. A Retail Guide links to at least one Collection, and the Collections it points at link back.
+
+WoW Forever supports Guides only, with own-image heroes and figures imported through `scripts/media.ts add-image`. Items, inline game references, Blizzard heroes (`kind`, `id`) and figure `ref` are rejected. Publishing never queues Blizzard media sync; the page API returns referenced `image:<hash>` entries, and own-image heroes use the same CSS cover fitting as Retail without additional image processing. Facts are checked manually against Forever sources and its own build, never Retail ids. `/forever` lists only published Forever Guides; `/guides` lists only Retail Guides and links to `/forever`. Forever pages have a WoW Forever badge, no signed-in progress controls and no addon installation prompt.
+
+Both Games may carry `sources`: up to 20 `{label, url, accessed}` entries (label up to 120 characters, absolute HTTPS URL, real `YYYY-MM-DD` accessed date), rendered at the end under Sources. Links open in a new tab with `rel="nofollow noopener noreferrer"`, followed by `· Accessed 5 Nov 2026`. Optional `asOf: {date, build, note?}` records when facts were checked, with build text up to 60 and note up to 200 characters; the checked build/date line appears near the top with the same English date format. Evidence is versioned with the guide and does not replace Retail validation.
 
 Signed-in additions to `/paths`, `/paths/<slug>` and `/collections/<slug>` load after mounting: a Character switcher, progress, and (on detail pages) active Path selection with replacement confirmation. These additions never enter public SSR HTML or shared caches; no new public URLs are introduced.

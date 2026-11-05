@@ -82,6 +82,8 @@ Global helpers are limited to `.ds-lead` (lead paragraph), `.ds-meta` (small mut
 | `DsPortrait` | Bory in his frame (decorative) |
 | `DsEmptyState` | Bory, one line and actions: empty lists, signed-out My page, errors |
 
+Guide callouts compose `DsCard` with a Note or Early forecast title and plain text. Guide source lists use `DsSection` and `DsProse`; build checks use the page header meta line. The WoW Forever badge uses `DsChip` in `DsChipRow`.
+
 Domain components map data onto these: `PageView` (home, Collection, Path and Guide pages), `CatalogCard` and `CatalogGrid` (index pages), `CollectionItems` (items), `EntryBody` (authored blocks; consecutive links share one button row, the first one primary).
 
 ## Checking a change

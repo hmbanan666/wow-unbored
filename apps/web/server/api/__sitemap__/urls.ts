@@ -3,7 +3,9 @@ import { db } from "../../utils/db.ts";
 
 /** Index pages and every published Guide, Path and Collection (docs/site-structure.md). */
 export default defineSitemapEventHandler(async () => {
-  const fixed = ["/guides", "/collections", "/paths", "/install"].map((loc) => ({ loc }));
+  const fixed = ["/forever", "/guides", "/collections", "/paths", "/install"].map((loc) => ({
+    loc,
+  }));
   const sql = db();
   if (!sql) return fixed;
   const pages = await listPublished(sql);

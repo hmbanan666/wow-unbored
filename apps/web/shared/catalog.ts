@@ -1,3 +1,4 @@
+import type { Game, GuideSource, GuideAsOf } from "@unbored/contracts/guide";
 import {
   cleanMediaOverrides,
   type MediaOverrides,
@@ -30,6 +31,7 @@ export const PUBLIC_ROUTES = [
   { name: "path", pattern: "/paths/:slug" },
   { name: "collections", pattern: "/collections" },
   { name: "collection", pattern: "/collections/:slug" },
+  { name: "forever", pattern: "/forever" },
   { name: "guides", pattern: "/guides" },
   { name: "guide", pattern: "/guides/:slug" },
   { name: "install", pattern: "/install" },
@@ -38,6 +40,7 @@ export const PUBLIC_ROUTES = [
 /** Header and footer links (docs/site-structure.md). */
 export const SITE_NAV = [
   { label: "Guides", to: "/guides" },
+  { label: "WoW Forever", to: "/forever" },
   { label: "Collections", to: "/collections" },
   { label: "Paths", to: "/paths" },
   { label: "Install", to: "/install" },
@@ -125,6 +128,9 @@ export type CatalogItem = {
 };
 
 export type PublicPage = {
+  game: Game;
+  sources?: GuideSource[];
+  asOf?: GuideAsOf;
   hero?: Hero;
   media: PageMedia;
   version?: number;
@@ -142,6 +148,7 @@ export type PublicPage = {
 
 /** A card on the home and index pages. */
 export type CatalogSummary = {
+  game: Game;
   icons: (MediaRef & { icon: MediaAsset })[];
   kind: CatalogKind;
   slug: string;

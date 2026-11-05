@@ -23,7 +23,12 @@ const collections = computed(() =>
   (catalog.value?.pages ?? []).filter((item) => item.kind === "collection"),
 );
 const paths = computed(() => (catalog.value?.pages ?? []).filter((item) => item.kind === "path"));
-const guides = computed(() => (catalog.value?.pages ?? []).filter((item) => item.kind === "guide"));
+const guides = computed(() =>
+  (catalog.value?.pages ?? []).filter((item) => item.kind === "guide" && item.game === "retail"),
+);
+const hasForever = computed(() =>
+  (catalog.value?.pages ?? []).some((item) => item.kind === "guide" && item.game === "forever"),
+);
 
 const steps = [
   {
@@ -63,6 +68,13 @@ useSchemaOrg([
       :more="{ label: 'All guides', to: '/guides' }"
     >
       <CatalogGrid :pages="guides" empty="" />
+    </DsSection>
+    <DsSection v-if="hasForever">
+      <DsCard
+        to="/forever"
+        title="WoW Forever"
+        text="Explore guides for Blizzard’s separate Classic-based game, with sources and build checks."
+      />
     </DsSection>
     <DsSection
       v-if="collections.length"

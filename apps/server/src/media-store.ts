@@ -78,7 +78,7 @@ export class MediaStore {
         this.pending.delete(key);
         try {
           const row = await this.db.get<{ body: PageBody }>(
-            "SELECT body FROM content.paths WHERE kind = ? AND slug = ? AND locale = ? AND status = 'published'",
+            "SELECT body FROM content.paths WHERE game = 'retail' AND kind = ? AND slug = ? AND locale = ? AND status = 'published'",
             page.kind,
             page.slug,
             page.locale,
@@ -118,7 +118,7 @@ export class MediaStore {
 
   async syncPublished(slug?: string) {
     const pages = await this.db.all<{ body: PageBody }>(
-      "SELECT body FROM content.paths WHERE status = 'published' AND (CAST(? AS text) IS NULL OR slug = ?)",
+      "SELECT body FROM content.paths WHERE game = 'retail' AND status = 'published' AND (CAST(? AS text) IS NULL OR slug = ?)",
       slug ?? null,
       slug ?? null,
     );

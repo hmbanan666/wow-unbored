@@ -1,3 +1,4 @@
+import { guideSourcesSchema, guideAsOfSchema, type Game } from "@unbored/contracts/guide";
 import { cleanHero, cleanMediaRef, type MediaAsset } from "@unbored/contracts/game-media";
 import { readPageMedia } from "./media.ts";
 import { cleanBlocks } from "#shared/blocks";
@@ -22,6 +23,7 @@ type PageRow = {
 };
 
 type CatalogRow = {
+  game: Game;
   version: number;
   kind: string;
   slug: string;
@@ -50,6 +52,7 @@ function heroOf(body: unknown) {
 
 function pageFrom(row: PageRow): PublicPage {
   return {
+    game: "retail",
     media: {},
     ...(heroOf(row.body) ? { hero: heroOf(row.body) } : {}),
     kind: "page",
@@ -67,9 +70,16 @@ function pageFrom(row: PageRow): PublicPage {
 
 function catalogFrom(row: CatalogRow): PublicPage | undefined {
   if (!isCatalogKind(row.kind) || !isSlug(row.slug)) return undefined;
+  const body = (row.body ?? {}) as Record<string, unknown>;
+  const sources = guideSourcesSchema.safeParse(body.sources);
+  const asOf = guideAsOfSchema.safeParse(body.asOf);
+  const hero = heroOf(row.body);
   return {
+    game: row.game,
+    ...(row.kind === "guide" && sources.success ? { sources: sources.data } : {}),
+    ...(row.kind === "guide" && asOf.success ? { asOf: asOf.data } : {}),
     media: {},
-    ...(heroOf(row.body) ? { hero: heroOf(row.body) } : {}),
+    ...(hero && (row.game === "retail" || "image" in hero) ? { hero } : {}),
     kind: row.kind,
     version: row.version,
     slug: row.slug,
@@ -78,8 +88,8 @@ function catalogFrom(row: CatalogRow): PublicPage | undefined {
     headline: row.title,
     tier: cleanTier(row.tier),
     blocks: cleanBlocks(row.body),
-    items: cleanItems(row.body),
-    build: buildOf(row.body),
+    items: row.game === "forever" ? [] : cleanItems(row.body),
+    build: row.game === "forever" ? null : buildOf(row.body),
     updatedAt: seconds(row.published_at),
   };
 }
@@ -91,7 +101,7 @@ export async function readHome(sql: Sql): Promise<PublicPage | undefined> {
     FROM web.pages
     WHERE slug = 'home' AND locale = 'en'`;
   const page = row ? pageFrom(row) : undefined;
-  if (page) page.media = await readPageMedia(sql, page);
+  if (page && page.game === "retail") page.media = await readPageMedia(sql, page);
   return page;
 }
 
@@ -103,7 +113,7 @@ export async function readPublished(
 ): Promise<PublicPage | undefined> {
   if (!isSlug(slug)) return undefined;
   const [row] = await sql<CatalogRow[]>`
-    SELECT kind, slug, title, description, tier, body, published_at, version
+    SELECT game, kind, slug, title, description, tier, body, published_at, version
     FROM content.paths
     WHERE kind = ${kind} AND slug = ${slug} AND locale = 'en' AND status = 'published'`;
   const page = row ? catalogFrom(row) : undefined;
@@ -112,17 +122,21 @@ export async function readPublished(
 }
 
 /** Every published English Path and Collection, for index pages, the home and the sitemap. */
-export async function listPublished(sql: Sql, kind?: CatalogKind): Promise<CatalogSummary[]> {
+export async function listPublished(
+  sql: Sql,
+  kind?: CatalogKind,
+  game?: Game,
+): Promise<CatalogSummary[]> {
   const rows = await sql<
     (Omit<CatalogRow, "body"> & { count: number | string; icons: unknown[] })[]
   >`
-    SELECT kind, slug, title, description, tier, published_at,
+    SELECT game, kind, slug, title, description, tier, published_at,
       COALESCE((SELECT jsonb_agg(icons.entry) FROM (
         SELECT jsonb_build_object('kind', item->>'kind', 'id', (item->>'id')::integer,
           'icon', jsonb_build_object('variants', m.variants, 'width', m.width, 'height', m.height, 'alt', m.alt, 'name', m.name)) AS entry
         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(body->'items') = 'array' THEN body->'items' ELSE '[]'::jsonb END)
           WITH ORDINALITY AS items(item, position)
-        JOIN content.media m ON m.source = 'blizzard' AND m.role = 'icon'
+        JOIN content.media m ON game = 'retail' AND m.source = 'blizzard' AND m.role = 'icon'
           AND m.ref_kind = item->>'kind' AND m.ref_id::text = item->>'id'
         ORDER BY position LIMIT 6
       ) icons), '[]'::jsonb) AS icons,
@@ -131,6 +145,7 @@ export async function listPublished(sql: Sql, kind?: CatalogKind): Promise<Catal
     FROM content.paths
     WHERE locale = 'en' AND status = 'published'
       AND (${kind ?? null}::text IS NULL OR kind = ${kind ?? null})
+      AND (${game ?? null}::text IS NULL OR game = ${game ?? null})
     ORDER BY kind, published_at DESC NULLS LAST, slug`;
   const out: CatalogSummary[] = [];
   for (const row of rows) {
@@ -146,6 +161,7 @@ export async function listPublished(sql: Sql, kind?: CatalogKind): Promise<Catal
       })
       .slice(0, 6);
     out.push({
+      game: row.game,
       icons,
       kind: row.kind,
       slug: row.slug,
