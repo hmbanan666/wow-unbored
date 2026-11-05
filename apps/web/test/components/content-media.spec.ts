@@ -14,11 +14,11 @@ import type { PublicPage } from "../../shared/catalog";
 const asset = {
   name: "Golden Yak",
   alt: "A golden yak",
-  width: 320,
-  height: 240,
+  width: 600,
+  height: 600,
   variants: [
-    { file: "0123456789abcdef-320.webp", width: 320, height: 240, format: "webp" as const },
-    { file: "0123456789abcdef-640.webp", width: 640, height: 480, format: "webp" as const },
+    { file: "0123456789abcdef-320.webp", width: 320, height: 320, format: "webp" as const },
+    { file: "0123456789abcdef-600.webp", width: 600, height: 600, format: "webp" as const },
   ],
 };
 const icon = {
@@ -71,7 +71,11 @@ test("paragraph/list references expose names and details without links or closed
   expect(wrapper.html()).not.toContain("320.webp");
   await wrapper.get("button").trigger("click");
   expect(wrapper.html()).toContain("320.webp");
-  expect(wrapper.html()).not.toContain("640.webp");
+  expect(wrapper.html()).not.toContain("600.webp");
+  expect(wrapper.get(".ds-game-tooltip__art img").attributes()).toMatchObject({
+    width: "600",
+    height: "600",
+  });
   expect(wrapper.get(".ds-game-tooltip__art picture").classes()).toContain("ds-game-art--render");
   expect(gameTooltipSource).toMatch(
     /\.ds-game-tooltip__art\s*\{[^}]*background: var\(--render-bg\)/,
@@ -167,6 +171,10 @@ test("rich item rows keep chips, source, notes, progress and lazy desktop art", 
   expect(wrapper.text()).toContain("Guaranteed");
   expect(wrapper.text()).toContain("Bring gold.");
   expect(wrapper.get("a").attributes("href")).toBe(item.url);
+  expect(wrapper.get(".ds-item__render img").attributes()).toMatchObject({
+    width: "600",
+    height: "600",
+  });
   expect(wrapper.get(".ds-item__render img").attributes("loading")).toBe("lazy");
   expect(wrapper.get(".ds-item__render source").attributes("media")).toBe("(min-width: 768px)");
   expect(wrapper.get(".ds-item__render").classes()).toContain("ds-game-art--render");
@@ -178,6 +186,10 @@ test.each(["guide", "collection", "path"] as const)(
     const wrapper = mount(PageView, {
       props: { page: { ...page, kind } },
       global: { stubs: { PersonalPaths: true } },
+    });
+    expect(wrapper.get(".ds-game-header img").attributes()).toMatchObject({
+      width: "600",
+      height: "600",
     });
     expect(wrapper.get(".ds-game-header__art").classes()).toContain("ds-game-header__art--render");
     expect(wrapper.get(".ds-game-header picture").classes()).toContain("ds-game-art--render");

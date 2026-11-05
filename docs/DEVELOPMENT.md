@@ -1092,6 +1092,7 @@ Relationship reads return at most 257 rows: the extra row detects overflow at th
 ## Website game media
 
 [ADR 0077](adr/0077-game-media.md) stores game art in `content.media` and hashed AVIF/WebP files.
+Migration `0021_media_pipeline.sql` records each row's nullable `pipeline_version`; NULL means legacy output.
 Migration `0020_game_media.sql` grants SELECT to `unbored_web` only when that role exists.
 This is a Postgres-only content table; SQLite transfer/workflow counts remain **24**.
 The Server and website both use `UNBORED_MEDIA_DIR` (default `/srv/media`); the website also
@@ -1105,14 +1106,21 @@ The Server reuses its Blizzard OAuth client (`BLIZZARD_CLIENT_ID`, `BLIZZARD_CLI
 It uses static regional documents with `en_US`, allows only Blizzard API/OAuth/render hosts,
 rejects redirects, and limits each download to 10 seconds and 2 MB (JSON to 256 KB).
 `sharp` ships its platform binary with the Server's production dependencies. Icons retain
-source size up to 56 px; renders trim the flat background and have 320/640 variants; tiles
-have 300/600 variants. Own images use 320/640 variants. Every size has AVIF and WebP.
+source size up to 56 px; renders retain their full frame and have 320/640 variants; tiles
+have 300/600 variants. Own images use 320/640 variants. Every target width is capped at
+the source width, and duplicate sizes are omitted: a 600x600 render yields 320x320 and
+600x600, never an upscaled 640x640. Every size has AVIF and WebP. The pipeline only
+compresses, converts and resizes: no trimming, cropping, keying, recoloring, rotation,
+flattening or focal-point processing. Fitting happens only in the site's CSS: renders use
+centered `object-fit: contain` on `--render-bg: #181818`; photos and tiles use `cover`.
+Filenames hash the pipeline version (currently `2`, followed by `:`) and the source bytes,
+so changing the pipeline cannot reuse a URL cached as immutable for a year.
 
 After owner HTTP or MCP publication commits, a bounded in-process queue syncs its items,
 hero, figures and inline references. Publishing never waits for downloads. Restarting can
 lose pending work; the explicit sync command retries it. Failures log a short message and
 leave existing art available. A daily job (also run at startup) visits Blizzard rows older
-than 25 days in batches of 20, considering both the check and download timestamps so
+than 25 days or produced by an older pipeline in batches of 20, considering both the check and download timestamps so
 sharing an older source cannot extend its lifetime. A 404 removes the missing art; transient failures retry on
 the next pass, and assets that cannot be refreshed are removed at 30 days. Stop waits for
 current work before closing the database. Own images are never automatically refreshed.
@@ -1128,6 +1136,16 @@ node scripts/media.ts gc
 ```
 
 They use `DATABASE_URL` directly; normal Server startup applies the migration first.
+After upgrading the pipeline, run plain `node scripts/media.ts sync` once to re-process
+old-pipeline Blizzard rows, including recently fetched rows and stored references no
+published page currently uses. No `--force` flag is needed. A scoped `sync --slug` upgrades
+only that page's references; `refresh` also picks up older pipeline versions. Current
+conversions of a shared source are reused; older conversions never satisfy the cache.
+Own images have no retained source file: re-run `add-image` with each original and update
+its authored `hero.image` / `figure.image` hash. Existing own-image rows remain available.
+Old Blizzard files become unreferenced when their rows are updated; run `gc` later (after
+the one-day grace period) to remove them. Failed conversions retain the previous row and
+are retried on the next sync/refresh.
 `add-image` accepts only our own/licensed images, caps input at 20 MB, and prints the
 16-character hash for `hero.image` or `figure.image`. `gc` deletes unreferenced variants
 and abandoned temporary files only after one day, protecting writes awaiting a row commit.
@@ -1149,8 +1167,8 @@ alt. One query gathers the page's referenced media. Catalog summaries include up
 available item icons in authored order, each `{ kind, id, icon }`, with no per-card query.
 The site streams `/media/<hash>-<width>.avif|webp` with immutable one-year caching;
 invalid or missing filenames get a 404 cached for 60 seconds. All other filenames are
-rejected before filesystem access. Icons, tooltips and hero/figure rendering are a separate
-change: existing body rendering stays unchanged, and figure blocks currently render nothing.
+rejected before filesystem access. Hero, tooltip, row-thumbnail and figure render frames
+all contain the complete image on the matching solid background (ADR 0078).
 
 Tests use generated images and fake HTTP responses, never live Blizzard credentials.
 Run with local PostgreSQL 18 (the role must be able to create test databases):

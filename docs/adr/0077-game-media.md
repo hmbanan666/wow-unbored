@@ -26,10 +26,11 @@ Blizzard Developer API terms: data is kept at most 30 days, so the Server refres
 ### Storage and serving
 
 - One Docker named volume `unbored-media` on de2, mounted at `/srv/media` in both the Server (writes) and the website (reads). Path from `UNBORED_MEDIA_DIR`, default `/srv/media`. The Server entrypoint chowns it like `/data`.
-- The Server fetches each source once, converts with `sharp` and writes content-hashed files: `<sha256 of source bytes, 16 hex>-<width>.<avif|webp>`. Icons: 56 px (source size, never upscaled). Renders: background trimmed, 320 and 640 px wide. Tiles: 300 and 600 px wide. AVIF and WebP for every size.
+- The pipeline only compresses, converts and resizes; it never crops, trims, keys, recolors or otherwise edits an image. Fitting an image into a frame is the site's job (CSS object-fit).
+- The Server fetches each source once, converts with `sharp` and writes content-hashed files: `<sha256 of pipeline version + source bytes, 16 hex>-<width>.<avif|webp>`. Icons: up to 56 px. Renders keep their full frame: 320 and 640 px wide. Tiles: 300 and 600 px wide. Own images: 320 and 640 px wide. Never upscale: clamp each width to the source width and deduplicate sizes (a 600x600 render gets 320x320 and 600x600 variants). AVIF and WebP for every size.
 - Postgres `content.media` records each asset: `ref_kind`, `ref_id`, `role` (`icon`, `render`, `tile`, `image`), `source` (`blizzard` | `own`), source URL, hash, intrinsic width/height, variants, alt, `fetched_at`, `checked_at`. The website reads it with its read-only role. No table per mount or item: one media table keyed by game reference.
 - The website serves `GET /media/<file>` from the volume with `Cache-Control: public, max-age=31536000, immutable`; names that do not match the pattern or do not exist are 404 with a short cache. Same origin, so no extra DNS and no third-party request on page load.
-- Publishing content queues a sync for the page's references; `apps/server/scripts/media.ts sync|refresh|add-image|gc` does the same by hand. `gc` removes files no row points at.
+- Publishing content queues a sync for the page's references; `apps/server/scripts/media.ts sync|refresh|add-image|gc` does the same by hand. Rows record their pipeline version; `sync` and `refresh` re-convert older Blizzard rows even if recently fetched. Re-import own images from their originals after a pipeline change. `gc` removes files no row points at.
 
 ### Content schema
 

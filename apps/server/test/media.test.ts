@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { mediaHash, MEDIA_PIPELINE } from "../src/media-files.ts";
 import { MediaResolver, mediaUrl } from "../src/media.ts";
 
 const cdn = "https://render.worldofwarcraft.com/eu";
@@ -86,7 +87,8 @@ test("conversion writes hashed AVIF/WebP variants atomically without enlarging i
       .png()
       .toBuffer();
     const asset = await convertMedia(bytes, "icon", dir);
-    assert.equal(asset.hash, "8d691f026b512e44");
+    assert.equal(asset.hash, mediaHash(bytes));
+    assert.notEqual(asset.hash, "8d691f026b512e44", "legacy immutable filenames are never reused");
     assert.deepEqual(
       asset.variants.map((v) => [v.width, v.height, v.format]),
       [
@@ -103,12 +105,12 @@ test("conversion writes hashed AVIF/WebP variants atomically without enlarging i
     const render = await convertMedia(bytes, "render", dir);
     assert.deepEqual(
       render.variants.map((v) => v.width),
-      [320, 320, 640, 640],
+      [56, 56],
     );
     const tile = await convertMedia(bytes, "tile", dir);
     assert.deepEqual(
       tile.variants.map((v) => v.width),
-      [300, 300, 600, 600],
+      [56, 56],
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -138,38 +140,66 @@ test("downloads reject disallowed sources, oversized streams and redirects", asy
   );
 });
 
-test("renders trim the flat border before resizing and content hashes identify source bytes", async () => {
+test("renders retain their full frame, aspect ratio and border without upscaling", async () => {
   const { default: sharp } = await import("sharp");
-  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { mkdtemp, rm, readFile } = await import("node:fs/promises");
   const { convertMedia } = await import("../src/media-files.ts");
-  const dir = await mkdtemp(`${import.meta.dirname}/.media-trim-`);
+  const dir = await mkdtemp(`${import.meta.dirname}/.media-frame-`);
   try {
     const subject = await sharp({
-      create: { width: 20, height: 10, channels: 3, background: "red" },
+      create: { width: 180, height: 120, channels: 3, background: "red" },
     })
       .png()
       .toBuffer();
-    const bytes = await sharp({
-      create: { width: 40, height: 40, channels: 3, background: "black" },
-    })
-      .composite([{ input: subject, left: 10, top: 10 }])
-      .png()
-      .toBuffer();
-    const render = await convertMedia(bytes, "render", dir);
-    assert.deepEqual(
-      render.variants.map((v) => [v.width, v.height]),
-      [
-        [320, 160],
-        [320, 160],
-        [640, 320],
-        [640, 320],
-      ],
-    );
-    const icon = await convertMedia(bytes, "icon", dir);
-    assert.equal(icon.width, 40);
-    assert.equal(icon.hash, render.hash);
-    const changed = await convertMedia(subject, "icon", dir);
-    assert.notEqual(changed.hash, render.hash);
+    for (const height of [600, 450]) {
+      const bytes = await sharp({
+        create: { width: 600, height, channels: 3, background: "#181818" },
+      })
+        .composite([{ input: subject, left: 180, top: 120 }])
+        .png()
+        .toBuffer();
+      const render = await convertMedia(bytes, "render", dir);
+      assert.deepEqual(
+        render.variants.map((v) => [v.width, v.height]),
+        [
+          [320, (height * 320) / 600],
+          [320, (height * 320) / 600],
+          [600, height],
+          [600, height],
+        ],
+      );
+      for (const variant of render.variants) {
+        const { data, info } = await sharp(await readFile(`${dir}/${variant.file}`))
+          .removeAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        assert.equal(info.width, variant.width);
+        assert.equal(info.height, variant.height);
+        const pixel = (x: number, y: number) =>
+          Array.from(
+            data.subarray(
+              (y * info.width + x) * info.channels,
+              (y * info.width + x) * info.channels + 3,
+            ),
+          );
+        const scale = info.width / 600;
+        for (const [x, y] of [
+          [30, 30],
+          [570, 30],
+          [30, height - 30],
+          [570, height - 30],
+        ])
+          assert.ok(
+            pixel(Math.round(x * scale), Math.round(y * scale)).every((v) => Math.abs(v - 24) < 8),
+            "full dark border survives encoding",
+          );
+        const center = pixel(Math.round(270 * scale), Math.round(180 * scale));
+        assert.ok(
+          center[0] > 230 && center[1] < 20 && center[2] < 20,
+          "subject keeps its original position and color",
+        );
+      }
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -186,4 +216,67 @@ test("a missing render document does not discard a pet's surviving icon", async 
     (await resolver.resolve({ kind: "pet", id: 1890 })).map((asset) => asset.role),
     ["icon"],
   );
+});
+
+test("content hashes change with pipeline version as well as source bytes", () => {
+  const bytes = Buffer.from("source bytes");
+  assert.notEqual(mediaHash(bytes, 1), mediaHash(bytes, 2));
+  assert.equal(mediaHash(bytes), mediaHash(bytes, MEDIA_PIPELINE));
+  assert.equal(mediaHash(Buffer.from("source bytes")), mediaHash(bytes));
+  assert.notEqual(mediaHash(Buffer.from("different bytes")), mediaHash(bytes));
+});
+
+test("ADR 0077 keeps fitting out of the media pipeline", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const adr = await readFile(
+    new URL("../../../docs/adr/0077-game-media.md", import.meta.url),
+    "utf8",
+  );
+  assert.ok(
+    adr.includes(
+      "The pipeline only compresses, converts and resizes; it never crops, trims, keys, recolors or otherwise edits an image. Fitting an image into a frame is the site's job (CSS object-fit).",
+    ),
+  );
+  assert.ok(!adr.includes("background trimmed"));
+});
+
+test("large sources resize to role widths without applying orientation or flattening transparency", async () => {
+  const { default: sharp } = await import("sharp");
+  const { mkdtemp, rm, readFile } = await import("node:fs/promises");
+  const { convertMedia } = await import("../src/media-files.ts");
+  const dir = await mkdtemp(`${import.meta.dirname}/.media-orientation-`);
+  try {
+    const bytes = await sharp({
+      create: {
+        width: 800,
+        height: 400,
+        channels: 4,
+        background: { r: 255, g: 0, b: 0, alpha: 0.5 },
+      },
+    })
+      .withMetadata({ orientation: 6 })
+      .png()
+      .toBuffer();
+    for (const role of ["icon", "render", "tile", "image"] as const) {
+      const asset = await convertMedia(bytes, role, dir);
+      const widths =
+        role === "icon" ? [56, 56] : role === "tile" ? [300, 300, 600, 600] : [320, 320, 640, 640];
+      assert.deepEqual(
+        asset.variants.map((v) => v.width),
+        widths,
+      );
+      for (const variant of asset.variants) {
+        assert.equal(variant.height, variant.width / 2);
+        const { data, info } = await sharp(await readFile(`${dir}/${variant.file}`))
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        assert.equal(info.width, variant.width);
+        assert.equal(info.height, variant.height);
+        assert.equal(info.channels, 4);
+        assert.ok(Math.abs(data[3] - 128) < 3, "encoding preserves alpha");
+      }
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

@@ -8,23 +8,33 @@ import type { MediaRole } from "./media.ts";
 sharp.concurrency(1);
 export const mediaDirectory = () => process.env.UNBORED_MEDIA_DIR || "/srv/media";
 
+// Bump whenever conversion changes: immutable URLs must never serve a different image.
+export const MEDIA_PIPELINE = 2;
+export function mediaHash(bytes: Buffer, pipeline = MEDIA_PIPELINE) {
+  return createHash("sha256").update(`${pipeline}:`).update(bytes).digest("hex").slice(0, 16);
+}
+
 export async function convertMedia(bytes: Buffer, role: MediaRole, directory: string) {
-  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
-  const input = sharp(bytes, { limitInputPixels: 40_000_000, animated: false }).rotate();
-  const metadata = await input.metadata();
+  const hash = mediaHash(bytes);
+  // Raw pixels discard EXIF orientation too: AVIF otherwise carries it into the output.
+  const { data: pixels, info: metadata } = await sharp(bytes, {
+    limitInputPixels: 40_000_000,
+    animated: false,
+  })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
   if (!metadata.width || !metadata.height || metadata.width < 10)
     throw new Error("Invalid media dimensions");
-  const widths =
-    role === "icon" ? [Math.min(56, metadata.width)] : role === "tile" ? [300, 600] : [320, 640];
-  // The render's corner is the flat dark background; trimming leaves the subject's bounds.
-  const prepared = role === "render" ? input.trim({ threshold: 15 }) : input;
+  const input = sharp(pixels, { raw: metadata });
+  const targets = role === "icon" ? [56] : role === "tile" ? [300, 600] : [320, 640];
+  const widths = [...new Set(targets.map((width) => Math.min(width, metadata.width)))];
   const variants: MediaVariant[] = [];
   await mkdir(directory, { recursive: true });
   for (const width of widths) {
     for (const format of ["avif", "webp"] as const) {
-      const { data, info } = await prepared
+      const { data, info } = await input
         .clone()
-        .resize({ width, withoutEnlargement: role === "icon" })
+        .resize({ width, withoutEnlargement: true })
         .toFormat(format)
         .toBuffer({ resolveWithObject: true });
       const file = `${hash}-${info.width}.${format}`;
