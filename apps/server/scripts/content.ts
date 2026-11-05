@@ -2,8 +2,9 @@
 import { readFile } from "node:fs/promises";
 
 const usage = `Usage:
-  node apps/server/scripts/content.ts save FILE.json      save or update the draft (ids are checked)
+  node apps/server/scripts/content.ts save FILE.json      save or update the draft (retail ids are checked; game defaults to retail)
   node apps/server/scripts/content.ts publish KIND SLUG   publish the newest draft (KIND: path, collection or guide)
+FILE.json accepts game retail|forever, guide sources/asOf and callout blocks. Forever supports text guides only.
 UNBORED_SERVER_URL and UNBORED_PLANNER_TOKEN must be set.`;
 
 const [command, ...args] = process.argv.slice(2);

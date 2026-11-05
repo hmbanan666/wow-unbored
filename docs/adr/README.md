@@ -81,6 +81,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0076. Personal Path progress on public pages](0076-website-path-progress.md)
 - [0077. Game media on the website](0077-game-media.md)
 - [0078. Filled photos and solid render frames](0078-media-frame-backgrounds.md)
+- [0079. Separate games in site content](0079-content-game.md)
 
 The site sections, navigation and SEO rules are in [`docs/site-structure.md`](../site-structure.md).
 

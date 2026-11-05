@@ -1,4 +1,14 @@
 import {
+  GAMES,
+  guideSourcesSchema,
+  guideAsOfSchema,
+  calloutSchema,
+  type Game,
+  type GuideSource,
+  type GuideAsOf,
+  type Callout,
+} from "@unbored/contracts/guide";
+import {
   cleanHero,
   cleanFigure,
   cleanMediaOverrides,
@@ -75,11 +85,15 @@ export type ContentItem = {
 };
 export type ContentBlock =
   | Figure
+  | Callout
   | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] }
   | { type: "link"; label: string; href: string };
 export type ContentDoc = {
+  game: Game;
+  sources?: GuideSource[];
+  asOf?: GuideAsOf;
   hero?: Hero;
   kind: ContentKind;
   slug: string;
@@ -130,7 +144,7 @@ function https(value: unknown): string | undefined {
 function localHref(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   if (
-    ["/", "/paths", "/collections", "/guides", "/install"].includes(value) ||
+    ["/", "/paths", "/collections", "/guides", "/forever", "/install"].includes(value) ||
     /^\/(paths|collections|guides)\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
   )
     return value;
@@ -144,6 +158,33 @@ export function parseContent(input: unknown): ContentDoc {
   const kind = CONTENT_KINDS.includes(raw.kind as ContentKind)
     ? (raw.kind as ContentKind)
     : (problems.push("kind must be path, collection or guide"), "collection");
+  const game =
+    raw.game === undefined
+      ? "retail"
+      : GAMES.includes(raw.game as Game)
+        ? (raw.game as Game)
+        : (problems.push("game must be retail or forever"), "retail");
+  const sources = raw.sources === undefined ? undefined : guideSourcesSchema.safeParse(raw.sources);
+  const asOf = raw.asOf === undefined ? undefined : guideAsOfSchema.safeParse(raw.asOf);
+  if (sources && !sources.success)
+    problems.push(
+      "sources: at most 20 entries with label (1-120 characters), absolute https url and accessed date (YYYY-MM-DD)",
+    );
+  if (asOf && !asOf.success)
+    problems.push(
+      "asOf: date (YYYY-MM-DD), build (1-60 characters), optional note (at most 200 characters)",
+    );
+  if (kind !== "guide" && (sources || asOf)) problems.push("sources and asOf belong to guides");
+  if (game === "forever") {
+    if (kind !== "guide") problems.push("WoW Forever supports guides only");
+    if (raw.items !== undefined && (!Array.isArray(raw.items) || raw.items.length))
+      problems.push("WoW Forever guides cannot have items");
+    if (raw.hero !== undefined) problems.push("WoW Forever guides cannot have images");
+    if (/\[\[|\]\]/.test(JSON.stringify(raw)))
+      problems.push("WoW Forever guides cannot have inline game references");
+    if (Array.isArray(raw.blocks) && raw.blocks.some((block) => block?.type === "figure"))
+      problems.push("WoW Forever guides cannot have figures");
+  }
   const slug =
     typeof raw.slug === "string" && raw.slug.length <= 80 && SLUG.test(raw.slug)
       ? raw.slug
@@ -220,7 +261,9 @@ export function parseContent(input: unknown): ContentDoc {
         problems.push(`blocks[${index}]: invalid inline reference`);
       }
     }
-    if (row.type === "figure" && cleanFigure(row)) blocks.push(cleanFigure(row)!);
+    if (row.type === "callout" && calloutSchema.safeParse(row).success)
+      blocks.push(calloutSchema.parse(row));
+    else if (row.type === "figure" && cleanFigure(row)) blocks.push(cleanFigure(row)!);
     else if (row.type === "heading" && text(row.text, 120))
       blocks.push({ type: "heading", text: text(row.text, 120)! });
     else if (row.type === "paragraph" && text(row.text, 2000))
@@ -235,7 +278,8 @@ export function parseContent(input: unknown): ContentDoc {
       blocks.push({ type: "list", items: row.items.map((item) => text(item, 400)!) });
     else if (row.type === "link" && text(row.label, 80) && localHref(row.href))
       blocks.push({ type: "link", label: text(row.label, 80)!, href: localHref(row.href)! });
-    else problems.push(`blocks[${index}] is not a heading, paragraph, list, link or figure`);
+    else
+      problems.push(`blocks[${index}] is not a heading, paragraph, list, link, figure or callout`);
   });
 
   if (inlineCount > 20) problems.push("at most 20 inline references per page");
@@ -368,6 +412,9 @@ export function parseContent(input: unknown): ContentDoc {
   if (kind !== "guide" && rawItems.length === 0) problems.push("a Path or Collection needs items");
   if (problems.length) throw new ContentError("The content is not valid.", problems);
   return {
+    game,
+    ...(sources?.success ? { sources: sources.data } : {}),
+    ...(asOf?.success ? { asOf: asOf.data } : {}),
     kind,
     slug,
     locale,
@@ -441,7 +488,8 @@ export async function checkContentIds(
   doc: ContentDoc,
   game: GameDb,
   api?: BlizzardIds,
-): Promise<string> {
+): Promise<string | null> {
+  if (doc.game === "forever") return null;
   const build = await game.currentBuild();
   if (!build) throw new ContentError("The Game DB is not imported yet.");
   const nameDeadline = AbortSignal.timeout(10_000);
@@ -476,6 +524,7 @@ export async function checkContentIds(
 }
 
 type Row = {
+  game: Game;
   id: number | string;
   version: number;
   status: string;
@@ -487,19 +536,22 @@ type Row = {
 };
 
 type Body = {
+  sources?: GuideSource[];
+  asOf?: GuideAsOf;
   hero?: Hero;
   topics?: ContentTopic[];
   blocks: ContentBlock[];
   items: ContentItem[];
-  build: string;
+  build: string | null;
   hash: string;
 };
 
 function hashOf(doc: ContentDoc): string {
-  const { kind, slug, locale, topics, ...rest } = doc;
+  const { kind, slug, locale, topics, game, ...rest } = doc;
   // Omitted defaults keep hashes compatible with publications written before Path fields.
   const normalized = {
     ...rest,
+    ...(game === "forever" ? { game } : {}),
     items: rest.items.map(({ required, ...item }) => (required ? item : { ...item, required })),
     ...(topics.length ? { topics } : {}),
   };
@@ -509,13 +561,14 @@ function hashOf(doc: ContentDoc): string {
 }
 
 export type SaveResult = {
+  game: Game;
   kind: ContentKind;
   slug: string;
   locale: string;
   version: number;
   status: "draft" | "published";
   unchanged: boolean;
-  build: string;
+  build: string | null;
   items: number;
 };
 
@@ -562,14 +615,14 @@ export class ContentStore {
       locale: row.locale,
       version: row.version,
       title: row.title,
-      build: fromJson<Body>(row.body)!.build,
+      build: fromJson<Body & { build: string }>(row.body)!.build,
       items: fromJson<Body>(row.body)!.items,
     }));
   }
 
   private async rows(kind: ContentKind, slug: string, locale: string): Promise<Row[]> {
     return this.db.all<Row>(
-      `SELECT id, version, status, title, description, tier, prerequisite_slug, body
+      `SELECT id, game, version, status, title, description, tier, prerequisite_slug, body
        FROM content.paths WHERE kind = ? AND slug = ? AND locale = ?
        ORDER BY version DESC`,
       kind,
@@ -603,6 +656,9 @@ export class ContentStore {
       status: row.status,
       build: body.build,
       document: {
+        game: row.game,
+        ...(body.sources ? { sources: body.sources } : {}),
+        ...(body.asOf ? { asOf: body.asOf } : {}),
         kind,
         slug,
         locale,
@@ -625,6 +681,8 @@ export class ContentStore {
     const build = await checkContentIds(doc, this.game, this.gameIds);
     const hash = hashOf(doc);
     const body: Body = {
+      ...(doc.sources ? { sources: doc.sources } : {}),
+      ...(doc.asOf ? { asOf: doc.asOf } : {}),
       ...(doc.hero ? { hero: doc.hero } : {}),
       topics: doc.topics,
       blocks: doc.blocks,
@@ -637,6 +695,7 @@ export class ContentStore {
       await this.checkPrerequisite(doc);
       const rows = await this.rows(doc.kind, doc.slug, doc.locale);
       const result = (version: number, status: "draft" | "published", unchanged: boolean) => ({
+        game: doc.game,
         kind: doc.kind,
         slug: doc.slug,
         locale: doc.locale,
@@ -651,6 +710,7 @@ export class ContentStore {
       if (live && fromJson<Body>(live.body)?.hash === hash)
         return result(live.version, live.status as "draft" | "published", true);
       const fields = [
+        doc.game,
         doc.title,
         doc.description,
         doc.tier,
@@ -660,7 +720,7 @@ export class ContentStore {
       ];
       if (draft) {
         await this.db.run(
-          `UPDATE content.paths SET title = ?, description = ?, tier = ?, prerequisite_slug = ?,
+          `UPDATE content.paths SET game = ?, title = ?, description = ?, tier = ?, prerequisite_slug = ?,
              body = CAST(? AS jsonb), updated_at = ? WHERE id = ?`,
           ...fields,
           Number(draft.id),
@@ -670,8 +730,8 @@ export class ContentStore {
       const version = (rows[0]?.version ?? 0) + 1;
       await this.db.run(
         `INSERT INTO content.paths
-           (kind, slug, locale, title, description, tier, prerequisite_slug, body, updated_at, version, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, 'draft')`,
+           (kind, slug, locale, game, title, description, tier, prerequisite_slug, body, updated_at, version, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, 'draft')`,
         doc.kind,
         doc.slug,
         doc.locale,
@@ -696,6 +756,7 @@ export class ContentStore {
           kind,
           slug,
           locale,
+          game: newest.game,
           version: newest.version,
           status: "published",
           unchanged: true,
@@ -704,6 +765,9 @@ export class ContentStore {
         };
       if (newest.status !== "draft") throw new ContentError("Nothing to publish.");
       const doc = parseContent({
+        game: newest.game,
+        sources: stored.sources,
+        asOf: stored.asOf,
         kind,
         slug,
         locale,
@@ -729,7 +793,7 @@ export class ContentStore {
       );
       await this.db.run(
         `UPDATE content.paths SET status = 'published', published_at = ?, updated_at = ?,
-           body = jsonb_set(body, '{build}', to_jsonb(CAST(? AS text))) WHERE id = ?`,
+           body = jsonb_set(body, '{build}', COALESCE(to_jsonb(CAST(? AS text)), 'null'::jsonb)) WHERE id = ?`,
         now,
         now,
         build,
@@ -739,6 +803,7 @@ export class ContentStore {
         kind,
         slug,
         locale,
+        game: newest.game,
         version: newest.version,
         status: "published",
         unchanged: false,
@@ -748,7 +813,7 @@ export class ContentStore {
     });
     // Media work starts after commit and never delays or fails publication.
     try {
-      this.onPublish?.(result);
+      if (result.game === "retail") this.onPublish?.(result);
     } catch {
       /* A later manual sync can retry. */
     }

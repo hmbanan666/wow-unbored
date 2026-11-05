@@ -339,12 +339,12 @@ export function createMcpServer(
     {
       title: "Save a Path, Collection or Guide draft",
       description:
-        "Owner only. Create or replace a draft through the same checks as PUT /owner/content. Every game id is checked against the current Game DB. Editing a publication creates a new version; identical saves change nothing. Read get_content before editing. See docs/DEVELOPMENT.md for the document format.",
+        "Owner only. Create or replace a draft through the same checks as PUT /owner/content. Retail game ids are checked against the current Game DB; Forever guides never use it. Editing a publication creates a new version; identical saves change nothing. Read get_content before editing. See docs/DEVELOPMENT.md for the document format.",
       inputSchema: {
         document: z
           .record(z.string(), z.unknown())
           .describe(
-            "Full document: kind path|collection|guide, slug, locale en|ru, title, description, tier basic|deeper|complete and prerequisite slug for Paths, optional topics [{slug,title}], blocks, ordered items [{kind,id,name,source:{type,text,zone?,cost?,achievement?},chance,note,url?,required?,topic?,standing?,level?,amount?}]. Path goal kinds also include rep, renown, level, currency, quest, questLine. Level goals have level instead of id. Chance goals are bonuses only, never Plan outcomes.",
+            "Full document: game retail|forever (default retail; forever allows only guides without items, inline game references or images), kind path|collection|guide, optional guide sources [{label,url (absolute https),accessed (YYYY-MM-DD)}] (max 20), asOf {date,build,note?}, callout blocks {type:callout,tone:note|forecast,text} (max 600 characters), slug, locale en|ru, title, description, tier basic|deeper|complete and prerequisite slug for Paths, optional topics [{slug,title}], blocks, ordered items [{kind,id,name,source:{type,text,zone?,cost?,achievement?},chance,note,url?,required?,topic?,standing?,level?,amount?}]. Path goal kinds also include rep, renown, level, currency, quest, questLine. Level goals have level instead of id. Chance goals are bonuses only, never Plan outcomes.",
           ),
       },
     },
@@ -361,7 +361,7 @@ export function createMcpServer(
     {
       title: "Publish a Path, Collection or Guide",
       description:
-        "Owner only. Recheck the newest draft against the current Game DB, publish it and retire the preceding publication. Published version contents are immutable.",
+        "Owner only. Recheck the newest draft (Game DB checks for retail only), publish it and retire the preceding publication. Published version contents are immutable.",
       inputSchema: contentKey,
     },
     async ({ kind, slug, locale }) => {
@@ -377,7 +377,7 @@ export function createMcpServer(
     {
       title: "Read a Path, Collection or Guide version",
       description:
-        "Owner only. Read the latest version, including a draft, or a specific version (including retired publications). Returns document, version, status and checked build; null when absent.",
+        "Owner only. Read the latest version, including a draft, or a specific version (including retired publications). Returns document including game, sources and asOf, version, status and checked retail build (null for Forever); null when absent.",
       inputSchema: { ...contentKey, version: z.number().int().positive().optional() },
     },
     async ({ kind, slug, locale, version }) => {

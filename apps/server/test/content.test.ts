@@ -606,3 +606,141 @@ test("content preserves optional media, hero, figures and bounded inline referen
   }
   assert.equal(parseContent(collection).hero, undefined);
 });
+
+const forever = {
+  kind: "guide",
+  game: "forever",
+  slug: "forever-first-steps",
+  title: "First steps in WoW Forever",
+  description: "Where to start.",
+  blocks: [
+    { type: "callout", tone: "forecast", text: "Rankings are early forecasts." },
+    { type: "link", label: "WoW Forever", href: "/forever" },
+  ],
+  sources: [{ label: "Launch notes", url: "https://example.com/launch", accessed: "2026-11-05" }],
+  asOf: { date: "2026-11-05", build: "1.60.1.x", note: "Launch build." },
+};
+
+test("Forever guides preserve sources, build checks and callouts", () => {
+  const doc = parseContent(forever);
+  assert.equal(doc.game, "forever");
+  assert.deepEqual(doc.sources, forever.sources);
+  assert.deepEqual(doc.asOf, forever.asOf);
+  assert.deepEqual(doc.blocks, forever.blocks);
+  assert.equal(parseContent(collection).game, "retail");
+});
+
+test("Forever rejects retail items, inline references and every image", () => {
+  for (const fields of [
+    { kind: "collection" },
+    { kind: "path", tier: "basic" },
+    { game: "classic" },
+    { game: null },
+    { items: collection.items },
+    { items: {} },
+    { hero: { kind: "mount", id: 6 } },
+    { hero: { image: "0123456789abcdef", alt: "Screenshot" } },
+    { blocks: [{ type: "figure", ref: { kind: "mount", id: 6 }, alt: "Horse" }] },
+    { blocks: [{ type: "figure", image: "0123456789abcdef", alt: "Screenshot" }] },
+    ...["paragraph", "heading", "callout"].map((type) => ({
+      blocks: [{ type, tone: "note", text: "Try [[mount:6]]." }],
+    })),
+    { blocks: [{ type: "list", items: ["Try [[item:1]]."] }] },
+    { blocks: [{ type: "link", label: "[[pet:1]]", href: "/forever" }] },
+  ])
+    assert.throws(
+      () => parseContent({ ...forever, ...fields }),
+      ContentError,
+      JSON.stringify(fields),
+    );
+});
+
+test("guide evidence and callouts have bounded fields and real calendar dates for both games", () => {
+  for (const game of ["retail", "forever"]) {
+    assert.deepEqual(parseContent({ ...forever, game }).sources, forever.sources);
+    for (const fields of [
+      { sources: Array(21).fill(forever.sources[0]) },
+      ...[
+        { label: "x".repeat(121) },
+        { url: "http://example.com" },
+        { url: "/relative" },
+        { url: "https:relative" },
+        { accessed: "2026-02-30" },
+      ].map((source) => ({ sources: [{ ...forever.sources[0], ...source }] })),
+      ...[{ date: "2026-13-01" }, { build: "x".repeat(61) }, { note: "x".repeat(201) }].map(
+        (asOf) => ({ asOf: { ...forever.asOf, ...asOf } }),
+      ),
+      { blocks: [{ type: "callout", tone: "warning", text: "Note" }] },
+      { blocks: [{ type: "callout", tone: "note", text: "x".repeat(601) }] },
+    ])
+      assert.throws(() => parseContent({ ...forever, game, ...fields }), ContentError);
+  }
+});
+
+test.skipIf(!hasPostgres)(
+  "Forever saves and publishes through owner HTTP and MCP without a Game DB",
+  async () => {
+    const dir = mkdtempSync(path.join(import.meta.dirname, ".forever-"));
+    const sql = pg("postgres")!;
+    const server = createApp({
+      dataDir: dir,
+      database: sql,
+      companionToken: "c",
+      plannerToken: "p",
+      log: () => {},
+    });
+    const call = async (name: string, args: unknown) => {
+      const response = await server.app.request("/mcp", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer p",
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name, arguments: args },
+        }),
+      });
+      const body = await response.json();
+      assert.equal(body.result.isError, false, JSON.stringify(body));
+      return JSON.parse(body.result.content[0].text);
+    };
+    try {
+      const response = await server.app.request("/owner/content", {
+        method: "PUT",
+        headers: { authorization: "Bearer p" },
+        body: JSON.stringify(forever),
+      });
+      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal((await response.json()).build, null);
+      const key = { kind: "guide", slug: forever.slug };
+      assert.equal((await call("publish_content", key)).status, "published");
+      const original = await call("get_content", key);
+      assert.equal(original.document.game, "forever");
+      assert.deepEqual(original.document.sources, forever.sources);
+      assert.deepEqual(original.document.asOf, forever.asOf);
+      assert.equal((await call("save_content_draft", { document: forever })).unchanged, true);
+      const changed = { ...forever, asOf: { ...forever.asOf, build: "1.60.1.2" } };
+      assert.equal((await call("save_content_draft", { document: changed })).version, 2);
+      assert.equal((await call("publish_content", key)).build, null);
+      assert.deepEqual(
+        (await call("get_content", { ...key, version: 1 })).document,
+        original.document,
+      );
+      assert.equal((await call("get_content", key)).document.asOf.build, "1.60.1.2");
+      const retail = await server.app.request("/owner/content", {
+        method: "PUT",
+        headers: { authorization: "Bearer p" },
+        body: JSON.stringify({ ...forever, game: "retail" }),
+      });
+      assert.equal(retail.status, 400);
+    } finally {
+      await server.close();
+      await sql`DELETE FROM content.paths`;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

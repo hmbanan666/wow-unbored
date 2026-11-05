@@ -2,7 +2,7 @@
 import type { CatalogSummary } from "#shared/catalog";
 
 const { data } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog", {
-  query: { kind: "guide" },
+  query: { kind: "guide", game: "retail" },
 });
 const pages = computed(() => data.value?.pages ?? []);
 
@@ -36,6 +36,13 @@ useSchemaOrg([
       title="Guides"
       lead="Short guides with the facts checked against the game's own data. Each one points at the lists and Paths that take you further."
     />
+    <DsSection>
+      <DsCard
+        to="/forever"
+        title="WoW Forever"
+        text="Guides for Blizzard’s separate Classic-based game."
+      />
+    </DsSection>
     <CatalogGrid :pages="pages" empty="The first guides are on their way." />
   </DsPage>
 </template>

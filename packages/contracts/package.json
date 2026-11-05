@@ -14,7 +14,8 @@
     "./schema/suggestions.json": "./schema/suggestions.schema.json",
     "./catalog.json": "./catalog/catalog.json",
     "./web-session": "./src/web-session.ts",
-    "./game-media": "./src/game-media.ts"
+    "./game-media": "./src/game-media.ts",
+    "./guide": "./src/guide.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

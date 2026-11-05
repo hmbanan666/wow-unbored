@@ -1,3 +1,4 @@
+import { calloutSchema, type Callout } from "@unbored/contracts/guide";
 import { cleanFigure, inlineMedia, type Figure } from "@unbored/contracts/game-media";
 /** Authored page body. Structured blocks in Postgres, never a markdown file. */
 
@@ -7,6 +8,7 @@ const MAX_ITEMS = 30;
 
 export type Block =
   | Figure
+  | Callout
   | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] }
@@ -18,8 +20,9 @@ const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export function allowedHref(href: string): boolean {
   const value = href.trim();
   if (value.startsWith("/") && !value.startsWith("//")) {
-    if (["/", "/paths", "/collections", "/guides", "/install"].includes(value)) return true;
-    const match = /^\/(paths|collections)\/([^/]+)$/.exec(value);
+    if (["/", "/paths", "/collections", "/guides", "/forever", "/install"].includes(value))
+      return true;
+    const match = /^\/(paths|collections|guides)\/([^/]+)$/.exec(value);
     return Boolean(match && match[2]!.length <= 80 && SLUG.test(match[2]!));
   }
   try {
@@ -61,7 +64,10 @@ export function cleanBlocks(body: unknown): Block[] {
     } catch {
       continue;
     }
-    if (row.type === "figure") {
+    if (row.type === "callout") {
+      const callout = calloutSchema.safeParse(row);
+      if (callout.success) out.push(callout.data);
+    } else if (row.type === "figure") {
       const figure = cleanFigure(row);
       if (figure) out.push(figure);
     } else if (row.type === "heading") {

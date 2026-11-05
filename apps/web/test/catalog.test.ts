@@ -22,6 +22,7 @@ test("paths and collections share the catalog, and objects have no page", () => 
       "/paths/:slug",
       "/collections",
       "/collections/:slug",
+      "/forever",
       "/guides",
       "/guides/:slug",
       "/install",
