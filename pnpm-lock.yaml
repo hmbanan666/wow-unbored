@@ -197,13 +197,13 @@ importers:
         version: 26.6.6
       vite-plus:
         specifier: 'catalog:'
-        version: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
+        version: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(happy-dom@21.0.4)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
 
   apps/server:
     dependencies:
       '@hono/node-server':
-        specifier: ^2.1.5
-        version: 2.1.5(hono@4.13.14)
+        specifier: ^2.1.6
+        version: 2.1.6(hono@4.13.16)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
         version: 1.32.2(supports-color@10.2.2)(zod@4.6.7)
@@ -211,8 +211,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/contracts
       hono:
-        specifier: ^4.13.14
-        version: 4.13.14
+        specifier: ^4.13.16
+        version: 4.13.16
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -231,7 +231,7 @@ importers:
         version: 7.0.2
       vite-plus:
         specifier: 'catalog:'
-        version: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
+        version: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(happy-dom@21.0.4)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
 
   apps/web:
     dependencies:
@@ -293,7 +293,7 @@ importers:
         version: 26.6.6
       vite-plus:
         specifier: 'catalog:'
-        version: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
+        version: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(happy-dom@21.0.4)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
 
 packages:
 
@@ -641,8 +641,8 @@ packages:
   '@fingerprintjs/botd@2.0.0':
     resolution: {integrity: sha512-yhuz23NKEcBDTHmGz/ULrXlGnbHenO+xZmVwuBkuqHUkqvaZ5TAA0kAgcRy4Wyo5dIBdkIf57UXX8/c9UlMLJg==}
 
-  '@hono/node-server@2.1.5':
-    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
+  '@hono/node-server@2.1.6':
+    resolution: {integrity: sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
@@ -3510,8 +3510,8 @@ packages:
     resolution: {integrity: sha512-Ox1pJVrDCyGHMG9CFg1tmrRUMRPRsAWYc/PinY0XzJU4K7y7vjNoLKIQ7BR5UJMCxNN8EM1MNDmHWA/B3aZUuw==}
     engines: {node: '>=6'}
 
-  hono@4.13.14:
-    resolution: {integrity: sha512-yhRLQ21U6qa9Hsu2N7Qcbh8tE+WKEcoErjIo56LeSGiGXGp9sA7UpE86Ui9uexb61KakiGwuHMn2QdV7w6i6kQ==}
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
     engines: {node: '>=16.9.0'}
 
   hookable@5.5.3:
@@ -5743,9 +5743,9 @@ snapshots:
 
   '@fingerprintjs/botd@2.0.0': {}
 
-  '@hono/node-server@2.1.5(hono@4.13.14)':
+  '@hono/node-server@2.1.6(hono@4.13.16)':
     dependencies:
-      hono: 4.13.14
+      hono: 4.13.16
 
   '@img/colour@1.1.0': {}
 
@@ -5942,7 +5942,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.2(supports-color@10.2.2)(zod@4.6.7)':
     dependencies:
-      '@hono/node-server': 2.1.5(hono@4.13.14)
+      '@hono/node-server': 2.1.6(hono@4.13.16)
       ajv: 8.20.0
       ajv-formats: 3.0.1
       content-type: 1.0.5
@@ -5952,7 +5952,7 @@ snapshots:
       eventsource-parser: 3.1.1
       express: 5.3.0(supports-color@10.2.2)
       express-rate-limit: 8.7.2(express@5.3.0(supports-color@10.2.2))(supports-color@10.2.2)
-      hono: 4.13.14
+      hono: 4.13.16
       jose: 6.2.14
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -8558,7 +8558,7 @@ snapshots:
 
   hex-rgb@4.3.0: {}
 
-  hono@4.13.14: {}
+  hono@4.13.16: {}
 
   hookable@5.5.3: {}
 
@@ -9736,31 +9736,6 @@ snapshots:
       '@oxfmt/binding-win32-x64-msvc': 0.74.0
       vite-plus: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(happy-dom@21.0.4)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
 
-  oxfmt@0.74.0(vite-plus@1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)):
-    dependencies:
-      tinypool: 2.2.0
-    optionalDependencies:
-      '@oxfmt/binding-android-arm-eabi': 0.74.0
-      '@oxfmt/binding-android-arm64': 0.74.0
-      '@oxfmt/binding-darwin-arm64': 0.74.0
-      '@oxfmt/binding-darwin-x64': 0.74.0
-      '@oxfmt/binding-freebsd-x64': 0.74.0
-      '@oxfmt/binding-linux-arm-gnueabihf': 0.74.0
-      '@oxfmt/binding-linux-arm-musleabihf': 0.74.0
-      '@oxfmt/binding-linux-arm64-gnu': 0.74.0
-      '@oxfmt/binding-linux-arm64-musl': 0.74.0
-      '@oxfmt/binding-linux-ppc64-gnu': 0.74.0
-      '@oxfmt/binding-linux-riscv64-gnu': 0.74.0
-      '@oxfmt/binding-linux-riscv64-musl': 0.74.0
-      '@oxfmt/binding-linux-s390x-gnu': 0.74.0
-      '@oxfmt/binding-linux-x64-gnu': 0.74.0
-      '@oxfmt/binding-linux-x64-musl': 0.74.0
-      '@oxfmt/binding-openharmony-arm64': 0.74.0
-      '@oxfmt/binding-win32-arm64-msvc': 0.74.0
-      '@oxfmt/binding-win32-ia32-msvc': 0.74.0
-      '@oxfmt/binding-win32-x64-msvc': 0.74.0
-      vite-plus: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
-
   oxlint-tsgolint@7.0.2004:
     optionalDependencies:
       '@oxlint-tsgolint/darwin-arm64': 7.0.2004
@@ -9818,30 +9793,6 @@ snapshots:
       '@oxlint/binding-win32-x64-msvc': 1.89.0
       oxlint-tsgolint: 7.0.2004
       vite-plus: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(happy-dom@21.0.4)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
-
-  oxlint@1.89.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)):
-    optionalDependencies:
-      '@oxlint/binding-android-arm-eabi': 1.89.0
-      '@oxlint/binding-android-arm64': 1.89.0
-      '@oxlint/binding-darwin-arm64': 1.89.0
-      '@oxlint/binding-darwin-x64': 1.89.0
-      '@oxlint/binding-freebsd-x64': 1.89.0
-      '@oxlint/binding-linux-arm-gnueabihf': 1.89.0
-      '@oxlint/binding-linux-arm-musleabihf': 1.89.0
-      '@oxlint/binding-linux-arm64-gnu': 1.89.0
-      '@oxlint/binding-linux-arm64-musl': 1.89.0
-      '@oxlint/binding-linux-ppc64-gnu': 1.89.0
-      '@oxlint/binding-linux-riscv64-gnu': 1.89.0
-      '@oxlint/binding-linux-riscv64-musl': 1.89.0
-      '@oxlint/binding-linux-s390x-gnu': 1.89.0
-      '@oxlint/binding-linux-x64-gnu': 1.89.0
-      '@oxlint/binding-linux-x64-musl': 1.89.0
-      '@oxlint/binding-openharmony-arm64': 1.89.0
-      '@oxlint/binding-win32-arm64-msvc': 1.89.0
-      '@oxlint/binding-win32-ia32-msvc': 1.89.0
-      '@oxlint/binding-win32-x64-msvc': 1.89.0
-      oxlint-tsgolint: 7.0.2004
-      vite-plus: 1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)
 
   package-manager-detector@1.9.0: {}
 
@@ -10850,67 +10801,6 @@ snapshots:
       - vue-tsc
       - yaml
 
-  vite-plus@1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1):
-    dependencies:
-      '@oxc-project/runtime': 0.155.0
-      '@oxc-project/types': 0.155.0
-      '@oxlint/plugins': 1.89.0
-      '@vitest/browser': 5.0.5(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(vitest@5.0.5)
-      '@vitest/browser-preview': 5.0.5(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(vitest@5.0.5)
-      '@vitest/mocker': 5.0.5(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))
-      '@vitest/pretty-format': 5.0.5
-      '@vitest/snapshot': 5.0.5
-      '@vitest/spy': 5.0.5
-      '@vitest/utils': 5.0.5
-      oxfmt: 0.74.0(vite-plus@1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))
-      oxlint: 1.89.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.4.0(@types/node@26.6.6)(@vitest/ui@5.0.5)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))
-      oxlint-tsgolint: 7.0.2004
-      vite: '@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)'
-      vitest: 5.0.5(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))
-    optionalDependencies:
-      '@voidzero-dev/vite-plus-darwin-arm64': 1.4.0
-      '@voidzero-dev/vite-plus-darwin-x64': 1.4.0
-      '@voidzero-dev/vite-plus-linux-arm64-gnu': 1.4.0
-      '@voidzero-dev/vite-plus-linux-arm64-musl': 1.4.0
-      '@voidzero-dev/vite-plus-linux-x64-gnu': 1.4.0
-      '@voidzero-dev/vite-plus-linux-x64-musl': 1.4.0
-      '@voidzero-dev/vite-plus-win32-arm64-msvc': 1.4.0
-      '@voidzero-dev/vite-plus-win32-x64-msvc': 1.4.0
-    transitivePeerDependencies:
-      - '@arethetypeswrong/core'
-      - '@astrojs/compiler-rs'
-      - '@edge-runtime/vm'
-      - '@opentelemetry/api'
-      - '@types/node'
-      - '@typescript/native-preview'
-      - '@vitejs/devtools'
-      - '@vitest/coverage-istanbul'
-      - '@vitest/coverage-v8'
-      - '@vitest/ui'
-      - '@volar/typescript'
-      - '@vue/language-core'
-      - bufferutil
-      - esbuild
-      - happy-dom
-      - jiti
-      - jsdom
-      - less
-      - msw
-      - publint
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - svelte
-      - terser
-      - tsx
-      - typescript
-      - unplugin-unused
-      - unrun
-      - utf-8-validate
-      - vue-tsc
-      - yaml
-
   vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
@@ -10950,29 +10840,6 @@ snapshots:
     transitivePeerDependencies:
       - msw
     optional: true
-
-  vitest@5.0.5(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)):
-    dependencies:
-      '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.5(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))
-      chai: 6.3.0
-      es-module-lexer: 2.3.2
-      expect-type: 1.4.0
-      magic-string: 1.4.5
-      obug: 3.0.0
-      picomatch: 4.0.7
-      std-env: 4.3.0
-      tinybench: 6.2.2
-      tinyexec: 1.3.1
-      tinyglobby: 0.2.17
-      vite: '@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1)'
-      why-is-node-running: 3.2.1
-    optionalDependencies:
-      '@types/node': 26.6.6
-      '@vitest/browser-preview': 5.0.5(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(vitest@5.0.5)
-      '@vitest/ui': 5.0.5(vitest@5.0.5)
-    transitivePeerDependencies:
-      - msw
 
   vitest@5.0.5(@types/node@26.6.6)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5)(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(@vue/language-core@3.3.14)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@7.0.2)(yaml@2.9.1))(happy-dom@21.0.4):
     dependencies:
