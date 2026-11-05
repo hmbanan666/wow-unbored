@@ -15,7 +15,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@unbored/contracts": "workspace:*",
     "hono": "^4.13.14",
-    "postgres": "^3.4.9",
+    "postgres": "^4.0.0",
     "sharp": "^0.35.5",
     "zod": "^4.6.7"
   },
