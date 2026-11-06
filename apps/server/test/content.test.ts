@@ -718,6 +718,20 @@ test("guide evidence and callouts have bounded fields and real calendar dates fo
 test.skipIf(!hasPostgres)(
   "Forever saves and publishes through owner HTTP and MCP without a Game DB",
   async () => {
+    const authored = {
+      ...forever,
+      terms: [
+        {
+          key: "camp",
+          name: "Camp",
+          text: "A place to rest.",
+          source: forever.sources[0].url,
+          kind: "spell",
+          id: 123,
+        },
+      ],
+      blocks: [...forever.blocks, { type: "paragraph", text: "Use the {{term:camp|camp}}." }],
+    };
     const dir = mkdtempSync(path.join(import.meta.dirname, ".forever-"));
     const sql = pg("postgres")!;
     const server = createApp({
@@ -750,7 +764,7 @@ test.skipIf(!hasPostgres)(
       const response = await server.app.request("/owner/content", {
         method: "PUT",
         headers: { authorization: "Bearer p" },
-        body: JSON.stringify(forever),
+        body: JSON.stringify(authored),
       });
       assert.equal(response.status, 200, await response.clone().text());
       assert.equal((await response.json()).build, null);
@@ -759,9 +773,10 @@ test.skipIf(!hasPostgres)(
       const original = await call("get_content", key);
       assert.equal(original.document.game, "forever");
       assert.deepEqual(original.document.sources, forever.sources);
+      assert.deepEqual(original.document.terms, authored.terms);
       assert.deepEqual(original.document.asOf, forever.asOf);
-      assert.equal((await call("save_content_draft", { document: forever })).unchanged, true);
-      const changed = { ...forever, asOf: { ...forever.asOf, build: "1.60.1.2" } };
+      assert.equal((await call("save_content_draft", { document: authored })).unchanged, true);
+      const changed = { ...authored, asOf: { ...forever.asOf, build: "1.60.1.2" } };
       assert.equal((await call("save_content_draft", { document: changed })).version, 2);
       assert.equal((await call("publish_content", key)).build, null);
       assert.deepEqual(
@@ -772,7 +787,7 @@ test.skipIf(!hasPostgres)(
       const retail = await server.app.request("/owner/content", {
         method: "PUT",
         headers: { authorization: "Bearer p" },
-        body: JSON.stringify({ ...forever, game: "retail" }),
+        body: JSON.stringify({ ...authored, game: "retail" }),
       });
       assert.equal(retail.status, 400);
     } finally {

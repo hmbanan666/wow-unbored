@@ -7,7 +7,10 @@ import {
 } from "@unbored/contracts/game-media";
 import type { CatalogItem, PublicPage } from "./catalog";
 
+import type { GuideTerm } from "@unbored/contracts/guide";
+
 export type GameText = {
+  term?: GuideTerm;
   text: string;
   kind?: string;
   media?: PageMedia[string];

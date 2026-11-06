@@ -1,4 +1,4 @@
-import type { Game, GuideSource, GuideAsOf } from "@unbored/contracts/guide";
+import type { Game, GuideSource, GuideAsOf, GuideTerm } from "@unbored/contracts/guide";
 import {
   cleanMediaOverrides,
   type MediaOverrides,
@@ -129,6 +129,7 @@ export type CatalogItem = {
 
 export type PublicPage = {
   game: Game;
+  terms?: GuideTerm[];
   sources?: GuideSource[];
   asOf?: GuideAsOf;
   hero?: Hero;

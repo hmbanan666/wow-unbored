@@ -303,7 +303,7 @@ test("Forever guide shows its own trail, evidence, badge and Article game withou
   expect(wrapper.get('nav[aria-label="Breadcrumb"]').text()).toContain("WoW Forever");
   expect(wrapper.get('nav[aria-label="Breadcrumb"] a[href="/forever"]').exists()).toBe(true);
   expect(wrapper.find(".ds-chip").text()).toBe("WoW Forever");
-  expect(wrapper.text()).toContain("Checked against build 1.60.1.x on 5 Nov 2026");
+  expect(wrapper.text()).toContain("Sources checked 5 Nov 2026 · 1.60.1.x");
   expect(wrapper.text()).toContain("Launch build.");
   expect(wrapper.text()).toContain("Rankings are early forecasts.");
   expect(wrapper.get('a[href="https://example.com/launch"]').attributes()).toMatchObject({

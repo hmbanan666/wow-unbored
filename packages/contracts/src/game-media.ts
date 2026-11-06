@@ -116,11 +116,20 @@ export function inlineMedia(text: string): MediaRef[] {
 }
 export type MediaRequest = MediaRef & { name?: string; media?: MediaOverrides };
 /** One reference per page; authored item names and overrides take precedence. */
-export function pageMediaRefs(body: { items?: unknown[]; blocks?: unknown[]; hero?: unknown }) {
+export function pageMediaRefs(body: {
+  items?: unknown[];
+  blocks?: unknown[];
+  hero?: unknown;
+  terms?: unknown[];
+}) {
   const refs = new Map<string, MediaRequest>();
   const images = new Set<string>();
   const add = (ref: MediaRequest) =>
     refs.set(`${ref.kind}:${ref.id}`, { ...refs.get(`${ref.kind}:${ref.id}`), ...ref });
+  for (const term of body.terms ?? []) {
+    if (object(term) && typeof term.icon === "string" && HASH.test(term.icon))
+      images.add(term.icon);
+  }
   const hero = cleanHero(body.hero);
   if (hero) {
     if ("image" in hero) images.add(hero.image);
