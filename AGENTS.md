@@ -22,3 +22,5 @@ Game data rules (ADRs 0027-0031): collect only the player's own characters and A
 Commits and PR titles use Conventional Commits with a scope, for example `feat(addon): ...`, `fix(companion): ...`, `docs: ...` (types feat, fix, perf, refactor, docs, chore, test, ci). Release notes are generated from them ([ADR 0022](docs/adr/0022-releases-and-docs.md)), so write the subject as a short sentence a player could read. `README.md` is for players; build, data and release details go in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 Checks that CI runs: `pnpm test` (addon luacheck and Lua tests, `vp test` for the Server and contracts, and `cargo test --lib --no-default-features` in `apps/companion/src-tauri/`). `pnpm lint` also runs `vp check`, cargo fmt, and clippy. The Windows installer is built by `.github/workflows/companion.yml`.
+
+For new guides, use `.agents/skills/guide-write/SKILL.md`; for audits, rewrites and source/SEO refreshes, use `.agents/skills/guide-maintain/SKILL.md`. Start at [Content authoring](docs/content-authoring.md) for the database publication flow and validation commands.
