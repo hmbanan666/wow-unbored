@@ -81,6 +81,7 @@ pg("migrate applies each file once, also when two Servers start together", async
       "0020_game_media.sql",
       "0021_media_pipeline.sql",
       "0022_content_game.sql",
+      "0023_forever_editorial.sql",
     ]);
     assert.deepEqual(await migrate(db.sql), []);
     const rows = await db.sql`SELECT version, name FROM schema_migrations ORDER BY version`;
@@ -109,6 +110,7 @@ pg("migrate applies each file once, also when two Servers start together", async
         [20, "0020_game_media.sql"],
         [21, "0021_media_pipeline.sql"],
         [22, "0022_content_game.sql"],
+        [23, "0023_forever_editorial.sql"],
       ],
     );
   } finally {

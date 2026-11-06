@@ -55,7 +55,7 @@ const meta = computed(() =>
   [
     updated.value ? `Updated ${updated.value}` : "",
     props.page?.asOf
-      ? `Checked against build ${props.page.asOf.build} on ${evidenceDate(props.page.asOf.date)}`
+      ? `Sources checked ${evidenceDate(props.page.asOf.date)} · ${props.page.asOf.build}`
       : props.page?.build
         ? `Checked against game build ${props.page.build}`
         : "",
@@ -120,7 +120,12 @@ if (props.page && props.page.kind !== "page") {
     />
     <template v-else-if="page.kind === 'page'">
       <DsHero :title="page.headline">
-        <EntryBody :blocks="page.blocks" :media="page.media" :items="page.items" />
+        <EntryBody
+          :terms="page.terms"
+          :blocks="page.blocks"
+          :media="page.media"
+          :items="page.items"
+        />
       </DsHero>
       <slot />
     </template>
@@ -136,7 +141,12 @@ if (props.page && props.page.kind !== "page") {
         />
       </DsGameHeader>
       <p v-if="page.asOf?.note" class="ds-meta">{{ page.asOf.note }}</p>
-      <EntryBody :blocks="page.blocks" :media="page.media" :items="page.items" />
+      <EntryBody
+        :terms="page.terms"
+        :blocks="page.blocks"
+        :media="page.media"
+        :items="page.items"
+      />
       <PersonalPaths
         v-if="page.game === 'retail' && (page.kind === 'path' || page.kind === 'collection')"
         :page="page"
