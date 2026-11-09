@@ -5,6 +5,14 @@ const { data, error, refresh } = await useFetch<{ pages: CatalogSummary[] }>("/a
   query: { kind: "guide", game: "forever" },
 });
 const pages = computed(() => data.value?.pages ?? []);
+const systemSlugs = new Set([
+  "wow-forever-camping-guide",
+  "wow-forever-cozy-sleeping-bag",
+  "wow-forever-legacy-talents",
+  "wow-forever-enhanced-vs-classic-preset",
+]);
+const systems = computed(() => pages.value.filter((page) => systemSlugs.has(page.slug)));
+const otherGuides = computed(() => pages.value.filter((page) => !systemSlugs.has(page.slug)));
 
 const title = "WoW Forever guides";
 const description =
@@ -16,7 +24,7 @@ useSchemaOrg([
   defineItemList({
     name: title,
     numberOfItems: pages.value.length,
-    itemListElement: pages.value.map((page, index) => ({
+    itemListElement: [...otherGuides.value, ...systems.value].map((page, index) => ({
       "@type": "ListItem",
       position: index + 1,
       name: page.title,
@@ -39,6 +47,15 @@ useSchemaOrg([
     <DsEmptyState v-if="error" :text="PUBLIC_COPY.unavailable">
       <DsButton @click="refresh()">Try again</DsButton>
     </DsEmptyState>
-    <CatalogGrid v-else :pages="pages" empty="The first WoW Forever guides are on their way." />
+    <template v-else>
+      <CatalogGrid
+        v-if="otherGuides.length || !pages.length"
+        :pages="otherGuides"
+        empty="The first WoW Forever guides are on their way."
+      />
+      <DsSection v-if="systems.length" title="Systems">
+        <CatalogGrid :pages="systems" empty="" />
+      </DsSection>
+    </template>
   </DsPage>
 </template>
