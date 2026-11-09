@@ -37,7 +37,7 @@ export default defineNuxtConfig({
     },
   },
   robots: {
-    disallow: [],
+    disallow: ["/download/"],
   },
   /** Content-Signal is not a robots.txt directive validators know; leave it out. */
   aiReady: {
@@ -45,7 +45,7 @@ export default defineNuxtConfig({
   },
   sitemap: {
     sources: ["/api/__sitemap__/urls"],
-    exclude: ["/my", "/enter/**"],
+    exclude: ["/my", "/enter/**", "/download/**"],
   },
   nitro: {
     preset: "node-server",

@@ -15,10 +15,10 @@ How playunbored.com is organised (ADRs 0072-0074). The site is an authored porta
 | `/paths` | Every published Path, grouped by content and tier (Basic, Deeper, Complete) | yes |
 | `/paths/<slug>` | One Path: what it covers, goals by Topic, how to finish each | yes |
 | `/about` | The independent project, guide checks and review policy, corrections, news and code | yes |
-| `/install` | Get the addon and the Companion (the GitHub release feed), what Bory knows about you | yes |
+| `/install` | Bory landing page, live Windows download, manual addon zip, setup, privacy and visible FAQ | yes |
 | `/my` | My page: your Characters, active Paths with progress, Path completion history, Plans and Wins, after signing in from the Companion | no |
 
-Header: Guides, WoW Forever, Collections, Paths, Install, My page. The active header section follows a Guide’s Game: a Forever Guide highlights WoW Forever even at `/guides/<slug>`. Footer: the same links, About, Telegram, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
+Header: Guides, WoW Forever, Collections, Paths, Get Bory, My page. The active header section follows a Guide’s Game: a Forever Guide highlights WoW Forever even at `/guides/<slug>`. Footer: the same links, About, Telegram, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
 
 ## A list item
 
@@ -26,7 +26,7 @@ Each item of a Collection (and each Path goal) shows: the game name, what it is 
 
 ## Visitor flow
 
-Search result > a Collection or Path page > "Track this in game" > install, then My page from the Companion > the same page shows your progress (20 / 50) > pick it as your Path, and Bory's next Plans come from its unfinished items.
+Search result > a Collection or Path page > "Track this in game with Bory" > install, then My page from the Companion > the same page shows your progress (20 / 50) > pick it as your Path, and Bory's next Plans come from its unfinished items.
 
 ## SEO
 
@@ -57,3 +57,5 @@ Both Games may carry sourced inline explanations through `terms` and `{{term:key
 Both Games may carry `sources`: up to 20 `{label, url, accessed}` entries (label up to 120 characters, absolute HTTPS URL, real `YYYY-MM-DD` accessed date), rendered at the end under Sources. Links open in a new tab with `rel="nofollow noopener noreferrer"`, followed by `· Accessed 5 Nov 2026`. Optional `asOf: {date, build, note?}` records when facts were checked, with build text up to 60 and note up to 200 characters; the “Sources checked” date and source build/scope line appears near the top with the same English date format. Evidence is versioned with the guide and does not replace Retail validation.
 
 Signed-in additions to `/paths`, `/paths/<slug>` and `/collections/<slug>` load after mounting: a Character switcher, progress, and (on detail pages) active Path selection with replacement confirmation. These additions never enter public SSR HTML or shared caches; no new public URLs are introduced.
+
+`/download/windows`, `/download/windows-msi` and `/download/addon` redirect to GitHub release assets on demand (ADR 0085). They are not pages: noindex, excluded from the sitemap and disallowed by robots. `/install` adds SoftwareApplication with the on-domain download address, current version and size, own screenshot and zero-price offer; its FAQPage answers come from the visible FAQ (ADR 0086). No ratings are emitted.

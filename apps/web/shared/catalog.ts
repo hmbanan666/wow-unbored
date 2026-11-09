@@ -44,7 +44,7 @@ export const SITE_NAV = [
   { label: "WoW Forever", to: "/forever" },
   { label: "Collections", to: "/collections" },
   { label: "Paths", to: "/paths" },
-  { label: "Install", to: "/install" },
+  { label: "Get Bory", to: "/install" },
   { label: "My page", to: "/my" },
 ] as const;
 

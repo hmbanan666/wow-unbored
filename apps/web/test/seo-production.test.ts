@@ -30,12 +30,21 @@ beforeAll(async () => {
   await database.sql`INSERT INTO content.media (ref_kind, role, source, hash, width, height, variants, alt, fetched_at, checked_at)
     VALUES ('screenshot', 'image', 'own', '0123456789abcdef', 320, 320, ${variants}::jsonb, 'Existing art fixture', 1, 1)`;
   await database.sql`UPDATE content.paths SET body = body || '{"hero":{"image":"0123456789abcdef","alt":"Existing art fixture"}}'::jsonb WHERE slug = 'forever-2'`;
-  server = spawn(
+  ({ server, origin } = await startWebServer());
+}, 30_000);
+
+async function startWebServer(unavailable = false) {
+  const server = spawn(
     process.execPath,
-    [fileURLToPath(new URL("../.output/server/index.mjs", import.meta.url))],
+    [
+      "--import",
+      fileURLToPath(new URL("./download-fetch-fixture.mjs", import.meta.url)),
+      fileURLToPath(new URL("../.output/server/index.mjs", import.meta.url)),
+    ],
     {
       env: {
         ...process.env,
+        UNBORED_RELEASE_FIXTURE: unavailable ? "unavailable" : "available",
         DATABASE_URL: database.url,
         NITRO_HOST: "127.0.0.1",
         NUXT_MEDIA_DIR: mediaDir,
@@ -47,7 +56,7 @@ beforeAll(async () => {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  origin = await new Promise<string>((resolve, reject) => {
+  const origin = await new Promise<string>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Production preview did not start")), 20_000);
     server.once("exit", () => {
       clearTimeout(timeout);
@@ -62,7 +71,8 @@ beforeAll(async () => {
       }
     });
   });
-}, 30_000);
+  return { server, origin };
+}
 
 afterAll(async () => {
   for (const window of windows) await window.happyDOM.close();
@@ -304,6 +314,134 @@ productionTest(
           script.textContent!.includes('"FAQPage"'),
         ),
       ).toBe(false);
+    }
+  },
+);
+
+productionTest(
+  "install SSR exposes the current download, complete FAQ and release schema",
+  async () => {
+    const document = await page("/install");
+    expect(document.querySelector('main a[href="/download/windows"]')?.textContent).toBe(
+      "Download for Windows",
+    );
+    expect(document.querySelector('header a[href="/install"]')?.textContent).toBe("Get Bory");
+    expect(document.body.textContent).toContain("Free · v1.2.3 · 5.12 MB · Windows 10/11 · Retail");
+    expect(document.body.textContent).toContain("9 November 2026");
+    expect(document.body.textContent).toContain("a".repeat(64));
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(document.title.length).toBeLessThanOrEqual(60);
+    const description = document
+      .querySelector('meta[name="description"]')!
+      .getAttribute("content")!;
+    expect(description.length).toBeGreaterThanOrEqual(120);
+    expect(description.length).toBeLessThanOrEqual(155);
+    const nodes = [...document.querySelectorAll('script[type="application/ld+json"]')].flatMap(
+      (script) => JSON.parse(script.textContent!)["@graph"],
+    );
+    const node = (type: string) => nodes.find((value) => [value["@type"]].flat().includes(type));
+    const resolve = (value: Record<string, unknown>) =>
+      nodes.find((n) => n["@id"] === value["@id"]) || value;
+    const software = node("SoftwareApplication");
+    expect(software).toMatchObject({
+      downloadUrl: "https://playunbored.com/download/windows",
+      softwareVersion: "v1.2.3",
+      fileSize: "5121567 bytes",
+      operatingSystem: "Windows 10/11",
+    });
+    expect(software.aggregateRating).toBeUndefined();
+    expect(resolve(software.offers)).toMatchObject({ price: 0, priceCurrency: "USD" });
+    const screenshot =
+      typeof software.screenshot === "string"
+        ? software.screenshot
+        : resolve(software.screenshot).url;
+    expect(screenshot).toMatch(/^https:\/\/playunbored.com\/media\/.*\.webp$/);
+    const image = await fetch(origin + new URL(screenshot).pathname);
+    expect(image.status).toBe(200);
+    expect(image.headers.get("content-type")).toContain("image/webp");
+    expect(node("BreadcrumbList").itemListElement.at(-1)).toMatchObject({
+      name: "Get Bory",
+      item: "https://playunbored.com/install",
+    });
+    const questions = node("FAQPage").mainEntity.map(resolve);
+    const visible = [...document.querySelectorAll(".guide-faq dt")].map((q) => ({
+      q: q.textContent,
+      a: q.nextElementSibling!.textContent,
+    }));
+    expect(visible).toHaveLength(8);
+    expect(
+      questions.map((q: { name: string; acceptedAnswer: Record<string, unknown> }) => ({
+        q: q.name,
+        a: resolve(q.acceptedAnswer).text,
+      })),
+    ).toEqual(visible);
+  },
+);
+
+productionTest(
+  "download HTTP routes redirect to files, reject unknown names and stay out of search",
+  async () => {
+    for (const [path, asset] of [
+      ["windows", "Unbored.Companion_1.2.3_x64-setup.exe"],
+      ["addon", "Unbored-v1.2.3.zip"],
+      ["windows-msi", "Unbored.Companion_1.2.3_x64_en-US.msi"],
+    ]) {
+      const response = await fetch(`${origin}/download/${path}`, { redirect: "manual" });
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(
+        `https://github.com/hmbanan666/wow-unbored/releases/download/v1.2.3/${asset}`,
+      );
+      expect(response.headers.get("x-robots-tag")).toContain("noindex");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+    expect((await fetch(origin + "/download/latest.json", { redirect: "manual" })).status).toBe(
+      404,
+    );
+    expect(await (await fetch(origin + "/sitemap.xml")).text()).not.toContain("/download/");
+    expect(await (await fetch(origin + "/robots.txt")).text()).toContain("Disallow: /download/");
+  },
+);
+
+productionTest(
+  "Bory links appear on Retail guides and Collections but never on Forever pages",
+  async () => {
+    for (const path of ["/guides/retail-1", "/collections/first-mounts"]) {
+      const document = await page(path);
+      expect(document.querySelector('main a[href="/install"]')).not.toBeNull();
+      expect(document.body.textContent).toContain("Track this in game with Bory");
+    }
+    for (const path of ["/forever", ...[1, 2, 3, 4, 5].map((i) => `/guides/forever-${i}`)]) {
+      const document = await page(path);
+      expect(document.querySelector('main a[href="/install"]')).toBeNull();
+      expect(document.querySelector("main")!.textContent).not.toContain(
+        "Track this in game with Bory",
+      );
+    }
+  },
+);
+
+productionTest(
+  "an unavailable release still renders install advice and redirects to the release page",
+  async () => {
+    const preview = await startWebServer(true);
+    try {
+      const response = await fetch(preview.origin + "/install");
+      expect(response.status).toBe(200);
+      const html = await response.text();
+      expect(html).toContain('href="/download/windows"');
+      expect(html).toContain("Free · Windows 10/11 · Retail");
+      expect(html).toContain("Release details are temporarily unavailable");
+      expect(html).not.toContain('"softwareVersion"');
+      expect(html).not.toContain("v1.2.3");
+      const redirect = await fetch(preview.origin + "/download/windows", { redirect: "manual" });
+      expect(redirect.status).toBe(302);
+      expect(redirect.headers.get("location")).toBe(
+        "https://github.com/hmbanan666/wow-unbored/releases/latest",
+      );
+    } finally {
+      const exited = once(preview.server, "exit");
+      preview.server.kill();
+      await exited;
     }
   },
 );

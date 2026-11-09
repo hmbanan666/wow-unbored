@@ -220,17 +220,10 @@ if (props.page && props.page.kind !== "page") {
           </ul></DsProse
         >
       </DsSection>
-      <DsSection
-        v-if="page.game === 'retail'"
-        divided
-        :title="page.kind === 'guide' ? 'Let Bory pick the next step' : 'Track this list in game'"
-      >
-        <p>
-          Install Unbored and Bory, a calm ginger cat, gives you the next step in game, one at a
-          time, with a pin on the map.
-        </p>
+      <DsSection v-if="page.game === 'retail'" divided title="Track this in game with Bory">
+        <p>Pick an idea in Retail and follow one step at a time, with a pin on the map.</p>
         <DsActions>
-          <DsButton to="/install">Get Unbored</DsButton>
+          <DsButton to="/install">Get Bory</DsButton>
           <DsButton v-if="section" :to="section.to" variant="secondary"
             >More {{ section.label.toLowerCase() }}</DsButton
           >

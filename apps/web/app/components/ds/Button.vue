@@ -4,13 +4,15 @@ const props = withDefaults(
   defineProps<{
     to?: string;
     disabled?: boolean;
+    /** Server routes such as downloads must bypass client navigation. */
+    external?: boolean;
     variant?: "primary" | "secondary" | "ghost";
     block?: boolean;
   }>(),
   { variant: "primary" },
 );
 const NuxtLink = resolveComponent("NuxtLink");
-const external = computed(() => /^https?:/.test(props.to || ""));
+const offsite = computed(() => /^https?:/.test(props.to || ""));
 </script>
 
 <template>
@@ -21,9 +23,9 @@ const external = computed(() => /^https?:/.test(props.to || ""));
     :to="to"
     class="ds-button"
     :class="[`ds-button--${variant}`, { 'ds-button--block': block }]"
-    :target="external ? '_blank' : undefined"
-    :rel="external ? 'noopener' : undefined"
-    :external="external"
+    :target="offsite ? '_blank' : undefined"
+    :rel="offsite ? 'noopener' : undefined"
+    :external="external || offsite"
   >
     <slot />
   </component>
