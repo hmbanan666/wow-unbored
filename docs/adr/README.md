@@ -88,6 +88,8 @@ Short records of decisions that are hard to reverse. Read them before changing h
 
 - [0083. Table and FAQ blocks in guides](0083-table-and-faq-blocks.md)
 
+- [0084. The /forever hub as a topic cluster](0084-forever-hub.md)
+
 - [0085. Download links on our domain](0085-download-links-on-our-domain.md)
 - [0086. Install page as the addon landing page](0086-install-landing-page.md)
 - [0087. WoW Forever system guides: one page per searched system](0087-forever-system-guides.md)

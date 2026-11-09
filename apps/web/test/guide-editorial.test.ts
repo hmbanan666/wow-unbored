@@ -106,7 +106,7 @@ test.skipIf(!hasPostgres)(
       }
       await db.sql.begin((tx) => tx.unsafe(sqlText));
       expect(await listPublished(db.sql, "guide", "forever")).toEqual(pages);
-      const changed = { ...docs[0]!, title: "A later editorial revision" };
+      const changed = { ...docs[0]!, group: "classes", title: "A later editorial revision" };
       await content.saveDraft(changed);
       await content.publish("guide", changed.slug);
       await db.sql.begin((tx) => tx.unsafe(sqlText));

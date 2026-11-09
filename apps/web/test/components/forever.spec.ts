@@ -56,8 +56,8 @@ async function render(component: typeof Forever, pages = entries, unavailable = 
 test("Forever index requests only Forever guides and links to stable guide URLs", async () => {
   const { wrapper, fetch } = await render(Forever);
   expect(fetch).toHaveBeenCalledWith("/api/catalog", { query: { kind: "guide", game: "forever" } });
-  expect(wrapper.get("h1").text()).toBe("WoW Forever guides");
-  expect(wrapper.text()).toContain("launched on 4 November 2026");
+  expect(wrapper.get("h1").text()).toBe("WoW Forever Guides: Classes, Systems and Gold");
+  expect(wrapper.text()).toContain("4 November 2026");
   expect(wrapper.get('a[href="/guides/forever-start"]').text()).toContain("forever start");
   expect(wrapper.find('a[href="/guides/retail-start"]').exists()).toBe(false);
 });
@@ -84,8 +84,70 @@ test("home features Forever only when it has a published guide", async () => {
 test("Forever distinguishes unavailable content from an empty catalog and offers retry", async () => {
   const { wrapper, refresh } = await render(Forever, [], true);
   expect(wrapper.text()).not.toContain("The first WoW Forever guides are on their way.");
+  expect(wrapper.find("img").exists()).toBe(false);
   const retry = wrapper.findAll("button").find((button) => button.text() === "Try again");
   expect(retry).toBeDefined();
   await retry!.trigger("click");
   expect(refresh).toHaveBeenCalledOnce();
+});
+
+test("hub uses groups, hides empty topics, adds a published FAQ and lists recent publication dates", async () => {
+  const guide = entries[1]!;
+  const pages: CatalogSummary[] = [
+    {
+      ...guide,
+      slug: "wow-forever-beginners-guide",
+      href: "/guides/wow-forever-beginners-guide",
+      group: "first-steps",
+      updatedAt: 1793865600,
+    },
+    {
+      ...guide,
+      slug: "wow-forever-enhanced-vs-classic-preset",
+      href: "/guides/wow-forever-enhanced-vs-classic-preset",
+      group: "systems",
+      updatedAt: 1794211200,
+    },
+    {
+      ...guide,
+      slug: "a-new-system",
+      href: "/guides/a-new-system",
+      group: "systems",
+      updatedAt: 1794124800,
+    },
+  ];
+  const { wrapper } = await render(Forever, pages);
+  expect(wrapper.findAll("h1")).toHaveLength(1);
+  const sections = wrapper.findAll("section");
+  const systems = sections.find((s) => s.find("h2").text() === "Systems")!;
+  expect(systems.find('a[href="/guides/a-new-system"]').exists()).toBe(true);
+  expect(wrapper.text()).not.toContain("Dungeons and raids");
+  const start = sections.find((s) => s.find("h2").text() === "Start here")!;
+  expect(start.findAll('a[href^="/guides/"]')).toHaveLength(2);
+  const recent = sections.find((s) => s.find("h2").text() === "Recently updated")!;
+  expect(recent.findAll("time").map((t) => t.attributes("datetime"))).toEqual([
+    "2026-11-09",
+    "2026-11-08",
+    "2026-11-05",
+  ]);
+  const faq = {
+    ...guide,
+    slug: "wow-forever-faq",
+    href: "/guides/wow-forever-faq",
+    group: "first-steps" as const,
+  };
+  const withFaq = await render(Forever, [...pages, faq]);
+  expect(
+    withFaq.wrapper
+      .findAll("section")
+      .find((s) => s.find("h2").text() === "Start here")!
+      .findAll('a[href^="/guides/"]'),
+  ).toHaveLength(3);
+});
+
+test("empty Forever hub keeps its introduction without a mascot or empty topic sections", async () => {
+  const { wrapper } = await render(Forever, []);
+  expect(wrapper.text()).toContain("The first WoW Forever guides are on their way.");
+  expect(wrapper.find("img").exists()).toBe(false);
+  expect(wrapper.find("[data-guide-group]").exists()).toBe(false);
 });

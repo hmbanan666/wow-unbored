@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+export const GUIDE_GROUPS = [
+  "first-steps",
+  "systems",
+  "classes",
+  "professions-gold",
+  "dungeons-raids",
+  "mounts-riding",
+  "addons",
+  "comparisons",
+] as const;
+export const guideGroupSchema = z.enum(GUIDE_GROUPS);
+export type GuideGroup = z.infer<typeof guideGroupSchema>;
+
 export const GAMES = ["retail", "forever"] as const;
 export type Game = (typeof GAMES)[number];
 export const guideSourcesSchema = z

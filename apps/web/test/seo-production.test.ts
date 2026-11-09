@@ -445,3 +445,55 @@ productionTest(
     }
   },
 );
+
+productionTest(
+  "Forever hub has one CollectionPage linked to its ordered guide list and breadcrumbs",
+  async () => {
+    const document = await page("/forever");
+    const nodes = [...document.querySelectorAll('script[type="application/ld+json"]')].flatMap(
+      (script) => JSON.parse(script.textContent!)["@graph"],
+    );
+    const node = (type: string) => nodes.find((value) => [value["@type"]].flat().includes(type));
+    const list = node("ItemList");
+    expect(node("CollectionPage").mainEntity).toEqual({ "@id": list["@id"] });
+    expect(list.numberOfItems).toBe(5);
+    const visible = [
+      ...new Set(
+        [...document.querySelectorAll('main a[href^="/guides/"]')].map(
+          (a) => `https://playunbored.com${a.getAttribute("href")}`,
+        ),
+      ),
+    ];
+    expect(list.itemListElement.map((entry: { url: string }) => entry.url)).toEqual(visible);
+    expect(list.itemListElement.map((entry: { position: number }) => entry.position)).toEqual([
+      1, 2, 3, 4, 5,
+    ]);
+    expect(
+      node("BreadcrumbList").itemListElement.map(
+        (entry: { name: string; item?: string }) => entry.name,
+      ),
+    ).toEqual(["Home", "WoW Forever"]);
+    expect(node("Organization").name).toBe("Unbored");
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(document.title.length).toBeLessThanOrEqual(60);
+    const description = document
+      .querySelector('meta[name="description"]')!
+      .getAttribute("content")!;
+    expect(description.length).toBeGreaterThanOrEqual(120);
+    expect(description.length).toBeLessThanOrEqual(155);
+  },
+);
+
+productionTest(
+  "More Forever guides puts a matching group ahead of newer unrelated guides",
+  async () => {
+    const document = await page("/guides/forever-1");
+    const section = [...document.querySelectorAll("main section")].find(
+      (s) => s.querySelector("h2")?.textContent === "More WoW Forever guides",
+    )!;
+    const siblings = [...section.querySelectorAll('a[href^="/guides/"]')].map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(siblings).toEqual(["/guides/forever-5", "/guides/forever-2", "/guides/forever-3"]);
+  },
+);

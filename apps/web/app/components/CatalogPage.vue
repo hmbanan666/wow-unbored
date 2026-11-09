@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moreGuides } from "#shared/forever-hub";
 import {
   pageMessage,
   PUBLIC_COPY,
@@ -33,13 +34,7 @@ if (page.kind === "guide") {
   const { data: catalog } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog", {
     query: { kind: "guide", game: page.game },
   });
-  siblings.push(
-    ...(catalog.value?.pages ?? [])
-      .filter(
-        (entry) => entry.kind === "guide" && entry.game === page.game && entry.slug !== page.slug,
-      )
-      .slice(0, 3),
-  );
+  siblings.push(...moreGuides(catalog.value?.pages ?? [], page));
 }
 </script>
 
