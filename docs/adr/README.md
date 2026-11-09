@@ -88,6 +88,9 @@ Short records of decisions that are hard to reverse. Read them before changing h
 
 - [0083. Table and FAQ blocks in guides](0083-table-and-faq-blocks.md)
 
+- [0085. Download links on our domain](0085-download-links-on-our-domain.md)
+- [0086. Install page as the addon landing page](0086-install-landing-page.md)
+
 The site sections, navigation and SEO rules are in [`docs/site-structure.md`](../site-structure.md).
 
 The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md), v0.8 (D83-D121) in [`docs/decisions-v0.8.md`](../decisions-v0.8.md), v0.9 (D122-D167) in [`docs/decisions-v0.9.md`](../decisions-v0.9.md), and v0.10 (D168-D223) in [`docs/decisions-v0.10.md`](../decisions-v0.10.md).
