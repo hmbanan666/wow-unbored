@@ -1236,3 +1236,9 @@ The tests cover resolution, source restrictions, conversion, publish isolation, 
 collection of unused files, new/old content bodies, database page/card reads and file serving.
 
 For guide briefs, rewrites, sourced inline explanations and repeatable publication/SEO checks, start at [Content authoring](content-authoring.md). Article text remains in the versioned Postgres flow.
+
+### Site SEO checks
+
+`UNBORED_TEST_DATABASE_URL="$(pg-test url postgres)" pnpm --filter @unbored/web test:seo` builds the production site and tests its HTTP responses using an isolated migrated database. It checks Organization/Article identity and dates, Game navigation in SSR, sibling links, canonical redirects with query preservation, home metadata, About/sitemap, existing structured data and PNG share images. CI runs it with the test PostgreSQL service. Regular `pnpm test` still covers Server content reads, web publication history and nav/OG component behavior; the production suite is opt-in because it requires the built site.
+
+The test fixture publishes synthetic Guides and a Collection, with a retired first version and a hidden draft. It does not import or modify live content. `publishedAt` is an additive field on Server content reads and web catalog detail responses. No migration, content import or deployment ordering is required for ADR 0082.

@@ -28,6 +28,7 @@ type PageRow = {
 };
 
 type CatalogRow = {
+  first_published_at: number | string | null;
   game: Game;
   version: number;
   kind: string;
@@ -97,6 +98,7 @@ function catalogFrom(row: CatalogRow): PublicPage | undefined {
     blocks: cleanBlocks(row.body),
     items: row.game === "forever" ? [] : cleanItems(row.body),
     build: row.game === "forever" ? null : buildOf(row.body),
+    publishedAt: seconds(row.first_published_at),
     updatedAt: seconds(row.published_at),
   };
 }
@@ -120,8 +122,12 @@ export async function readPublished(
 ): Promise<PublicPage | undefined> {
   if (!isSlug(slug)) return undefined;
   const [row] = await sql<CatalogRow[]>`
-    SELECT game, kind, slug, title, description, tier, body, published_at, version
-    FROM content.paths
+    SELECT game, kind, slug, title, description, tier, body, published_at, version,
+      (SELECT first.published_at FROM content.paths first
+       WHERE first.kind = current.kind AND first.slug = current.slug AND first.locale = current.locale
+         AND first.published_at IS NOT NULL
+       ORDER BY first.version LIMIT 1) AS first_published_at
+    FROM content.paths current
     WHERE kind = ${kind} AND slug = ${slug} AND locale = 'en' AND status = 'published'`;
   const page = row ? catalogFrom(row) : undefined;
   if (page) page.media = await readPageMedia(sql, page);

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { articleImage, heroArt } from "#shared/game-media";
-import type { PublicPage } from "#shared/catalog";
+import type { PublicPage, CatalogSummary } from "#shared/catalog";
 import { catalogHref, CATALOG_SECTION, PUBLIC_COPY, TIER_LABEL } from "#shared/catalog";
 
 const props = defineProps<{
   page: PublicPage | null;
   message?: string;
+  siblings?: CatalogSummary[];
 }>();
 
 const section = computed(() =>
@@ -68,11 +69,26 @@ useSeoMeta({
   title: () => props.page?.title || "Unbored",
   description: () => props.page?.description || "",
   ogType: () => (props.page?.kind === "page" ? "website" : "article"),
+  articlePublishedTime: () =>
+    props.page?.publishedAt ? new Date(props.page.publishedAt * 1000).toISOString() : undefined,
+  articleModifiedTime: () =>
+    props.page?.kind !== "page" && props.page?.updatedAt
+      ? new Date(props.page.updatedAt * 1000).toISOString()
+      : undefined,
 });
 
+const shareImage = props.page?.hero
+  ? articleImage({ ...props.page, items: [] }, useSiteConfig().url || "https://playunbored.com")
+  : undefined;
 defineOgImage("Unbored", {
   title: props.page?.headline || "Unbored",
   description: props.page?.description || "Bory gives you one step at a time.",
+  game: props.page?.game,
+  image: shareImage ? `${new URL(shareImage).pathname}?format=png` : undefined,
+  imageFit:
+    props.page?.hero && heroArt(props.page.hero, props.page.media)?.render === false
+      ? "cover"
+      : "contain",
 });
 
 if (props.page && props.page.kind !== "page") {
@@ -83,6 +99,11 @@ if (props.page && props.page.kind !== "page") {
         headline: page.title,
         image: articleImage(page, useSiteConfig().url || "https://playunbored.com"),
         description: page.description,
+        author: { "@id": "#identity" },
+        publisher: { "@id": "#identity" },
+        ...(page.publishedAt
+          ? { datePublished: new Date(page.publishedAt * 1000).toISOString() }
+          : {}),
         ...(page.updatedAt ? { dateModified: new Date(page.updatedAt * 1000).toISOString() } : {}),
       }),
       // The schema helper types about as text; Schema.org also accepts a Thing.
@@ -180,11 +201,8 @@ if (props.page && props.page.kind !== "page") {
           </ul></DsProse
         >
       </DsSection>
-      <DsActions v-if="page.game === 'forever'"
-        ><DsButton to="/forever" variant="secondary">More WoW Forever guides</DsButton></DsActions
-      >
       <DsSection
-        v-else
+        v-if="page.game === 'retail'"
         divided
         :title="page.kind === 'guide' ? 'Let Bory pick the next step' : 'Track this list in game'"
       >
@@ -198,6 +216,23 @@ if (props.page && props.page.kind !== "page") {
             >More {{ section.label.toLowerCase() }}</DsButton
           >
         </DsActions>
+      </DsSection>
+      <DsSection
+        v-if="page.kind === 'guide'"
+        divided
+        :title="page.game === 'forever' ? 'More WoW Forever guides' : 'More guides'"
+        :more="{
+          label: page.game === 'forever' ? 'All WoW Forever guides' : 'All guides',
+          to: page.game === 'forever' ? '/forever' : '/guides',
+        }"
+      >
+        <DsProse v-if="siblings?.length">
+          <ul>
+            <li v-for="sibling in siblings" :key="sibling.href">
+              <NuxtLink :to="sibling.href">{{ sibling.title }}</NuxtLink>
+            </li>
+          </ul>
+        </DsProse>
       </DsSection>
     </template>
   </DsPage>

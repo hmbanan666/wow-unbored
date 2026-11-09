@@ -4,5 +4,6 @@ export default defineEventHandler((event) =>
   serveMedia(
     getRouterParam(event, "file") ?? "",
     process.env.UNBORED_MEDIA_DIR || useRuntimeConfig(event).mediaDir,
+    getQuery(event).format === "png" ? "png" : undefined,
   ),
 );
