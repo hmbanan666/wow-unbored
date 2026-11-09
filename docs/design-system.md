@@ -6,7 +6,7 @@ The player site (`apps/web`) has one look: a dark, warm "lamp" background with g
 
 - Mobile first. Every layout starts at 360px and widens at 640px, 768px and 1024px.
 - Tap targets are at least 44px (`--tap`); buttons are 48px. Links inside a sentence are the only exception.
-- No horizontal scroll at any width. Long words wrap (`overflow-wrap: anywhere` on headings).
+- No page-level horizontal scroll at any width. Guide tables may scroll inside their labelled, focusable frame (ADR 0083). Long words wrap (`overflow-wrap: anywhere` on headings).
 - Body text meets WCAG AA on the background: text about 13:1, muted about 7:1, gold about 9:1.
 - One H1 per page, then H2 for sections and list items, so the outline stays in order.
 
@@ -117,3 +117,5 @@ Creature renders (role `render`) always use centered `object-fit: contain`, so t
 `DsGameHeader` puts a framed hero above the heading on phones and alongside it from 768px. Collections and Paths without a hero show the first six icons; Guides keep their existing text header. `DsGameFigure` omits missing art and otherwise renders a framed image with authored alt and optional caption. `DsGameIconStrip` shows up to five overlapping decorative icons above a catalog card's title; the card remains one real link.
 
 Run `pnpm --filter @unbored/web test` for component rendering and interaction checks, alongside the repository checks and website build. Check media-rich Guide, Collection and Path pages locally at 360/390/640/768/1024/1280px with render, tile and own-image heroes, Collection rows, figures and open tooltips. Check cover fitting and focal points, solid render interiors, tooltip placement, touch dismissal, keyboard focus, no layout shifts during delayed image loading and no hidden tooltip image requests.
+
+Guide tables use the lamp surface, gold column headers, soft dividers and body type. Their captions stay within the visible scroll frame. FAQ blocks use a Questions H2 and a visible definition list, with gold questions and ordinary answer text; term explanations reuse the existing keyboard/touch controls.

@@ -750,7 +750,15 @@ test.skipIf(!hasPostgres)(
           id: 123,
         },
       ],
-      blocks: [...forever.blocks, { type: "paragraph", text: "Use the {{term:camp|camp}}." }],
+      blocks: [
+        ...forever.blocks,
+        {
+          type: "table",
+          columns: ["Place", "Action"],
+          rows: [["Camp", "Use the {{term:camp|camp}}."]],
+        },
+        { type: "faq", entries: [{ q: "Where can I rest?", a: "Use the {{term:camp|camp}}." }] },
+      ],
     };
     const dir = mkdtempSync(path.join(import.meta.dirname, ".forever-"));
     const sql = pg("postgres")!;
@@ -794,6 +802,7 @@ test.skipIf(!hasPostgres)(
       assert.equal(original.document.game, "forever");
       assert.deepEqual(original.document.sources, forever.sources);
       assert.deepEqual(original.document.terms, authored.terms);
+      assert.deepEqual(original.document.blocks, authored.blocks);
       assert.deepEqual(original.document.asOf, forever.asOf);
       assert.equal((await call("save_content_draft", { document: authored })).unchanged, true);
       const changed = { ...authored, asOf: { ...forever.asOf, build: "1.60.1.2" } };
@@ -817,3 +826,46 @@ test.skipIf(!hasPostgres)(
     }
   },
 );
+
+test("both Games validate tables and FAQ through the content parser with shared term limits", () => {
+  const table = {
+    type: "table",
+    columns: ["Choice", "Action"],
+    rows: [["First", "Use {{term:camp|camp}}."]],
+  };
+  const faq = { type: "faq", entries: [{ q: "Where?", a: "Use {{term:camp|camp}}." }] };
+  const term = { key: "camp", name: "Camp", text: "Rest here.", source: forever.sources[0].url };
+  for (const game of ["retail", "forever"]) {
+    const doc = { ...forever, game, terms: [term], blocks: [table, faq] };
+    assert.deepEqual(parseContent(doc).blocks, [table, faq]);
+    assert.equal(
+      parseContent({ ...doc, blocks: [{ ...table, rows: Array(19).fill(table.rows[0]) }, faq] })
+        .blocks.length,
+      2,
+    );
+    for (const [blocks, message] of [
+      [[{ ...table, rows: [["Only one"]] }], "one cell per column"],
+      [[table, faq, faq], "one FAQ block"],
+      [[{ ...faq, entries: [] }], "1 to 8 entries"],
+      [[{ ...table, columns: ["Only"] }], "2 to 6 columns"],
+      [[{ ...table, rows: Array(20).fill(table.rows[0]) }, faq], "20 term mentions"],
+      [
+        [{ ...faq, entries: [{ q: "Where?", a: "{{term:missing|camp}}" }] }],
+        "invalid inline reference or term",
+      ],
+      [[{ ...table, rows: [["<img onerror=alert(1)>", "B"]] }], "no HTML"],
+      [[{ ...faq, entries: [{ q: "Where?", a: "<script>bad</script>" }] }], "no HTML"],
+    ] as [unknown[], string][]) {
+      assert.throws(
+        () => parseContent({ ...doc, blocks }),
+        (error: unknown) =>
+          error instanceof ContentError &&
+          error.problems.some((problem) => problem.includes(message)),
+      );
+    }
+  }
+  assert.throws(
+    () => parseContent({ ...collection, blocks: [{ ...table, rows: [["A", "B"]] }] }),
+    ContentError,
+  );
+});

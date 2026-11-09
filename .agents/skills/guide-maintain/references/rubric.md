@@ -1,6 +1,6 @@
 # Editorial review: pass or repair
 
-Apply every dimension to the draft and its [brief](../../guide-write/references/brief.md), which defines the search/evidence records and shape rules under [ADR 0081](../../../../docs/adr/0081-search-led-editorial-standard.md). Failed checks block publication; do not average them into a score. While table/FAQ blocks are pending in the later task planned as ADR 0083, check their complete brief plans and report rendering as pending separately.
+Apply every dimension to the draft and its [brief](../../guide-write/references/brief.md), which defines the search/evidence records and shape rules under [ADR 0081](../../../../docs/adr/0081-search-led-editorial-standard.md). Failed checks block publication; do not average them into a score. Check authored `table` and `faq` blocks against the brief and their visible server HTML (ADR 0083).
 
 | Dimension | Pass evidence | Repair signal |
 | --- | --- | --- |
@@ -9,8 +9,8 @@ Apply every dimension to the draft and its [brief](../../guide-write/references/
 | Decision | Comparison states a result with deciding mechanics or quantities, tradeoff and next action | "Compare A with B" leaves the work to the reader; ranking letters stand in for reasons |
 | Truth | Every fact traces to Game/build-specific evidence in the brief or a newly logged source | Secondary repetition treated as confirmation, beta numbers called live, invented play/testing |
 | Interest | Verified specifics survive revision; each section teaches a mechanic, cost or consequence | Useful recipes/NPCs/numbers dropped, abstract versatility, source summaries |
-| Table/steps | At least one useful table or numbered sequence, complete with evidence; planned in brief until blocks are supported | Decorative comparison with no result; a promise to add a table without rows or steps |
-| FAQ | 4–8 People also ask questions with recorded provenance and sourced answers; planned in brief until supported, then visible in HTML | Invented questions, unanswered questions, hidden or schema-only FAQ |
+| Table/steps | At least one useful table or numbered sequence, complete with evidence; comparisons authored as `table` blocks and visible in HTML | Decorative comparison with no result; a promise to add a table without rows or steps |
+| FAQ | 4–8 People also ask questions with recorded provenance and sourced answers; authored as one `faq` block, visible in HTML and mirrored in FAQPage JSON-LD | Invented questions, unanswered questions, hidden or schema-only FAQ |
 | Links | Game hub (`/forever` or `/guides`) and 2–3 relevant published sibling pages, with meaningful labels | Dead destinations, wrong Game hub, irrelevant links to meet the count |
 | Metadata | Title ≤60 characters with primary query near start; description 120–155; counts include spaces and rendered title suffix | Old relaxed ranges, missing counts, padded text or a misleading promise |
 | Length | Scope matches approximate bands: quick answer 600–1,000; system 1,200–2,000; class/hub 2,000–3,500 | Padding to reach a count, repeated conclusions, needed answers cut to meet a band |
@@ -43,6 +43,6 @@ Read as a newcomer with no source tabs open, then as an expert looking for an un
 
 ## Rendered search and image audit
 
-Use the publication flow's content validation and HTML audit. Confirm the actual title including any suffix, description, links and visible content match the brief. Once the planned blocks are supported, verify table/steps and all FAQ questions and answers in server HTML; schema alone cannot satisfy them. These checks do not establish a Google position.
+Use the publication flow's content validation and HTML audit. Confirm the actual title including any suffix, description, links and visible content match the brief. Verify tables/steps and all FAQ questions and answers in server HTML; schema alone cannot satisfy them. These checks do not establish a Google position.
 
 For meaningful screenshots, alt text describes what is visibly shown and why it matters here; use verified location/item names only. Decorative images need empty alt text where supported. Reject keyword lists, "image of" and invented context. Alt text is not a reason to add art; without our own screenshot, omit it.

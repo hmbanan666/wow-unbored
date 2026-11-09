@@ -183,3 +183,23 @@ test("media fields survive cleaning and old body output is unchanged", async () 
   assert.equal(cleanHero({ kind: "item", id: 1 }), undefined);
   assert.deepEqual(cleanBlocks({ blocks: [{ type: "paragraph", text: "[[npc:1]]" }] }), []);
 });
+
+test("web accepts new structured blocks, drops malformed rows and duplicate FAQ, and preserves old blocks", () => {
+  const table = {
+    type: "table",
+    caption: "Choices",
+    columns: ["A", "B"],
+    rows: [["First", "{{term:missing|label}}"]],
+  };
+  const faq = { type: "faq", entries: [{ q: "Which?", a: "The first." }] };
+  const old = { type: "paragraph", text: "Old text." };
+  assert.deepEqual(cleanBlocks({ blocks: [old, table, faq] }), [old, table, faq]);
+  assert.deepEqual(cleanBlocks([table, faq, faq]), [table, faq]);
+  for (const block of [
+    { ...table, rows: [["A"]] },
+    { ...table, rows: [["<img onerror=alert(1)>", "B"]] },
+    { ...faq, entries: [{ q: "Which?", a: "<img onerror=alert(1)>" }] },
+    { ...faq, entries: [{ q: "Which?", a: "[[item:1]]" }] },
+  ])
+    assert.deepEqual(cleanBlocks([old, block]), [old]);
+});

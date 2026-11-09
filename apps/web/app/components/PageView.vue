@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { termParts } from "@unbored/contracts/guide";
 import { articleImage, heroArt } from "#shared/game-media";
 import type { PublicPage, CatalogSummary } from "#shared/catalog";
 import { catalogHref, CATALOG_SECTION, PUBLIC_COPY, TIER_LABEL } from "#shared/catalog";
@@ -93,7 +94,25 @@ defineOgImage("Unbored", {
 
 if (props.page && props.page.kind !== "page") {
   const page = props.page;
+  const faq = page.kind === "guide" ? page.blocks.find((block) => block.type === "faq") : undefined;
   useSchemaOrg([
+    ...(faq
+      ? [
+          defineWebPage({
+            "@type": "FAQPage",
+            mainEntity: faq.entries.map((entry) => ({
+              "@type": "Question",
+              name: entry.q,
+              acceptedAnswer: {
+                "@type": "Answer",
+                text: termParts(entry.a, [], false)
+                  .map((part) => part.text)
+                  .join(""),
+              },
+            })),
+          }),
+        ]
+      : []),
     {
       ...defineArticle({
         headline: page.title,

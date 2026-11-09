@@ -18,6 +18,40 @@ export async function seedSeoContent(sql: Sql) {
           'Choose your first class, find your starting town and plan the journey ahead.', 1, 'published', ${body}::jsonb, 1793865600, 1793865600)`;
     }
   }
+  const structured = JSON.stringify({
+    terms: [
+      { key: "camp", name: "Camp", text: "A place to rest.", source: "https://example.com/launch" },
+    ],
+    blocks: [
+      {
+        type: "table",
+        caption: "Starting choices & costs",
+        columns: ["Choice", "Action", "Cost", "When", "Where", "Reason"],
+        rows: [
+          [
+            "First",
+            "Use {{term:camp|the camp}}.",
+            "2 gold",
+            "After combat",
+            "Town",
+            "Rest before leaving",
+          ],
+        ],
+      },
+      {
+        type: "faq",
+        entries: [
+          {
+            q: "Where can I rest & prepare?",
+            a: 'Use {{term:camp|the camp}}. Bring "food" & water.',
+          },
+          { q: "Which road?", a: "Take the northern road." },
+          { q: 'What does "&amp;" mean?', a: 'Read "&lt;camp&gt;" as text.' },
+        ],
+      },
+    ],
+  });
+  await sql`UPDATE content.paths SET body = body || ${structured}::jsonb WHERE slug IN ('forever-1', 'retail-1')`;
   await sql`UPDATE content.paths SET status = 'retired', updated_at = 1794211200 WHERE slug = 'forever-1'`;
   await sql`INSERT INTO content.paths
     (game, kind, slug, locale, title, description, version, status, body, updated_at, published_at)

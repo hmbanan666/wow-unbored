@@ -267,3 +267,43 @@ productionTest(
     }
   },
 );
+
+productionTest(
+  "FAQPage mirrors visible answers word for word and is absent without a FAQ block",
+  async () => {
+    for (const game of ["forever", "retail"]) {
+      const document = await page(`/guides/${game}-1`);
+      const nodes = [...document.querySelectorAll('script[type="application/ld+json"]')].flatMap(
+        (script) => JSON.parse(script.textContent!)["@graph"],
+      );
+      const faq = nodes.find((node) => [node["@type"]].flat().includes("FAQPage"));
+      expect(faq).toBeDefined();
+      const resolve = (value: Record<string, unknown>) =>
+        nodes.find((node) => node["@id"] === value["@id"]) || value;
+      const questions = faq.mainEntity.map(resolve);
+      document.querySelectorAll('[role="tooltip"]').forEach((tooltip) => tooltip.remove());
+      const visible = [...document.querySelectorAll(".guide-faq dt")].map((question) => ({
+        q: question.textContent,
+        a: question.nextElementSibling!.textContent,
+      }));
+      expect(
+        questions.map((question: { name: string; acceptedAnswer: Record<string, unknown> }) => ({
+          q: question.name,
+          a: resolve(question.acceptedAnswer).text,
+        })),
+      ).toEqual(visible);
+      expect(visible).toEqual([
+        { q: "Where can I rest & prepare?", a: 'Use the camp. Bring "food" & water.' },
+        { q: "Which road?", a: "Take the northern road." },
+        { q: 'What does "&amp;" mean?', a: 'Read "&lt;camp&gt;" as text.' },
+      ]);
+      expect(document.querySelector("table caption")?.textContent).toBe("Starting choices & costs");
+      const without = await page(`/guides/${game}-3`);
+      expect(
+        [...without.querySelectorAll('script[type="application/ld+json"]')].some((script) =>
+          script.textContent!.includes('"FAQPage"'),
+        ),
+      ).toBe(false);
+    }
+  },
+);

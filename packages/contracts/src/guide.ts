@@ -93,3 +93,66 @@ export function termParts(text: string, terms: GuideTerm[], strict = true): Term
     throw new Error("Malformed term reference");
   return parts;
 }
+
+/** New structured blocks accept text and optional term labels, never HTML or game references. */
+const blockText = (max: number, terms = false) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .refine(
+      (value) => {
+        const text = terms
+          ? value.replace(
+              /\{\{term:[a-z0-9]+(?:-[a-z0-9]+)*\|([^{}|\n]{1,80})\}\}/g,
+              (match, label: string) => (label.trim() ? label : match),
+            )
+          : value;
+        return !/[<>{}]|\[\[|\]\]/.test(text);
+      },
+      terms
+        ? "Use plain text or valid term markup; no HTML or game references"
+        : "Use plain text; no HTML or markup",
+    );
+
+export const tableSchema = z
+  .strictObject({
+    type: z.literal("table"),
+    caption: blockText(600).optional(),
+    columns: z
+      .array(blockText(120))
+      .min(2, "A table needs 2 to 6 columns")
+      .max(6, "A table needs 2 to 6 columns"),
+    rows: z
+      .array(z.array(blockText(2000, true)))
+      .min(1, "A table needs 1 to 30 rows")
+      .max(30, "A table needs 1 to 30 rows"),
+  })
+  .superRefine((table, ctx) => {
+    table.rows.forEach((row, index) => {
+      if (row.length !== table.columns.length)
+        ctx.addIssue({
+          code: "custom",
+          path: ["rows", index],
+          message: "Each row must have one cell per column",
+        });
+    });
+  });
+export type GuideTable = z.infer<typeof tableSchema>;
+
+export const faqSchema = z.strictObject({
+  type: z.literal("faq"),
+  entries: z
+    .array(z.strictObject({ q: blockText(120), a: blockText(2000, true) }))
+    .min(1, "A FAQ needs 1 to 8 entries")
+    .max(8, "A FAQ needs 1 to 8 entries"),
+});
+export type GuideFaq = z.infer<typeof faqSchema>;
+/** Validate the table/FAQ subset of a guide together to enforce the per-guide FAQ limit. */
+export const structuredGuideBlocksSchema = z
+  .array(z.discriminatedUnion("type", [tableSchema, faqSchema]))
+  .refine(
+    (blocks) => blocks.filter((block) => block.type === "faq").length <= 1,
+    "At most one FAQ block per guide",
+  );

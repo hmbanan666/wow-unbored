@@ -1,4 +1,11 @@
-import { calloutSchema, type Callout } from "@unbored/contracts/guide";
+import {
+  calloutSchema,
+  tableSchema,
+  faqSchema,
+  type GuideTable,
+  type GuideFaq,
+  type Callout,
+} from "@unbored/contracts/guide";
 import { cleanFigure, inlineMedia, type Figure } from "@unbored/contracts/game-media";
 /** Authored page body. Structured blocks in Postgres, never a markdown file. */
 
@@ -9,6 +16,8 @@ const MAX_ITEMS = 30;
 export type Block =
   | Figure
   | Callout
+  | GuideTable
+  | GuideFaq
   | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] }
@@ -64,7 +73,13 @@ export function cleanBlocks(body: unknown): Block[] {
     } catch {
       continue;
     }
-    if (row.type === "callout") {
+    if (row.type === "table") {
+      const table = tableSchema.safeParse(row);
+      if (table.success) out.push(table.data);
+    } else if (row.type === "faq") {
+      const faq = faqSchema.safeParse(row);
+      if (faq.success && !out.some((block) => block.type === "faq")) out.push(faq.data);
+    } else if (row.type === "callout") {
       const callout = calloutSchema.safeParse(row);
       if (callout.success) out.push(callout.data);
     } else if (row.type === "figure") {
