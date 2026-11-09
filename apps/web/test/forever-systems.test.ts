@@ -104,7 +104,7 @@ test.skipIf(!hasPostgres)(
       const original = await listPublished(db.sql, "guide", "forever");
       await db.sql.begin((tx) => tx.unsafe(migration));
       expect(await listPublished(db.sql, "guide", "forever")).toEqual(original);
-      const changed = { ...additions[0]!, title: "Camping after a later update" };
+      const changed = { ...additions[0]!, group: "systems", title: "Camping after a later update" };
       await db.content.saveDraft(changed);
       await db.content.publish("guide", changed.slug);
       await db.sql.begin((tx) => tx.unsafe(migration));
@@ -143,14 +143,18 @@ for (const conflict of [
       const db = await fixture();
       try {
         if (conflict === "new slug" || conflict === "Retail slug") {
-          await db.content.saveDraft(additions.at(-1)!);
+          await db.content.saveDraft({ ...additions.at(-1)!, group: "systems" });
           if (conflict === "Retail slug")
-            await db.sql`UPDATE content.paths SET game = 'retail' WHERE slug = ${additions.at(-1)!.slug}`;
+            await db.sql`UPDATE content.paths SET game = 'retail', guide_group = NULL WHERE slug = ${additions.at(-1)!.slug}`;
         } else if (conflict === "missing beginner")
           await db.sql`DELETE FROM content.paths WHERE slug = ${beginner}`;
         else if (conflict === "beginner draft") {
           const current = (await db.content.read("guide", beginner))!.document;
-          await db.content.saveDraft({ ...current, title: "Owner's newer beginner draft" });
+          await db.content.saveDraft({
+            ...current,
+            group: "first-steps",
+            title: "Owner's newer beginner draft",
+          });
         } else
           await db.sql`UPDATE content.paths SET body = jsonb_set(body, '{blocks}', '[{"type":"paragraph","text":"Owner correction"}]'::jsonb) WHERE slug = ${beginner} AND status = 'published'`;
         const before = await listPublished(db.sql, "guide", "forever");

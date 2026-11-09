@@ -1,5 +1,7 @@
 import {
   guideTermsSchema,
+  guideGroupSchema,
+  type GuideGroup,
   guideSourcesSchema,
   guideAsOfSchema,
   type Game,
@@ -28,6 +30,7 @@ type PageRow = {
 };
 
 type CatalogRow = {
+  guide_group: GuideGroup | null;
   first_published_at: number | string | null;
   game: Game;
   version: number;
@@ -83,6 +86,7 @@ function catalogFrom(row: CatalogRow): PublicPage | undefined {
   const hero = heroOf(row.body);
   return {
     game: row.game,
+    ...(guideGroupSchema.safeParse(row.guide_group).success ? { group: row.guide_group! } : {}),
     ...(row.kind === "guide" && terms.success ? { terms: terms.data } : {}),
     ...(row.kind === "guide" && sources.success ? { sources: sources.data } : {}),
     ...(row.kind === "guide" && asOf.success ? { asOf: asOf.data } : {}),
@@ -122,7 +126,7 @@ export async function readPublished(
 ): Promise<PublicPage | undefined> {
   if (!isSlug(slug)) return undefined;
   const [row] = await sql<CatalogRow[]>`
-    SELECT game, kind, slug, title, description, tier, body, published_at, version,
+    SELECT game, guide_group, kind, slug, title, description, tier, body, published_at, version,
       (SELECT first.published_at FROM content.paths first
        WHERE first.kind = current.kind AND first.slug = current.slug AND first.locale = current.locale
          AND first.published_at IS NOT NULL
@@ -143,7 +147,7 @@ export async function listPublished(
   const rows = await sql<
     (Omit<CatalogRow, "body"> & { count: number | string; icons: unknown[] })[]
   >`
-    SELECT game, kind, slug, title, description, tier, published_at,
+    SELECT game, guide_group, kind, slug, title, description, tier, published_at,
       COALESCE((SELECT jsonb_agg(icons.entry) FROM (
         SELECT jsonb_build_object('kind', item->>'kind', 'id', (item->>'id')::integer,
           'icon', jsonb_build_object('variants', m.variants, 'width', m.width, 'height', m.height, 'alt', m.alt, 'name', m.name)) AS entry
@@ -175,6 +179,7 @@ export async function listPublished(
       .slice(0, 6);
     out.push({
       game: row.game,
+      ...(guideGroupSchema.safeParse(row.guide_group).success ? { group: row.guide_group! } : {}),
       icons,
       kind: row.kind,
       slug: row.slug,

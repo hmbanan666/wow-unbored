@@ -1,4 +1,4 @@
-import type { Game, GuideSource, GuideAsOf, GuideTerm } from "@unbored/contracts/guide";
+import type { GuideGroup, Game, GuideSource, GuideAsOf, GuideTerm } from "@unbored/contracts/guide";
 import {
   cleanMediaOverrides,
   type MediaOverrides,
@@ -130,6 +130,7 @@ export type CatalogItem = {
 };
 
 export type PublicPage = {
+  group?: GuideGroup;
   game: Game;
   terms?: GuideTerm[];
   sources?: GuideSource[];
@@ -153,6 +154,7 @@ export type PublicPage = {
 
 /** A card on the home and index pages. */
 export type CatalogSummary = {
+  group?: GuideGroup;
   game: Game;
   icons: (MediaRef & { icon: MediaAsset })[];
   kind: CatalogKind;

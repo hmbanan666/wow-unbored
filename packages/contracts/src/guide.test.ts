@@ -147,3 +147,20 @@ test("new block text rejects HTML and malformed markup, allowing terms only in c
     false,
   );
 });
+
+test("Forever groups accept only the eight editorial topics", async () => {
+  const { guideGroupSchema } = await import("./guide.ts");
+  for (const group of [
+    "first-steps",
+    "systems",
+    "classes",
+    "professions-gold",
+    "dungeons-raids",
+    "mounts-riding",
+    "addons",
+    "comparisons",
+  ])
+    expect(guideGroupSchema.parse(group)).toBe(group);
+  for (const group of ["raids", "Systems", "", null, 3])
+    expect(guideGroupSchema.safeParse(group).success).toBe(false);
+});

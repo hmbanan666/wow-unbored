@@ -697,7 +697,7 @@ test.skipIf(!hasPostgres)(
     const hero = { image: "0123456789abcdef", alt: "Our Forever screenshot" };
     const blocks = [{ type: "figure", image: "fedcba9876543210", alt: "Our view" }];
     try {
-      await content.saveDraft({ ...forever, hero, blocks });
+      await content.saveDraft({ ...forever, group: "first-steps", hero, blocks });
       const published = await content.publish("guide", forever.slug);
       assert.equal(published.status, "published");
       assert.equal(published.build, null);
@@ -740,6 +740,7 @@ test.skipIf(!hasPostgres)(
   async () => {
     const authored = {
       ...forever,
+      group: "systems",
       terms: [
         {
           key: "camp",
@@ -800,6 +801,7 @@ test.skipIf(!hasPostgres)(
       assert.equal((await call("publish_content", key)).status, "published");
       const original = await call("get_content", key);
       assert.equal(original.document.game, "forever");
+      assert.equal(original.document.group, "systems");
       assert.deepEqual(original.document.sources, forever.sources);
       assert.deepEqual(original.document.terms, authored.terms);
       assert.deepEqual(original.document.blocks, authored.blocks);
@@ -868,4 +870,20 @@ test("both Games validate tables and FAQ through the content parser with shared 
     () => parseContent({ ...collection, blocks: [{ ...table, rows: [["A", "B"]] }] }),
     ContentError,
   );
+});
+
+test("Server validates a Forever guide's group and rejects groups on other content", () => {
+  const guide = {
+    kind: "guide",
+    game: "forever",
+    slug: "group-check",
+    title: "Group check",
+    description: "Check the group.",
+    blocks: [{ type: "paragraph", text: "Start here." }],
+    items: [],
+  };
+  assert.equal(parseContent({ ...guide, group: "systems" }).group, "systems");
+  assert.throws(() => parseContent({ ...guide, group: "raids" }), ContentError);
+  assert.throws(() => parseContent({ ...guide, game: "retail", group: "systems" }), ContentError);
+  assert.equal(parseContent(guide).group, undefined); // Read legacy versions without rewriting them.
 });

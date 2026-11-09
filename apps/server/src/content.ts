@@ -1,5 +1,7 @@
 import {
   GAMES,
+  guideGroupSchema,
+  type GuideGroup,
   guideTermsSchema,
   termParts,
   type GuideTerm,
@@ -101,6 +103,7 @@ export type ContentBlock =
   | { type: "list"; items: string[] }
   | { type: "link"; label: string; href: string };
 export type ContentDoc = {
+  group?: GuideGroup;
   game: Game;
   terms?: GuideTerm[];
   sources?: GuideSource[];
@@ -182,6 +185,10 @@ export function parseContent(input: unknown): ContentDoc {
       : GAMES.includes(raw.game as Game)
         ? (raw.game as Game)
         : (problems.push("game must be retail or forever"), "retail");
+  const group = raw.group === undefined ? undefined : guideGroupSchema.safeParse(raw.group);
+  if (group && !group.success) problems.push("group must be a supported Forever topic");
+  if (group && (game !== "forever" || kind !== "guide"))
+    problems.push("group belongs to Forever guides");
   const terms = raw.terms === undefined ? undefined : guideTermsSchema.safeParse(raw.terms);
   if (terms && !terms.success) problems.push("terms: invalid definitions or duplicate keys");
   if (terms && kind !== "guide") problems.push("terms belong to guides");
@@ -487,6 +494,7 @@ export function parseContent(input: unknown): ContentDoc {
   if (kind !== "guide" && rawItems.length === 0) problems.push("a Path or Collection needs items");
   if (problems.length) throw new ContentError("The content is not valid.", problems);
   return {
+    ...(group?.success ? { group: group.data } : {}),
     game,
     ...(terms?.success ? { terms: terms.data } : {}),
     ...(sources?.success ? { sources: sources.data } : {}),
@@ -600,6 +608,7 @@ export async function checkContentIds(
 }
 
 type Row = {
+  guide_group: GuideGroup | null;
   published_at: number | string | null;
   game: Game;
   id: number | string;
@@ -700,7 +709,7 @@ export class ContentStore {
 
   private async rows(kind: ContentKind, slug: string, locale: string): Promise<Row[]> {
     return this.db.all<Row>(
-      `SELECT id, game, version, status, title, description, tier, prerequisite_slug, body, published_at
+      `SELECT id, game, guide_group, version, status, title, description, tier, prerequisite_slug, body, published_at
        FROM content.paths WHERE kind = ? AND slug = ? AND locale = ?
        ORDER BY version DESC`,
       kind,
@@ -738,6 +747,7 @@ export class ContentStore {
       build: body.build,
       document: {
         game: row.game,
+        ...(row.guide_group ? { group: row.guide_group } : {}),
         ...(body.terms ? { terms: body.terms } : {}),
         ...(body.sources ? { sources: body.sources } : {}),
         ...(body.asOf ? { asOf: body.asOf } : {}),
@@ -790,10 +800,19 @@ export class ContentStore {
       });
       const live = rows.find((row) => row.status === "draft" || row.status === "published");
       const draft = rows[0]?.status === "draft" ? rows[0] : undefined;
-      if (live && fromJson<Body>(live.body)?.hash === hash)
+      if (
+        live &&
+        live.guide_group === (doc.group ?? null) &&
+        (fromJson<Body>(live.body)?.hash === hash ||
+          // The metadata-only backfill deliberately retained the original body hash.
+          (doc.group && fromJson<Body>(live.body)?.hash === hashOf({ ...doc, group: undefined })))
+      )
         return result(live.version, live.status as "draft" | "published", true);
+      if (doc.game === "forever" && !doc.group)
+        throw new ContentError("A Forever draft needs a group.");
       const fields = [
         doc.game,
+        doc.group ?? null,
         doc.title,
         doc.description,
         doc.tier,
@@ -803,7 +822,7 @@ export class ContentStore {
       ];
       if (draft) {
         await this.db.run(
-          `UPDATE content.paths SET game = ?, title = ?, description = ?, tier = ?, prerequisite_slug = ?,
+          `UPDATE content.paths SET game = ?, guide_group = ?, title = ?, description = ?, tier = ?, prerequisite_slug = ?,
              body = CAST(? AS jsonb), updated_at = ? WHERE id = ?`,
           ...fields,
           Number(draft.id),
@@ -813,8 +832,8 @@ export class ContentStore {
       const version = (rows[0]?.version ?? 0) + 1;
       await this.db.run(
         `INSERT INTO content.paths
-           (kind, slug, locale, game, title, description, tier, prerequisite_slug, body, updated_at, version, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, 'draft')`,
+           (kind, slug, locale, game, guide_group, title, description, tier, prerequisite_slug, body, updated_at, version, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, 'draft')`,
         doc.kind,
         doc.slug,
         doc.locale,
@@ -849,6 +868,7 @@ export class ContentStore {
       if (newest.status !== "draft") throw new ContentError("Nothing to publish.");
       const doc = parseContent({
         game: newest.game,
+        ...(newest.guide_group ? { group: newest.guide_group } : {}),
         terms: stored.terms,
         sources: stored.sources,
         asOf: stored.asOf,
@@ -864,6 +884,8 @@ export class ContentStore {
         blocks: stored.blocks,
         items: stored.items,
       });
+      if (doc.game === "forever" && !doc.group)
+        throw new ContentError("A Forever draft needs a group.");
       await this.checkPrerequisite(doc);
       const build = await checkContentIds(doc, this.game, this.gameIds);
       const now = this.now();
