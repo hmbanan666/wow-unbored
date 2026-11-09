@@ -32,6 +32,8 @@ There are no scheduled backups of the database or the data volume.
 
 Container logs use Docker's json-file driver. They do not include game data or requests: a line is written at startup, and each request is logged as method, path and status only. Logs rotate at 10 MB, keeping 3 files.
 
+Website download redirects also record the time, requested file, release version and referring public page on playunbored.com. They do not record IP addresses, user agents, cookies, query strings or personal sign-in links. These records count redirects, not completed downloads.
+
 ## How to delete it
 
 In the Companion window open **Advanced** and click **Forget my data**, then confirm. The server erases, for every game account this PC sent:
@@ -84,6 +86,8 @@ Questions: [open an issue](https://github.com/hmbanan666/wow-unbored/issues).
 Плановых резервных копий базы и тома с данными нет.
 
 Журналы контейнера пишет драйвер Docker json-file. В них нет игровых данных и запросов: строка пишется при старте, а каждый запрос — только как метод, путь и статус. Журналы крутятся по 10 МБ, хранятся 3 файла.
+
+При переходе к скачиванию сайт также записывает время, запрошенный файл, версию релиза и публичную страницу playunbored.com, с которой пришёл игрок. IP-адреса, сведения о браузере, cookie, параметры адреса и личные ссылки для входа не записываются. Это число переходов, а не завершённых скачиваний.
 
 ### Как всё удалить
 

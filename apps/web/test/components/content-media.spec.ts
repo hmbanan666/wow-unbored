@@ -127,7 +127,7 @@ test("hero is the only eager image; guides without media preserve heading, prose
   expect(plain.get("h1").text()).toBe(page.headline);
   expect(plain.text()).toContain("Start here.");
   expect(plain.text()).toContain("How to get it");
-  expect(plain.get('a[href="/install"]').text()).toBe("Get Unbored");
+  expect(plain.get('a[href="/install"]').text()).toBe("Get Bory");
 });
 test("collection and path without a hero show up to six icons", () => {
   vi.stubGlobal("usePaths", () => ({ state: { value: { status: "signed-out" } } }));
@@ -331,3 +331,18 @@ test("Forever guide shows its own trail, evidence, badge and Article game withou
     about: { "@type": "VideoGame", name: "World of Warcraft" },
   });
 });
+
+test.each(["guide", "path", "collection"] as const)(
+  "%s offers Bory only for Retail, never Forever",
+  (kind) => {
+    // Personal controls are unrelated to the public call to action.
+    for (const game of ["retail", "forever"] as const) {
+      const wrapper = mount(PageView, {
+        props: { page: { ...page, game, kind, items: [] } },
+        global: { stubs: { PersonalPaths: true } },
+      });
+      expect(wrapper.text().includes("Track this in game with Bory")).toBe(game === "retail");
+      expect(wrapper.find('a[href="/install"]').exists()).toBe(game === "retail");
+    }
+  },
+);

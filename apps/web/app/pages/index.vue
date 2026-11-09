@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-  pageMessage,
-  PUBLIC_COPY,
-  RELEASES_URL,
-  type CatalogSummary,
-  type PublicPage,
-} from "#shared/catalog";
+import { pageMessage, PUBLIC_COPY, type CatalogSummary, type PublicPage } from "#shared/catalog";
 
 type Payload = PublicPage | { error: string; message: string };
 
@@ -59,7 +53,7 @@ useSchemaOrg([
     operatingSystem: "Windows",
     applicationCategory: "GameApplication",
     offers: { price: 0, priceCurrency: "USD" },
-    downloadUrl: RELEASES_URL,
+    downloadUrl: "https://playunbored.com/download/windows",
   }),
 ]);
 </script>

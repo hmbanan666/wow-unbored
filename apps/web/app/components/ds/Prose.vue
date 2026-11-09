@@ -26,6 +26,10 @@
   margin-top: var(--space-2);
 }
 
+.ds-prose :deep(code) {
+  overflow-wrap: anywhere;
+}
+
 .ds-prose :deep(li::marker) {
   color: var(--lamp-gold);
 }
