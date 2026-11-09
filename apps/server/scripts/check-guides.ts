@@ -8,6 +8,7 @@ if (!files.length)
     "apps/server/migrations/0023_forever_editorial.sql",
     "apps/server/migrations/0024_forever_systems.sql",
     "apps/server/migrations/0026_forever_money.sql",
+    "apps/server/migrations/0027_forever_raids_comparison_addons.sql",
   );
 try {
   const revisions = await Promise.all(

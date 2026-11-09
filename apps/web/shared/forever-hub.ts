@@ -28,7 +28,8 @@ export const FOREVER_TOPICS: Record<GuideGroup, { title: string; intro: string }
   },
   "dungeons-raids": {
     title: "Dungeons and raids",
-    intro: "Choose a dungeon or raid guide for the place your group plans to visit.",
+    intro:
+      "Check the raid opening date, group sizes and Onyxia entry requirements before arranging your first run. The raids guide separates confirmed preparation from details Blizzard has not announced.",
   },
   "mounts-riding": {
     title: "Mounts and riding",
@@ -37,12 +38,13 @@ export const FOREVER_TOPICS: Record<GuideGroup, { title: string; intro: string }
   },
   addons: {
     title: "Addons",
-    intro: "Start with the change you want on screen, then check the setup steps for that addon.",
+    intro:
+      "Choose quest, bag or auction help from checked Forever releases. Follow the installation steps for your client, then use the missing-addon checks if the game does not list it.",
   },
   comparisons: {
     title: "Comparisons",
     intro:
-      "Choose the decision you are facing and follow the option that fits how you want to play.",
+      "Choosing between Forever and Classic Era? Compare the quests, character choices and progression systems first. If you have already chosen Forever, the Classic and Enhanced preset guide covers its presentation settings.",
   },
 };
 
