@@ -422,7 +422,7 @@ BEGIN
             "Both: Stepping Stones",
             "Pocket Litter",
             "Stonetalon Mountains: reported camp 40.6, 52.4; disputed",
-            "Use the mountain path northeast of Sun Rock Retreat, reported at 50.9, 52.3. Find the abandoned camp, turn in at Pocket Litter and accept Scramble. See the coordinate note below."
+            "Use the mountain path northeast of Sun Rock Retreat. Find the abandoned camp, turn in at Pocket Litter and accept Scramble. See the coordinate note below."
           ],
           [
             "Both: Scramble",
@@ -566,7 +566,7 @@ BEGIN
     ],
     "topics": [],
     "items": [],
-    "hash": "80fa5dc963ad9fde342396a4e7d5c25052d4bbf3a601a950219ee68959757b5f",
+    "hash": "12650b7544eb725d7db13c1f2782c9ee1472b5b2e4260b88a4b4ea2bf8c92ff1",
     "previousVersion": 0
   },
   {
