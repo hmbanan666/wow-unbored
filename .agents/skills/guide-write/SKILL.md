@@ -1,0 +1,11 @@
+---
+name: guide-write
+description: Research, brief and write a new Unbored game guide for a specific search intent. Use for new guide commissions or a replacement draft; use guide-maintain to audit or refresh an existing publication.
+---
+
+1. Read [the publication flow](../../../docs/content-authoring.md). Identify the Game, existing public URL if any, reader's starting situation and decision. Read existing adjacent guides before assigning the intent: two pages must not answer the same question under different titles.
+2. Build the [brief and evidence ledger](references/brief.md). Fetch the actual sources this run using the available public fetch tool; record failed access separately. Stop the factual draft if the central answer depends on a missing source, incompatible game/build, invented observation or unresolved contradiction. Narrow the brief to a supportable question and state the gap; do not fill it with plausible mechanics.
+3. Write the direct answer first, with its deciding condition. Organize the body around the reader's next decisions, costs and alternatives. For each recommendation, supply a reason and a condition that would change it. Cut a section if removing it changes neither understanding nor action.
+4. Mark only terms that interrupt understanding. Follow the JSON syntax in the publication flow. Keep essential advice in ordinary prose; explanations add meaning, not missing prerequisites. Verify each definition in this guide's Game and sources. Load media rules only if adding an icon or image.
+5. Review with the [editorial rubric](../guide-maintain/references/rubric.md). Repair every failing dimension, then validate the structured document and preview its server-rendered page. Read the opening, headings and link labels alone: they must form a useful decision sequence.
+6. Deliver the brief, evidence gaps, reviewed database draft or migration, validation results and publication instructions. Completion means a reader can act without visiting the sources, every factual claim can be traced, and the authorized publication path has a concrete artifact. Publication itself requires the task's authorization; a writing request alone is not permission to alter live content.

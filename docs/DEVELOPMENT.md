@@ -1234,3 +1234,5 @@ UNBORED_WEB_TEST_DATABASE_URL="$(pg-test url postgres)" pnpm test:js
 
 The tests cover resolution, source restrictions, conversion, publish isolation, refresh,
 collection of unused files, new/old content bodies, database page/card reads and file serving.
+
+For guide briefs, rewrites, sourced inline explanations and repeatable publication/SEO checks, start at [Content authoring](content-authoring.md). Article text remains in the versioned Postgres flow.

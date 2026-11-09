@@ -107,10 +107,28 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
     await sql`INSERT INTO content.media (ref_kind, role, source, hash, width, height, variants, alt, fetched_at, checked_at)
       VALUES ('screenshot', 'image', 'own', 'abcdef0123456789', 56, 56, ${JSON.stringify(variants)}::jsonb, 'Our Forever view', 1, 1)`;
     await sql`UPDATE content.paths SET body = ${JSON.stringify({ ...forever, hero, blocks: [...forever.blocks, figure] })}::jsonb WHERE slug = 'forever-start'`;
+    const terms = [
+      {
+        key: "camp",
+        name: "Camp",
+        text: "Rest here.",
+        source: sources[0].url,
+        icon: "0123456789abcdef",
+        kind: "spell",
+        id: 460,
+      },
+    ];
+    await sql`INSERT INTO content.media (ref_kind, role, source, hash, width, height, variants, alt, fetched_at, checked_at)
+      VALUES ('screenshot', 'image', 'own', '0123456789abcdef', 56, 56, ${JSON.stringify(variants)}::jsonb, 'Own camp icon', 1, 1)`;
+    await sql`UPDATE content.paths SET body = body || ${JSON.stringify({ terms })}::jsonb WHERE slug = 'forever-start'`;
     const illustrated = await readPublished(sql, "guide", "forever-start");
+    assert.deepEqual(illustrated?.terms, terms);
+    assert.equal(illustrated?.media["image:0123456789abcdef"].image?.alt, "Own camp icon");
+    assert.equal(illustrated?.media["spell:460"], undefined);
     assert.deepEqual(illustrated?.hero, hero);
     assert.deepEqual(illustrated?.blocks.at(-1), figure);
     assert.deepEqual(Object.keys(illustrated!.media).sort(), [
+      "image:0123456789abcdef",
       "image:abcdef0123456789",
       "image:fedcba9876543210",
     ]);
@@ -136,7 +154,7 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
     assert.deepEqual(await (pageApi as unknown as () => Promise<unknown>)(), illustrated);
 
     // Even an old body with Retail references must not expose Blizzard media for Forever.
-    await sql`UPDATE content.paths SET body = ${JSON.stringify({ ...body, hero, blocks: [...body.blocks, figure] })}::jsonb WHERE slug = 'forever-start'`;
+    await sql`UPDATE content.paths SET body = ${JSON.stringify({ ...body, hero, terms, blocks: [...body.blocks, figure] })}::jsonb WHERE slug = 'forever-start'`;
     const ownOnly = await readPublished(sql, "guide", "forever-start");
     assert.deepEqual(ownOnly?.media, illustrated?.media);
     vi.stubGlobal("defineSitemapEventHandler", (handler: unknown) => handler);

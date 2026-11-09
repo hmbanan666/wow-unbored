@@ -82,6 +82,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0077. Game media on the website](0077-game-media.md)
 - [0078. Filled photos and solid render frames](0078-media-frame-backgrounds.md)
 - [0079. Separate games in site content](0079-content-game.md)
+- [0080. Sourced explanations in guides](0080-guide-explanations.md)
 
 The site sections, navigation and SEO rules are in [`docs/site-structure.md`](../site-structure.md).
 

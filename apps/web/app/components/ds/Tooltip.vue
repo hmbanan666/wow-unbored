@@ -3,6 +3,8 @@
 let dismissActive: (() => void) | undefined;
 </script>
 <script setup lang="ts">
+defineProps<{ fallbackHref?: string }>();
+const mounted = ref(false);
 const id = useId();
 const root = ref<HTMLElement>();
 const trigger = ref<HTMLElement>();
@@ -13,6 +15,7 @@ const position = ref({ left: "16px", top: "16px", maxHeight: "calc(100dvh - 32px
 let opening: ReturnType<typeof setTimeout> | undefined;
 let closing: ReturnType<typeof setTimeout> | undefined;
 let query: MediaQueryList | undefined;
+let keyboard = false;
 
 function cancelTimers() {
   clearTimeout(opening);
@@ -60,9 +63,11 @@ function blur() {
   closing = setTimeout(close, 120);
 }
 function outside(event: Event) {
+  keyboard = false;
   if (!root.value?.contains(event.target as Node)) close();
 }
 function key(event: KeyboardEvent) {
+  if (event.key === "Tab") keyboard = true;
   if (event.key === "Escape") close();
 }
 function scroll(event: Event) {
@@ -73,10 +78,11 @@ function inputChanged() {
   fine.value = query?.matches ?? false;
 }
 onMounted(() => {
+  mounted.value = true;
   query = window.matchMedia("(hover: hover) and (pointer: fine)");
   const focused = document.activeElement === trigger.value;
   fine.value = query.matches;
-  if (focused && fine.value) nextTick(() => trigger.value?.focus());
+  if (focused) nextTick(() => trigger.value?.focus());
   query.addEventListener("change", inputChanged);
   document.addEventListener("pointerdown", outside);
   document.addEventListener("keydown", key);
@@ -96,18 +102,21 @@ onBeforeUnmount(() => {
 <template>
   <span ref="root" class="ds-tooltip">
     <component
-      :is="fine ? 'span' : 'button'"
+      :is="!mounted && fallbackHref ? 'a' : fine ? 'span' : 'button'"
+      :href="!mounted ? fallbackHref : undefined"
       ref="trigger"
       class="ds-tooltip__trigger"
-      :type="fine ? undefined : 'button'"
+      :type="(!mounted && fallbackHref) || fine ? undefined : 'button'"
       :tabindex="fine ? 0 : undefined"
       :aria-describedby="id"
       :aria-expanded="fine ? undefined : open"
       :aria-controls="fine ? undefined : id"
+      @keydown.enter.prevent="open ? close() : show()"
+      @keydown.space.prevent="open ? close() : show()"
       @mouseenter="enter"
       @mouseleave="leave"
-      @focus="fine && show()"
-      @blur="fine && blur()"
+      @focus="(fine || keyboard) && show()"
+      @blur="blur()"
       @click="!fine && (open ? close() : show())"
       ><slot
     /></component>

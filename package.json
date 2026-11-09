@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @unbored/server start",
+    "content:check": "node apps/server/scripts/check-guides.ts",
     "test": "pnpm test:addon && pnpm run test:js && pnpm test:companion",
     "test:addon": "cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/data.lua && lua5.1 tests/ui.lua",
     "test:companion": "cargo test --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features",

@@ -1,5 +1,8 @@
 import {
   GAMES,
+  guideTermsSchema,
+  termParts,
+  type GuideTerm,
   guideSourcesSchema,
   guideAsOfSchema,
   calloutSchema,
@@ -92,6 +95,7 @@ export type ContentBlock =
   | { type: "link"; label: string; href: string };
 export type ContentDoc = {
   game: Game;
+  terms?: GuideTerm[];
   sources?: GuideSource[];
   asOf?: GuideAsOf;
   hero?: Hero;
@@ -164,6 +168,9 @@ export function parseContent(input: unknown): ContentDoc {
       : GAMES.includes(raw.game as Game)
         ? (raw.game as Game)
         : (problems.push("game must be retail or forever"), "retail");
+  const terms = raw.terms === undefined ? undefined : guideTermsSchema.safeParse(raw.terms);
+  if (terms && !terms.success) problems.push("terms: invalid definitions or duplicate keys");
+  if (terms && kind !== "guide") problems.push("terms belong to guides");
   const sources = raw.sources === undefined ? undefined : guideSourcesSchema.safeParse(raw.sources);
   const asOf = raw.asOf === undefined ? undefined : guideAsOfSchema.safeParse(raw.asOf);
   if (sources && !sources.success)
@@ -181,6 +188,14 @@ export function parseContent(input: unknown): ContentDoc {
       problems.push("WoW Forever guides cannot have items");
     if (/\[\[|\]\]/.test(JSON.stringify(raw)))
       problems.push("WoW Forever guides cannot have inline game references");
+  }
+  if (terms?.success && terms.data.length) {
+    if (!asOf?.success || !sources?.success || !sources.data.length)
+      problems.push("terms need sources and asOf evidence");
+    for (const term of terms.data) {
+      if (!sources?.success || !sources.data.some((s) => s.url === term.source))
+        problems.push(`term ${term.key}: source must be listed in sources`);
+    }
   }
   const slug =
     typeof raw.slug === "string" && raw.slug.length <= 80 && SLUG.test(raw.slug)
@@ -241,6 +256,8 @@ export function parseContent(input: unknown): ContentDoc {
   if (game === "forever" && hero && !("image" in hero))
     problems.push("WoW Forever heroes must use own images");
   let inlineCount = 0;
+  let termCount = 0;
+  const usedTerms = new Set<string>();
   const blocks: ContentBlock[] = [];
   const rawBlocks = Array.isArray(raw.blocks) ? raw.blocks : [];
   if (rawBlocks.length > MAX_BLOCKS) problems.push(`at most ${MAX_BLOCKS} blocks`);
@@ -254,12 +271,26 @@ export function parseContent(input: unknown): ContentDoc {
         : row.type === "list" && Array.isArray(row.items)
           ? row.items
           : [];
+    const otherText =
+      row.type === "heading" || row.type === "callout"
+        ? row.text
+        : row.type === "link"
+          ? row.label
+          : undefined;
+    if (typeof otherText === "string" && /\{\{|\}\}/.test(otherText))
+      problems.push(`blocks[${index}]: terms belong in paragraphs or lists`);
     for (const line of lines) {
       if (typeof line !== "string") continue;
       try {
         inlineCount += inlineMedia(line).length;
+        const parts = termParts(line, terms?.success ? terms.data : []);
+        for (const part of parts)
+          if (part.term) {
+            termCount++;
+            usedTerms.add(part.term.key);
+          }
       } catch {
-        problems.push(`blocks[${index}]: invalid inline reference`);
+        problems.push(`blocks[${index}]: invalid inline reference or term`);
       }
     }
     if (row.type === "callout" && calloutSchema.safeParse(row).success)
@@ -283,6 +314,9 @@ export function parseContent(input: unknown): ContentDoc {
       problems.push(`blocks[${index}] is not a heading, paragraph, list, link, figure or callout`);
   });
 
+  if (termCount > 20) problems.push("at most 20 term mentions per page");
+  if (terms?.success && terms.data.some((t) => !usedTerms.has(t.key)))
+    problems.push("every term must be used in the guide");
   if (inlineCount > 20) problems.push("at most 20 inline references per page");
   const items: ContentItem[] = [];
   const rawItems = Array.isArray(raw.items) ? raw.items : [];
@@ -414,6 +448,7 @@ export function parseContent(input: unknown): ContentDoc {
   if (problems.length) throw new ContentError("The content is not valid.", problems);
   return {
     game,
+    ...(terms?.success ? { terms: terms.data } : {}),
     ...(sources?.success ? { sources: sources.data } : {}),
     ...(asOf?.success ? { asOf: asOf.data } : {}),
     kind,
@@ -537,6 +572,7 @@ type Row = {
 };
 
 type Body = {
+  terms?: GuideTerm[];
   sources?: GuideSource[];
   asOf?: GuideAsOf;
   hero?: Hero;
@@ -658,6 +694,7 @@ export class ContentStore {
       build: body.build,
       document: {
         game: row.game,
+        ...(body.terms ? { terms: body.terms } : {}),
         ...(body.sources ? { sources: body.sources } : {}),
         ...(body.asOf ? { asOf: body.asOf } : {}),
         kind,
@@ -682,6 +719,7 @@ export class ContentStore {
     const build = await checkContentIds(doc, this.game, this.gameIds);
     const hash = hashOf(doc);
     const body: Body = {
+      ...(doc.terms ? { terms: doc.terms } : {}),
       ...(doc.sources ? { sources: doc.sources } : {}),
       ...(doc.asOf ? { asOf: doc.asOf } : {}),
       ...(doc.hero ? { hero: doc.hero } : {}),
@@ -767,6 +805,7 @@ export class ContentStore {
       if (newest.status !== "draft") throw new ContentError("Nothing to publish.");
       const doc = parseContent({
         game: newest.game,
+        terms: stored.terms,
         sources: stored.sources,
         asOf: stored.asOf,
         kind,

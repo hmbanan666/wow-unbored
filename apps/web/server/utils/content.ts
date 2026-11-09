@@ -1,4 +1,9 @@
-import { guideSourcesSchema, guideAsOfSchema, type Game } from "@unbored/contracts/guide";
+import {
+  guideTermsSchema,
+  guideSourcesSchema,
+  guideAsOfSchema,
+  type Game,
+} from "@unbored/contracts/guide";
 import { cleanHero, cleanMediaRef, type MediaAsset } from "@unbored/contracts/game-media";
 import { readPageMedia } from "./media.ts";
 import { cleanBlocks } from "#shared/blocks";
@@ -71,11 +76,13 @@ function pageFrom(row: PageRow): PublicPage {
 function catalogFrom(row: CatalogRow): PublicPage | undefined {
   if (!isCatalogKind(row.kind) || !isSlug(row.slug)) return undefined;
   const body = (row.body ?? {}) as Record<string, unknown>;
+  const terms = guideTermsSchema.safeParse(body.terms);
   const sources = guideSourcesSchema.safeParse(body.sources);
   const asOf = guideAsOfSchema.safeParse(body.asOf);
   const hero = heroOf(row.body);
   return {
     game: row.game,
+    ...(row.kind === "guide" && terms.success ? { terms: terms.data } : {}),
     ...(row.kind === "guide" && sources.success ? { sources: sources.data } : {}),
     ...(row.kind === "guide" && asOf.success ? { asOf: asOf.data } : {}),
     media: {},
