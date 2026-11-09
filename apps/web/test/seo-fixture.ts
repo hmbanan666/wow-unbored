@@ -18,6 +18,8 @@ export async function seedSeoContent(sql: Sql) {
           'Choose your first class, find your starting town and plan the journey ahead.', 1, 'published', ${body}::jsonb, 1793865600, 1793865600)`;
     }
   }
+  await sql`UPDATE content.paths SET guide_group = CASE WHEN slug IN ('forever-1', 'forever-5') THEN 'systems' ELSE 'classes' END WHERE game = 'forever'`;
+  await sql`UPDATE content.paths SET published_at = 1793779200 WHERE slug = 'forever-5'`;
   const structured = JSON.stringify({
     terms: [
       { key: "camp", name: "Camp", text: "A place to rest.", source: "https://example.com/launch" },
@@ -54,8 +56,8 @@ export async function seedSeoContent(sql: Sql) {
   await sql`UPDATE content.paths SET body = body || ${structured}::jsonb WHERE slug IN ('forever-1', 'retail-1')`;
   await sql`UPDATE content.paths SET status = 'retired', updated_at = 1794211200 WHERE slug = 'forever-1'`;
   await sql`INSERT INTO content.paths
-    (game, kind, slug, locale, title, description, version, status, body, updated_at, published_at)
-    SELECT game, kind, slug, locale, title, description, 2, 'published', body, 1794211200, 1794211200
+    (game, guide_group, kind, slug, locale, title, description, version, status, body, updated_at, published_at)
+    SELECT game, guide_group, kind, slug, locale, title, description, 2, 'published', body, 1794211200, 1794211200
     FROM content.paths WHERE slug = 'forever-1'`;
   await sql`INSERT INTO content.paths
     (game, kind, slug, locale, title, description, version, status, body, updated_at)

@@ -16,6 +16,7 @@ class Page(HTMLParser):
         super().__init__()
         self.titles, self.descriptions, self.canonicals, self.robots = [], [], [], []
         self.links, self.ids, self.schemas, self.visible = [], set(), [], []
+        self.hub_copy, self.hub_depth, self.groups = [], 0, []
         self.h1 = 0
         self.tag = ""
         self.skip = 0
@@ -30,6 +31,12 @@ class Page(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         self.tag = tag
+        if "data-hub-copy" in attrs:
+            self.hub_depth = 1
+        elif self.hub_depth and tag not in ("br", "hr", "img", "input", "meta", "link"):
+            self.hub_depth += 1
+        if "data-guide-group" in attrs:
+            self.groups.append(attrs["data-guide-group"])
         # Inline definitions have hidden span panels in SSR; only the label is visible.
         if tag == "span" and (self.tooltip_depth or attrs.get("role") == "tooltip"):
             self.tooltip_depth += 1
@@ -60,6 +67,8 @@ class Page(HTMLParser):
             self.schema = ""
 
     def handle_endtag(self, tag):
+        if self.hub_depth:
+            self.hub_depth -= 1
         if tag == "span" and self.tooltip_depth:
             self.tooltip_depth -= 1
         if tag in ("dt", "dd"):
@@ -80,6 +89,8 @@ class Page(HTMLParser):
             self.titles.append(text.strip())
         if not self.skip and not self.tooltip_depth:
             self.visible.append(text)
+            if self.hub_depth:
+                self.hub_copy.append(text)
             if self.faq_field is not None:
                 self.faq_field[-1] += text
 
@@ -143,6 +154,27 @@ def audit(base, canonical, expect_terms):
             text = " ".join(page.visible)
             assert "@context" not in text and '"@type"' not in text, f"{path}: visible JSON-LD"
             assert "{{term:" not in text, f"{path}: unrendered term syntax"
+            if path == "/forever":
+                assert len(page.titles[0]) <= 60, "hub title exceeds 60 characters"
+                assert 120 <= len(page.descriptions[0]) <= 155, "hub description length"
+                words = len(" ".join(page.hub_copy).split())
+                assert 400 <= words <= 700, f"hub authored copy: {words} words"
+                assert "—" not in " ".join(page.hub_copy), "hub copy contains an em dash"
+                graph = list(nodes(page.schemas))
+                collection = next(n for n in graph if has_type(n, "CollectionPage"))
+                item_list = next(n for n in graph if has_type(n, "ItemList"))
+                assert collection.get("mainEntity", {}).get("@id") == item_list.get("@id"), "hub list not linked"
+                listed = item_list["itemListElement"]
+                visible_links = list(dict.fromkeys(canonical + link for link in page.links if link.startswith("/guides/")))
+                assert [entry["url"] for entry in listed] == visible_links, "hub list display order"
+                assert {entry["url"] for entry in listed} == {canonical + entry["href"] for entry in entries}, "hub omits a guide"
+                assert [entry["position"] for entry in listed] == list(range(1, len(entries) + 1)), "hub list positions"
+                assert item_list["numberOfItems"] == len(entries), "hub list count"
+                assert set(page.groups) == {entry["group"] for entry in entries}, "hub groups differ from catalog"
+                assert any(has_type(n, "BreadcrumbList") and "/forever" in json.dumps(n) for n in graph), "hub breadcrumb missing"
+                for label in ("Start here", "Key dates", "Recently updated", "Sources checked"):
+                    assert label in text, f"hub missing {label}"
+                print(f"Hub: {words} authored words excluding cards, title {len(page.titles[0])}, description {len(page.descriptions[0])}")
             if path.startswith("/guides/"):
                 assert len(text.split()) > 250, f"{path}: useful body missing from SSR"
                 graph = list(nodes(page.schemas))

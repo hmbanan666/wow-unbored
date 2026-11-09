@@ -1,41 +1,48 @@
 <script setup lang="ts">
-import { PUBLIC_COPY, type CatalogSummary } from "#shared/catalog";
+import type { CatalogSummary } from "#shared/catalog";
+import {
+  FOREVER_TITLE as title,
+  FOREVER_DESCRIPTION as description,
+  foreverHub,
+  publicationDate,
+  displayPublicationDate,
+} from "#shared/forever-hub";
+import { FOREVER_DATES } from "#shared/forever-dates";
 
 const { data, error, refresh } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog", {
   query: { kind: "guide", game: "forever" },
 });
-const pages = computed(() => data.value?.pages ?? []);
-const systemSlugs = new Set([
-  "wow-forever-camping-guide",
-  "wow-forever-cozy-sleeping-bag",
-  "wow-forever-legacy-talents",
-  "wow-forever-enhanced-vs-classic-preset",
-]);
-const systems = computed(() => pages.value.filter((page) => systemSlugs.has(page.slug)));
-const otherGuides = computed(() => pages.value.filter((page) => !systemSlugs.has(page.slug)));
-
-const title = "WoW Forever guides";
-const description =
-  "Guides for World of Warcraft: Forever, Blizzard's Classic-based game that launched on 4 November 2026. Every fact is checked against the current build and its sources are listed on each page.";
+const hub = computed(() => foreverHub(data.value?.pages ?? []));
+const site = useSiteConfig();
+const absolute = (path: string) => new URL(path, site.url).href;
+const listId = absolute("/forever#guides");
 useSeoMeta({ title, description });
 defineOgImage("Unbored", { title, description, game: "forever" });
 useSchemaOrg([
-  defineWebPage({ "@type": "CollectionPage", name: title, description }),
-  defineItemList({
+  defineWebPage({
+    "@type": "CollectionPage",
     name: title,
-    numberOfItems: pages.value.length,
-    itemListElement: [...otherGuides.value, ...systems.value].map((page, index) => ({
-      "@type": "ListItem",
-      position: index + 1,
-      name: page.title,
-      url: page.href,
-    })),
+    description,
+    mainEntity: { "@id": listId },
   }),
+  defineItemList(
+    computed(() => ({
+      "@id": listId,
+      name: title,
+      numberOfItems: hub.value.listed.length,
+      itemListElement: hub.value.listed.map((page, index) => ({
+        "@type": "ListItem" as const,
+        position: index + 1,
+        name: page.title,
+        url: absolute(page.href),
+      })),
+    })),
+  ),
 ]);
 </script>
 
 <template>
-  <DsPage width="wide">
+  <DsPage width="wide" class="forever-hub">
     <DsPageHeader
       :trail="[
         { label: 'Home', to: '/' },
@@ -44,18 +51,147 @@ useSchemaOrg([
       :title="title"
       :lead="description"
     />
-    <DsEmptyState v-if="error" :text="PUBLIC_COPY.unavailable">
+    <DsProse class="hub-intro" data-hub-copy>
+      <p>
+        Level 60 is the cap in WoW Forever, a permanent game alongside modern WoW and Classic, set
+        on the original continents after Warcraft III Reforged: Forsaken Kingdom and before Molten
+        Core. Its additions include more than 1,000 quests, the Skyborne race, camping and the
+        Legacy System, with guides below for your first character, class choice and early gold.
+      </p>
+      <p>
+        The Legacy System offers account-wide challenges, perks and rewards, and Blizzard says all
+        character advantages can be unlocked on one character. Start with a character you want to
+        keep playing. You can explore another class later without treating it as a requirement for
+        getting started.
+        <a :href="FOREVER_DATES.entries[1].url">Blizzard's overview of Forever</a> explains the
+        world and its new systems.
+      </p>
+    </DsProse>
+    <div v-if="error" class="hub-state" role="status">
+      <p>The guides could not be loaded. Try again in a minute.</p>
       <DsButton @click="refresh()">Try again</DsButton>
-    </DsEmptyState>
+    </div>
     <template v-else>
-      <CatalogGrid
-        v-if="otherGuides.length || !pages.length"
-        :pages="otherGuides"
-        empty="The first WoW Forever guides are on their way."
-      />
-      <DsSection v-if="systems.length" title="Systems">
-        <CatalogGrid :pages="systems" empty="" />
+      <DsSection v-if="hub.start.length" title="Start here">
+        <DsProse data-hub-copy>
+          <p>
+            At the first login, choose Enhanced if you want Blizzard's suggested starting settings.
+            Choose Classic if you prefer its traditional presentation, then change individual
+            settings in Game Menu &gt; Options when you need to. Open the beginner guide for the
+            first decisions, or go straight to Enhanced vs Classic for the settings behind that
+            choice.
+          </p>
+        </DsProse>
+        <CatalogGrid :pages="hub.start" empty="" />
+      </DsSection>
+      <DsSection title="Key dates" data-hub-copy>
+        <p class="ds-meta">
+          Sources checked
+          <time :datetime="FOREVER_DATES.checked">{{ FOREVER_DATES.checkedLabel }}</time
+          >.
+        </p>
+        <dl class="hub-dates">
+          <div v-for="date in FOREVER_DATES.entries" :key="date.title">
+            <dt>{{ date.title }}</dt>
+            <dd>
+              <p>{{ date.text }}</p>
+              <a :href="date.url">{{ date.source }}</a>
+            </dd>
+          </div>
+        </dl>
+      </DsSection>
+      <DsSection
+        v-for="group in hub.groups"
+        :key="group.group"
+        :title="group.title"
+        :data-guide-group="group.group"
+      >
+        <DsProse data-hub-copy
+          ><p>{{ group.intro }}</p></DsProse
+        >
+        <CatalogGrid :pages="group.pages" empty="" />
+      </DsSection>
+      <DsSection v-if="hub.ungrouped.length" title="More guides">
+        <CatalogGrid :pages="hub.ungrouped" empty="" />
+      </DsSection>
+      <p v-if="!hub.listed.length" class="hub-state">
+        The first WoW Forever guides are on their way.
+      </p>
+      <DsSection v-if="hub.recent.length" title="Recently updated">
+        <ul class="hub-recent">
+          <li v-for="page in hub.recent" :key="page.slug">
+            <NuxtLink :to="page.href">{{ page.title }}</NuxtLink>
+            <time :datetime="publicationDate(page.updatedAt!)">{{
+              displayPublicationDate(page.updatedAt!)
+            }}</time>
+          </li>
+        </ul>
       </DsSection>
     </template>
   </DsPage>
 </template>
+
+<style scoped>
+.forever-hub {
+  overflow-wrap: anywhere;
+}
+.hub-state {
+  padding: var(--space-5);
+  border: 1px solid var(--lamp-line-soft);
+}
+.forever-hub :deep(.ds-section > .ds-prose) {
+  margin-bottom: var(--space-4);
+}
+.hub-intro {
+  margin-top: var(--space-5);
+}
+.hub-dates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+}
+.hub-dates > div {
+  padding: var(--space-4);
+  border: 1px solid var(--lamp-line-soft);
+  border-radius: var(--radius-md);
+}
+.hub-dates dt {
+  font-weight: 700;
+}
+.hub-dates dd {
+  margin: 0;
+}
+.hub-dates p {
+  margin-block: var(--space-3);
+}
+.hub-dates a {
+  text-decoration: underline;
+}
+.hub-recent {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+.hub-recent li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.hub-recent a {
+  text-decoration: underline;
+}
+.hub-recent time {
+  flex-shrink: 0;
+  color: var(--lamp-muted);
+}
+@media (max-width: 48rem) {
+  .hub-dates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hub-recent li {
+    flex-direction: column;
+  }
+}
+</style>
