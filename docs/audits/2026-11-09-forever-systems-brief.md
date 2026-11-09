@@ -2,7 +2,7 @@
 
 Research date: 2026-11-09 UTC. Base: `fc2d8d2`, after PRs #153–#157. Decision: [ADR 0087](../adr/0087-forever-system-guides.md). Game: Forever, English, US query settings. No live-client observations are claimed.
 
-**Publication gate: incomplete search evidence.** Google autocomplete returned suggestions for all four primary queries. Google Search returned a JavaScript retry page over HTTP and an unusual-traffic challenge in Chromium, so neither Google People also ask nor Google's organic ordering could be inspected. The accessible web-search sample below is explicitly a different input. The [guide-write brief](../../.agents/skills/guide-write/references/brief.md) requires all three inputs and makes missing evidence a blocker. Owner clarification is pending on using observed autocomplete and accessible results for FAQ selection while recording this gap. No factual guide draft or publication migration has been produced.
+**Search evidence decision, accepted by the owner on 2026-11-09:** Google People also ask could not be captured because Google Search returned an unusual-traffic challenge. For T5 this is not a publication blocker. Each of the four briefs uses the observed autocomplete suggestions, the task's secondary queries from the owner's 2026-11-09 autocomplete research, and accessible search results/competitor pages instead. No questions are claimed to come from PAA; this exception is scoped to this task and does not change the repository skill.
 
 ## Query ownership and observed searches
 
@@ -57,11 +57,20 @@ Additional searches used: quoted versions of all four primary queries; `wow fore
 
 ### FAQ selection status
 
-No questions are labelled People also ask: none were observable. If the owner permits the alternate evidence basis, select 3–6 questions per page from the actual secondary-query intents above, then verify each answer separately. Candidate intents are camping setup/buffs/features/tents, sleeping-bag faction starts/buff/worth of the trip, Legacy earning/best picks/respec, and preset choice/UI differences/later changes. Exact final question wording remains unauthored.
+PAA was blocked by an unusual-traffic challenge for all four briefs. The owner authorized the following replacements on 2026-11-09; the query table and competitor samples above provide provenance.
+
+| Brief | Replacement evidence and final FAQ questions | Answer evidence |
+| --- | --- | --- |
+| Camping | Observed camping buffs/system/features/tent autocomplete plus task's campfire/profession queries and C1–C3: How do I make a campfire? Is camping a separate profession? Do camping buffs stack with class buffs? Can I add three features by myself? Does the Camp Tent give the sleeping-bag bonus? | L, C1–C3, B1/B2, G |
+| Sleeping bag | Observed faction-start/buff/worth-it queries plus task quest-chain queries and B1–B6: Where does the Horde quest start? Where does the Alliance quest start? What level can I start? How long does the XP buff last? Is it worth leaving my leveling route? Do I get two 12-slot bags? | B1–B6, with disputed duration/rewards explicitly qualified |
+| Legacy | Observed how-to-get/best/respec/tree queries plus task's points queries and G/G1–G3: How do I unlock Legacy talents? Do I need alts? Are points spent separately on each character? Which talents should a solo leveler take first? Can I reset Legacy talents? Does Well Rested increase all XP? | G, G1–G3 |
+| Preset | Observed enhanced-vs-classic/UI/preset queries plus task's switch/HD-vs-SD queries and L/P: Should I choose Enhanced or Classic? How do I switch later? Can I use SD models with quest guidance? Does Enhanced change character power? | L/P |
+
+Each guide's primary query, distinct intent, useful gap, source ledger, table plan and sibling links are recorded below. FAQs translate observed intents into natural questions; their wording is editorial, not a purported verbatim Google capture.
 
 ## Evidence ledger
 
-All successful source accesses below occurred on **2026-11-09 UTC**. The dates/builds named in the scope column describe source evidence; they are not live-client tests. Each final guide must include its own relevant subset of these URLs with actual access dates.
+All successful source accesses below occurred on **2026-11-09 UTC**. The dates/builds named in the scope column describe source evidence; they are not live-client tests. Each final guide includes its own relevant subset of these URLs with the 2026-11-09 access date.
 
 | Key and source | Supported claims and scope | Publication treatment |
 | --- | --- | --- |
@@ -110,7 +119,7 @@ M scope only if supported detail warrants it. The faction order, long crossings,
 
 Plan columns: **Source / Points on one character / What earns them**. Use G's totals rather than combining an account total with a single-character total. Account challenges total 65, while Blizzard's single-character example totals 29; neither is the spending cap. Leveling milestones are 25/45/60, crafting milestones 150/225/300 for eligible non-gathering primary professions. PvP has rank, reputation and seasonal quest requirements. Dungeon and raid points require the listed completion challenges, not every ordinary boss kill.
 
-For the first 16 points, distinguish solo recovery, crafting/gathering and PvP priorities. Thrill of Adventure, Well Rested, Working Overtime, Bountiful Harvest, For Great Honor and Diplomat have different purposes. A recommendation needs its activity condition and the prerequisite cost. G1/G2 rank disagreements prevent importing a supposedly complete optimal build. Specific rank allocations require a further current corroboration pass before drafting. Trainer respec location is reported by G2/G3; live price and repeat-reset scaling remain unconfirmed.
+For the first 16 points, distinguish solo recovery, crafting/gathering and PvP priorities. Thrill of Adventure, Well Rested, Working Overtime, Bountiful Harvest, For Great Honor and Diplomat have different purposes. A recommendation needs its activity condition and the prerequisite cost. G1/G2 rank disagreements prevent importing a supposedly complete optimal build. The final rank pass reopened G1 and G2 on 2026-11-09: the used rank limits agree, while the plans explicitly retain the beta scope. G1 gives the prerequisite arrows; G3 supplies the activity/prerequisite cross-check. Performance Bonus and Luremaster are excluded from the allocations because their rank counts disagree. Trainer respec location is reported by G2/G3; live price and repeat-reset scaling remain unconfirmed.
 
 The camping connection uses G's explicit Field Guide, Permanence, Reagent Economy, Gourmand and Well Rested descriptions. Link camping and sleeping bag for the routine; link the beginner page for the larger system overview. Term candidates: account-wide points, rested XP, eligible tradeskill. M depth is a scope target, not permission to fill gaps with generic build advice.
 
@@ -129,16 +138,40 @@ Explain later adjustment through Game Menu > Options, explicitly at the individu
 - Guessed Mobalytics `/wow-forever/guides/cozy-sleeping-bag-guide` and Forever Mastery `/en/guides/forever-classic-or-enhanced` failed. Discovered quest/interface pages are recorded above.
 - The Mobalytics Legacy guide was opened, but its overview's crafting unlock statement and swapped tree heading make it unsuitable as authority over Blizzard.
 - Ragetusk's search result disputed the launch cap using beta context; the opened Blizzard article explicitly establishes the launch cap. No claim is sourced to that result.
-- No third-party images were downloaded for guide publication. No image blocks are planned.
+- No third-party images were downloaded for guide publication. The four new guides contain no image blocks.
 
-## Delivery inspection and remaining work
+## Final guide metadata and review
 
-`0024` is the next free migration number at the inspected base. Migration 0023 supplies the versioned content pattern: transaction lock, runtime UTC publication timestamps, preserved history, conflict guards and a persistent replay marker. Its empty-database behavior skips absent publications. A new-guide migration must explicitly test its intended fresh-database behavior and protect intervening owner drafts and existing slug collisions.
+Counts below include spaces in metadata. Word counts include headings, prose, table captions/headers/cells and FAQ; term markup counts as its visible label. Sources, term definitions, navigation and template text are excluded.
 
-The existing beginner document contains preset, camp and Legacy sections, but **does not mention the sleeping bag by name**. Add the sleeping-bag link beside the existing camp section without altering its prose. The authorized change is four link blocks only; preserve the rest of its document, source dates and own hero.
+| Guide | Title | Title characters | Description characters | Words | Scope |
+| --- | --- | --- | --- | --- | --- |
+| Camping | WoW Forever Camping: Buffs and Camp Features | 44 | 132 | 1,233 | M: making a camp, profession contributions, solo packing and buff routine |
+| Sleeping bag | WoW Forever Sleeping Bag: Both Faction Routes | 45 | 133 | 1,450 | M: both starting orders, shared object route, crossings, rewards and use |
+| Legacy | WoW Forever Legacy Talents: Your First 16 Points | 48 | 138 | 1,533 | M: point sources, prerequisite-aware starting allocations, activity tradeoffs and resets |
+| Preset | WoW Forever Enhanced or Classic: Which Preset? | 46 | 135 | 765 | S: six defaults, individual changes and appearance choice |
 
-The Forever hub currently renders a flat `CatalogGrid`; there is no systems group and no ADR 0084 file in this checkout. ADR 0087 authorizes the systems grouping, but it still needs an implementation and rendered verification. Do not claim that setting a guide topic creates it: the content parser reserves topics for Paths.
+The final Legacy examples allocate 16 points each: solo uses 5 Thrill of Adventure, 5 Well Rested, 5 Talented and 1 Field Guide; the crafter/gatherer/cook uses 5 Working Overtime, 5 Bountiful Harvest, 5 Master Chef and 1 Thrill of Adventure; the Honor/reputation plan uses 3 Gourmand, 2 The Quick and the Dead, 5 For Great Honor, 5 Diplomat and 1 Reagent Economy. G1/G2 agree on the used rank limits. The spending order includes G1's five-point tree gates, Well Rested before Talented and The Quick and the Dead before Reagent Economy. These are conditional editorial starting plans, not measured optimal builds or a claim to have tested live ranks.
 
-`scripts/audit-guides.py` discovers Forever guides through the catalog, so there is no slug list to extend. It does not yet compare FAQPage text against visible answers. Existing component/SSR tests cover FAQ mirroring; the final migration pages still need an actual rendered audit. The default `content:check` validates only migration 0023, so final validation must include the new documents and all nine internal destinations, preserving duplicate-metadata checks.
+Editorial rubric pass:
 
-Remaining gates: resolve the missing PAA evidence basis; finish source verification for any exact Legacy allocations; draft and review all four articles; implement safe migration and four beginner links; add the systems group; validate contracts, hashes, collision/replay/history behavior, metadata and rendered pages; run final lint/tests; open or update the draft PR with the source log, disputed facts, actual word counts, checked commit and rollout instructions. No Server runtime code, schema, published content or deployment changed during this research pass.
+- Query record and FAQ: distinct query ownership, dated autocomplete and five accessible result samples per topic. Each brief's FAQ row records the owner-authorized PAA replacement; all answers have separate factual evidence.
+- Promise and opening: concrete campsite rule, level-14 faction starts, level-25 first-point route and the Options path. Each primary query is answered in the first two sentences.
+- Decision, truth and interest: missing camp benefits determine the contribution; crossings determine when to obtain the bag; played activities determine Legacy spending; guidance preference determines the preset. The named objects, coordinates and point sources remain actionable without opening source tabs. Unresolved claims are qualified locally.
+- Tables and FAQ: all four have authored tables and one visible FAQ each (5, 6, 6 and 4 entries respectively). Legacy also has an allocation table. All answers mirror FAQPage in rendered server HTML.
+- Links: every page links to the beginner guide and `/forever`; camping and sleeping bag link each other, with relevant Legacy links. The preset links to camping and sleeping bag. The nine-guide bundle validates internal destinations and unique metadata.
+- Metadata, length and clarity: rendered title/description limits pass; system and short-comparison scopes fit their facts. Openings, headings and link labels form an action sequence. Useful terms have sourced definitions and working inline explanations. No new player-facing em dashes, generic introductions, invented anecdotes or image placeholders.
+- Uncertainty and images: source dates/builds are distinct from live-client testing. Camp tools, Stonetalon position, bag duration/rewards and Legacy rank/reset scope are qualified at the relevant claims. No third-party art or new guide images.
+- Technical search and maintenance: canonical URLs, indexability, sitemap, one H1, visible bodies and term definitions pass locally. Recheck after camping recipe changes, sleeping-bag quest/reward changes, Legacy tree or reset changes, and preset-default changes. Replace disputed data only with the required agreement or an own in-game capture; publish revisions through the content store.
+
+## Delivery and validation
+
+Migration `0024_forever_systems.sql` follows 0023's existing-site policy. A fresh database stays empty. Existing sites receive four new version-1 publications plus beginner version 3. Any target slug collision or changed/missing beginner publication aborts the transaction. History, content hashes, runtime timestamps and replay markers are preserved, including later owner publications and drafts.
+
+The existing beginner document has preset, camp and Legacy sections, but **does not mention the sleeping bag by name**. Its four new link blocks place the sleeping-bag destination beside the camp section. All other blocks, metadata, sources, evidence dates and its own hero are preserved byte-for-byte in the normalized document.
+
+The Forever hub groups the four published slugs under Systems. Other guides remain in the main grid. Topics remain unused because the parser reserves them for Paths. The default content checker validates the effective nine-guide catalog from migrations 0023 and 0024. The HTML audit discovers all published slugs and checks tables, visible FAQ answers and schema together, including JSON-LD type arrays.
+
+Local validation uses an isolated user-space PostgreSQL database seeded with the prior publications, then both content migrations, and a production web build. All nine guides and the hub pass `scripts/audit-guides.py --expect-terms`. Migration tests cover publication, hashes, beginner preservation, retained history, empty databases, replay after later publication/draft, slug/Game collisions and changed/missing beginner content. Browser checks cover 360, 390, 768 and 1280-pixel layouts, table scrolling, hub/beginner links, hover/keyboard/touch explanations and no-script definition links. Final full-suite results and checked commit are recorded in the draft PR.
+
+Server changes are the content migration, migration tests and content-check tooling; no Server runtime or schema changes. Deploy the compatible web first, then start the Server with migration 0024 through its normal runner. See [the rollout and rollback notes](../content-authoring.md#migration-0024-handoff). This task performs no deployment.
