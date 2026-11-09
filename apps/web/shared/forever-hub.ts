@@ -9,7 +9,7 @@ export const FOREVER_TOPICS: Record<GuideGroup, { title: string; intro: string }
   "first-steps": {
     title: "First steps",
     intro:
-      "For questing without constant opposing-player attacks, choose Normal. Choose PvP if you want that danger while travelling. Roleplay and Roleplay PvP also ask you to follow naming and behaviour rules. The beginner guide covers these choices alongside access and your first character, so start there before looking for a leveling route.",
+      "For questing without constant opposing-player attacks, choose Normal. Choose PvP if you want that danger while travelling. Roleplay and Roleplay PvP also ask you to follow naming and behaviour rules. Check the FAQ for access and release dates. The beginner guide covers rulesets and your first character, so start there before looking for a leveling route.",
   },
   systems: {
     title: "Systems",
@@ -24,7 +24,7 @@ export const FOREVER_TOPICS: Record<GuideGroup, { title: string; intro: string }
   "professions-gold": {
     title: "Professions and gold",
     intro:
-      "Making gold starts with deciding what to keep, use or sell. Open early gold before spending your starting money, and Enchanting when you are ready to examine that profession's materials and crafts. Check the quantities for the action you choose, then look at the prices available to your character before buying supplies. Leave expensive experiments until you can afford the materials.",
+      "Making gold starts with deciding what to keep, use or sell. Open early gold before spending your starting money, choose a profession pair for your class, or check Merchant's Favor for crate bundles and faction hand-ins. Enchanting covers that profession's materials and crafts. Check the quantities for the action you choose, then look at the prices available to your character before buying supplies. Leave expensive experiments until you can afford the materials.",
   },
   "dungeons-raids": {
     title: "Dungeons and raids",
