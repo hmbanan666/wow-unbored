@@ -90,6 +90,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 
 - [0085. Download links on our domain](0085-download-links-on-our-domain.md)
 - [0086. Install page as the addon landing page](0086-install-landing-page.md)
+- [0087. WoW Forever system guides: one page per searched system](0087-forever-system-guides.md)
 
 The site sections, navigation and SEO rules are in [`docs/site-structure.md`](../site-structure.md).
 
