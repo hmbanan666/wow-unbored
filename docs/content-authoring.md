@@ -25,7 +25,7 @@ The content script uses the existing `UNBORED_SERVER_URL` and `UNBORED_PLANNER_T
 
 ## Inline explanations
 
-Use a plain readable label in paragraph or list text:
+Use a plain readable label in paragraph or list text, table cells or FAQ answers:
 
 ```json
 {
@@ -49,11 +49,47 @@ In the same guide document, provide the definition and evidence:
 
 The referenced URL must also occur in `sources`, with its real access date; `asOf` must identify the evidence date and source build or announcement scope. A definition inherits the document's Game. Supply `kind: "item" | "spell"` and a positive `id` only when that identity has been verified in that Game; these are provenance fields for future structured data, not a lookup request. Omitted kind means a concept. `icon` may be an existing own-media 16-hex hash, verified to depict the term. Missing art leaves a useful name and explanation. Never substitute a Retail id or a similar-looking icon for Forever.
 
-Limits: 12 definitions, 20 mentions, 80-character labels/names and 400-character explanations. Keys are lowercase hyphenated words. Each key must be unique and used; each mention must resolve. Terms belong in paragraphs/lists, not titles, headings or callouts. Definitions contain plain text, not HTML or nested markup. Vue escapes text; rendering never executes authored HTML. Item and spell ids do not produce object pages or official external tooltips.
+Limits: 12 definitions, 20 mentions, 80-character labels/names and 400-character explanations. Keys are lowercase hyphenated words. Each key must be unique and used; each mention must resolve. Terms belong in paragraphs, lists, table cells and FAQ answers, not titles, headings, callouts, table headers/captions or FAQ questions. Definitions contain plain text, not HTML or nested markup. Vue escapes text; rendering never executes authored HTML. Item and spell ids do not produce object pages or official external tooltips.
 
 The existing `DsTooltip` handles desktop hover/focus, keyboard activation, Escape, outside dismissal and touch toggling. On a keyboard connected to a touch device, Tab focus also opens it. The server renders explanations plus a visible definition list; before scripts run, the inline label is a link to that definition. Keep essential advice in the sentence so understanding never requires opening a hover box.
 
 Own icons use the same media-store query and `DsGameIcon` as other art. ADR 0077 still applies: no fan-site images, no added crops, cutouts, recoloring or background manipulation. Forever queues no Blizzard media requests. No new images are included in this change.
+
+## Tables and FAQ
+
+[ADR 0083](adr/0083-table-and-faq-blocks.md) adds two structured blocks for both Retail and Forever guides. Author comparisons and researched answers as these blocks, then inspect their rendered HTML. Existing documents need no migration.
+
+```json
+{
+  "type": "table",
+  "caption": "Starting choices",
+  "columns": ["Choice", "Next action"],
+  "rows": [
+    ["Rest first", "Visit the {{term:camp|camp}}."],
+    ["Continue", "Take the northern road."]
+  ]
+}
+```
+
+`columns` is the header row: 2–6 nonempty strings, each at most 120 characters. `rows` contains 1–30 arrays, each with exactly one cell per column; cells are nonempty strings of at most 2,000 characters. Optional `caption` is nonempty and at most 600 characters. Supply a descriptive caption when it helps identify the comparison. The real HTML table uses column headers with `scope="col"`; its labelled, keyboard-focusable frame scrolls horizontally on small screens while the caption stays visible. The page itself does not scroll sideways.
+
+```json
+{
+  "type": "faq",
+  "entries": [
+    { "q": "Where can I rest?", "a": "Visit the {{term:camp|camp}}." },
+    { "q": "Which road comes next?", "a": "Take the northern road." }
+  ]
+}
+```
+
+A guide can contain at most one FAQ block, with 1–8 entries. Each entry has exactly `q` (a nonempty question, at most 120 characters) and `a` (a nonempty answer, at most 2,000 characters). The editorial standard asks for 4–8 researched People also ask questions; the schema also permits smaller useful sets. Questions and answers are visible in server HTML under “Questions”, without opening a disclosure or running scripts.
+
+Both block schemas reject unknown fields, HTML, `{}` and `[[ ]]` markup. The only markup allowed is a valid `{{term:key|label}}` mention in a cell or answer, resolved against the guide's sourced `terms`. These mentions share the existing 12-definition and 20-mention limits with paragraphs and lists. Headers, captions and questions are plain text. These examples show structure, not verified game advice; source the real content before publication.
+
+The page emits FAQPage JSON-LD only from its visible FAQ block. Questions and answers match word for word, with term markup reduced to the authored label. Do not add schema-only answers or a second FAQ data source. No FAQ block means no FAQPage.
+
+Deployment order: bring up the compatible web build first, then the compatible Server, then author and publish content using the new blocks. The new web safely renders old documents before the Server changes. This feature adds no migration and changes no guide text, so deployment alone exposes no new blocks. Keep old web instances out of traffic before publishing such documents. Before rolling the web back, publish versions without the new blocks and expire any cached pages that contain them.
 
 ## Evidence and freshness
 
