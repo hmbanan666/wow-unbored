@@ -40,7 +40,7 @@ The home title names WoW and WoW Forever guides and the Retail addon’s plans, 
 
 ## Content
 
-Authored content lives in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and are written through owner tools that check Retail ids against the Game DB. Migration 0022 adds a `game` column with default `retail`; existing rows need no content rewrite. WoW Forever never reads or validates against the Retail Game DB and reads only own images from the media store (ADR 0079). Article bodies are not a flat-file CMS; reviewed data migrations may deliver versioned replacements. Start guide work at [Content authoring](content-authoring.md).
+Authored content lives in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and is written through owner tools that check Retail ids against the Game DB. Migration 0022 adds a `game` column with default `retail`; existing rows need no content rewrite. WoW Forever never reads or validates against the Retail Game DB and reads only own images from the media store (ADR 0079). Article bodies are not a flat-file CMS; reviewed data migrations may deliver versioned replacements. Start guide work at [Content authoring](content-authoring.md).
 
 ## Guides
 

@@ -257,3 +257,13 @@ productionTest("a stored WebP hero stays visible in the rendered share PNG", asy
   }
   expect(visible).toBeGreaterThan(10_000);
 });
+
+productionTest(
+  "unusual path separators cannot turn a canonical redirect into an external one",
+  async () => {
+    for (const path of ["/%5cexample.com/", "/%2fexample.com/", "/%09%5cexample.com/"]) {
+      const response = await fetch(origin + path, { redirect: "manual" });
+      expect(response.headers.get("location")).toBeNull();
+    }
+  },
+);
