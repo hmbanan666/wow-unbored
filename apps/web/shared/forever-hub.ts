@@ -19,7 +19,7 @@ export const FOREVER_TOPICS: Record<GuideGroup, { title: string; intro: string }
   classes: {
     title: "Classes",
     intro:
-      "Picking a class starts with how you expect to play. Use the leveling comparison when your main question is the journey to 60. Use the solo comparison when you want to handle quests on your own. Read the opening recommendation and its tradeoff before committing to a character; a leveling preference and a solo-play preference can lead you to different choices.",
+      "Picking a class starts with how you expect to play. Use the leveling comparison when your main question is the journey to 60. Use the solo comparison when you want to handle quests on your own. For your next questing session, the Warlock guide explains early Affliction choices and resource habits. The Hunter pet guide covers choosing, feeding and training a companion, including what to check when it loses an enemy’s attention.",
   },
   "professions-gold": {
     title: "Professions and gold",
