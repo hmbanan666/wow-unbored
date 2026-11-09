@@ -95,14 +95,50 @@ Best professions: M comparison. One table, nine class rows, solo/self-supply pai
 
 FAQ: S–M quick answer. Open with level 60 and access requirement within two sentences, with the exact primary phrase in a natural question. A small dates/status table plus eight short visible answers: free/subscription, editions, worth it, console, Hardcore, raids, level cap, race. Launch date in the table. Prices link to Blizzard; no currency amounts.
 
-Gold: preserve version-2 title/description and prose except the requested crate and gold-buying additions and links. The current document already names both NPCs, the first quest, Apprentice payouts and textile quantities. Add Expert/Artisan gates, the single-stack interaction, herb example, camp faction names and a short Never buy gold section. Keep its existing Enchanting and leveling-class links.
+Gold: preserve the version-2 description and prose except the requested crate and gold-buying additions and links. Shorten the title only as required by the metadata limit. The current document already names both NPCs, the first quest, Apprentice payouts and textile quantities. Add Expert/Artisan gates, the single-stack interaction, herb example, camp faction names and a short Never buy gold section. Keep its existing Enchanting and leveling-class links.
 
 Links: every new page to `/forever` and `/guides/wow-forever-beginners-guide`; the three money pages link mutually; professions also links `/guides/wow-forever-enchanting-guide`, `/guides/best-solo-class-wow-forever` and `/guides/best-leveling-class-wow-forever`. FAQ links into the money cluster. All destinations are existing publications or part of this atomic batch. No figures or install prompt.
 
-## Review and validation record
+## Final FAQ provenance
 
-The unchanged production web build passes. The isolated baseline preview, seeded through 0023/0024/0025, passes `scripts/audit-guides.py --expect-terms` for `/forever` and all nine existing publications. The published gold version 2 was read as JSON and rendered HTML before editing; both NPC names are already visible.
+All questions are editorial wording from the authorized fallback. No question is claimed as a People also ask capture. The four Google primary-query attempts and their challenges are recorded above.
 
-The first database publication test fails as expected because migration 0026 does not exist yet. Its unfinished test and migration templates are retained in ignored `.scratch/t7/` until the research gate clears; no failing test is committed.
+| Page | Visible FAQ questions / observed intent | Answer evidence |
+| --- | --- | --- |
+| Merchant's Favor | Alliance/Horde hand-ins (task); Apprentice Ore/Parts/Curiosities (task, crate autocomplete); one bundle versus every material (opened S14/S15); first-crate quest (Favor quest autocomplete); recipe reputation (Favor recipes autocomplete); crates for gold (task and opened S16). | S14/S15 for mechanics; S16 for the sale decision. |
+| Best professions | Hunter; Warlock/Mage; Paladin/Warrior; Shaman/Druid (observed class autocomplete); proven gold winner (task tier-list query and opened S13); First Aid alongside primaries (task profession-list query and opened Pairs/Builds Forge). | Pairs + ForeverDB for crafting recommendations; S16/S17 for gathering fit; S13 for the forecast and First Aid; Pairs + Builds Forge for profession slots. |
+| FAQ | Free/subscription (observed free query and task); required edition (task and opened price pages); worth it (autocomplete); console/Xbox, Hardcore date, raid date, level cap, new race (task's supplied secondary queries). | Blizzard S1/S2 and Starter for facts; worth-it answer is our advice tied to those facts. |
 
-Drafting, migration replay/collision checks, final structured validation, revised-page audit and editorial rubric pass remain pending. The blocked-PAA fallback is authorized; no question is attributed to PAA.
+## Editorial review
+
+- Query record: primary ownership remains distinct, with dated autocomplete, five opened results per query and the owner's standing blocked-PAA fallback.
+- Opening and decision: crates lead with the first quest's bonus; professions lead with concrete material/craft pairs; FAQ directly answers access in its first two sentences. Their choices have conditions: a named Favor reward, affordable self-supply, or a preference for the original-continent leveling journey.
+- Specifics: NPCs, faction camps, tier gates, stack quantities and first-crate rewards retained. Table examples are a small selection, not a copied full catalog. Apprentice Ore/Parts/Curiosities are answered explicitly.
+- Truth and uncertainty: no unsupported live price, currency subscription rate, optimal raid pair or hourly return. Performance Bonus and Bountiful Harvest use Blizzard's effects without ranks or rates. Expert/Artisan exact crate payouts and label-trigger disagreement are qualified locally. The gold tier list stays a forecast.
+- Interest and length: Merchant's Favor earns its scope through the faction hand-ins, first quest, representative bundles and sell-versus-fill arithmetic. Professions gives all nine classes, supply relationships, reversal conditions and the single-source Shadow Priest alternative. FAQ is deliberately shorter, with dates and direct answers; no repeated lore or edition sales copy to reach a quota.
+- Clarity: essential advice remains outside term definitions. Favor, writs, Disenchant and rulesets get short sourced explanations where useful. No em dashes, placeholder figures, installation prompt or invented play experience.
+- Links: all three money pages link mutually; each new page links to the beginner guide and hub. The professions page also links both existing class comparisons and Enchanting. The full bundle validator checks destinations.
+- Gold revision: three crate paragraphs gain missing tiers, the single-stack/herb examples and faction names; the existing first quest, rewards, structure and other prose remain. Add Never buy gold and two links. The 62-character title was shortened to its primary query to satisfy the metadata limit. Its source date was already November 9, so the new version records an honest same-day recheck rather than a future date.
+- Representative repair: the old opening crate paragraph stopped at level 10. It now distinguishes Apprentice/Journeyman 10, Expert 20 and Artisan 35 and tells the reader to hold one entire bundle in a single stack.
+- Maintenance: new runtime publication timestamps accompany substantive edits. Recheck this batch when live payouts, profession changes, current market measurements, Hardcore timing or platform announcements become available.
+
+## Counts
+
+Counts include body headings, paragraphs, list items, table captions/headers/cells, visible FAQ and link labels; term markup counts as its visible label. They exclude title, description, source labels and definition-list text. The task's S–M/M scopes take precedence over generic class-hub length bands; no filler was added to meet a quota.
+
+| Page | Body words | Title | Rendered title with suffix | Description |
+| --- | ---: | ---: | ---: | ---: |
+| `wow-forever-merchants-favor-waylaid-crates` | 1232 | 48 | 58 | 138 |
+| `wow-forever-best-professions-for-each-class` | 1392 | 43 | 53 | 135 |
+| `wow-forever-faq` | 819 | 42 | 52 | 140 |
+| `how-to-make-gold-early-in-wow-forever` | 844 | 37 | 47 | 155 |
+
+## Validation record
+
+The isolated baseline preview through 0023/0024/0025 passed the HTML audit for the hub and all nine old guides. Gold version 2 was read as JSON and rendered HTML before editing. The initial publication test failed because 0026 was absent; after implementation the migration/publication and PostgreSQL tests pass (24 tests).
+
+The final bundle validates all twelve guides. The isolated production preview passes the HTML audit for all twelve and the hub, including sitemap membership, visible tables and matching FAQPage JSON-LD. Chromium checks at 390px and 1280px confirm no page overflow or browser errors, the FAQ in Start here, touch/keyboard activation and Escape for terms, and no-script definition anchors. Review of screenshots confirms readable headings and horizontally scrollable mobile tables. The interaction harness waits for scrolling to settle: the existing tooltip deliberately closes on document scroll, so a keyboard user can press Enter after a focus-induced scroll.
+
+Local standards review against the repository instructions and spec review against T7/ADR 0088 found no outstanding changes. Full lint/tests and the final production build are recorded with the final commit in the PR. Deployment and rollback instructions are in `docs/content-authoring.md`; no production writes are performed by this task.
+
+Failed access: Google HTTP returned a JavaScript retry page, then Chromium returned an unusual-traffic challenge for all four primary queries. Direct HTTP returned 403 for some community sites (AllThingsHow, Builds Forge, S16, S17, S19); their article bodies were successfully read through the web reader. These are transport failures, not evidence that pages or search demand are absent.
