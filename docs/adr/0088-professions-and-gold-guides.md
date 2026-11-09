@@ -18,3 +18,5 @@ This batch covers what we can verify and others explain least: Merchant's Favor 
 ## Consequences
 
 The highest-volume crafting queries wait until we have client data or screenshots. The pages we do publish link to each other and to the gold guide.
+
+For T7 and later content tasks, blocked Google People also ask capture uses observed autocomplete, supplied secondary queries and opened top results; record the failed attempt and fallback in the brief and PR without attributing those questions to PAA.

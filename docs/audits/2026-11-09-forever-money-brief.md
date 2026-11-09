@@ -4,7 +4,7 @@ Research: 2026-11-09 UTC. Game: Forever. Language: English. Base: `0ddebb0` (PR 
 
 ## Research gate
 
-Google Search returned a JavaScript retry page over HTTP and an unusual-traffic challenge in Chromium for all four primary queries. No People also ask questions were observed. The prior T5 exception does not apply automatically. A T7 exception has been requested; publication remains pending that decision. Autocomplete and accessible search results below are real observations, not Google ranking or volume claims.
+Google Search returned a JavaScript retry page over HTTP and an unusual-traffic challenge in Chromium for all four primary queries. No People also ask questions were observed. The owner accepted a standing fallback on 2026-11-09 for T7 and later content tasks: use observed autocomplete, supplied secondary queries and opened top results, recording the failure and actual provenance in the brief and PR. The brief reference and ADR 0088 now document it. Autocomplete and accessible search results below are real observations, not Google ranking or volume claims.
 
 ## Search log and ownership
 
@@ -105,4 +105,4 @@ The unchanged production web build passes. The isolated baseline preview, seeded
 
 The first database publication test fails as expected because migration 0026 does not exist yet. Its unfinished test and migration templates are retained in ignored `.scratch/t7/` until the research gate clears; no failing test is committed.
 
-Drafting, migration replay/collision checks, final structured validation, revised-page audit and editorial rubric pass remain pending. Missing PAA remains explicit until the owner decides the T7 exception.
+Drafting, migration replay/collision checks, final structured validation, revised-page audit and editorial rubric pass remain pending. The blocked-PAA fallback is authorized; no question is attributed to PAA.
