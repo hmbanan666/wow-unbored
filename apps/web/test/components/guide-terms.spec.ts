@@ -78,3 +78,54 @@ test("Tab focus opens a term on touch hardware and Space toggles it without movi
   expect(button.attributes("aria-expanded")).toBe("false");
   expect(document.activeElement).toBe(button.element);
 });
+
+test("table and FAQ content is readable in SSR HTML with accessible headers and term links", async () => {
+  const blocks = [
+    {
+      type: "table" as const,
+      caption: "Class choices",
+      columns: ["Class", "Action"],
+      rows: [["Warlock", "Use {{term:life-tap|Life Tap}} carefully."]],
+    },
+    {
+      type: "faq" as const,
+      entries: [{ q: "How do I restore mana?", a: "Use {{term:life-tap|Life Tap}} carefully." }],
+    },
+  ];
+  const app = createSSRApp({ render: () => h(EntryBody, { ...props, blocks }) });
+  Object.assign(app._context.components, config.global.components);
+  const html = await renderToString(app);
+  const root = document.createElement("div");
+  root.innerHTML = html;
+  expect(root.querySelector("table caption")?.textContent).toBe("Class choices");
+  expect([...root.querySelectorAll('th[scope="col"]')].map((cell) => cell.textContent)).toEqual([
+    "Class",
+    "Action",
+  ]);
+  expect(root.querySelector("table")?.closest('[tabindex="0"]')?.getAttribute("aria-label")).toBe(
+    "Class choices",
+  );
+  expect(root.querySelector("td a")?.getAttribute("href")).toBe("#guide-term-life-tap");
+  expect(root.querySelector(".guide-faq dt")?.textContent).toBe("How do I restore mana?");
+  root.querySelectorAll('[role="tooltip"]').forEach((tooltip) => tooltip.remove());
+  expect(root.querySelector(".guide-faq dd")?.textContent).toBe("Use Life Tap carefully.");
+  expect(html).not.toContain("{{term:");
+});
+
+test("new blocks escape every authored field even when passed directly to the renderer", () => {
+  const attack = '<img src=x onerror="alert(1)">';
+  const wrapper = mount(EntryBody, {
+    props: {
+      blocks: [
+        { type: "table", caption: attack, columns: [attack, "B"], rows: [[attack, "B"]] },
+        { type: "faq", entries: [{ q: attack, a: attack }] },
+      ],
+    },
+  });
+  expect(wrapper.find("img").exists()).toBe(false);
+  expect(wrapper.get("caption").text()).toBe(attack);
+  expect(wrapper.get("th").text()).toBe(attack);
+  expect(wrapper.get("td").text()).toBe(attack);
+  expect(wrapper.get(".guide-faq dt").text()).toBe(attack);
+  expect(wrapper.get(".guide-faq dd").text()).toBe(attack);
+});

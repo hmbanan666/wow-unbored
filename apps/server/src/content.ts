@@ -6,6 +6,11 @@ import {
   guideSourcesSchema,
   guideAsOfSchema,
   calloutSchema,
+  tableSchema,
+  faqSchema,
+  structuredGuideBlocksSchema,
+  type GuideTable,
+  type GuideFaq,
   type Game,
   type GuideSource,
   type GuideAsOf,
@@ -89,6 +94,8 @@ export type ContentItem = {
 export type ContentBlock =
   | Figure
   | Callout
+  | GuideTable
+  | GuideFaq
   | { type: "heading"; text: string }
   | { type: "paragraph"; text: string }
   | { type: "list"; items: string[] }
@@ -155,6 +162,13 @@ function localHref(value: unknown): string | undefined {
   return https(value);
 }
 
+/** Inspect authored strings, not JSON delimiters such as a table row's closing brackets. */
+function containsGameReference(value: unknown): boolean {
+  if (typeof value === "string") return /\[\[|\]\]/.test(value);
+  if (value && typeof value === "object") return Object.values(value).some(containsGameReference);
+  return false;
+}
+
 /** The document's shape; game ids are checked separately against a build. */
 export function parseContent(input: unknown): ContentDoc {
   const problems: string[] = [];
@@ -186,7 +200,7 @@ export function parseContent(input: unknown): ContentDoc {
     if (kind !== "guide") problems.push("WoW Forever supports guides only");
     if (raw.items !== undefined && (!Array.isArray(raw.items) || raw.items.length))
       problems.push("WoW Forever guides cannot have items");
-    if (/\[\[|\]\]/.test(JSON.stringify(raw)))
+    if (containsGameReference(raw))
       problems.push("WoW Forever guides cannot have inline game references");
   }
   if (terms?.success && terms.data.length) {
@@ -265,8 +279,24 @@ export function parseContent(input: unknown): ContentDoc {
     const row = (block ?? {}) as Record<string, unknown>;
     if (game === "forever" && row.type === "figure" && row.ref !== undefined)
       problems.push("WoW Forever figures must use own images");
-    const lines =
-      row.type === "paragraph"
+    const structured =
+      row.type === "table"
+        ? tableSchema.safeParse(row)
+        : row.type === "faq"
+          ? faqSchema.safeParse(row)
+          : undefined;
+    if (structured && !structured.success) {
+      for (const issue of structured.error.issues)
+        problems.push(`blocks[${index}].${issue.path.join(".")}: ${issue.message}`);
+      return;
+    }
+    if (structured && kind !== "guide")
+      problems.push(`blocks[${index}]: tables and FAQ belong to guides`);
+    const lines = structured?.success
+      ? structured.data.type === "table"
+        ? structured.data.rows.flat()
+        : structured.data.entries.map((entry) => entry.a)
+      : row.type === "paragraph"
         ? [row.text]
         : row.type === "list" && Array.isArray(row.items)
           ? row.items
@@ -278,7 +308,9 @@ export function parseContent(input: unknown): ContentDoc {
           ? row.label
           : undefined;
     if (typeof otherText === "string" && /\{\{|\}\}/.test(otherText))
-      problems.push(`blocks[${index}]: terms belong in paragraphs or lists`);
+      problems.push(
+        `blocks[${index}]: terms belong in paragraphs, lists, table cells or FAQ answers`,
+      );
     for (const line of lines) {
       if (typeof line !== "string") continue;
       try {
@@ -293,7 +325,8 @@ export function parseContent(input: unknown): ContentDoc {
         problems.push(`blocks[${index}]: invalid inline reference or term`);
       }
     }
-    if (row.type === "callout" && calloutSchema.safeParse(row).success)
+    if (structured?.success) blocks.push(structured.data);
+    else if (row.type === "callout" && calloutSchema.safeParse(row).success)
       blocks.push(calloutSchema.parse(row));
     else if (row.type === "figure" && cleanFigure(row)) blocks.push(cleanFigure(row)!);
     else if (row.type === "heading" && text(row.text, 120))
@@ -311,9 +344,16 @@ export function parseContent(input: unknown): ContentDoc {
     else if (row.type === "link" && text(row.label, 80) && localHref(row.href))
       blocks.push({ type: "link", label: text(row.label, 80)!, href: localHref(row.href)! });
     else
-      problems.push(`blocks[${index}] is not a heading, paragraph, list, link, figure or callout`);
+      problems.push(
+        `blocks[${index}] is not a heading, paragraph, list, link, figure, callout, table or faq`,
+      );
   });
 
+  const structuredBlocks = structuredGuideBlocksSchema.safeParse(
+    blocks.filter((block) => block.type === "table" || block.type === "faq"),
+  );
+  if (!structuredBlocks.success)
+    problems.push(...structuredBlocks.error.issues.map((issue) => issue.message));
   if (termCount > 20) problems.push("at most 20 term mentions per page");
   if (terms?.success && terms.data.some((t) => !usedTerms.has(t.key)))
     problems.push("every term must be used in the guide");

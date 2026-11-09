@@ -32,7 +32,7 @@ config.global.components.NuxtLink = vue.defineComponent({
       vue.h("a", { href: props.to }, slots.default?.()),
 });
 for (const name of ["useSeoMeta", "defineOgImage", "useSchemaOrg"]) vi.stubGlobal(name, vi.fn());
-for (const name of ["defineArticle", "defineItemList", "defineBreadcrumb"])
+for (const name of ["defineArticle", "defineItemList", "defineBreadcrumb", "defineWebPage"])
   vi.stubGlobal(name, (value: unknown) => value);
 vi.stubGlobal("useSiteConfig", () => ({ url: "https://playunbored.com" }));
 enableAutoUnmount(afterEach);

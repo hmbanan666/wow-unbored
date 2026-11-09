@@ -55,6 +55,54 @@ const parts = computed(() => {
         :text="part.block.text"
       />
       <DsGameFigure v-else-if="part.block.type === 'figure'" :figure="part.block" :media="media" />
+      <div
+        v-else-if="part.block.type === 'table'"
+        class="guide-table"
+        role="region"
+        tabindex="0"
+        :aria-label="part.block.caption || 'Comparison table'"
+      >
+        <table>
+          <caption v-if="part.block.caption">
+            {{
+              part.block.caption
+            }}
+          </caption>
+          <thead>
+            <tr>
+              <th v-for="(column, n) in part.block.columns" :key="n" scope="col">{{ column }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, r) in part.block.rows" :key="r">
+              <td v-for="(cell, c) in row" :key="c">
+                <DsGameRef
+                  v-for="(piece, n) in pieces(cell)"
+                  :key="n"
+                  :part="piece"
+                  :media="media"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <section v-else-if="part.block.type === 'faq'" class="guide-faq" aria-label="Questions">
+        <h2>Questions</h2>
+        <dl>
+          <template v-for="(entry, n) in part.block.entries" :key="n">
+            <dt>{{ entry.q }}</dt>
+            <dd>
+              <DsGameRef
+                v-for="(piece, i) in pieces(entry.a)"
+                :key="i"
+                :part="piece"
+                :media="media"
+              />
+            </dd>
+          </template>
+        </dl>
+      </section>
       <h2 v-else-if="part.block.type === 'heading'">{{ part.block.text }}</h2>
       <p v-else-if="part.block.type === 'paragraph'">
         <DsGameRef
@@ -88,6 +136,45 @@ const parts = computed(() => {
 </template>
 
 <style scoped>
+.guide-table {
+  max-width: 100%;
+  container-type: inline-size;
+  overflow-x: auto;
+  border: 1px solid var(--lamp-line);
+  border-radius: var(--radius-sm);
+  background: var(--lamp-surface);
+}
+.guide-table:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+}
+caption {
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+  padding: var(--space-3);
+  color: var(--lamp-gold-light);
+  font-weight: 700;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+th,
+td {
+  min-width: 10rem;
+  max-width: 22rem;
+  padding: var(--space-3);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--lamp-line-soft);
+}
+th {
+  color: var(--lamp-gold);
+}
 .guide-terms {
   margin-top: var(--space-7);
   border-top: 1px solid var(--lamp-line);
