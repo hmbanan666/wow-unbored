@@ -10,7 +10,7 @@ const title = "WoW Forever guides";
 const description =
   "Guides for World of Warcraft: Forever, Blizzard's Classic-based game that launched on 4 November 2026. Every fact is checked against the current build and its sources are listed on each page.";
 useSeoMeta({ title, description });
-defineOgImage("Unbored", { title, description });
+defineOgImage("Unbored", { title, description, game: "forever" });
 useSchemaOrg([
   defineWebPage({ "@type": "CollectionPage", name: title, description }),
   defineItemList({

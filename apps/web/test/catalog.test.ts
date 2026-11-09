@@ -26,6 +26,7 @@ test("paths and collections share the catalog, and objects have no page", () => 
       "/guides",
       "/guides/:slug",
       "/install",
+      "/about",
     ],
   );
   assert.equal(catalogHref("path", "midnight-basic"), "/paths/midnight-basic");

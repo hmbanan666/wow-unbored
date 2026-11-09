@@ -5,6 +5,7 @@ const route = useRoute();
 const menu = ref<HTMLDetailsElement | null>(null);
 
 function current(to: string): boolean {
+  if (route.path.startsWith("/guides/") && route.meta.game === "forever") return to === "/forever";
   return route.path === to || route.path.startsWith(`${to}/`);
 }
 

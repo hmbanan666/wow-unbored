@@ -35,6 +35,7 @@ export const PUBLIC_ROUTES = [
   { name: "guides", pattern: "/guides" },
   { name: "guide", pattern: "/guides/:slug" },
   { name: "install", pattern: "/install" },
+  { name: "about", pattern: "/about" },
 ] as const;
 
 /** Header and footer links (docs/site-structure.md). */
@@ -48,6 +49,7 @@ export const SITE_NAV = [
 ] as const;
 
 export const RELEASES_URL = "https://github.com/hmbanan666/wow-unbored/releases/latest";
+export const TELEGRAM_URL = "https://t.me/playunbored";
 export const REPO_URL = "https://github.com/hmbanan666/wow-unbored";
 export const PRIVACY_URL = "https://github.com/hmbanan666/wow-unbored#what-bory-knows-about-you";
 
@@ -144,6 +146,8 @@ export type PublicPage = {
   blocks: Block[];
   items: CatalogItem[];
   build: string | null;
+  /** First publication across all versions, absent on static pages and older API responses. */
+  publishedAt?: number | null;
   updatedAt: number | null;
 };
 

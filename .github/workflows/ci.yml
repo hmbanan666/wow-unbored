@@ -55,6 +55,9 @@ jobs:
       - name: Website pages come from Postgres
         run: UNBORED_WEB_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm exec vp test apps/web
 
+      - name: Website production SEO and navigation
+        run: UNBORED_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm --filter @unbored/web test:seo
+
       - name: Website image serves /ready
         run: |
           docker build -f apps/web/Dockerfile -t unbored-web .

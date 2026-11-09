@@ -27,6 +27,15 @@ export default defineNuxtConfig({
     description: "Bory gives you one step at a time in World of Warcraft.",
     defaultLocale: "en",
   },
+  schemaOrg: {
+    identity: {
+      type: "Organization",
+      name: "Unbored",
+      url: "https://playunbored.com",
+      logo: "/bory.png",
+      sameAs: ["https://t.me/playunbored", "https://github.com/hmbanan666/wow-unbored"],
+    },
+  },
   robots: {
     disallow: [],
   },

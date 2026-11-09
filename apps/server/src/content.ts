@@ -560,6 +560,7 @@ export async function checkContentIds(
 }
 
 type Row = {
+  published_at: number | string | null;
   game: Game;
   id: number | string;
   version: number;
@@ -659,7 +660,7 @@ export class ContentStore {
 
   private async rows(kind: ContentKind, slug: string, locale: string): Promise<Row[]> {
     return this.db.all<Row>(
-      `SELECT id, game, version, status, title, description, tier, prerequisite_slug, body
+      `SELECT id, game, version, status, title, description, tier, prerequisite_slug, body, published_at
        FROM content.paths WHERE kind = ? AND slug = ? AND locale = ?
        ORDER BY version DESC`,
       kind,
@@ -687,7 +688,10 @@ export class ContentStore {
     const row = version === undefined ? rows[0] : rows.find((row) => row.version === version);
     if (!row) return null;
     const body = fromJson<Body>(row.body)!;
+    // Retired versions retain their publication time; draft edits are not publications.
+    const firstPublished = [...rows].reverse().find((version) => version.published_at !== null);
     return {
+      publishedAt: firstPublished ? Number(firstPublished.published_at) : null,
       id: Number(row.id),
       version: row.version,
       status: row.status,

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { TELEGRAM_URL } from "#shared/catalog";
 /** Site footer: the same links as the header, privacy, source, and the fan-made note. */
 defineProps<{
   links: readonly { label: string; to: string }[];
@@ -12,6 +13,8 @@ defineProps<{
     <DsContainer width="wide">
       <nav class="ds-footer__links" aria-label="Footer">
         <NuxtLink v-for="link in links" :key="link.to" :to="link.to">{{ link.label }}</NuxtLink>
+        <NuxtLink to="/about">About</NuxtLink>
+        <a :href="TELEGRAM_URL" rel="noopener">Telegram</a>
         <a :href="source" rel="noopener">Source on GitHub</a>
       </nav>
       <p class="ds-footer__privacy">

@@ -161,19 +161,37 @@ test.skipIf(!hasPostgres)(
         [1, "draft", false, 2],
       );
       assert.equal((await content.saveDraft(collection)).unchanged, true);
+      assert.equal((await content.read("collection", collection.slug))?.publishedAt, null);
 
       const published = await content.publish("collection", collection.slug);
       assert.deepEqual([published.version, published.status], [1, "published"]);
       assert.equal(queued, 1, "publication survives a failed media queue after commit");
+      const firstPublishedAt = 1_800_000_001;
+      assert.equal(
+        (await content.read("collection", collection.slug))?.publishedAt,
+        firstPublishedAt,
+      );
       assert.equal((await content.publish("collection", collection.slug)).unchanged, true);
       assert.equal((await content.saveDraft(collection)).unchanged, true);
 
       const edited = { ...collection, title: "Top mounts to get first in 2026" };
       const second = await content.saveDraft(edited);
       assert.deepEqual([second.version, second.status], [2, "draft"]);
+      assert.equal(
+        (await content.read("collection", collection.slug))?.publishedAt,
+        firstPublishedAt,
+      );
       const again = await content.saveDraft({ ...edited, description: "Changed again." });
       assert.equal(again.version, 2);
       await content.publish("collection", collection.slug);
+      assert.equal(
+        (await content.read("collection", collection.slug))?.publishedAt,
+        firstPublishedAt,
+      );
+      assert.equal(
+        (await content.read("collection", collection.slug, "en", 1))?.publishedAt,
+        firstPublishedAt,
+      );
 
       const rows = await sql<{ version: number; status: string; title: string }[]>`
       SELECT version, status, title FROM content.paths
@@ -398,6 +416,8 @@ test.skipIf(!hasPostgres)(
       assert.equal((await call("publish_content", key)).status, "published");
       const original = await call("get_content", { ...key, version: 1 });
       assert.equal(original.document.title, "First mounts");
+      assert.equal(typeof original.publishedAt, "number");
+      assert.ok(original.publishedAt > 0);
       assert.equal((await call("save_content_draft", { document: collection })).version, 2);
       assert.deepEqual(await call("get_content", { ...key, version: 1 }), original);
     } finally {

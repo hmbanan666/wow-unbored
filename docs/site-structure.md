@@ -14,10 +14,11 @@ How playunbored.com is organised (ADRs 0072-0074). The site is an authored porta
 | `/collections/<slug>` | One Collection: why the list, then each item with what it is and exactly how to get it | yes |
 | `/paths` | Every published Path, grouped by content and tier (Basic, Deeper, Complete) | yes |
 | `/paths/<slug>` | One Path: what it covers, goals by Topic, how to finish each | yes |
+| `/about` | The independent project, guide checks and review policy, corrections, news and code | yes |
 | `/install` | Get the addon and the Companion (the GitHub release feed), what Bory knows about you | yes |
 | `/my` | My page: your Characters, active Paths with progress, Path completion history, Plans and Wins, after signing in from the Companion | no |
 
-Header: Guides, WoW Forever, Collections, Paths, Install, My page. Footer: the same links, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
+Header: Guides, WoW Forever, Collections, Paths, Install, My page. The active header section follows a Guide’s Game: a Forever Guide highlights WoW Forever even at `/guides/<slug>`. Footer: the same links, About, Telegram, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
 
 ## A list item
 
@@ -29,11 +30,17 @@ Search result > a Collection or Path page > "Track this in game" > install, then
 
 ## SEO
 
-Public pages are English, server-rendered, with one H1, a unique title and description, a canonical URL on playunbored.com, an og-image, and structured data: `ItemList` for a Collection, `Article` for a Guide, `Article` plus `ItemList` for a Path, `BreadcrumbList` everywhere below the home. Article `about` names the VideoGame: "World of Warcraft: Forever" for Forever, "World of Warcraft" for Retail. Forever guide breadcrumbs are Home > WoW Forever > Title, including `BreadcrumbList`, while their canonical URLs stay `/guides/<slug>`; Retail keeps Home > Guides > Title. The sitemap lists the home, `/guides`, `/forever`, `/collections`, `/paths`, `/install` and every published Guide, Collection and Path; signed-in pages are `noindex`.
+Public pages are English, server-rendered, with one H1, a unique title and description, a canonical URL on playunbored.com, an og-image, and structured data: `ItemList` for a Collection, `Article` for a Guide, `Article` plus `ItemList` for a Path, `BreadcrumbList` everywhere below the home. Article `about` names the VideoGame: "World of Warcraft: Forever" for Forever, "World of Warcraft" for Retail. Forever guide breadcrumbs are Home > WoW Forever > Title, including `BreadcrumbList`, while their canonical URLs stay `/guides/<slug>`; Retail keeps Home > Guides > Title. The sitemap lists the home, `/guides`, `/forever`, `/collections`, `/paths`, `/install`, `/about` and every published Guide, Collection and Path; signed-in pages are `noindex`.
+
+[ADR 0082](adr/0082-site-seo-foundation.md) gives every page one Organization identity: Unbored, with `/bory.png` as its logo and Telegram/GitHub as its external identities. Articles reference it as author and publisher. `publishedAt` is the first version’s non-null publication timestamp, including retired versions; `updatedAt` remains the current publication timestamp. These supply Article `datePublished`/`dateModified` and `article:published_time`/`article:modified_time`. Drafts do not move either date, and source-check dates remain separate. No migration or backfill is needed. The Server content read (including `get_content`) adds `publishedAt`; the web reader derives it from the same version history, so either service may deploy first.
+
+Non-root paths ending with a slash return 301 to the slash-less path, preserving the query string. Canonical guide URLs stay unchanged. HTTP-to-HTTPS redirection belongs to hosting and is not changed here.
+
+The home title names WoW and WoW Forever guides and the Retail addon’s plans, with the brand appended once. Its title/description are set in the home component; the authored home body stays in Postgres. `/about` is a static English page describing sources, build/date checks, review after patches/source changes, no paid placements and Telegram contact, without a personal byline. OG images use the page hero when available, otherwise Bory; Forever images carry a WoW Forever badge.
 
 ## Content
 
-All texts live in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and are written through owner tools that check Retail ids against the Game DB. Migration 0022 adds a `game` column with default `retail`; existing rows need no content rewrite. WoW Forever never reads or validates against the Retail Game DB and reads only own images from the media store (ADR 0079). Article bodies are not a flat-file CMS; reviewed data migrations may deliver versioned replacements. Start guide work at [Content authoring](content-authoring.md).
+Authored content lives in Postgres (`content.paths` and its goals, `web.pages`), versioned with draft and published states, and are written through owner tools that check Retail ids against the Game DB. Migration 0022 adds a `game` column with default `retail`; existing rows need no content rewrite. WoW Forever never reads or validates against the Retail Game DB and reads only own images from the media store (ADR 0079). Article bodies are not a flat-file CMS; reviewed data migrations may deliver versioned replacements. Start guide work at [Content authoring](content-authoring.md).
 
 ## Guides
 
@@ -42,6 +49,8 @@ A Guide is the third kind in `content.paths` (`kind = 'guide'`), authored throug
 Retail Guides may have items, inline game references, heroes and figures under the Collection and media rules. Every Retail game fact comes from the Game DB build it was checked against; anything that cannot be checked is left out. A Retail Guide links to at least one Collection, and the Collections it points at link back.
 
 WoW Forever supports Guides only, with own-image heroes and figures imported through `scripts/media.ts add-image`. Items, Retail inline game references, Blizzard heroes (`kind`, `id`) and figure `ref` are rejected. Publishing never queues Blizzard media sync; the page API returns referenced `image:<hash>` entries, and own-image heroes use the same CSS cover fitting as Retail without additional image processing. Facts are checked manually against Forever sources and its own build, never Retail ids. `/forever` lists only published Forever Guides; `/guides` lists only Retail Guides and links to `/forever`. Forever pages have a WoW Forever badge, no signed-in progress controls and no addon installation prompt.
+
+Every Guide ends with its Game’s hub and up to three other published Guides of that Game, ordered by latest publication and then slug. If fewer than three exist, only those are shown; the current Guide and drafts are excluded. This is template navigation, not a rewrite of guide blocks.
 
 Both Games may carry sourced inline explanations through `terms` and `{{term:key|label}}` in paragraphs/lists (ADR 0080). Definitions remain visible in the server-rendered page and linked without scripts; optional verified identity never triggers a cross-game lookup. See [Content authoring](content-authoring.md) for syntax, validation and editorial skills.
 

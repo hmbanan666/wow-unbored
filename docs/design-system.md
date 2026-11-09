@@ -82,6 +82,8 @@ Global helpers are limited to `.ds-lead` (lead paragraph), `.ds-meta` (small mut
 | `DsPortrait` | Bory in his frame (decorative) |
 | `DsEmptyState` | Bory, one line and actions: empty lists, signed-out My page, errors |
 
+Guide endings reuse `DsSection`, `DsProse` and the section’s hub link for three published sibling links, with fewer when the catalog has fewer. Both desktop and mobile nav highlight the Guide’s Game. About uses the existing narrow page, page header and prose sections; the footer adds About and Telegram. Share images use the lamp background, gold heading, a 360×400 hero frame (photos cover, renders contain) or uncropped Bory, and the WoW Forever badge when applicable. Share rendering requests `?format=png` on existing media: conversion preserves the complete source image and never changes stored variants. This is needed because the SVG-to-PNG renderer cannot decode WebP/AVIF.
+
 Guide callouts compose `DsCard` with a Note or Early forecast title and plain text. Guide source lists use `DsSection` and `DsProse`; build checks use the page header meta line. The WoW Forever badge uses `DsChip` in `DsChipRow`.
 
 Domain components map data onto these: `PageView` (home, Collection, Path and Guide pages), `CatalogCard` and `CatalogGrid` (index pages), `CollectionItems` (items), `EntryBody` (authored blocks; consecutive links share one button row, the first one primary).

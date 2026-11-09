@@ -9,6 +9,7 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt prepare && nuxt typecheck",
+    "test:seo": "nuxt build && cd ../.. && UNBORED_WEB_SEO_TEST=1 vp test apps/web/test/seo-production.test.ts",
     "test": "cd ../.. && vp test --config apps/web/vite.config.ts"
   },
   "dependencies": {
@@ -19,7 +20,8 @@
     "nuxt": "^4.6.4",
     "nuxt-auth-utils": "^0.6.0",
     "postgres": "^3.4.9",
-    "satori": "^0.63.2"
+    "satori": "^0.63.2",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.10",

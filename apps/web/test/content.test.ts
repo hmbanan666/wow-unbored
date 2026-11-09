@@ -38,6 +38,16 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
     const path = await readPublished(sql, "path", "midnight-basic");
     assert.equal(path?.headline, "Midnight: Basic");
     assert.equal(path?.tier, "basic");
+    assert.equal(path?.publishedAt, 1762300000);
+    // A newer publication and a pending draft must not move the first publication date.
+    await sql`UPDATE content.paths SET status = 'retired', updated_at = 1762400000 WHERE slug = 'midnight-basic'`;
+    await sql`INSERT INTO content.paths
+      (kind, slug, locale, title, description, tier, version, status, body, updated_at, published_at)
+      VALUES ('path', 'midnight-basic', 'en', 'Midnight: Basic', 'The first goals.', 'basic', 2, 'published', ${published}::jsonb, 1762400000, 1762400000),
+      ('path', 'midnight-basic', 'en', 'Next edit', 'Not published.', 'basic', 3, 'draft', ${draft}::jsonb, 1762500000, NULL)`;
+    const revised = await readPublished(sql, "path", "midnight-basic");
+    assert.equal(revised?.publishedAt, 1762300000);
+    assert.equal(revised?.updatedAt, 1762400000);
     assert.equal(path?.blocks[0]?.type === "paragraph" && path.blocks[0].text, "Start here.");
     assert.equal(await readPublished(sql, "collection", "first-mounts"), undefined);
 
@@ -163,6 +173,7 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
       (entry) => entry.loc,
     );
     assert.ok(locations.includes("/forever"));
+    assert.ok(locations.includes("/about"));
     assert.ok(locations.includes("/guides/forever-start"));
     assert.ok(locations.includes("/guides/retail-start"));
     assert.ok(!locations.includes("/guides/forever-draft"));

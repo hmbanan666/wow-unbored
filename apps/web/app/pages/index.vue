@@ -10,7 +10,15 @@ import {
 type Payload = PublicPage | { error: string; message: string };
 
 const { data, error } = await useFetch<Payload>("/api/home");
-const page = data.value && "headline" in data.value ? data.value : null;
+const page =
+  data.value && "headline" in data.value
+    ? {
+        ...data.value,
+        title: "WoW & WoW Forever guides, Retail addon plans",
+        description:
+          "Read WoW and WoW Forever guides with checked sources. The Unbored Retail addon plans what to play next, with Bory showing one step at a time.",
+      }
+    : null;
 if (!page) {
   throw createError({
     statusCode: 503,
