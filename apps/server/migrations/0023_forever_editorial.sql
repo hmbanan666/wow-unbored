@@ -23,7 +23,7 @@ BEGIN
       {
         "key": "crowd-control",
         "name": "Crowd control",
-        "text": "Ways to keep an enemy from freely attacking, such as Fear, roots or slows. Control can buy time to recover or separate a dangerous pull; it is not extra damage.",
+        "text": "Ways to keep an enemy from freely attacking, such as Fear, roots or slows. Control can buy time to recover or separate a dangerous pull.",
         "source": "https://wowfdb.com/tier-lists/solo-pve/",
         "kind": "concept"
       },
@@ -39,23 +39,23 @@ BEGIN
       {
         "label": "WoW Forever DB: solo PvE forecast, 3 Nov 2026",
         "url": "https://wowfdb.com/tier-lists/solo-pve/",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
         "label": "Blizzard: development notes titled Updated November 2",
         "url": "https://us.forums.blizzard.com/en/wow/t/wow-forever-beta-development-notes-%E2%80%93-updated-november-2/2360696/9",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
         "label": "BrokenMeta: level-60 simulation method, 4 Nov 2026",
         "url": "https://brokenmeta.gg/en/wow-forever/tier-list/",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       }
     ],
     "asOf": {
-      "date": "2026-11-06",
-      "build": "1.60.1.70790",
-      "note": "This comparison uses 3 Nov client-data forecasts, not tested level-60 clears. Pet performance above 30 remains uncertain; source build 1.60.1.70790."
+      "date": "2026-11-09",
+      "build": "1.60.1.70790 / 1.60.1.70862",
+      "note": "WoW Forever DB’s 3 Nov solo forecast covers ordinary quest and dungeon gear at level 60. Higher-level demon performance still relies partly on Classic Era assumptions."
     },
     "kind": "guide",
     "slug": "best-solo-class-wow-forever",
@@ -75,7 +75,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Killing quest enemies quickly, surviving a messy pull and clearing a dungeon alone are different jobs. This comparison is about open-world farming, difficult quest enemies and recovery without a healer. It assumes ordinary quest and dungeon gear. If your immediate question is how to get from level 1 to 60, use the leveling comparison: a class’s mature toolkit does not describe its first ten levels."
+        "text": "For open-world farming and difficult quests, compare how each class recovers without a healer and handles extra enemies. Leveling from 1 brings a different set of problems: pets, escape spells and key talents arrive along the way. Check when the tools you want become available before choosing a class for them."
       },
       {
         "type": "link",
@@ -92,7 +92,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "The price is more management. You carry Soul Shards, watch a pet and wear cloth armor. The solo forecast also assumes parts of the level-60 demon toolkit from Classic Era because its Forever evidence is incomplete. Do not choose Warlock solely on a promise that its pet will hold every elite: compare the resource cycle, then judge the fights you actually face."
+        "text": "The Voidwalker tanks a target while your damage-over-time spells work. Fear controls another enemy, Howl of Terror helps when several get close, and you make your own Healthstones for healing. The cost is attention: you carry Soul Shards, watch the pet and manage your health in cloth armor."
       },
       {
         "type": "heading",
@@ -102,13 +102,13 @@ BEGIN
         "type": "list",
         "items": [
           "Beast Mastery Hunter separates you from the enemy with a pet and offers traps plus Feign Death. In exchange, you manage ammunition, pet food and mana. It suits a player who likes a ranged rhythm and accepts upkeep.",
-          "Protection Paladin offers shields, absorbs and self-healing for standing your ground. Repeated Consecration uses mana, and low damage can turn a safe fight into a long one. Prefer it when surviving the pull matters more than shortening it.",
-          "Frost Mage uses roots, slows and Blink to control distance, with Ice Block and Ice Barrier among its defenses. It makes its own food and water, but still has to stop and drink. Prefer it if positioning is part of the fun rather than a chore."
+          "Protection Paladin offers shields, absorbs and self-healing for standing your ground. Repeated Consecration uses mana, and low damage can turn a safe fight into a long one. It lacks an interrupt, so caster enemies are a particular weakness. Prefer it when surviving the pull matters more than shortening it.",
+          "Frost Mage uses roots, slows and Blink to control distance, with Ice Block and Ice Barrier among its defenses. It makes its own food and water, but still has to stop and drink. Prefer it if you enjoy positioning and keeping enemies at range."
         ]
       },
       {
         "type": "paragraph",
-        "text": "A concrete way to choose: if a second enemy is your main worry, compare {{term:crowd-control|crowd control}} and escape tools before damage. Hunter’s {{term:feign-death|Feign Death}} addresses recovering from a bad pull; Paladin’s defenses address staying in it. Neither is the same promise as finishing the fight faster."
+        "text": "If a second enemy is your main worry, compare {{term:crowd-control|crowd control}} and escape tools before damage. Hunter’s {{term:feign-death|Feign Death}} helps reset a bad pull; Paladin’s defenses help you survive it. Choose according to how you want to recover when a fight goes wrong."
       },
       {
         "type": "heading",
@@ -116,11 +116,11 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "A stationary boss simulation cannot tell you how much time you spend recovering between outdoor fights. BrokenMeta’s published method uses a level-63 boss, raid buffs and optimized known gear; it explicitly does not simulate solo play. Those results answer a raid-damage question. They do not overturn a choice based on resource recovery, movement or escape."
+        "text": "BrokenMeta’s damage simulations use a stationary level-63 boss, raid buffs and optimized known gear, and exclude solo play. For outdoor fights, weigh the recovery between enemies, travel and ways to escape a bad pull alongside damage."
       },
       {
         "type": "paragraph",
-        "text": "Likewise, old dungeon farming is not a guaranteed benefit of picking a highly rated solo class. The source comparison has no tested level-60 clear to offer. If a specific dungeon is your reason to reroll, wait for evidence of that dungeon on the current build, including gear and pull method."
+        "text": "Before rerolling to farm a specific dungeon alone, look for a current-build clear with the gear and pull method shown. Level-60 solo dungeon clears remain unverified in the cited forecast."
       },
       {
         "type": "heading",
@@ -149,7 +149,7 @@ BEGIN
     "items": [],
     "previousTitle": "Best Solo Class in WoW Forever (Launch Week Forecast)",
     "previousVersion": 1,
-    "hash": "38b37198c458c00313145982d6e9f77632a4f0a76e8a3e7ec392ac015dbc3624"
+    "hash": "f69e40699700759b27600056ac962132b70597a7aa5d20860f122c557607b82f"
   },
   {
     "game": "forever",
@@ -164,7 +164,7 @@ BEGIN
       {
         "key": "aspect-cheetah",
         "name": "Aspect of the Cheetah",
-        "text": "Hunter movement ability listed at level 20 in the source build. It matters when comparing travel between quests, not just damage during a fight.",
+        "text": "Hunter movement ability listed at level 20 in the source build. It helps with travel between quest locations.",
         "source": "https://wowfdb.com/tier-lists/leveling/",
         "kind": "spell"
       }
@@ -173,18 +173,18 @@ BEGIN
       {
         "label": "WoW Forever DB: leveling forecast, 3 Nov 2026",
         "url": "https://wowfdb.com/tier-lists/leveling/",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
         "label": "Blizzard: development notes titled Updated November 2",
         "url": "https://us.forums.blizzard.com/en/wow/t/wow-forever-beta-development-notes-%E2%80%93-updated-november-2/2360696/9",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       }
     ],
     "asOf": {
-      "date": "2026-11-06",
-      "build": "1.60.1.70790",
-      "note": "Leveling advice uses the 3 Nov forecast for source build 1.60.1.70790, not timed 1–60 runs. Later talents and elite performance are projections."
+      "date": "2026-11-09",
+      "build": "1.60.1.70790 / 1.60.1.70862",
+      "note": "Class comparisons use WoW Forever DB’s leveling forecast; later talents and elite performance are projected. Timed 1–60 runs remain unverified."
     },
     "kind": "guide",
     "slug": "best-leveling-class-wow-forever",
@@ -196,7 +196,7 @@ BEGIN
     "blocks": [
       {
         "type": "paragraph",
-        "text": "Beast Mastery Hunter is the first class to consider for mostly solo leveling in WoW Forever. Its pet takes the hits from level 10, and travel tools help between fights. Choose Affliction Warlock instead if you prefer managing health and mana to buying ammunition and pet food; choose Frost Mage if you want to control enemies yourself rather than rely on a pet."
+        "text": "Beast Mastery Hunter is the first class to consider for mostly solo leveling in WoW Forever. Its pet takes the hits from level 10, and travel tools help between fights. Choose Affliction Warlock if you prefer managing health and mana to buying ammunition and pet food; choose Frost Mage if you enjoy keeping enemies at a distance with slows and roots."
       },
       {
         "type": "heading",
@@ -208,7 +208,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "That separation is useful, but it is not permission to gather every nearby enemy. Start with one target and learn when you need to help or heal your pet. Add complexity only when you can recover reliably. Hunter also brings recurring ammunition and food costs; leave room for them before spending on an optional upgrade."
+        "text": "Start with one target and learn when you need to help or heal your pet. Add complexity only when you can recover reliably. Hunter also brings recurring ammunition and food costs; leave room for them before spending on an optional upgrade."
       },
       {
         "type": "heading",
@@ -224,7 +224,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Frost Mage offers a third bargain: you make your own food and water and keep enemies away with slows and roots, but drinking still costs time. Free supplies and uninterrupted progress are different things. Pick Mage because you like controlling a fight, not because conjured water removes the recovery break."
+        "text": "Frost Mage lets you make your own food and water and keep enemies away with slows and roots. Drinking still takes time. Choose it if you enjoy positioning and can accept recovery breaks between fights."
       },
       {
         "type": "heading",
@@ -246,17 +246,9 @@ BEGIN
         "type": "list",
         "items": [
           "After training, check your action bars. Blizzard’s November notes say newly learned spells are no longer placed there automatically.",
-          "Keep money for class training and the supplies your class uses. The official 1–60 ability-training total is 206–207 gold per class; that is the whole journey, not a bill due at the start.",
-          "Choose the next quest area for your current character, not for a level-60 talent you have not learned. If an elite stops progress, find help or return later rather than treating a forecast as a requirement to solo it."
+          "Keep money for class training and the supplies your class uses. Blizzard puts the total cost of learning class abilities from 1–60 at 206–207 gold per class. Reserve money for the next trainer visit as you go.",
+          "Choose the next quest area for your current level and abilities. If an elite stops progress, find help or return later."
         ]
-      },
-      {
-        "type": "heading",
-        "text": "What this comparison can settle"
-      },
-      {
-        "type": "paragraph",
-        "text": "It can help you choose the kind of friction you prefer. It cannot supply a verified fastest time or a full quest route. A measured leveling result would also need its build, route, gear, grouping and recovery time; a tier letter does not contain those details. Once you like the class’s ordinary fights, the useful next decision is how to fund its progress."
       },
       {
         "type": "link",
@@ -273,7 +265,7 @@ BEGIN
     "items": [],
     "previousTitle": "Best Leveling Class in WoW Forever (Early Forecast)",
     "previousVersion": 1,
-    "hash": "dc531e9e19ff517f1da09bac50abedae07bf37e3cb17111ab9db674f259108f3"
+    "hash": "303b20931409b1c80a760d06b7d2bb957b56aa665b2258e05c05cb45e99f2d6d"
   },
   {
     "game": "forever",
@@ -281,58 +273,63 @@ BEGIN
       {
         "key": "disenchant",
         "name": "Disenchanting",
-        "text": "Breaks an eligible piece of equipment into Enchanting materials. Compare the value of the intact item before destroying it; the materials are not automatically worth more.",
+        "text": "Breaks an eligible piece of equipment into Enchanting materials. Compare the value of the intact item before destroying it; the result depends on the item and the material roll.",
         "source": "https://wowfdb.com/professions/enchanting/",
         "kind": "concept"
       },
       {
         "key": "arcane-salvager",
         "name": "Arcane Salvager",
-        "text": "An Enchanting camp craft listed at skill 140 that improves disenchanting efficiency. It requires its Blueprint as well as skill, so reaching 140 alone does not unlock it.",
+        "text": "An Enchanting camp craft listed at skill 140 that improves disenchanting efficiency. Learn its Blueprint before buying the crafting materials.",
         "source": "https://wowfdb.com/professions/enchanting/",
         "kind": "item"
       },
       {
         "key": "required-level",
         "name": "Required level",
-        "text": "The character level needed to equip an item. In the cited disenchanting table, this selects the material band; it is not your Enchanting skill.",
+        "text": "The character level needed to equip an item. The disenchanting table groups material bands by this number; its calculator uses item level when no required level is shown.",
         "source": "https://forevermastery.com/en/tools/disenchant",
         "kind": "concept"
       }
     ],
     "sources": [
       {
-        "label": "WoW Forever DB: Enchanting, source build 1.60.1.70790",
+        "label": "WoW Forever DB: Enchanting camp recipes and gear restrictions",
         "url": "https://wowfdb.com/professions/enchanting/",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
-        "label": "Forever Mastery: disenchanting table and beta-price method",
+        "label": "Forever Mastery: disenchanting table and EU Normal auction sample, 9 Nov 2026",
         "url": "https://forevermastery.com/en/tools/disenchant",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
         "label": "WoW Forever DB: launch economy forecast, 27 Oct 2026",
         "url": "https://wowfdb.com/tier-lists/professions-gold-launch/",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
+      },
+      {
+        "label": "WoW Forever DB: Arcane Salvager Blueprint drop locations",
+        "url": "https://wowfdb.com/making-gold/",
+        "accessed": "2026-11-09"
       }
     ],
     "asOf": {
-      "date": "2026-11-06",
-      "build": "1.60.1.70790",
-      "note": "Recipe evidence uses source build 1.60.1.70790. The disenchanting calculator uses beta data, including 15 Oct prices; no live recipe route or profit is verified."
+      "date": "2026-11-09",
+      "build": "Camp recipes; disenchant eligibility table 1.60.1.70374",
+      "note": "Camp recipes are listed by WoW Forever DB. Forever Mastery combines community yield estimates and beta eligibility data with EU Normal auction listings dated 9 Nov 2026."
     },
     "kind": "guide",
     "slug": "wow-forever-enchanting-guide",
     "locale": "en",
     "title": "WoW Forever Enchanting: Start, Disenchant or Sell?",
-    "description": "Decide whether to learn Enchanting, compare gear with its materials, and plan camp crafts without relying on disputed recipes or beta prices.",
+    "description": "Start Enchanting, find Disenchant, compare gear with its dust or essences, and plan the Enchanted Lute and later camp crafts.",
     "tier": null,
     "prerequisite": null,
     "blocks": [
       {
         "type": "paragraph",
-        "text": "Learn Enchanting in WoW Forever if you want to make enchants and camp crafts and are willing to invest materials in the profession. If your only goal is money for training, start by comparing gathering instead. Owning a green item is not a reason to destroy it: compare selling the equipment with the likely value of its materials first."
+        "text": "Learn Enchanting in WoW Forever if you want to make enchants and camp crafts and are willing to invest materials in the profession. If your immediate goal is money for training, compare gathering first. Before destroying a green item, weigh its equipment value against the likely value of its materials."
       },
       {
         "type": "heading",
@@ -340,11 +337,11 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Enchanting adds permanent weapon and armor bonuses and makes wands, rods and oils. Forever also lists class-specific staves, off-hand orbs and relics. Think of those as reasons to investigate a craft you want, not proof that leveling the profession will pay for itself."
+        "text": "Enchanting adds permanent weapon and armor bonuses and makes wands, rods and oils. Forever also lists class-specific staves, off-hand orbs and relics. Choose a craft you want to use, then check how to learn it and what it costs."
       },
       {
         "type": "paragraph",
-        "text": "The Enchanting source still marks the new gear’s binding and enchanter-only restrictions as unconfirmed, based on beta tooltips. If one of those items is your reason to take the profession, inspect the current recipe and item restrictions before investing. This uncertainty belongs to that gear choice, not to every sentence about Enchanting."
+        "text": "The new gear’s binding and enchanter-only restrictions remain unconfirmed in WoW Forever DB’s beta-tooltip evidence. Inspect the current recipe and item restrictions before investing for one of those pieces."
       },
       {
         "type": "heading",
@@ -352,7 +349,11 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "{{term:disenchant|Disenchanting}} turns equipment into materials. Make three comparisons before using it. First, could you equip the item? Second, what would a vendor pay, and is there a credible buyer for the intact item? Third, what materials could it yield, and what could you actually sell those for? A listed auction price is an asking price, not a completed sale."
+        "text": "After learning Enchanting, open the Professions window and find Disenchant in the Enchanting box, not the spellbook. Drag it to an action bar, press it, then select the item in your bags. Forever Mastery documents this location from the October beta; the item is destroyed when you disenchant it."
+      },
+      {
+        "type": "paragraph",
+        "text": "{{term:disenchant|Disenchanting}} turns equipment into materials. Make three comparisons before using it. First, could you equip the item? Second, what would a vendor pay, and is there a credible buyer for the intact item? Third, what materials could it yield, and what could you actually sell those for? An auction listing still needs a buyer."
       },
       {
         "type": "list",
@@ -364,15 +365,19 @@ BEGIN
       },
       {
         "type": "heading",
-        "text": "Use the material table for identification, not a price promise"
+        "text": "Which items give dust or essences?"
       },
       {
         "type": "paragraph",
-        "text": "The linked Forever Mastery table separates green armor, green weapons and higher-quality items, then groups them by {{term:required-level|the item’s required level}}. For example, it lists Strange Dust or Lesser Magic Essence in the 1–10 band, and Soul Dust, Greater Astral Essence or Large Glimmering Shard in the 21–25 band. These examples explain how to read it; they are not guaranteed yields for every item."
+        "text": "Forever Mastery’s community estimates put green armor at about 75% dust and 20% essence; green weapons reverse those chances, at about 75% essence and 20% dust. Both have a listed 3–5% shard chance. A single item can give a less valuable result, so leave room for that risk when buying equipment to disenchant."
       },
       {
         "type": "paragraph",
-        "text": "Its calculator attaches an average value to the materials using a single-player beta auction sample. Replace that price input with current evidence before using the result to buy gear. When an item has no required level, the tool uses item level instead; do not substitute your character level or profession skill."
+        "text": "Use {{term:required-level|the item’s required level}} to find its material band in the table. For example, the 1–10 band lists Strange Dust or Lesser Magic Essence; the 21–25 band lists Soul Dust, Greater Astral Essence or Large Glimmering Shard. The calculator uses item level when an item has no required level."
+      },
+      {
+        "type": "paragraph",
+        "text": "The calculator now uses live EU Normal auction listings, dated 9 November 2026 when checked, from one contributor. Its material prices average the cheapest 15% of listings and refresh every 15 minutes. Check your own market before buying: the expected material value can change, and listings alone cannot tell you how quickly the materials will sell."
       },
       {
         "type": "heading",
@@ -380,19 +385,23 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "The Enchanted Lute is an early, concrete project: the source lists skill 20 and training from a trainer or Camping 101: Enchanting. It contributes armor, stats and resistances at camp. If camp crafting is why the profession interests you, check that recipe first rather than buying materials for the entire skill journey."
+        "text": "The Enchanted Lute is a small first project: skill 20, 1 Simple Wood and 1 Strange Dust. Learn it from a trainer or Camping 101: Enchanting. It contributes armor, stats and resistances at camp. If camp crafting interests you, start with those two materials and that recipe."
       },
       {
         "type": "paragraph",
-        "text": "The later {{term:arcane-salvager|Arcane Salvager}} is listed at 140, while Arcane Forge is listed at 300 and is needed for some recipes. Both require Blueprint items. Treat finding the right Blueprint as a separate prerequisite; a skill threshold is not a promise that a trainer will teach it."
+        "text": "The later {{term:arcane-salvager|Arcane Salvager}} needs skill 140 and its Blueprint. WoW Forever DB lists drops from Shade of the Archmage in City of Dalaran, Charlga Razorflank in Razorfen Kraul and Rath’mael in Ruins of Lordaeron. Once you have learned it, the craft takes 2 Vision Dust and 1 Lesser Nether Essence."
+      },
+      {
+        "type": "paragraph",
+        "text": "Arcane Forge is listed at skill 300 and is needed for some recipes. It also requires a Blueprint, but its drop location is still unverified in the cited sources. Confirm how to obtain it before buying materials for a craft that needs the Forge."
       },
       {
         "type": "heading",
-        "text": "Pairing with Tailoring: a supply chain, not free dust"
+        "text": "Pairing with Tailoring: compare the cloth, item and materials"
       },
       {
         "type": "paragraph",
-        "text": "Tailoring can make equipment to disenchant, which connects the two crafts. But cloth you gather still has a sale value. Compare selling the cloth, selling the crafted item and using its materials before turning that connection into a production routine. It is a sensible pairing when you want both professions; it does not establish a profit margin."
+        "text": "Tailoring can make equipment to disenchant. Before crafting, compare three uses for the cloth: selling it, selling the finished item or disenchanting that item for materials. Include the value of cloth you gathered yourself in the cost. This helps you choose whether the pairing supports the recipes you want."
       },
       {
         "type": "heading",
@@ -401,14 +410,10 @@ BEGIN
       {
         "type": "list",
         "items": [
-          "Open the current recipe and confirm ingredients, skill requirement and how it is learned. Forever has changed reagents; a Classic shopping list is not sufficient.",
+          "Open the current recipe and confirm ingredients, skill requirement and how it is learned. Forever has changed reagents, so check each ingredient before using a Classic shopping list.",
           "Buy or gather enough for a small batch, then check the result and remaining skill gains before restocking.",
           "Keep class-training money separate. Stop funding the craft when it prevents the progress you wanted it to support."
         ]
-      },
-      {
-        "type": "paragraph",
-        "text": "A trustworthy recipe-by-recipe leveling route needs agreed current skill targets, ingredients and acquisition details. Those are not established by the sources checked here, so this guide does not publish a speculative sequence. Your next safe action is to verify one useful recipe, not commit to an unverified bulk order."
       },
       {
         "type": "link",
@@ -425,7 +430,7 @@ BEGIN
     "items": [],
     "previousTitle": "WoW Forever Enchanting Guide: Disenchanting and Gold",
     "previousVersion": 1,
-    "hash": "36c1a80b96dcc58073331c3254439d39f8a098efb09b6cc308b3c5f6c787a588"
+    "hash": "2102bde3ec359e4b3be580c4a12adce959a9d4b0bc085479d800ecf6c45ad4b4"
   },
   {
     "game": "forever",
@@ -447,7 +452,7 @@ BEGIN
       {
         "key": "craftsmans-writ",
         "name": "Craftsman’s Writ",
-        "text": "A crafting delivery used to earn reputation with the supply camp. Do not confuse that reputation requirement with the Merchant’s Favor currency price.",
+        "text": "A crafting delivery used to earn reputation with the supply camp. Some rewards require both reputation and a Merchant’s Favor currency payment.",
         "source": "https://www.wow-professions.com/forever/merchants-favor-durotar-supply-azeroth-commerce",
         "kind": "item"
       }
@@ -456,23 +461,28 @@ BEGIN
       {
         "label": "WoW Forever DB: launch economy forecast, 27 Oct 2026",
         "url": "https://wowfdb.com/tier-lists/professions-gold-launch/",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
         "label": "WoW-Professions: Merchant’s Favor and Waylaid Crates",
         "url": "https://www.wow-professions.com/forever/merchants-favor-durotar-supply-azeroth-commerce",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
         "label": "Blizzard: development notes titled Updated November 2",
         "url": "https://us.forums.blizzard.com/en/wow/t/wow-forever-beta-development-notes-%E2%80%93-updated-november-2/2360696/9",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
+      },
+      {
+        "label": "Still Sixty: Waylaid Crate levels, rewards and first Shipping Label",
+        "url": "https://www.stillsixty.com/guides/waylaid-crates",
+        "accessed": "2026-11-09"
       }
     ],
     "asOf": {
-      "date": "2026-11-06",
+      "date": "2026-11-09",
       "build": "1.60.1.70658",
-      "note": "Gathering comparisons draw on the 27 Oct forecast, build 1.60.1.70658. No live auction-price sample or gold-per-hour result was verified."
+      "note": "Gathering comparisons use the 27 Oct forecast, build 1.60.1.70658; live sale returns remain unmeasured. Crate requirements and rewards were checked on 9 Nov."
     },
     "kind": "guide",
     "slug": "how-to-make-gold-early-in-wow-forever",
@@ -492,7 +502,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Herbalism has a clear demand story: herbs feed supply crates and the new First Aid potions. Mining supplies ore to crafters and crates. Skinning fits a questing stretch with plenty of beasts, because collecting leather can follow the fights you were already doing. These are reasons to compare them, not proof that a particular material will sell at a high price."
+        "text": "Herbs supply Waylaid Crates and the new First Aid potions. Mining supplies ore to crafters and crates. Skinning fits quests with plenty of beasts: you can collect leather from enemies you already kill. Pick a pair whose materials you will collect during ordinary questing."
       },
       {
         "type": "list",
@@ -504,7 +514,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "The launch profession forecast favors gathering because it avoids buying crafting inputs before making a sale. Its own limitation matters: it has no recorded live Forever prices behind the ratings. Test demand with a small quantity before spending an evening gathering one material or buying stock to resell."
+        "text": "Gathering lets you offer materials for sale without first paying for crafting inputs. Test demand with a small quantity before spending an evening on one material or buying stock to resell."
       },
       {
         "type": "heading",
@@ -512,7 +522,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Blizzard’s November development notes put total class-ability training from 1–60 at 206–207 gold for every class, with Warlock costs adjusted for expected pet Grimoires. This is a lifetime training total for that level range, not an amount you need immediately. Use it as a reason to reserve money as you level, not as a target to grind before leaving the starting area."
+        "text": "Blizzard’s November development notes put total class-ability training from 1–60 at 206–207 gold for every class, with Warlock costs adjusted for expected pet Grimoires. Reserve money as you level so the next trainer visit stays affordable."
       },
       {
         "type": "list",
@@ -528,7 +538,11 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "A {{term:waylaid-crate|Waylaid Crate}} asks for supplies and can be found in the world or bought at auction. Check the bundles before filling it: you need one listed bundle, not every option. The resulting Sealed crate binds to you and is delivered to your faction’s supply camp."
+        "text": "A {{term:waylaid-crate|Waylaid Crate}} asks for supplies and drops from enemies and some chests; you can also buy one at auction. Apprentice and Journeyman crates open from level 10. Fill one of the listed bundles to create a Sealed crate, which binds to you for delivery to your faction’s supply camp."
+      },
+      {
+        "type": "paragraph",
+        "text": "A white Apprentice crate pays 5 Merchant’s Favor plus 2 silver 50 copper. Green Apprentice crates pay 10 Favor and 5 silver. Check the crate’s rank and color before costing its materials."
       },
       {
         "type": "paragraph",
@@ -536,11 +550,11 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "The other reward is {{term:merchants-favor|Merchant’s Favor}}, which buys camp recipes and other goods. Some purchases also require reputation, earned through {{term:craftsmans-writ|Craftsman’s Writs}}. Decide which reward you want before buying a crate. Currency for an unlock and money for a trainer solve different problems."
+        "text": "{{term:merchants-favor|Merchant’s Favor}} buys camp recipes and other goods. Your first filled crate or started writ gives a Shipping Label quest worth an extra 50 Favor and 2,000 reputation, once per character. Complete that quest at the camp to collect the bonus. Further reputation comes from {{term:craftsmans-writ|Craftsman’s Writs}}, and some purchases require both reputation and Favor."
       },
       {
         "type": "paragraph",
-        "text": "The Horde camp is outside the west gate of the Crossroads in the Barrens; the Alliance camp is at Three Corners on the western edge of Redridge Mountains. Include the delivery trip in your decision. A modest reward is less attractive when it pulls you far away from your quests."
+        "text": "For Horde, deliver to Dokimi outside the west gate of the Crossroads in the Barrens. For Alliance, find Marcy Baker at Three Corners on the western edge of Redridge Mountains. Include the delivery trip in your decision: a modest reward is less attractive when it pulls you far from your quests."
       },
       {
         "type": "heading",
@@ -548,7 +562,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Move when you can name the recipe, confirm how to learn it, price its ingredients and identify a use or buyer for the result. Tailoring’s bags are a product to investigate; Enchanting’s materials and recipes are an investment to evaluate. Neither becomes profitable just because a guide gives it a high rating."
+        "text": "Move when you can name the recipe, confirm how to learn it, price its ingredients and identify a use or buyer for the result. For Tailoring bags, compare the cloth cost with bag listings and sales. For Enchanting, choose the recipe you want before buying equipment to turn into materials."
       },
       {
         "type": "paragraph",
@@ -563,7 +577,7 @@ BEGIN
         "items": [
           "Set aside training and supply money before deciding what is available to invest.",
           "Compare a small batch of gathered materials with current competing listings; record your actual sale result before scaling up.",
-          "Read any crate’s requested bundle and rewards before buying missing materials. Fill it for a named unlock or a favorable return, not merely because it dropped."
+          "Read any crate’s requested bundle and rewards before buying missing materials. Fill it for a named unlock or a favorable return."
         ]
       },
       {
@@ -581,7 +595,7 @@ BEGIN
     "items": [],
     "previousTitle": "How to Make Gold Early in WoW Forever",
     "previousVersion": 1,
-    "hash": "0f4f14e07caefc6834b26d6dd99095ea768916509e1848981215dc0d130e73ae"
+    "hash": "52adb69c5bca3a3fc1eb955fac65922256303d7c2dd3fa9b0d694a785380ed5b"
   },
   {
     "game": "forever",
@@ -619,23 +633,23 @@ BEGIN
       {
         "label": "Blizzard: Forever launch features and raid opening",
         "url": "https://news.blizzard.com/en-us/article/24315820/world-of-warcraft-forever-now-live",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
         "label": "Blizzard: Forever access and optional editions",
         "url": "https://news.blizzard.com/en-us/article/24302093/carve-a-new-path-with-world-of-warcraft-forever",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       },
       {
         "label": "Blizzard: development notes titled Updated November 2",
         "url": "https://us.forums.blizzard.com/en/wow/t/wow-forever-beta-development-notes-%E2%80%93-updated-november-2/2360696/9",
-        "accessed": "2026-11-06"
+        "accessed": "2026-11-09"
       }
     ],
     "asOf": {
-      "date": "2026-11-06",
+      "date": "2026-11-09",
       "build": "Launch information; November development notes",
-      "note": "Official launch information and November development notes checked on this date. Source build label is not a claim of in-game testing."
+      "note": "Official launch features, access requirements and November development notes checked on 9 Nov 2026."
     },
     "kind": "guide",
     "slug": "wow-forever-beginners-guide",
@@ -647,7 +661,7 @@ BEGIN
     "blocks": [
       {
         "type": "paragraph",
-        "text": "Start WoW Forever with Enhanced settings if you are unsure, choose Normal if you want player combat to be your decision, and pick a class whose everyday fights appeal to you. A WoW subscription or Game Time includes access; you do not need an optional upgrade edition just to begin. Skyborne access is a separate purchase consideration."
+        "text": "Start WoW Forever with Enhanced settings if you are unsure, choose Normal if you want player combat to be your decision, and pick a class whose everyday fights appeal to you. A WoW subscription or Game Time includes access. Skyborne characters require an optional upgrade edition."
       },
       {
         "type": "heading",
@@ -655,7 +669,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Forever is a separate, permanent game alongside modern and Classic WoW, set across the original continents with a level cap of 60. It launched globally on 4 November 2026. Treat its classes, professions and new systems as Forever rules: a familiar name does not make a Retail or Classic guide interchangeable."
+        "text": "Forever is a separate, permanent game alongside modern and Classic WoW, set across the original continents with a level cap of 60. It launched globally on 4 November 2026. Use Forever-specific class and profession advice: familiar abilities and recipes can work differently here."
       },
       {
         "type": "paragraph",
@@ -671,7 +685,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "This is a starting configuration, not a permanent commitment. You can change individual settings under Game Menu > Options. Character HD or SD model choice changes appearance rather than abilities or progression, and can also be changed later. Adjust what bothers you after playing; there is no need to solve every preference at character creation."
+        "text": "You can change individual settings under Game Menu > Options. HD and SD models affect appearance only, and you can switch them later too. Adjust the presentation after playing a few quests, once you know which details you want on screen."
       },
       {
         "type": "heading",
@@ -686,7 +700,7 @@ BEGIN
         "items": [
           "Roleplay adds naming and behavior rules for players who want to inhabit a character in the world.",
           "Roleplay PvP combines those expectations with the risk of player attacks.",
-          "Hardcore is announced for after launch; the checked launch information gives no availability date. Do not plan a first character around it being open."
+          "Hardcore is announced for after launch, with no availability date in the checked launch information. Choose one of the available rulesets for your first character."
         ]
       },
       {
@@ -699,7 +713,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "For a solo start, compare Hunter’s pet-based fighting, Warlock’s resource recovery and Mage’s control. You will spend many fights with the ordinary toolkit before reaching a finished build. A ranking cannot tell you whether you enjoy managing a pet or stopping to drink; the leveling guide explains those tradeoffs."
+        "text": "For a solo start, compare Hunter’s pet-based fighting, Warlock’s resource recovery and Mage’s control. You will spend many fights with the ordinary toolkit before reaching a finished build. Decide whether managing a pet, balancing health and mana, or keeping enemies at range sounds appealing."
       },
       {
         "type": "link",
@@ -716,7 +730,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Keep money for later training and class supplies. You do not have to master the auction economy on your first evening: gathering while you quest is a starting option, while crafting is better approached with a particular recipe or use in mind."
+        "text": "Keep money for later training and class supplies. Gathering while you quest can fund those costs. Start crafting when you have a particular recipe or use in mind."
       },
       {
         "type": "link",
@@ -729,7 +743,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Cooking’s Basic Campfire becomes a shared campsite. Nearby players can add up to three {{term:camp-features|Camp Features}}, one per player. Sit or craft there for at least one minute to gain their benefits. Simply passing the camp is not the same action, and the buffs are mutually exclusive with their corresponding class buffs."
+        "text": "Cooking’s Basic Campfire becomes a shared campsite. Nearby players can add up to three {{term:camp-features|Camp Features}}, one per player. Sit or craft there for at least one minute to gain their benefits. Their buffs are mutually exclusive with the corresponding class buffs, so check what the camp adds to your existing benefits."
       },
       {
         "type": "paragraph",
@@ -746,7 +760,7 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "The {{term:legacy|Legacy System}} adds account-wide challenges, perks and rewards. It encourages trying different classes and tradeskills, but all character advantages can be unlocked on a single character. Stay with the character you like; making alts is an option, not an entry requirement."
+        "text": "The {{term:legacy|Legacy System}} adds account-wide challenges, perks and rewards. It encourages trying different classes and tradeskills, but all character advantages can be unlocked on a single character. Stay with the character you like and explore its challenges first."
       },
       {
         "type": "heading",
@@ -754,11 +768,11 @@ BEGIN
       },
       {
         "type": "paragraph",
-        "text": "Forever adds more than 1,000 quests across levels 1–60. The Riverglades offers new questing across much of the mid-30s to mid-40s, while Zephras Isle is a 1–12 starting experience. Those are later choices to explore, not a checklist you need to memorize before setting out."
+        "text": "Forever adds more than 1,000 quests across levels 1–60. The Riverglades offers new questing across much of the mid-30s to mid-40s, while Zephras Isle is a 1–12 starting experience. Keep the Riverglades in mind when you reach that level range."
       },
       {
         "type": "paragraph",
-        "text": "Blizzard’s current launch article announces December 9 for Barrow Deeps, Hyjal Summit and Onyxia’s Lair. That is a scheduled raid opening, not a deadline for your first character. For now, choose your settings and ruleset, learn a few fights, check your trained abilities and follow the part of Azeroth that interests you."
+        "text": "Blizzard’s launch article schedules Barrow Deeps, Hyjal Summit and Onyxia’s Lair to open on December 9 for level-60 players. Start by learning your class through quests: check each newly trained ability and try it in an ordinary fight before taking on harder enemies."
       }
     ],
     "topics": [],
@@ -769,7 +783,7 @@ BEGIN
     },
     "previousTitle": "WoW Forever Beginner Guide: What to Know Before You Start",
     "previousVersion": 1,
-    "hash": "234c9e576c058fee053b3030e97d6c155636e1f463f6a500dfe1732325827cec"
+    "hash": "0d658004d9806f4c014bad674bfae409ab3695f2f9931c67e5bf1bb585b8a239"
   }
 ]
 $guides$::jsonb)

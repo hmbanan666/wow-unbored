@@ -7,7 +7,7 @@ Fill this before drafting. It is working editorial evidence, not another content
 - **Answer:** one defensible recommendation and the strongest alternative; what condition reverses it?
 - **Evidence ledger:** claim → exact source URL and relevant section → source date/build → actual UTC access date → fact / forecast / editorial inference / unresolved. An HTTP 200 alone does not verify a claim: read the body and follow material qualifications.
 - **Reader sequence:** opening answer → two or three consequential choices → a next action. Use the structure that answers this question, not a fixed quota of sections or words.
-- **Search promise:** proposed title/description; the actual question they promise to answer. Inspect neighboring URLs and choose useful internal next steps. Search volume and ranking claims need evidence of their own.
+- **Search promise:** one target query and its intent; proposed title/description with character counts (aim for 45–65 / 120–160, allowing a justified clarity exception); the actual question they promise to answer. Describe meaningful images in accurate alt text; omit keyword stuffing. Inspect neighboring URLs and choose useful internal next steps. Search volume and ranking claims need evidence of their own.
 - **Exclusions:** unknown prices, unsupported timings, disputed recipes, untested outcomes. Identify the missing evidence that would let an editor add each later.
 
 ## Reject or narrow
