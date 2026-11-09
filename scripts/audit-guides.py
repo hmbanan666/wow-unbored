@@ -2,6 +2,7 @@
 """Read-only checks of public guide HTML, using curl and the Python standard library."""
 import argparse
 import json
+import re
 from html.parser import HTMLParser
 from pathlib import Path
 import subprocess
@@ -19,10 +20,30 @@ class Page(HTMLParser):
         self.tag = ""
         self.skip = 0
         self.schema = None
+        self.tables = 0
+        self.faq_sections = 0
+        self.faq_depth = 0
+        self.faq_field = None
+        self.questions, self.answers = [], []
+        self.tooltip_depth = 0
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         self.tag = tag
+        # Inline definitions have hidden span panels in SSR; only the label is visible.
+        if tag == "span" and (self.tooltip_depth or attrs.get("role") == "tooltip"):
+            self.tooltip_depth += 1
+        if tag == "table":
+            self.tables += 1
+        if tag == "section":
+            if self.faq_depth:
+                self.faq_depth += 1
+            elif "guide-faq" in attrs.get("class", "").split():
+                self.faq_sections += 1
+                self.faq_depth = 1
+        if self.faq_depth and tag in ("dt", "dd"):
+            self.faq_field = self.questions if tag == "dt" else self.answers
+            self.faq_field.append("")
         if attrs.get("id"):
             self.ids.add(attrs["id"])
         if tag == "h1":
@@ -39,6 +60,12 @@ class Page(HTMLParser):
             self.schema = ""
 
     def handle_endtag(self, tag):
+        if tag == "span" and self.tooltip_depth:
+            self.tooltip_depth -= 1
+        if tag in ("dt", "dd"):
+            self.faq_field = None
+        if tag == "section" and self.faq_depth:
+            self.faq_depth -= 1
         if tag == "script" and self.schema is not None:
             self.schemas.append(json.loads(self.schema))
             self.schema = None
@@ -51,8 +78,10 @@ class Page(HTMLParser):
             self.schema += text
         if self.tag == "title":
             self.titles.append(text.strip())
-        if not self.skip:
+        if not self.skip and not self.tooltip_depth:
             self.visible.append(text)
+            if self.faq_field is not None:
+                self.faq_field[-1] += text
 
 
 def nodes(value):
@@ -63,6 +92,11 @@ def nodes(value):
     elif isinstance(value, list):
         for child in value:
             yield from nodes(child)
+
+
+def has_type(node, name):
+    value = node.get("@type", [])
+    return name in (value if isinstance(value, list) else [value])
 
 
 def audit(base, canonical, expect_terms):
@@ -112,9 +146,28 @@ def audit(base, canonical, expect_terms):
             if path.startswith("/guides/"):
                 assert len(text.split()) > 250, f"{path}: useful body missing from SSR"
                 graph = list(nodes(page.schemas))
-                assert any(n.get("@type") == "Article" and n.get("about", {}).get("name") == "World of Warcraft: Forever" for n in graph), f"{path}: Article game missing"
-                assert any(n.get("@type") == "BreadcrumbList" and "/forever" in json.dumps(n) for n in graph), f"{path}: Forever breadcrumb missing"
+                assert any(has_type(n, "Article") and n.get("about", {}).get("name") == "World of Warcraft: Forever" for n in graph), f"{path}: Article game missing"
+                assert any(has_type(n, "BreadcrumbList") and "/forever" in json.dumps(n) for n in graph), f"{path}: Forever breadcrumb missing"
                 assert any(link.startswith("/guides/") and link != path for link in page.links), f"{path}: no next guide"
+                document, _ = fetch("/api/catalog/guide/" + path.rsplit("/", 1)[-1])
+                blocks = json.loads(document)["blocks"]
+                expected_faq = [b for b in blocks if b["type"] == "faq"]
+                assert len(expected_faq) <= 1, f"{path}: multiple authored FAQs"
+                assert page.tables == sum(b["type"] == "table" for b in blocks), f"{path}: table missing from SSR"
+                faq_graphs = [n for n in graph if has_type(n, "FAQPage")]
+                assert len(faq_graphs) == page.faq_sections == len(expected_faq), f"{path}: FAQ presence mismatch"
+                if expected_faq:
+                    def plain(value):
+                        return " ".join(re.sub(r"\{\{term:[^|]+\|([^}]+)\}\}", r"\1", value).split())
+                    entries = expected_faq[0]["entries"]
+                    expected = [(plain(e["q"]), plain(e["a"])) for e in entries]
+                    visible = list(zip(map(plain, page.questions), map(plain, page.answers)))
+                    assert len(page.questions) == len(page.answers) == len(entries), f"{path}: FAQ entry count mismatch"
+                    assert visible == expected, f"{path}: visible FAQ differs from authored answers"
+                    structured = [(plain(e["name"]), plain(e["acceptedAnswer"]["text"])) for e in faq_graphs[0]["mainEntity"]]
+                    assert structured == expected, f"{path}: FAQPage differs from visible answers"
+                    assert len(page.titles[0]) <= 60, f"{path}: title exceeds 60 characters"
+                    assert len(page.descriptions[0]) <= 155, f"{path}: description exceeds 155 characters"
                 if expect_terms:
                     assert any(i.startswith("guide-term-") for i in page.ids), f"{path}: no SSR definitions"
                     for link in page.links:
