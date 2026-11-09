@@ -12,6 +12,9 @@ ignore:
   - packages
   - tests
   - .github
+  - .agents
+  - .dockerignore
+  - .nvmrc
   - .luacheckrc
   - .gitignore
   - .npmrc
@@ -30,7 +33,8 @@ ignore:
   - pnpm-workspace.yaml
   - vite.config.ts
 
-license-output: LICENSE.txt
+# Use the committed license; do not fetch a second one when a catalog ID is set.
+license-output: LICENSE
 
 manual-changelog:
   filename: CHANGELOG.md
