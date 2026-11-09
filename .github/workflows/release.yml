@@ -93,16 +93,23 @@ jobs:
               gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/${id}"
             done
 
+      # The packager skips each catalog successfully unless both its TOC id
+      # and token exist. CF_API_KEY is our secret; CF_API_TOKEN is its env name.
+      # Setup and listing copy: docs/release-catalogs.md.
       - uses: BigWigsMods/packager@v2
         if: env.PUBLISH == 'true'
+        with:
+          args: -g retail
         env:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          CF_API_TOKEN: ${{ secrets.CF_API_KEY }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
 
       - name: Package without uploading
         if: env.PUBLISH != 'true'
         uses: BigWigsMods/packager@v2
         with:
-          args: -d
+          args: -d -g retail
 
       - name: Name the zip as the release would
         if: env.PUBLISH != 'true'

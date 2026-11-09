@@ -709,6 +709,10 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/unbored \
 
 ## Commits and releases
 
+For CurseForge and Wago project setup, secrets, listing copy and screenshots,
+see [Addon catalog releases](release-catalogs.md). Missing catalog configuration
+skips that upload without affecting GitHub release assets or the updater feed.
+
 Commits and PR titles are [Conventional Commits](https://www.conventionalcommits.org/) with a scope: `feat(addon): ...`, `fix(companion): ...`, `perf(server): ...`, `docs: ...`, `chore: ...` (also `refactor`, `test`, `ci`). The `PR title` workflow checks the title, since a squash merge uses it as the commit subject. Write the subject as a short sentence a player could read; it becomes a line in the release notes ([ADR 0022](adr/0022-releases-and-docs.md)).
 
 Release notes say only what changed in that release. `.github/scripts/release-notes.sh` prints the body: the Install / Download section from `.github/release/install.md`, then [git-cliff](https://git-cliff.org) output for the range since the previous `vX.Y.Z` tag, grouped as Features, Fixes and Performance (`cliff.toml`). Squash merges keep each commit as a `* type(scope): ...` line in the body, and every line becomes its own entry; the squash title is left out when the body already has player lines, so any title type is safe. `refactor`, `docs`, `chore`, `test`, `ci`, `build`, `style` and `revert` never show. `CHANGELOG.md` is history and is not pasted into releases.

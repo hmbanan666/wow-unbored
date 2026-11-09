@@ -95,6 +95,7 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0087. WoW Forever system guides: one page per searched system](0087-forever-system-guides.md)
 - [0088. Professions and gold guides without copied leveling routes](0088-professions-and-gold-guides.md)
 
+- [0090. List the addon on CurseForge and Wago](0090-addon-catalog-listings.md)
 - [0092. Dates, prices and sizes need a primary source](0092-time-sensitive-facts.md)
 
 The site sections, navigation and SEO rules are in [`docs/site-structure.md`](../site-structure.md).
