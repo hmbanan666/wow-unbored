@@ -378,6 +378,17 @@ productionTest(
   },
 );
 
+productionTest("My pages keep private robots headers after the robots module runs", async () => {
+  for (const path of ["/my", "/my/", "/my/forever/Realm/Mine", "/my/retail/Realm/Mine?from=test"]) {
+    const response = await fetch(origin + path, { redirect: "manual" });
+    expect(response.status, path).toBe(path === "/my/" ? 301 : 200);
+    expect(response.headers.get("x-robots-tag"), path).toBe("noindex, nofollow");
+    expect(response.headers.get("cache-control"), path).toBe("private, no-store");
+  }
+  const publicPage = await fetch(origin + "/forever");
+  expect(publicPage.headers.get("x-robots-tag")).toMatch(/^index, follow(?:,|$)/);
+});
+
 productionTest(
   "download HTTP routes redirect to files, reject unknown names and stay out of search",
   async () => {
