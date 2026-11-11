@@ -1,0 +1,22 @@
+ID,Name_lang,HordeName_lang,ParentTradeSkillCategoryID,SkillLineID,OrderIndex,Flags
+2449,Potions,,2424,2937,25,0
+2450,Elixirs,,2424,2937,30,0
+2460,Weapon Stones,,2425,2938,20,0
+2463,Mail Chestguards,,2425,2938,130,0
+2464,Mail Bracers,,2425,2938,140,0
+2466,Mail Belts,,2425,2938,160,0
+2467,Mail Legguards,,2425,2938,170,0
+2481,One-Handed Axes,,2425,2938,230,0
+2484,One-Handed Maces,,2425,2938,260,0
+2485,One-Handed Swords,,2425,2938,270,0
+2555,Leather Chestguards,,2432,2945,600,0
+2557,Leather Gauntlets,,2432,2945,800,0
+2560,Leather Boots,,2432,2945,1100,0
+2621,Recovery Potions,,2424,2937,20,0
+2633,Strength Food,,2426,2939,20,0
+2634,Agility Food,,2426,2939,30,0
+2635,Intellect Food,,2426,2939,40,0
+2636,Miscellaneous Cuisines,,2426,2939,200,0
+2651,Draughts,,2424,2937,55,0
+2516,Explosives,,2428,2941,20,0
+2594,SEASON OF DISCOVERY,,0,185,9999,0

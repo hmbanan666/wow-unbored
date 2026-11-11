@@ -3,7 +3,7 @@ import { downloadGameText } from "./game-download.ts";
 
 export const GAME_WATCH_INTERVAL_MS = 60 * 60 * 1000;
 
-/** Watches retail only; PTR, beta and Classic never select the current Game DB. */
+/** Independent live-product checks; one failed game never suppresses the other. */
 export class GameWatch {
   private readonly game: GameDb;
   private readonly fetchImpl: typeof fetch;
@@ -29,7 +29,14 @@ export class GameWatch {
   }
 
   run(): Promise<void> {
-    this.running ??= this.check()
+    this.running ??= Promise.allSettled([
+      this.check(this.game.forGame("retail")),
+      this.check(this.game.forGame("forever")),
+    ])
+      .then((results) => {
+        if (results.some((result) => result.status === "rejected"))
+          this.log("Game DB: build check or import failed; retrying next hour.");
+      })
       .catch(() => {
         this.log("Game DB: build check or import failed; retrying next hour.");
       })
@@ -39,32 +46,34 @@ export class GameWatch {
     return this.running;
   }
 
-  private async check() {
+  private async check(game: GameDb) {
+    const product = game.game === "retail" ? "wow" : "wowf";
     let build: string;
     try {
       const body = JSON.parse(
         await downloadGameText(
-          "https://wago.tools/api/builds/wow/latest",
+          `https://wago.tools/api/builds/${product}/latest`,
           64 * 1024,
           this.fetchImpl,
         ),
       );
-      if (!validGameBuild(body?.version) || body.product !== "wow")
+      if (!validGameBuild(body?.version) || body.product !== product)
         throw new Error("Invalid live build");
-      build = await this.game.observeLiveBuild(body.version);
+      build = await game.observeLiveBuild(body.version);
     } catch {
-      await this.game.watchFailed("discovery_failed");
+      await game.watchFailed("discovery_failed");
       throw new Error("Build check failed");
     }
     try {
-      const current = await this.game.currentBuild();
+      const current = await game.currentBuild();
       const target =
         current && Number(current.split(".")[3]) > Number(build.split(".")[3]) ? current : build;
       // A pre-core import of the same build still needs its remaining tables.
-      const result = await this.game.importBuild(target, this.fetchImpl);
-      if (result.status === "imported") this.log(`Game DB: ${result.status} ${result.build}.`);
+      const result = await game.importBuild(target, this.fetchImpl);
+      if (result.status === "imported")
+        this.log(`Game DB (${game.game}): ${result.status} ${result.build}.`);
     } catch {
-      await this.game.watchFailed("import_failed");
+      await game.watchFailed("import_failed");
       throw new Error("Build import failed");
     }
   }

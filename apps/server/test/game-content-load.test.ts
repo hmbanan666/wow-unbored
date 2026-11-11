@@ -81,7 +81,7 @@ for (const backend of BACKENDS) {
         if (backend === "postgres") {
           for (const table of ["ItemSparse", "QuestPOIPoint"]) {
             const plan = await pg(backend)!.unsafe(`EXPLAIN (FORMAT JSON)
-              SELECT build, body FROM game.rows WHERE build = '12.0.1.66337'
+              SELECT build, body FROM game.rows WHERE game = 'retail' AND build = '12.0.1.66337'
               AND table_name = '${table}' AND locale = 'enUS' AND id = 300000`);
             assert.match(
               JSON.stringify(plan),

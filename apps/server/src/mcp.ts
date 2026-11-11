@@ -179,6 +179,7 @@ const LEASE_TOOLS = new Set([
   "get_instance_guide",
   "get_place",
   "get_game_entity",
+  "get_profession_catalog",
   "find_game_entity",
   "get_quest_line",
   "get_item_sources",
@@ -942,6 +943,21 @@ export function createMcpServer(
   );
 
   registerTool(
+    "get_profession_catalog",
+    {
+      title: "Read a profession recipe catalog",
+      description:
+        "Client recipe facts for one game and profession in its current imported build. Names are English. AcquireMethod is raw and unconfirmed, not a source kind. Empty recipes mean no catalog is available; no download on lookup.",
+      inputSchema: {
+        game: z.enum(["retail", "forever"]),
+        skillLine: z.number().int().positive().max(2147483647),
+      },
+    },
+    async ({ game, skillLine }) =>
+      text(await store.game.forGame(game).professionCatalog(skillLine)),
+  );
+
+  registerTool(
     "get_game_entity",
     {
       title: "Look up a Game DB entity",
@@ -1171,7 +1187,7 @@ export function createMcpServer(
       inputSchema: { account: whoSchema.account },
     },
     async ({ account }) =>
-      text({ ...(await data.catalog({ account })), gameDb: await store.game.status() }),
+      text({ ...(await data.catalog({ account })), gameDb: await store.game.healthStatus() }),
   );
 
   registerTool(

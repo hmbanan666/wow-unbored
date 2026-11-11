@@ -1,3 +1,4 @@
+import { readProfessionCatalog, RECIPE_SQLITE_SCHEMA } from "./profession-catalog.ts";
 import type { BlizzardIds } from "./blizzard.ts";
 import { type Db, fromJson } from "./db.ts";
 import {
@@ -5,6 +6,7 @@ import {
   GAME_TABLES,
   importGameContent,
   gameLocalized,
+  type Game,
   type GameFields,
   type GameTable,
 } from "./game-content.ts";
@@ -13,23 +15,24 @@ export const GAME_LAG_THRESHOLD_SECONDS = 6 * 60 * 60;
 
 export const GAME_SQLITE_SCHEMA =
   GAME_CONTENT_SQLITE_SCHEMA +
+  RECIPE_SQLITE_SCHEMA +
   `
   CREATE TABLE IF NOT EXISTS game_builds (
-    build TEXT PRIMARY KEY, build_number INTEGER NOT NULL UNIQUE,
-    imported_at INTEGER NOT NULL, achievements INTEGER NOT NULL
+    game TEXT NOT NULL DEFAULT 'retail', build TEXT NOT NULL, build_number INTEGER NOT NULL,
+    imported_at INTEGER NOT NULL, achievements INTEGER NOT NULL, PRIMARY KEY (game, build), UNIQUE (game, build_number)
   );
   CREATE TABLE IF NOT EXISTS game_achievements (
-    build TEXT NOT NULL REFERENCES game_builds(build), id INTEGER NOT NULL,
-    name_en TEXT NOT NULL, name_ru TEXT NOT NULL, PRIMARY KEY (build, id)
+    game TEXT NOT NULL DEFAULT 'retail', build TEXT NOT NULL, id INTEGER NOT NULL,
+    name_en TEXT NOT NULL, name_ru TEXT NOT NULL, PRIMARY KEY (game, build, id), FOREIGN KEY (game, build) REFERENCES game_builds(game, build)
   );
   CREATE TABLE IF NOT EXISTS game_quest_names (
-    build TEXT NOT NULL REFERENCES game_builds(build), id INTEGER NOT NULL,
+    game TEXT NOT NULL DEFAULT 'retail', build TEXT NOT NULL, id INTEGER NOT NULL,
     locale TEXT NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL,
-    PRIMARY KEY (build, id, locale)
+    PRIMARY KEY (game, build, id, locale), FOREIGN KEY (game, build) REFERENCES game_builds(game, build)
   );
   CREATE TABLE IF NOT EXISTS game_watch (
-    id INTEGER PRIMARY KEY CHECK (id = 1), live_build TEXT,
-    pending_since INTEGER, checked_at INTEGER, last_error TEXT
+    game TEXT NOT NULL DEFAULT 'retail', id INTEGER NOT NULL CHECK (id = 1), live_build TEXT,
+    pending_since INTEGER, checked_at INTEGER, last_error TEXT, PRIMARY KEY (game, id)
   );
 `;
 
@@ -49,7 +52,10 @@ export class GameDb {
   private readonly dataDir: string;
   private importing: Promise<unknown> = Promise.resolve();
 
-  constructor(db: Db, dataDir: string) {
+  readonly game: Game;
+
+  constructor(db: Db, dataDir: string, game: Game = "retail") {
+    this.game = game;
     this.dataDir = dataDir;
     this.db = db;
     this.builds = db.pg ? "game.builds" : "game_builds";
@@ -57,10 +63,32 @@ export class GameDb {
     this.watch = db.pg ? "game.watch" : "game_watch";
   }
 
+  private otherGame?: GameDb;
+
+  forGame(game: Game): GameDb {
+    if (game === this.game) return this;
+    if (!this.otherGame) {
+      this.otherGame = new GameDb(this.db, this.dataDir, game);
+      this.otherGame.otherGame = this;
+    }
+    return this.otherGame;
+  }
+
+  async professionCatalog(skillLine: number) {
+    return readProfessionCatalog(this.db, this.game, skillLine);
+  }
+
+  async healthStatus() {
+    return {
+      ...(await this.forGame("retail").status()),
+      forever: await this.forGame("forever").status(),
+    };
+  }
+
   async importBuild(build: string, fetchImpl: typeof fetch = fetch) {
     if (!validGameBuild(build)) throw new GameImportError("Invalid build.");
     const run = this.importing.then(() =>
-      importGameContent(this.db, this.dataDir, build, fetchImpl),
+      importGameContent(this.db, this.dataDir, build, fetchImpl, this.game),
     );
     this.importing = run.catch(() => {});
     return run.catch((cause) => {
@@ -73,7 +101,8 @@ export class GameDb {
   async row(table: GameTable, id: number, locale: "enUS" | "ruRU" = "enUS", build?: string) {
     const rows = this.db.pg ? "game.rows" : "game_rows";
     const found = await this.db.get<{ build: string; body: unknown }>(
-      `SELECT build, ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = ? AND id = ?`,
+      `SELECT build, ${this.db.body} AS body FROM ${rows} WHERE game = ? AND build = ? AND table_name = ? AND locale = ? AND id = ?`,
+      this.game,
       build ?? (await this.currentBuild()) ?? "",
       table,
       gameLocalized(table) ? locale : "enUS",
@@ -95,7 +124,8 @@ export class GameDb {
       return { name: title, source: gameSource(build, "QuestV2CliTask", locale) };
     const table = this.db.pg ? "game.quest_names" : "game_quest_names";
     const cached = await this.db.get<{ name: string; url: string }>(
-      `SELECT name, url FROM ${table} WHERE build = ? AND id = ? AND locale = ?`,
+      `SELECT name, url FROM ${table} WHERE game = ? AND build = ? AND id = ? AND locale = ?`,
+      this.game,
       build,
       id,
       locale,
@@ -108,8 +138,9 @@ export class GameDb {
     const found = await api?.questName(id, locale, signal);
     if (!found) return { name: null, source: null };
     await this.db.run(
-      `INSERT INTO ${table} (build, id, locale, name, url) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (build, id, locale) DO UPDATE SET name = excluded.name, url = excluded.url`,
+      `INSERT INTO ${table} (game, build, id, locale, name, url) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (game, build, id, locale) DO UPDATE SET name = excluded.name, url = excluded.url`,
+      this.game,
       build,
       id,
       locale,
@@ -129,7 +160,8 @@ export class GameDb {
       )
       .join(", ")})`;
     const found = await this.db.all<{ body: unknown }>(
-      `SELECT ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = ? AND ${expression} IS NOT NULL AND ${expression} = ? ORDER BY id LIMIT 51`,
+      `SELECT ${this.db.body} AS body FROM ${rows} WHERE game = ? AND build = ? AND table_name = ? AND locale = ? AND ${expression} IS NOT NULL AND ${expression} = ? ORDER BY id LIMIT 51`,
+      this.game,
       build,
       table,
       locale,
@@ -153,7 +185,8 @@ export class GameDb {
       ? `body ->> '${field}'`
       : `CAST(json_extract(body_json, '$.${field}') AS TEXT)`;
     const found = await this.db.all<{ body: unknown }>(
-      `SELECT ${this.db.body} AS body FROM ${rows} WHERE build = ? AND table_name = ? AND locale = ? AND ${value} = ? LIMIT 257`,
+      `SELECT ${this.db.body} AS body FROM ${rows} WHERE game = ? AND build = ? AND table_name = ? AND locale = ? AND ${value} = ? LIMIT 257`,
+      this.game,
       build,
       table,
       gameLocalized(table) ? locale : "enUS",
@@ -196,7 +229,8 @@ export class GameDb {
   async currentBuild() {
     return (
       await this.db.get<{ build: string }>(
-        `SELECT build FROM ${this.builds} ORDER BY build_number DESC LIMIT 1`,
+        `SELECT build FROM ${this.builds} WHERE game = ? ORDER BY build_number DESC LIMIT 1`,
+        this.game,
       )
     )?.build;
   }
@@ -205,7 +239,7 @@ export class GameDb {
   async observeLiveBuild(build: string) {
     if (!validGameBuild(build)) throw new GameImportError("Invalid build.");
     return this.db.tx(async () => {
-      await this.db.lockKey("game-watch");
+      await this.db.lockKey(`game-watch-${this.game}`);
       const before = await this.status();
       const live =
         before.liveBuild && buildNumber(before.liveBuild) > buildNumber(build)
@@ -215,10 +249,11 @@ export class GameDb {
       const now = Math.floor(Date.now() / 1000);
       const since = behind ? (before.pendingSince ?? now) : null;
       await this.db.run(
-        `INSERT INTO ${this.watch} (id, live_build, pending_since, checked_at, last_error)
-         VALUES (1, ?, ?, ?, NULL) ON CONFLICT (id) DO UPDATE SET
+        `INSERT INTO ${this.watch} (game, id, live_build, pending_since, checked_at, last_error)
+         VALUES (?, 1, ?, ?, ?, NULL) ON CONFLICT (game, id) DO UPDATE SET
          live_build = excluded.live_build, pending_since = excluded.pending_since,
          checked_at = excluded.checked_at, last_error = NULL`,
+        this.game,
         live,
         since,
         now,
@@ -229,8 +264,9 @@ export class GameDb {
 
   async watchFailed(error: "discovery_failed" | "import_failed") {
     await this.db.run(
-      `INSERT INTO ${this.watch} (id, last_error) VALUES (1, ?)
-       ON CONFLICT (id) DO UPDATE SET last_error = excluded.last_error`,
+      `INSERT INTO ${this.watch} (game, id, last_error) VALUES (?, 1, ?)
+       ON CONFLICT (game, id) DO UPDATE SET last_error = excluded.last_error`,
+      this.game,
       error,
     );
   }
@@ -244,10 +280,15 @@ export class GameDb {
       pending_since: number | null;
       checked_at: number | null;
       last_error: string | null;
-    }>(`SELECT b.build, b.imported_at, w.live_build, w.pending_since, w.checked_at, w.last_error
+    }>(
+      `SELECT b.build, b.imported_at, w.live_build, w.pending_since, w.checked_at, w.last_error
         FROM (SELECT 1 AS id) singleton
-        LEFT JOIN ${this.watch} w ON w.id = singleton.id
-        LEFT JOIN ${this.builds} b ON b.build = (SELECT build FROM ${this.builds} ORDER BY build_number DESC LIMIT 1)`);
+        LEFT JOIN ${this.watch} w ON w.id = singleton.id AND w.game = ?
+        LEFT JOIN ${this.builds} b ON b.game = ? AND b.build = (SELECT build FROM ${this.builds} WHERE game = ? ORDER BY build_number DESC LIMIT 1)`,
+      this.game,
+      this.game,
+      this.game,
+    );
     const behind =
       row!.live_build !== null &&
       (row!.build === null || buildNumber(row!.build) < buildNumber(row!.live_build));
@@ -269,8 +310,10 @@ export class GameDb {
 
   async entity(kind: "achievement", id: number) {
     const row = await this.db.get<{ build: string; name_en: string; name_ru: string }>(
-      `SELECT build, name_en, name_ru FROM ${this.achievements} WHERE id = ? AND build = (SELECT build FROM ${this.builds} ORDER BY build_number DESC LIMIT 1)`,
+      `SELECT build, name_en, name_ru FROM ${this.achievements} WHERE game = ? AND id = ? AND build = (SELECT build FROM ${this.builds} WHERE game = ? ORDER BY build_number DESC LIMIT 1)`,
+      this.game,
       id,
+      this.game,
     );
     return row
       ? { kind, id, build: row.build, names: { enUS: row.name_en, ruRU: row.name_ru } }
