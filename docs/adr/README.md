@@ -96,9 +96,12 @@ Short records of decisions that are hard to reverse. Read them before changing h
 - [0088. Professions and gold guides without copied leveling routes](0088-professions-and-gold-guides.md)
 
 - [0090. List the addon on CurseForge and Wago](0090-addon-catalog-listings.md)
+- [0091. The addon stays Retail-only this week; Forever pages do not sell it](0091-addon-scope-retail-only.md) (superseded by 0094)
 - [0092. Dates, prices and sizes need a primary source](0092-time-sensitive-facts.md)
 
 The site sections, navigation and SEO rules are in [`docs/site-structure.md`](../site-structure.md).
 
 The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../decisions-v0.6.md), v0.7 (D47-D82) in [`docs/decisions-v0.7.md`](../decisions-v0.7.md), v0.8 (D83-D121) in [`docs/decisions-v0.8.md`](../decisions-v0.8.md), v0.9 (D122-D167) in [`docs/decisions-v0.9.md`](../decisions-v0.9.md), and v0.10 (D168-D223) in [`docs/decisions-v0.10.md`](../decisions-v0.10.md).
 - [0093. One solo-first guide per class](0093-class-guides-scope.md)
+
+- [0094. Bory in WoW Forever: professions first, then a character history page](0094-forever-port-professions-and-character-history.md)
