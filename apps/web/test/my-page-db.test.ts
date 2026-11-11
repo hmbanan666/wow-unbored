@@ -1,3 +1,4 @@
+import { readHistoryPage } from "../server/utils/character-history.ts";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -16,7 +17,7 @@ const mine = "a".repeat(64);
 const theirs = "b".repeat(64);
 
 dbTest(
-  "migration 0031 lets the web role read recipe sources without write or Account access",
+  "migrations 0031 and 0032 let the web role read sources and private history without write access",
   async () => {
     const root = postgres(adminUrl!, { max: 1, onnotice: () => {} });
     const name = `unbored_recipe_web_${randomBytes(4).toString("hex")}`;
@@ -39,6 +40,9 @@ dbTest(
       await sql`GRANT SELECT ON characters, sections_latest TO unbored_web`;
       await sql.unsafe(
         readFileSync(migrationFiles().find((file) => file.version === 31)!.url, "utf8"),
+      );
+      await sql.unsafe(
+        readFileSync(migrationFiles().find((file) => file.version === 32)!.url, "utf8"),
       );
       await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, 'Mine', 1, 2)`;
       await sql`INSERT INTO characters (id, game, account_id, name, realm, level, last_seen)
@@ -78,7 +82,19 @@ dbTest(
         VALUES (${mine}, 'forever', 'vendor', 'i2320', 2320, 123, 'Reagent seller', 7, 0, 2, 2)`;
       await sql`INSERT INTO game.rows (game, build, table_name, locale, id, body) VALUES
         ('forever', '1.60.1.70888', 'ItemSparse', 'enUS', 2321, '{"Display_lang":"Unseen thread","BuyPrice":999}'::jsonb)`;
+      await sql`INSERT INTO character_events (game, character_id, type, key, at, from_value, to_value)
+        VALUES ('forever', 'forever/Realm/Mine', 'recipe_learned', '2334', 2, NULL, '2334')`;
       await sql`SET LOCAL ROLE unbored_web`;
+      const history = await readHistoryPage(sql, mine, {
+        game: "forever",
+        realm: "Realm",
+        name: "Mine",
+      });
+      assert.equal(history?.events[0]?.label, "Recipe learned: Elixir of Minor Fortitude");
+      assert.equal(
+        await readHistoryPage(sql, theirs, { game: "forever", realm: "Realm", name: "Mine" }),
+        null,
+      );
       const page = await readCharacterPage(sql, mine, {
         game: "forever",
         realm: "Realm",
@@ -138,6 +154,7 @@ dbTest(
         "game.rows",
         "game.profession_recipes",
         "recipe_sightings",
+        "character_events",
         "accounts",
       ]) {
         const [permissions] = await sql`SELECT
@@ -317,3 +334,46 @@ dbTest("My page shows Path completions with safe links, scoped to its Account", 
     await root.end();
   }
 });
+
+dbTest(
+  "history reads both games, pages ties without omissions and keeps charts independent",
+  async () => {
+    const root = postgres(adminUrl!, { max: 1, onnotice: () => {} });
+    const name = `unbored_history_${randomBytes(4).toString("hex")}`;
+    await root.unsafe(`CREATE DATABASE "${name}"`);
+    const url = new URL(adminUrl!);
+    url.pathname = `/${name}`;
+    const sql = connectPostgres(url.toString(), { max: 2 });
+    try {
+      await migrate(sql);
+      await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, 'Mine', 1, 2)`;
+      for (const game of ["retail", "forever"] as const) {
+        const id = `${game}/Realm/Mine`;
+        const identity = { game, realm: "Realm", name: "Mine" };
+        await sql`INSERT INTO characters (id, game, account_id, name, realm, last_seen) VALUES (${id}, ${game}, ${mine}, 'Mine', 'Realm', 2)`;
+        assert.deepEqual((await readHistoryPage(sql, mine, identity))?.events, []);
+        await sql`INSERT INTO character_events (game, character_id, type, key, at, to_value)
+        SELECT ${game}, ${id}, 'recipe_learned', n::text, 1790000000, n::text FROM generate_series(1,105) n`;
+        await sql`INSERT INTO character_events (game, character_id, type, key, at, to_value) VALUES (${game}, ${id}, 'level_up', '', 1790000000, '10')`;
+        const first = (await readHistoryPage(sql, mine, identity, { types: ["recipe_learned"] }))!;
+        assert.equal(first.events.length, 100);
+        assert.ok(first.next);
+        assert.equal(first.charts[0]?.title, "Level over time");
+        const second = (await readHistoryPage(sql, mine, identity, {
+          types: ["recipe_learned"],
+          cursor: first.next!,
+        }))!;
+        assert.equal(second.events.length, 5);
+        assert.equal(second.next, null);
+        assert.equal(new Set([...first.events, ...second.events].map((e) => e.id)).size, 105);
+        assert.deepEqual(first.charts, second.charts);
+        assert.ok(first.events[0]?.label.startsWith("Recipe learned: "));
+        assert.equal(await readHistoryPage(sql, theirs, identity), null);
+      }
+    } finally {
+      await sql.end();
+      await root.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);
+      await root.end();
+    }
+  },
+);
