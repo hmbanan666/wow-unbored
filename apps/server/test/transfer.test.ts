@@ -62,12 +62,13 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
     INSERT INTO webhook_deliveries VALUES ('r1', 1, ${now}, NULL, 200, NULL, ${now});
     INSERT INTO chain_progress VALUES ('c1', 5492, 3, ${now});
     INSERT INTO suggestions VALUES ('A', 'c1', ${now}, '{"list":[]}');
-    INSERT INTO game_builds VALUES ('12.0.1.66337', 66337, ${now}, 1);
-    INSERT INTO game_rows VALUES ('12.0.1.66337', 'QuestV2', 'enUS', 90001, '{"ID":90001,"UniqueBitFlag":42}');
-    INSERT INTO game_imports VALUES ('12.0.1.66337', '{"QuestV2":1}');
-    INSERT INTO game_achievements VALUES ('12.0.1.66337', 964, 'Going Down?', 'Летим!');
-    INSERT INTO game_quest_names VALUES ('12.0.1.66337', 90001, 'enUS', 'An adventure', 'https://us.api.blizzard.com/data/wow/quest/90001?namespace=static-us&locale=en_US');
-    INSERT INTO game_watch VALUES (1, '12.0.1.66338', ${now}, ${now}, 'import_failed');
+    INSERT INTO game_builds (build, build_number, imported_at, achievements) VALUES ('12.0.1.66337', 66337, ${now}, 1);
+    INSERT INTO game_rows (build, table_name, locale, id, body_json) VALUES ('12.0.1.66337', 'QuestV2', 'enUS', 90001, '{"ID":90001,"UniqueBitFlag":42}');
+    INSERT INTO game_imports (build, body_json) VALUES ('12.0.1.66337', '{"QuestV2":1}');
+    INSERT INTO game_achievements (build, id, name_en, name_ru) VALUES ('12.0.1.66337', 964, 'Going Down?', 'Летим!');
+    INSERT INTO game_quest_names (build, id, locale, name, url) VALUES ('12.0.1.66337', 90001, 'enUS', 'An adventure', 'https://us.api.blizzard.com/data/wow/quest/90001?namespace=static-us&locale=en_US');
+    INSERT INTO game_profession_recipes (game, build, skill_line, spell_id, body_json) VALUES ('retail', '12.0.1.66337', 171, 2334, '{"spellId":2334}');
+    INSERT INTO game_watch (id, live_build, pending_since, checked_at, last_error) VALUES (1, '12.0.1.66338', ${now}, ${now}, 'import_failed');
     INSERT INTO game_ids VALUES ('achievement', 6, 1, ${now});
     INSERT INTO creature_names VALUES (1, 'enUS', NULL, ${now});
     INSERT INTO profiles (character_name, realm, device_id, saved_at, updated_at, body_json, account)
@@ -82,7 +83,7 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
 pg("a pre-Game-DB SQLite file still transfers to the current schema", async () => {
   const file = await fixture((db) =>
     db.exec(
-      "DROP TABLE game_quest_names; DROP TABLE game_rows; DROP TABLE game_imports; DROP TABLE game_achievements; DROP TABLE game_builds; DROP TABLE game_watch;",
+      "DROP TABLE game_profession_recipes; DROP TABLE game_quest_names; DROP TABLE game_rows; DROP TABLE game_imports; DROP TABLE game_achievements; DROP TABLE game_builds; DROP TABLE game_watch;",
     ),
   );
   const db = await testDatabase();
@@ -121,7 +122,7 @@ pg("every table is copied, JSON as jsonb objects, partitions back to the oldest 
     } finally {
       stored.close();
     }
-    assert.equal(report.tables.length, 24);
+    assert.equal(report.tables.length, 25);
     assert.deepEqual(report.skipped, [
       { table: "profile_snapshots", rows: 0 },
       { table: "profiles", rows: 1 },
@@ -267,9 +268,9 @@ pg("the script runs under node as in the Docker image, URL from the environment 
       },
     );
     const dry = await node(["--sqlite", file, "--dry-run"], { DATABASE_URL: db.url });
-    assert.match(dry.stdout, /Dry run ok, rolled back: 24 tables, \d+ rows verified/);
+    assert.match(dry.stdout, /Dry run ok, rolled back: 25 tables, \d+ rows verified/);
     const real = await node([], { DATABASE_URL: db.url, UNBORED_DATA_DIR: path.dirname(file) });
-    assert.match(real.stdout, /Committed: 24 tables/);
+    assert.match(real.stdout, /Committed: 25 tables/);
     await assert.rejects(
       node(["--sqlite", file], { DATABASE_URL: db.url }),
       (error: { code: number; stderr: string }) => {

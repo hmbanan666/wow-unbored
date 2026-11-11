@@ -1,3 +1,4 @@
+import { materializeRecipes } from "./profession-catalog.ts";
 import { Worker } from "node:worker_threads";
 import { createReadStream } from "node:fs";
 import { mkdtemp, open, rm } from "node:fs/promises";
@@ -13,7 +14,9 @@ const MAX_TABLE_ROWS = 2_000_000;
 const BATCH_ROWS = 500;
 const BATCH_BYTES = 1024 * 1024;
 
-export const GAME_TABLES = {
+export type Game = "retail" | "forever";
+
+export const RETAIL_TABLES = {
   QuestV2: ["ID", "UniqueBitFlag"],
   QuestV2CliTask: ["ID", "QuestTitle_lang"],
   QuestLine: ["ID", "Name_lang"],
@@ -68,34 +71,70 @@ export const GAME_TABLES = {
     "Map_1",
   ],
 } as const;
+export const FOREVER_TABLES = {
+  SkillLine: ["ID", "DisplayName_lang", "CategoryID", "ParentSkillLineID"],
+  SkillLineAbility: [
+    "ID",
+    "SkillLine",
+    "Spell",
+    "MinSkillLineRank",
+    "TrivialSkillLineRankLow",
+    "TrivialSkillLineRankHigh",
+    "NumSkillUps",
+    "AcquireMethod",
+    "TradeSkillCategoryID",
+  ],
+  SpellReagents: [
+    "ID",
+    "SpellID",
+    ...Array.from({ length: 8 }, (_, i) => `Reagent_${i}`),
+    ...Array.from({ length: 8 }, (_, i) => `ReagentCount_${i}`),
+  ],
+  ItemSparse: RETAIL_TABLES.ItemSparse,
+  ItemEffect: ["ID", "SpellID", "TriggerType"],
+  ItemXItemEffect: ["ID", "ItemID", "ItemEffectID"],
+  SpellEffect: ["ID", "SpellID", "Effect", "EffectTriggerSpell", "EffectItemType"],
+  TradeSkillCategory: [
+    "ID",
+    "Name_lang",
+    "ParentTradeSkillCategoryID",
+    "SkillLineID",
+    "OrderIndex",
+  ],
+  SpellName: ["ID", "Name_lang"],
+} as const;
+export const GAME_TABLES = { ...RETAIL_TABLES, ...FOREVER_TABLES };
+const tablesFor = (game: Game) =>
+  Object.keys(game === "retail" ? RETAIL_TABLES : FOREVER_TABLES) as GameTable[];
+
 export type GameTable = keyof typeof GAME_TABLES;
 export type GameFields = Record<string, string | number>;
 
 export const GAME_CONTENT_SQLITE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS game_rows (
-    build TEXT NOT NULL REFERENCES game_builds(build), table_name TEXT NOT NULL,
+    game TEXT NOT NULL DEFAULT 'retail', build TEXT NOT NULL, table_name TEXT NOT NULL,
     locale TEXT NOT NULL, id INTEGER NOT NULL, body_json TEXT NOT NULL,
-    PRIMARY KEY (build, table_name, locale, id)
+    PRIMARY KEY (game, build, table_name, locale, id), FOREIGN KEY (game, build) REFERENCES game_builds(game, build)
   );
-  CREATE INDEX IF NOT EXISTS game_questlinexquest_questlineid ON game_rows (build, locale, CAST(json_extract(body_json, '$.QuestLineID') AS TEXT)) WHERE table_name = 'QuestLineXQuest';
-  CREATE INDEX IF NOT EXISTS game_rows_name ON game_rows (build, table_name, locale, COALESCE(json_extract(body_json, '$.Display_lang'), json_extract(body_json, '$.Name_lang'), json_extract(body_json, '$.QuestTitle_lang'), json_extract(body_json, '$.Title_lang')), id) WHERE COALESCE(json_extract(body_json, '$.Display_lang'), json_extract(body_json, '$.Name_lang'), json_extract(body_json, '$.QuestTitle_lang'), json_extract(body_json, '$.Title_lang')) IS NOT NULL;
-  CREATE INDEX IF NOT EXISTS game_toy_itemid ON game_rows (build, locale, CAST(json_extract(body_json, '$.ItemID') AS TEXT)) WHERE table_name = 'Toy';
-  CREATE INDEX IF NOT EXISTS game_mount_sourcespellid ON game_rows (build, locale, CAST(json_extract(body_json, '$.SourceSpellID') AS TEXT)) WHERE table_name = 'Mount';
-  CREATE INDEX IF NOT EXISTS game_battlepetspecies_summonspellid ON game_rows (build, locale, CAST(json_extract(body_json, '$.SummonSpellID') AS TEXT)) WHERE table_name = 'BattlePetSpecies';
-  CREATE INDEX IF NOT EXISTS game_battlepetspecies_creatureid ON game_rows (build, locale, CAST(json_extract(body_json, '$.CreatureID') AS TEXT)) WHERE table_name = 'BattlePetSpecies';
-  CREATE INDEX IF NOT EXISTS game_uimapassignment_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'UiMapAssignment';
-  CREATE INDEX IF NOT EXISTS game_questpoiblob_questid ON game_rows (build, locale, CAST(json_extract(body_json, '$.QuestID') AS TEXT)) WHERE table_name = 'QuestPOIBlob';
-  CREATE INDEX IF NOT EXISTS game_questpoiblob_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'QuestPOIBlob';
-  CREATE INDEX IF NOT EXISTS game_questpoipoint_questpoiblobid ON game_rows (build, locale, CAST(json_extract(body_json, '$.QuestPOIBlobID') AS TEXT)) WHERE table_name = 'QuestPOIPoint';
-  CREATE INDEX IF NOT EXISTS game_taxinodes_continentid ON game_rows (build, locale, CAST(json_extract(body_json, '$.ContinentID') AS TEXT)) WHERE table_name = 'TaxiNodes';
-  CREATE INDEX IF NOT EXISTS game_journalencounter_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'JournalEncounter';
-  CREATE INDEX IF NOT EXISTS game_uimapgroupmember_uimapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'UiMapGroupMember';
-  CREATE INDEX IF NOT EXISTS game_criteriatree_parent ON game_rows (build, locale, CAST(json_extract(body_json, '$.Parent') AS TEXT)) WHERE table_name = 'CriteriaTree';
-  CREATE INDEX IF NOT EXISTS game_journalinstance_mapid ON game_rows (build, locale, CAST(json_extract(body_json, '$.MapID') AS TEXT)) WHERE table_name = 'JournalInstance';
-  CREATE INDEX IF NOT EXISTS game_journalencounter_journalinstanceid ON game_rows (build, locale, CAST(json_extract(body_json, '$.JournalInstanceID') AS TEXT)) WHERE table_name = 'JournalEncounter';
-  CREATE INDEX IF NOT EXISTS game_journalencounter_dungeonencounterid ON game_rows (build, locale, CAST(json_extract(body_json, '$.DungeonEncounterID') AS TEXT)) WHERE table_name = 'JournalEncounter';
+  CREATE INDEX IF NOT EXISTS game_questlinexquest_questlineid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.QuestLineID') AS TEXT)) WHERE table_name = 'QuestLineXQuest';
+  CREATE INDEX IF NOT EXISTS game_rows_name ON game_rows (game, build, table_name, locale, COALESCE(json_extract(body_json, '$.Display_lang'), json_extract(body_json, '$.Name_lang'), json_extract(body_json, '$.QuestTitle_lang'), json_extract(body_json, '$.Title_lang')), id) WHERE COALESCE(json_extract(body_json, '$.Display_lang'), json_extract(body_json, '$.Name_lang'), json_extract(body_json, '$.QuestTitle_lang'), json_extract(body_json, '$.Title_lang')) IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS game_toy_itemid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.ItemID') AS TEXT)) WHERE table_name = 'Toy';
+  CREATE INDEX IF NOT EXISTS game_mount_sourcespellid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.SourceSpellID') AS TEXT)) WHERE table_name = 'Mount';
+  CREATE INDEX IF NOT EXISTS game_battlepetspecies_summonspellid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.SummonSpellID') AS TEXT)) WHERE table_name = 'BattlePetSpecies';
+  CREATE INDEX IF NOT EXISTS game_battlepetspecies_creatureid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.CreatureID') AS TEXT)) WHERE table_name = 'BattlePetSpecies';
+  CREATE INDEX IF NOT EXISTS game_uimapassignment_uimapid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'UiMapAssignment';
+  CREATE INDEX IF NOT EXISTS game_questpoiblob_questid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.QuestID') AS TEXT)) WHERE table_name = 'QuestPOIBlob';
+  CREATE INDEX IF NOT EXISTS game_questpoiblob_uimapid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'QuestPOIBlob';
+  CREATE INDEX IF NOT EXISTS game_questpoipoint_questpoiblobid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.QuestPOIBlobID') AS TEXT)) WHERE table_name = 'QuestPOIPoint';
+  CREATE INDEX IF NOT EXISTS game_taxinodes_continentid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.ContinentID') AS TEXT)) WHERE table_name = 'TaxiNodes';
+  CREATE INDEX IF NOT EXISTS game_journalencounter_uimapid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'JournalEncounter';
+  CREATE INDEX IF NOT EXISTS game_uimapgroupmember_uimapid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.UiMapID') AS TEXT)) WHERE table_name = 'UiMapGroupMember';
+  CREATE INDEX IF NOT EXISTS game_criteriatree_parent ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.Parent') AS TEXT)) WHERE table_name = 'CriteriaTree';
+  CREATE INDEX IF NOT EXISTS game_journalinstance_mapid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.MapID') AS TEXT)) WHERE table_name = 'JournalInstance';
+  CREATE INDEX IF NOT EXISTS game_journalencounter_journalinstanceid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.JournalInstanceID') AS TEXT)) WHERE table_name = 'JournalEncounter';
+  CREATE INDEX IF NOT EXISTS game_journalencounter_dungeonencounterid ON game_rows (game, build, locale, CAST(json_extract(body_json, '$.DungeonEncounterID') AS TEXT)) WHERE table_name = 'JournalEncounter';
   CREATE TABLE IF NOT EXISTS game_imports (
-    build TEXT PRIMARY KEY REFERENCES game_builds(build), body_json TEXT NOT NULL
+    game TEXT NOT NULL DEFAULT 'retail', build TEXT NOT NULL, body_json TEXT NOT NULL, PRIMARY KEY (game, build), FOREIGN KEY (game, build) REFERENCES game_builds(game, build)
   );
 `;
 
@@ -126,7 +165,13 @@ function selectFields(header: string[], columns: readonly string[], row: string[
 }
 
 /** Download and project sequentially to disk, before holding any database transaction. */
-async function stage(file: string, build: string, fetchImpl: typeof fetch, signal: AbortSignal) {
+async function stage(
+  file: string,
+  build: string,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+  game: Game,
+) {
   const output = await open(file, "wx", 0o600);
   const counts: Counts = {};
   let bytes = 0,
@@ -140,9 +185,11 @@ async function stage(file: string, build: string, fetchImpl: typeof fetch, signa
     batchBytes = 0;
   };
   try {
-    for (const table of Object.keys(GAME_TABLES) as GameTable[]) {
+    for (const table of tablesFor(game)) {
       const columns = GAME_TABLES[table];
-      for (const locale of gameLocalized(table) ? ["enUS", "ruRU"] : ["enUS"]) {
+      for (const locale of game === "retail" && gameLocalized(table)
+        ? ["enUS", "ruRU"]
+        : ["enUS"]) {
         const downloadSignal = AbortSignal.any([signal, AbortSignal.timeout(120_000)]);
         const url = `https://wago.tools/db2/${table}/csv?build=${build}&locale=${locale}`;
         let header: string[] | undefined,
@@ -180,7 +227,7 @@ async function stage(file: string, build: string, fetchImpl: typeof fetch, signa
   }
 }
 
-async function insertRows(db: Db, file: string, build: string, signal: AbortSignal) {
+async function insertRows(db: Db, file: string, build: string, signal: AbortSignal, game: Game) {
   const table = db.pg ? "game.rows" : "game_rows";
   const input = createReadStream(file);
   const lines = createInterface({ input, crlfDelay: Infinity });
@@ -190,8 +237,8 @@ async function insertRows(db: Db, file: string, build: string, signal: AbortSign
     signal.throwIfAborted();
     if (batch.length)
       await db.run(
-        `INSERT INTO ${table} (build, table_name, locale, id, ${db.body}) VALUES ${batch.map(() => "(?, ?, ?, ?, ?)").join(",")}`,
-        ...batch.flatMap((row) => [build, ...row] as Param[]),
+        `INSERT INTO ${table} (game, build, table_name, locale, id, ${db.body}) VALUES ${batch.map(() => "(?, ?, ?, ?, ?, ?)").join(",")}`,
+        ...batch.flatMap((row) => [game, build, ...row] as Param[]),
       );
     batch = [];
     bytes = 0;
@@ -217,29 +264,32 @@ export async function importGameContent(
   dataDir: string,
   build: string,
   fetchImpl: typeof fetch,
+  game: Game = "retail",
 ) {
-  const previous = await completedImport(db, build);
+  const previous = await completedImport(db, build, game);
   if (previous) return importResult(build, "unchanged", previous);
   const signal = AbortSignal.timeout(GAME_IMPORT_TIMEOUT_MS);
   const directory = await mkdtemp(path.join(dataDir, ".game-import-"));
   try {
     const file = path.join(directory, "rows.jsonl");
-    const counts = await stage(file, build, fetchImpl, signal);
+    const counts = await stage(file, build, fetchImpl, signal, game);
     return db.pg
-      ? await publishGameContent(db, file, build, counts, signal)
-      : await db.tx(() => publishInThread(dataDir, file, build, counts, signal));
+      ? await publishGameContent(db, file, build, counts, signal, game)
+      : await db.tx(() => publishInThread(dataDir, file, build, counts, signal, game));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 }
 
-async function completedImport(db: Db, build: string) {
+async function completedImport(db: Db, build: string, game: Game) {
   const table = db.pg ? "game.imports" : "game_imports";
-  const previous = await db.get(`SELECT ${db.body} FROM ${table} WHERE build = ?`, build);
+  const previous = await db.get(
+    `SELECT ${db.body} FROM ${table} WHERE game = ? AND build = ?`,
+    game,
+    build,
+  );
   const counts = previous ? fromJson<Counts>(previous[db.body]) : undefined;
-  return counts && Object.keys(GAME_TABLES).every((table) => counts[table] > 0)
-    ? counts
-    : undefined;
+  return counts && tablesFor(game).every((table) => counts[table] > 0) ? counts : undefined;
 }
 
 function importResult(build: string, status: string, tables: Counts) {
@@ -253,10 +303,11 @@ function publishInThread(
   build: string,
   counts: Counts,
   signal: AbortSignal,
+  game: Game = "retail",
 ) {
   return new Promise<ReturnType<typeof importResult>>((resolve, reject) => {
     const worker = new Worker(new URL("./game-content-worker.ts", import.meta.url), {
-      workerData: { dataDir, file, build, counts, timeout: GAME_IMPORT_TIMEOUT_MS },
+      workerData: { dataDir, file, build, counts, game, timeout: GAME_IMPORT_TIMEOUT_MS },
     });
     let result: ReturnType<typeof importResult> | undefined;
     const abort = () => {
@@ -282,42 +333,46 @@ export async function publishGameContent(
   build: string,
   counts: Counts,
   signal: AbortSignal,
+  game: Game = "retail",
 ) {
   const builds = db.pg ? "game.builds" : "game_builds";
   const rows = db.pg ? "game.rows" : "game_rows";
   const imports = db.pg ? "game.imports" : "game_imports";
   const achievements = db.pg ? "game.achievements" : "game_achievements";
   return db.tx(async () => {
-    await db.lockKey("game-content-import");
-    const previous = await completedImport(db, build);
+    await db.lockKey(`game-content-import-${game}`);
+    const previous = await completedImport(db, build, game);
     if (previous) return importResult(build, "unchanged", previous);
     signal.throwIfAborted();
     await db.run(
-      `INSERT INTO ${builds} (build, build_number, imported_at, achievements) VALUES (?, ?, ?, ?) ON CONFLICT (build) DO NOTHING`,
+      `INSERT INTO ${builds} (game, build, build_number, imported_at, achievements) VALUES (?, ?, ?, ?, ?) ON CONFLICT (game, build) DO NOTHING`,
+      game,
       build,
       Number(build.split(".")[3]),
       Math.floor(Date.now() / 1000),
-      counts.Achievement,
+      counts.Achievement ?? 0,
     );
-    await db.run(`DELETE FROM ${rows} WHERE build = ?`, build);
-    await insertRows(db, file, build, signal);
+    await db.run(`DELETE FROM ${rows} WHERE game = ? AND build = ?`, game, build);
+    await insertRows(db, file, build, signal, game);
     // New relationship indexes otherwise look cheap on an unanalyzed import and
     // turn id lookups into full group scans until autovacuum updates statistics.
     if (db.pg) await db.run(`ANALYZE ${rows}`);
-    for (const table of Object.keys(GAME_TABLES) as GameTable[]) {
-      if (!gameLocalized(table)) continue;
+    for (const table of tablesFor(game)) {
+      if (game !== "retail" || !gameLocalized(table)) continue;
       let after = -1;
       for (;;) {
         signal.throwIfAborted();
         const checked = await db.all<{ id: number }>(
-          `SELECT id FROM ${rows} WHERE build = ? AND table_name = ? AND locale = 'enUS' AND id > ? ORDER BY id LIMIT 500`,
+          `SELECT id FROM ${rows} WHERE game = ? AND build = ? AND table_name = ? AND locale = 'enUS' AND id > ? ORDER BY id LIMIT 500`,
+          game,
           build,
           table,
           after,
         );
         if (!checked.length) break;
         const matched = await db.all<{ id: number }>(
-          `SELECT id FROM ${rows} WHERE build = ? AND table_name = ? AND locale = 'ruRU' AND id IN (${checked.map(() => "?").join(",")})`,
+          `SELECT id FROM ${rows} WHERE game = ? AND build = ? AND table_name = ? AND locale = 'ruRU' AND id IN (${checked.map(() => "?").join(",")})`,
+          game,
           build,
           table,
           ...checked.map((row) => row.id),
@@ -328,25 +383,29 @@ export async function publishGameContent(
       }
     }
     // Keep the original entity lookup and older stored builds compatible.
-    await db.run(`DELETE FROM ${achievements} WHERE build = ?`, build);
+    await db.run(`DELETE FROM ${achievements} WHERE game = ? AND build = ?`, game, build);
     const title = (alias: string) =>
       db.pg ? `${alias}.body->>'Title_lang'` : `json_extract(${alias}.body_json, '$.Title_lang')`;
     await db.run(
-      `INSERT INTO ${achievements} (build, id, name_en, name_ru) SELECT en.build, en.id, ${title("en")}, (SELECT ${title("ru")} FROM ${rows} ru WHERE ru.build = en.build AND ru.table_name = 'Achievement' AND ru.id = en.id AND ru.locale = 'ruRU') FROM ${rows} en WHERE en.build = ? AND en.table_name = 'Achievement' AND en.locale = 'enUS'`,
+      `INSERT INTO ${achievements} (game, build, id, name_en, name_ru) SELECT en.game, en.build, en.id, ${title("en")}, (SELECT ${title("ru")} FROM ${rows} ru WHERE ru.game = en.game AND ru.build = en.build AND ru.table_name = 'Achievement' AND ru.id = en.id AND ru.locale = 'ruRU') FROM ${rows} en WHERE en.game = ? AND en.build = ? AND en.table_name = 'Achievement' AND en.locale = 'enUS'`,
+      game,
       build,
     );
     await db.run(
-      `UPDATE ${builds} SET achievements = ?, imported_at = ? WHERE build = ?`,
-      counts.Achievement,
+      `UPDATE ${builds} SET achievements = ?, imported_at = ? WHERE game = ? AND build = ?`,
+      counts.Achievement ?? 0,
       Math.floor(Date.now() / 1000),
+      game,
       build,
     );
     signal.throwIfAborted();
     await db.run(
-      `INSERT INTO ${imports} (build, ${db.body}) VALUES (?, ?) ON CONFLICT (build) DO UPDATE SET ${db.body} = excluded.${db.body}`,
+      `INSERT INTO ${imports} (game, build, ${db.body}) VALUES (?, ?, ?) ON CONFLICT (game, build) DO UPDATE SET ${db.body} = excluded.${db.body}`,
+      game,
       build,
       JSON.stringify(counts),
     );
+    if (game === "forever") await materializeRecipes(db, game, build, signal);
     return importResult(build, "imported", counts);
   });
 }

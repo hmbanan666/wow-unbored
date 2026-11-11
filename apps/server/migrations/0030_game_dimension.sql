@@ -1,0 +1,70 @@
+ALTER TABLE game.builds ADD COLUMN game TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'));
+ALTER TABLE game.achievements ADD COLUMN game TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'));
+ALTER TABLE game.rows ADD COLUMN game TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'));
+ALTER TABLE game.imports ADD COLUMN game TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'));
+ALTER TABLE game.quest_names ADD COLUMN game TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'));
+ALTER TABLE game.watch ADD COLUMN game TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'));
+ALTER TABLE game.achievements DROP CONSTRAINT achievements_build_fkey;
+ALTER TABLE game.rows DROP CONSTRAINT rows_build_fkey;
+ALTER TABLE game.imports DROP CONSTRAINT imports_build_fkey;
+ALTER TABLE game.quest_names DROP CONSTRAINT quest_names_build_fkey;
+ALTER TABLE game.builds DROP CONSTRAINT builds_pkey;
+ALTER TABLE game.builds ADD PRIMARY KEY (game, build);
+ALTER TABLE game.achievements DROP CONSTRAINT achievements_pkey;
+ALTER TABLE game.achievements ADD PRIMARY KEY (game, build, id);
+ALTER TABLE game.rows DROP CONSTRAINT rows_pkey;
+ALTER TABLE game.rows ADD PRIMARY KEY (game, build, table_name, locale, id);
+ALTER TABLE game.imports DROP CONSTRAINT imports_pkey;
+ALTER TABLE game.imports ADD PRIMARY KEY (game, build);
+ALTER TABLE game.quest_names DROP CONSTRAINT quest_names_pkey;
+ALTER TABLE game.quest_names ADD PRIMARY KEY (game, build, id, locale);
+ALTER TABLE game.watch DROP CONSTRAINT watch_pkey;
+ALTER TABLE game.watch ADD PRIMARY KEY (game, id);
+ALTER TABLE game.builds DROP CONSTRAINT builds_build_number_key;
+ALTER TABLE game.builds ADD UNIQUE (game, build_number);
+ALTER TABLE game.achievements ADD FOREIGN KEY (game, build) REFERENCES game.builds(game, build);
+ALTER TABLE game.rows ADD FOREIGN KEY (game, build) REFERENCES game.builds(game, build);
+ALTER TABLE game.imports ADD FOREIGN KEY (game, build) REFERENCES game.builds(game, build);
+ALTER TABLE game.quest_names ADD FOREIGN KEY (game, build) REFERENCES game.builds(game, build);
+CREATE TABLE game.profession_recipes (
+  game TEXT NOT NULL, build TEXT NOT NULL, skill_line INTEGER NOT NULL, spell_id INTEGER NOT NULL,
+  body JSONB NOT NULL, PRIMARY KEY (game, build, skill_line, spell_id),
+  FOREIGN KEY (game, build) REFERENCES game.builds(game, build)
+);
+
+-- Match game-scoped reads so the primary key cannot displace relationship indexes.
+DROP INDEX game.game_toy_itemid;
+CREATE INDEX game_toy_itemid ON game.rows (game, build, locale, (body ->> 'ItemID')) WHERE table_name = 'Toy';
+DROP INDEX game.game_mount_sourcespellid;
+CREATE INDEX game_mount_sourcespellid ON game.rows (game, build, locale, (body ->> 'SourceSpellID')) WHERE table_name = 'Mount';
+DROP INDEX game.game_battlepetspecies_summonspellid;
+CREATE INDEX game_battlepetspecies_summonspellid ON game.rows (game, build, locale, (body ->> 'SummonSpellID')) WHERE table_name = 'BattlePetSpecies';
+DROP INDEX game.game_battlepetspecies_creatureid;
+CREATE INDEX game_battlepetspecies_creatureid ON game.rows (game, build, locale, (body ->> 'CreatureID')) WHERE table_name = 'BattlePetSpecies';
+DROP INDEX game.game_uimapassignment_uimapid;
+CREATE INDEX game_uimapassignment_uimapid ON game.rows (game, build, locale, (body ->> 'UiMapID')) WHERE table_name = 'UiMapAssignment';
+DROP INDEX game.game_questpoiblob_questid;
+CREATE INDEX game_questpoiblob_questid ON game.rows (game, build, locale, (body ->> 'QuestID')) WHERE table_name = 'QuestPOIBlob';
+DROP INDEX game.game_questpoiblob_uimapid;
+CREATE INDEX game_questpoiblob_uimapid ON game.rows (game, build, locale, (body ->> 'UiMapID')) WHERE table_name = 'QuestPOIBlob';
+DROP INDEX game.game_questpoipoint_questpoiblobid;
+CREATE INDEX game_questpoipoint_questpoiblobid ON game.rows (game, build, locale, (body ->> 'QuestPOIBlobID')) WHERE table_name = 'QuestPOIPoint';
+DROP INDEX game.game_taxinodes_continentid;
+CREATE INDEX game_taxinodes_continentid ON game.rows (game, build, locale, (body ->> 'ContinentID')) WHERE table_name = 'TaxiNodes';
+DROP INDEX game.game_journalencounter_uimapid;
+CREATE INDEX game_journalencounter_uimapid ON game.rows (game, build, locale, (body ->> 'UiMapID')) WHERE table_name = 'JournalEncounter';
+DROP INDEX game.game_uimapgroupmember_uimapid;
+CREATE INDEX game_uimapgroupmember_uimapid ON game.rows (game, build, locale, (body ->> 'UiMapID')) WHERE table_name = 'UiMapGroupMember';
+DROP INDEX game.game_criteriatree_parent;
+CREATE INDEX game_criteriatree_parent ON game.rows (game, build, locale, (body ->> 'Parent')) WHERE table_name = 'CriteriaTree';
+DROP INDEX game.game_journalinstance_mapid;
+CREATE INDEX game_journalinstance_mapid ON game.rows (game, build, locale, (body ->> 'MapID')) WHERE table_name = 'JournalInstance';
+DROP INDEX game.game_journalencounter_journalinstanceid;
+CREATE INDEX game_journalencounter_journalinstanceid ON game.rows (game, build, locale, (body ->> 'JournalInstanceID')) WHERE table_name = 'JournalEncounter';
+DROP INDEX game.game_journalencounter_dungeonencounterid;
+CREATE INDEX game_journalencounter_dungeonencounterid ON game.rows (game, build, locale, (body ->> 'DungeonEncounterID')) WHERE table_name = 'JournalEncounter';
+DROP INDEX game.game_rows_name;
+CREATE INDEX game_rows_name ON game.rows (game, build, table_name, locale, (COALESCE(body ->> 'Display_lang', body ->> 'Name_lang', body ->> 'QuestTitle_lang', body ->> 'Title_lang')), id) WHERE COALESCE(body ->> 'Display_lang', body ->> 'Name_lang', body ->> 'QuestTitle_lang', body ->> 'Title_lang') IS NOT NULL;
+DROP INDEX game.game_questlinexquest_questlineid;
+CREATE INDEX game_questlinexquest_questlineid ON game.rows (game, build, locale, (body ->> 'QuestLineID')) WHERE table_name = 'QuestLineXQuest';
+ANALYZE game.rows;

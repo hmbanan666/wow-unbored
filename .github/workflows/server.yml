@@ -114,8 +114,8 @@ jobs:
               --experimental-sqlite --experimental-strip-types scripts/sqlite-to-postgres.ts "$@"
           }
           transfer --dry-run | tee dry.log
-          grep -q "Dry run ok, rolled back: 24 tables" dry.log
+          grep -q "Dry run ok, rolled back: 25 tables" dry.log
           transfer | tee real.log
-          grep -q "Committed: 24 tables" real.log
+          grep -q "Committed: 25 tables" real.log
           if transfer; then echo "a second transfer must refuse a non-empty target" >&2; exit 1; fi
           docker rm -f unbored-sqlite

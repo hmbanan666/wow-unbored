@@ -176,7 +176,7 @@ The Server runs on SQLite until `DATABASE_URL` is set ([ADR 0057](adr/0057-postg
 snapshots and the Catalog. Startup migration `0011_game_content.sql` extends
 `0007_game.sql` with `game.rows` and `game.imports`; SQLite uses the corresponding
 `game_rows` and `game_imports` tables. The existing SQLite-to-Postgres transfer
-copies both (24 tables for a current file), and still accepts older files.
+copies both (25 tables for a current file), and still accepts older files.
 
 The import selects these 23 DB2 tables from wago.tools for one explicit retail
 build. The field allowlist is in
@@ -205,7 +205,7 @@ are downloaded once. Locale id sets must match exactly, regardless of order.
 Numeric fields preserve scientific notation as numbers and wide integer
 quantities as exact strings. Extra columns are discarded.
 
-`game.rows` has a primary index on `(build, table_name, locale, id)` and selected
+`game.rows` has a primary index on `(game, build, table_name, locale, id)` and selected
 fields in `body` (jsonb; `body_json` text on SQLite). `GameDb.row(table, id,
 locale)` reads one record from the current build and returns `{build, fields}`,
 or `undefined`; it never downloads or falls back to an older build. Unlocalized
@@ -633,13 +633,77 @@ both storage backends. `postgres.test.ts` checks automatic migration and
 concurrent startup. Existing shared Plan fixtures continue through the
 contract, addon and delivery suites.
 
+### Game DB: game dimension and recipe catalog
+
+[ADR 0096](adr/0096-forever-recipe-catalog.md) adds `game` (`retail` / `forever`) to
+builds, rows, import manifests, achievements, quest names and watches via
+`0030_game_dimension.sql`. Existing data defaults to Retail; build and row keys
+are composite, so equal numeric builds/ids cannot collide across games. SQLite
+upgrades its existing tables transactionally at startup. `GameDb` defaults to
+Retail for all existing readers; `game.forGame("forever")` selects an independent
+current build, import queue and persistent watch state. Health and Data explorer
+retain the Retail fields in `gameDb` and add the same fields at `gameDb.forever`.
+
+Forever downloads enUS only, with strict selected columns from `SkillLine`,
+`SkillLineAbility`, `SpellReagents`, `ItemSparse`, `ItemEffect`, `SpellEffect`,
+`TradeSkillCategory`, `SpellName`, and `ItemXItemEffect`. The last is the necessary
+item-to-effect bridge absent from ItemEffect itself in build 1.60.1.70888. No
+third-party database or image is used. Retail's table and locale set is unchanged;
+it has no SkillLineAbility import, so Retail pages retain known-only counts.
+
+`game.profession_recipes` (`game_profession_recipes` on SQLite) materializes one
+JSON row per game/build/skill_line/spell_id in the import transaction. It joins
+categorized SkillLineAbility entries for the 12 real primary/secondary skill
+lines (129, 164, 165, 171, 182, 185, 186, 197, 202, 333, 356, 393); category 9 alone
+would include racial/riding skills and category 11 contains a test profession.
+Duplicate profession/spell entries use the lowest ability ID. SpellName supplies
+English names; missing names remain null, with translated guidance on the page.
+Categories retain client name and order. A recipe's orange threshold is
+MinSkillLineRank; yellow is TrivialSkillLineRankLow, green is ceil((Low + High)/2),
+grey is High. At each threshold the next band begins; below yellow the display
+is orange even when the character has not met the separate minimum skill.
+Unusual client ranks are preserved, including min skill above grey; no rule
+infers trainability. NumSkillUps and AcquireMethod are stored unchanged.
+
+Reagents join on SpellReagents.SpellID, preserving positive Reagent_n and
+ReagentCount_n pairs. Created items come from SpellEffect.Effect 24 and
+EffectItemType. Teaching items join ItemXItemEffect.ItemEffectID to ItemEffect.ID:
+TriggerType 6 teaches SpellID directly, or SpellID joins SpellEffect with Effect
+36 and teaches EffectTriggerSpell. Item ids must exist in ItemSparse; multiple
+teaching/created items are retained. These links never imply a vendor or trainer.
+[The evidence ledger](forever-recipe-evidence.md) records 33 AcquireMethod
+examples and counts as observed, unconfirmed.
+
+MCP `get_profession_catalog(game, skillLine)` returns `{game, build, skillLine,
+recipes}` with English names, thresholds, raw acquireMethod, reagents and item
+links. Reads never download; an empty list is unavailable, not a claim of zero
+recipes. The private character page queries only its game/current build and
+professions. Known counts include learned ids absent from the catalog and note
+that count separately; M remains catalog size, so N can exceed M. Missing
+recipes are grouped by category in collapsible details; unknown skill has no
+invented colour. Unseen learned data prompts opening the profession in game.
+No source kinds, places, route or history are displayed.
+
+Rollout order: start the new Server first so migration 0030 completes, then the
+new website (which queries the new table); replace all old Server instances before
+serving requests against the migrated schema, whose conflict keys have changed.
+The migration rebuilds primary and relationship indexes and may take time on a
+large existing Retail import, but does not download data. Relationship indexes
+include `game` so game-scoped reads retain their selective index plans. The first Server start begins a background Forever
+import of nine tables; it does not delay readiness or reimport unchanged Retail
+data. Requests show the empty-catalog guidance until publication. A failed
+Forever download/import retries hourly and cannot roll back a Retail import.
+Full local build 1.60.1.70888: 132,229 source rows and 2,540 unique catalog rows;
+41 names are absent in SpellName and stay null. See the ledger for table and
+profession counts. No deployment or live-game compatibility claim is part of T3.
+
 ### Game DB: automatic build watching
 
 At Server startup and every hour, the watcher checks
 `https://wago.tools/api/builds/wow/latest` for the retail product `wow`. The
 response supplies `product` and `version` (the product-specific endpoint is also
 used by [the WoW API documentation tooling](https://github.com/Ketho/vscode-wow-api/blob/master/wowdoc/wago.lua)).
-It excludes PTR, beta and Classic. Discovery has a 30-second timeout and 64 KB
+A separate check of `https://wago.tools/api/builds/wowf/latest` follows Forever product `wowf`; other products are excluded. Discovery has a 30-second timeout and 64 KB
 response cap; the locale imports retain the limits above. Startup and requests
 do not wait for downloads. Overlapping ticks share one run, and shutdown stops
 the timer and waits for that run before closing storage.

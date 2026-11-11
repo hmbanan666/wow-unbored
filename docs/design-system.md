@@ -123,3 +123,11 @@ Guide tables use the lamp surface, gold column headers, soft dividers and body t
 The install landing page composes the existing page header, cards, steps and visible FAQ. `InstallGallery` renders the bundled own screenshot through `DsGameArt`, retaining its full frame with CSS contain fitting. `InstallDetails` wraps the long SHA-256 and PowerShell command at mobile widths; `DsProse` also wraps long inline code paths. `DsButton external` bypasses client routing for same-origin download endpoints without opening a new tab. The primary download precedes all images on phones.
 
 `ForeverHub` composes the page header, prose, sections and catalog cards for the topic hub (ADR 0084). Its date sources and recently updated links keep 44px tap targets; dates stack on narrow screens. Empty and unavailable hub states use plain text and a retry button without the mascot. The route owns catalog loading and metadata; component styles own presentation.
+
+
+`ProfessionRecipes` maps a character's learned count and catalog into the existing
+profession card. Its native disclosure has a 44px minimum target and keyboard
+focus ring; missing recipes wrap inside category groups. `--recipe-orange`,
+`--recipe-yellow`, `--recipe-green` and `--recipe-grey` provide readable difficulty
+colours on the lamp surface, always accompanied by translated text. Empty,
+unseen, complete and uncatalogued-recipe states use the shared character copy.

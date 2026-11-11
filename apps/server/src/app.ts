@@ -213,7 +213,7 @@ export function createApp(
       ok: true,
       planner: store.plannerRoute,
       webhook: webhook.enabled ? "on" : "off",
-      gameDb: await store.game.status(),
+      gameDb: await store.game.healthStatus(),
     }),
   );
 
@@ -612,7 +612,7 @@ export function createApp(
     if (denied) return denied;
     return c.json({
       ...(await store.data.catalog({ account: c.req.query("account") || undefined })),
-      gameDb: await store.game.status(),
+      gameDb: await store.game.healthStatus(),
     });
   });
 
@@ -620,10 +620,15 @@ export function createApp(
     const denied = requireRole(c, "planner", tokens);
     if (denied) return denied;
     const body = await c.req.json().catch(() => null);
-    if (!validGameBuild(body?.build))
+    if (
+      !validGameBuild(body?.build) ||
+      (body.game !== undefined && !["retail", "forever"].includes(body.game))
+    )
       return c.json({ error: "Supply a build such as 12.0.1.66337." }, 400);
     try {
-      return c.json(await store.game.importBuild(body.build, config.gameDbFetch));
+      return c.json(
+        await store.game.forGame(body.game ?? "retail").importBuild(body.build, config.gameDbFetch),
+      );
     } catch (error) {
       if (error instanceof GameImportError) return c.json({ error: error.message }, 502);
       throw error;

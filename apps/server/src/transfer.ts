@@ -25,6 +25,7 @@ const WEBSITE_SQLITE = new Set(["web_sign_in_links", "web_sessions"]);
 const POSTGRES_ONLY = new Set(["raw_uploads", "path_completions", "active_paths"]);
 /** Game DB was added after the original cutover; older SQLite files lack it. */
 const GAME_TABLES: Record<string, string> = {
+  game_profession_recipes: "game.profession_recipes",
   game_builds: "game.builds",
   game_achievements: "game.achievements",
   game_watch: "game.watch",

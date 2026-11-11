@@ -16,7 +16,8 @@
     "./packed": "./src/packed.ts",
     "./web-session": "./src/web-session.ts",
     "./game-media": "./src/game-media.ts",
-    "./guide": "./src/guide.ts"
+    "./guide": "./src/guide.ts",
+    "./profession-catalog": "./src/profession-catalog.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

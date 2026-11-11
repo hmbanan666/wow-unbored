@@ -2063,6 +2063,46 @@ function isUniqueViolation(error: unknown): boolean {
 
 /** The SQLite tables, columns and one-time moves of the store.ts tables (SQLite only). */
 function prepareSqlite(db: DatabaseSync): void {
+  const oldGame =
+    db.prepare("SELECT 1 FROM pragma_table_info('game_builds') WHERE name = 'build'").get() &&
+    !db.prepare("SELECT 1 FROM pragma_table_info('game_builds') WHERE name = 'game'").get();
+  if (oldGame) {
+    db.exec("PRAGMA foreign_keys = OFF; BEGIN");
+    try {
+      const tables = [
+        "game_builds",
+        "game_achievements",
+        "game_rows",
+        "game_imports",
+        "game_quest_names",
+        "game_watch",
+      ];
+      for (const table of tables) {
+        if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table))
+          continue;
+        db.exec(`CREATE TEMP TABLE saved_${table} AS SELECT * FROM ${table}; DROP TABLE ${table}`);
+      }
+      db.exec(GAME_SQLITE_SCHEMA);
+      for (const table of tables) {
+        if (!db.prepare("SELECT 1 FROM sqlite_temp_master WHERE name = ?").get(`saved_${table}`))
+          continue;
+        const columns = (
+          db.prepare(`PRAGMA table_info(saved_${table})`).all() as { name: string }[]
+        )
+          .map((c) => c.name)
+          .join(", ");
+        db.exec(
+          `INSERT INTO ${table} (${columns}) SELECT ${columns} FROM saved_${table}; DROP TABLE saved_${table}`,
+        );
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    } finally {
+      db.exec("PRAGMA foreign_keys = ON");
+    }
+  }
   db.exec(GAME_SQLITE_SCHEMA);
   db.exec(SQLITE_SCHEMA);
   addColumns(db, "profiles", [["account", "TEXT"]]);

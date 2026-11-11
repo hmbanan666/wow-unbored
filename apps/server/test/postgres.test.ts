@@ -88,6 +88,7 @@ pg("migrate applies each file once, also when two Servers start together", async
       "0027_forever_raids_comparison_addons.sql",
       "0028_forever_classes.sql",
       "0029_character_game.sql",
+      "0030_game_dimension.sql",
     ]);
     assert.deepEqual(await migrate(db.sql), []);
     const rows = await db.sql`SELECT version, name FROM schema_migrations ORDER BY version`;
@@ -123,6 +124,7 @@ pg("migrate applies each file once, also when two Servers start together", async
         [27, "0027_forever_raids_comparison_addons.sql"],
         [28, "0028_forever_classes.sql"],
         [29, "0029_character_game.sql"],
+        [30, "0030_game_dimension.sql"],
       ],
     );
   } finally {
@@ -157,6 +159,7 @@ pg("the schema has every SQLite table and column, but the legacy profiles", asyn
         "game_rows",
         "game_imports",
         "game_quest_names",
+        "game_profession_recipes",
       ].includes(table);
       const actual = (
         await db.sql`SELECT column_name FROM information_schema.columns

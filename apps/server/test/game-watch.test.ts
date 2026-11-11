@@ -62,7 +62,7 @@ for (const backend of BACKENDS) {
     const app = setup(backend);
     try {
       await app.store.game.currentBuild();
-      const seed = `INSERT INTO ${backend === "postgres" ? "game.builds" : "game_builds"} VALUES ('${oldBuild}', 66337, 1, 1)`;
+      const seed = `INSERT INTO ${backend === "postgres" ? "game.builds" : "game_builds"} (build, build_number, imported_at, achievements) VALUES ('${oldBuild}', 66337, 1, 1)`;
       if (backend === "postgres") await pg(backend)!.unsafe(seed);
       else {
         const db = new DatabaseSync(path.join(app.dataDir, "unbored.sqlite"));
