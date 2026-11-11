@@ -36,8 +36,8 @@ use crate::snapshot::{
 };
 use crate::sync_state::{Current, Generation, SyncState};
 use crate::wow::{
-    account_saved_variables, character_saved_variables, detect_installs, list_accounts,
-    read_progress, retail_dir, CharacterFile,
+    account_saved_variables, character_saved_variables, detect_installs, find_game_dirs, game_dir,
+    game_for_dir, list_accounts, read_progress, CharacterFile,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -217,7 +217,7 @@ fn change_preferences(
     Ok(())
 }
 
-fn retail_path(settings: &Settings) -> Option<PathBuf> {
+fn selected_game_path(settings: &Settings) -> Option<PathBuf> {
     if settings.wow_path.is_empty() {
         None
     } else {
@@ -225,17 +225,25 @@ fn retail_path(settings: &Settings) -> Option<PathBuf> {
     }
 }
 
+fn game_paths(settings: &Settings) -> Vec<PathBuf> {
+    let mut roots = detect_installs();
+    if let Some(chosen) = selected_game_path(settings) {
+        roots.insert(0, chosen);
+    }
+    find_game_dirs(&roots)
+}
+
 fn scan_progress(settings: &Settings) -> Vec<ProgressView> {
-    let Some(retail) = retail_path(settings) else {
-        return Vec::new();
-    };
     let account = if settings.account.is_empty() {
         None
     } else {
         Some(settings.account.as_str())
     };
     let mut views = Vec::new();
-    for file in character_saved_variables(&retail, account) {
+    for file in game_paths(settings)
+        .iter()
+        .flat_map(|path| character_saved_variables(path, account))
+    {
         if let Ok(Some(progress)) = read_progress(&file) {
             views.push(ProgressView {
                 account: file.account,
@@ -348,9 +356,10 @@ fn sync_progress(app: &AppHandle, session: &SyncSession) -> Result<usize, String
     } else {
         Some(settings.account.as_str())
     };
-    let files = retail_path(settings)
-        .map(|retail| character_saved_variables(&retail, account))
-        .unwrap_or_default();
+    let files: Vec<_> = game_paths(settings)
+        .iter()
+        .flat_map(|path| character_saved_variables(path, account))
+        .collect();
     let progress = scan_progress(settings);
     let result = if approved {
         post_progress(
@@ -382,7 +391,7 @@ fn scan_status(posting: bool, progress_len: usize, result: Result<usize, String>
 }
 
 fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
-    let Some(retail) = retail_path(settings) else {
+    let Some(retail) = selected_game_path(settings) else {
         return Err(tr("PICK_RETAIL_FIRST"));
     };
     if plan.generated_at.is_none() {
@@ -430,7 +439,7 @@ struct SetupStep {
 /// The three things a first run needs, in order, so the window can show
 /// what is done and what it is waiting for.
 fn setup_steps(model: &Model) -> Vec<SetupStep> {
-    let addon = retail_path(&model.settings).and_then(|retail| installed_version(&retail));
+    let addon = selected_game_path(&model.settings).and_then(|retail| installed_version(&retail));
     vec![
         SetupStep {
             label: tr("STEP_WOW"),
@@ -538,7 +547,7 @@ fn set_wow_path(app: AppHandle, state: State<AppState>, path: String) -> Result<
     let _change = state.device_change.lock().map_err(|err| err.to_string())?;
     let mut model = state.inner.lock().map_err(|err| err.to_string())?;
     let chosen = path.trim();
-    let wow_path = retail_dir(Path::new(chosen))
+    let wow_path = game_dir(Path::new(chosen))
         .map(|dir| dir.display().to_string())
         .unwrap_or_default();
     change_preferences(&app, &mut model, |settings| settings.wow_path = wow_path)?;
@@ -747,12 +756,10 @@ fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Sho
             model.sent_sections.clear();
             model.posted_profiles.clear();
             model.notified.clear();
-            let cleared = retail_path(&session.settings)
-                .map(|retail| {
-                    clear_helper(&retail).map_err(game_files)?;
-                    write_heartbeat(&app, model, &retail, true)
-                })
-                .transpose();
+            let cleared = game_paths(&session.settings).iter().try_for_each(|path| {
+                clear_helper(path).map_err(game_files)?;
+                write_heartbeat(&app, model, path, true)
+            });
             saved?;
             cleared?;
             model.forget_cleanup_pending = false;
@@ -982,13 +989,23 @@ fn watch_loop(app: AppHandle, rx: Receiver<Result<Event, notify::Error>>) {
 }
 
 fn spawn_watch(app: AppHandle, retail: PathBuf) -> Option<RecommendedWatcher> {
-    let root = watch_root(&retail)?;
+    let mut installs = detect_installs();
+    installs.push(retail);
+    let roots: Vec<_> = find_game_dirs(&installs)
+        .iter()
+        .filter_map(|path| watch_root(path))
+        .collect();
+    if roots.is_empty() {
+        return None;
+    }
     let (tx, rx) = std::sync::mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |event| {
         let _ = tx.send(event);
     })
     .ok()?;
-    watcher.watch(&root, RecursiveMode::Recursive).ok()?;
+    for root in roots {
+        watcher.watch(&root, RecursiveMode::Recursive).ok()?;
+    }
     std::thread::Builder::new()
         .name("unbored-sv-watch".into())
         .spawn(move || watch_loop(app, rx))
@@ -1057,15 +1074,16 @@ fn planner_state(
     settings: &Settings,
     secret: &str,
     waiting: Option<&str>,
+    game: &str,
 ) -> Result<PlannerState, String> {
     let url = effective_url(settings);
     validate_endpoint(&url)?;
     let client = http_client(Duration::from_secs(20))?;
-    let addon_version = retail_path(settings).and_then(|retail| installed_version(&retail));
+    let addon_version = selected_game_path(settings).and_then(|retail| installed_version(&retail));
     let mut state = PlannerState::default();
     if let Some(body) = get_json(
         &client,
-        &join_url(&url, "v1/plan"),
+        &join_url(&url, &format!("v1/plan?game={game}")),
         secret,
         addon_version.as_deref(),
     )? {
@@ -1077,7 +1095,10 @@ fn planner_state(
     }
     if let Some(body) = get_json(
         &client,
-        &join_url(&url, &request_status_path(waiting)),
+        &join_url(
+            &url,
+            &format!("{}?game={game}", request_status_path(waiting)),
+        ),
         secret,
         addon_version.as_deref(),
     )? {
@@ -1129,7 +1150,8 @@ fn post_requests(
         .into_iter()
         .filter_map(|file| {
             let text = fs::read_to_string(&file.path).ok()?;
-            let request = request_from_saved_variables(&text).ok()??;
+            let mut request = request_from_saved_variables(&text).ok()??;
+            request.game = file.game.into();
             Some(RequestUpload {
                 account: file.account,
                 request,
@@ -1182,6 +1204,7 @@ fn post_snapshots(
         };
         let (account, legacy) = seal.publish(&file.account)?;
         let Some((mut body, remember)) = build_upload(
+            file.game,
             &account,
             &character,
             &realm,
@@ -1258,6 +1281,7 @@ fn post_profiles(
         }
         let (account, legacy) = seal.publish(&file.account)?;
         let mut body = serde_json::json!({
+            "game": file.game,
             "character": profile.character,
             "realm": profile.realm,
             "account": account,
@@ -1324,13 +1348,37 @@ fn sync_plans(
     session: &SyncSession,
     seal: &mut AccountSeal,
 ) -> Result<Option<String>, String> {
+    let paths = game_paths(&session.settings);
+    if paths.is_empty() {
+        return Ok(Some(tr("APPROVED_CHOOSE_RETAIL")));
+    }
+    let mut notice = None;
+    let mut first_error = None;
+    for path in paths {
+        match sync_game_plans(app, session, seal, &path) {
+            Ok(Some(result)) => notice = Some(result),
+            Ok(None) => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(notice),
+    }
+}
+
+fn sync_game_plans(
+    app: &AppHandle,
+    session: &SyncSession,
+    seal: &mut AccountSeal,
+    retail: &Path,
+) -> Result<Option<String>, String> {
     let settings = &session.settings;
     let secret = &session.device.secret;
-    let Some(retail) = retail_path(settings) else {
-        return Ok(Some(tr("APPROVED_CHOOSE_RETAIL")));
-    };
     if session
-        .apply(app, |_| ensure_helper(&retail).map_err(game_files))?
+        .apply(app, |_| ensure_helper(retail).map_err(game_files))?
         .transpose()?
         .is_none()
     {
@@ -1340,23 +1388,28 @@ fn sync_plans(
         rejection,
         waiting,
         deferred,
-    } = post_requests(settings, &retail, secret, seal)?;
+    } = post_requests(settings, retail, secret, seal)?;
     for failure in deferred {
         // Only a transport category or HTTP code, never ids, bodies or raw errors.
         eprintln!("Earlier Request upload deferred ({failure:?}); retrying on the next sync.");
     }
     // Game data, a profile or advice that fails must not hold back plans and answers.
-    let _ = post_snapshots(app, session, &retail, seal);
-    let _ = post_profiles(app, session, &retail, seal);
-    let _ = sync_suggestions(app, session, &retail);
-    let _ = sync_advice(app, session, &retail);
+    let _ = post_snapshots(app, session, retail, seal);
+    if game_for_dir(retail) == "retail" {
+        let _ = post_profiles(app, session, retail, seal);
+        let _ = sync_suggestions(app, session, retail);
+        let _ = sync_advice(app, session, retail);
+    } else if waiting.is_none() && rejection.is_none() {
+        // A device-wide Retail Plan must never land in the Forever helper.
+        return Ok(None);
+    }
     let rejected = rejection.is_some();
     let state = match rejection {
         Some(request) => PlannerState {
             request: Some(request),
             ..Default::default()
         },
-        None => planner_state(settings, secret, waiting.as_deref())?,
+        None => planner_state(settings, secret, waiting.as_deref(), game_for_dir(retail))?,
     };
     let pending = state
         .request
@@ -1368,7 +1421,7 @@ fn sync_plans(
             let Some(file) = pick_plan_file(&state) else {
                 return Ok(None);
             };
-            let written = install_plan_file(&retail, &file).map_err(game_files)?;
+            let written = install_plan_file(retail, &file).map_err(game_files)?;
             if let Some(id) = &file.ready_request {
                 if model.notified.insert(id.clone()) && written.changed {
                     let kind = file.ready_kind.clone().unwrap_or_else(|| "plan".into());
@@ -1584,13 +1637,14 @@ fn wow_running() -> bool {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     std::process::Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq Wow.exe", "/NH", "/FO", "CSV"])
+        .args(["/FI", "IMAGENAME eq Wow*.exe", "/NH", "/FO", "CSV"])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map(|out| {
-            String::from_utf8_lossy(&out.stdout)
-                .to_ascii_lowercase()
-                .contains("wow.exe")
+            let names = String::from_utf8_lossy(&out.stdout).to_ascii_lowercase();
+            names
+                .lines()
+                .any(|line| line.starts_with("\"wow.exe\"") || line.starts_with("\"wowf.exe\""))
         })
         .unwrap_or(false)
 }
@@ -1606,12 +1660,12 @@ fn sync_once(
     addon_checked: &mut Option<std::time::Instant>,
 ) -> Result<(), String> {
     let settings = &session.settings;
-    let retail = retail_path(settings);
+    let installs = game_paths(settings);
     if session
         .apply(app, |model| {
             if model.forget_cleanup_pending {
                 // Retry local failures before any network work, even while offline.
-                if let Some(retail) = &retail {
+                for retail in &installs {
                     clear_helper(retail).map_err(game_files)?;
                 }
                 save_settings(app, &model.settings)?;
@@ -1627,21 +1681,24 @@ fn sync_once(
     follow_lang(app, settings);
     // The helper and the addon come from disk and GitHub, so they are set up
     // even while the planner is down or this PC is not approved yet.
-    if let Some(retail) = &retail {
+    let due = addon_checked
+        .map(|at| at.elapsed() >= Duration::from_secs(30 * 60))
+        .unwrap_or(true);
+    let mut addon_check_failed = false;
+    for retail in &installs {
         let _ = session.apply(app, |_| ensure_helper(retail));
-        let due = addon_checked
-            .map(|at| at.elapsed() >= Duration::from_secs(30 * 60))
-            .unwrap_or(true);
         if due {
             let version_file = app
                 .path()
                 .app_config_dir()
                 .map_err(|err| err.to_string())?
-                .join("addon-version.txt");
+                .join(format!("addon-version-{}.txt", game_for_dir(retail)));
             let now = std::time::Instant::now();
             match ensure_addon(app, retail, &version_file) {
-                Ok(_) => *addon_checked = Some(now),
+                Ok(_) if !addon_check_failed => *addon_checked = Some(now),
+                Ok(_) => {}
                 Err(err) => {
+                    addon_check_failed = true;
                     // Try again in about 5 minutes; GitHub limits unauthenticated calls.
                     *addon_checked =
                         Some(now.checked_sub(Duration::from_secs(25 * 60)).unwrap_or(now));
@@ -1660,7 +1717,7 @@ fn sync_once(
         return Ok(());
     }
     let result = sync_planner(app, session);
-    if let Some(retail) = &retail {
+    for retail in &installs {
         session.apply(app, |model| {
             let _ = write_heartbeat(app, model, retail, result.is_ok());
         })?;
@@ -1818,7 +1875,7 @@ fn enable_autostart_once(app: &AppHandle, settings: &mut Settings) {
 
 /// The game's language, else the Windows one, else English (docs/adr/0049).
 fn detect_lang(settings: &Settings) -> i18n::Lang {
-    let addon = retail_path(settings).and_then(|retail| i18n::addon_lang(&retail));
+    let addon = selected_game_path(settings).and_then(|retail| i18n::addon_lang(&retail));
     i18n::pick(addon.as_deref(), sys_locale::get_locale().as_deref())
 }
 

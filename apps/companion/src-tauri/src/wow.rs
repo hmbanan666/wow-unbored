@@ -1,4 +1,4 @@
-//! Retail install and WTF account discovery. Paths only.
+//! Retail and Forever install and WTF account discovery. Paths only.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,46 +7,55 @@ use crate::savedvars::{session_from_saved_variables, SessionProgress};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CharacterFile {
+    pub game: &'static str,
     pub account: String,
     pub realm: String,
     pub character: String,
     pub path: PathBuf,
 }
 
-pub fn find_retail_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
+/// Scan a chosen install, its sibling game, or a launcher/registry root.
+pub fn find_game_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut found = Vec::new();
     for root in roots {
-        if let Some(retail) = retail_dir(root) {
-            if !found.iter().any(|have: &PathBuf| have == &retail) {
-                found.push(retail);
+        let parent = if matches!(
+            root.file_name().and_then(|name| name.to_str()),
+            Some("_retail_" | "_forever_")
+        ) {
+            root.parent().unwrap_or(root)
+        } else {
+            root
+        };
+        for candidate in [
+            root.clone(),
+            parent.join("_retail_"),
+            parent.join("_forever_"),
+        ] {
+            let valid = candidate.is_dir()
+                && (candidate
+                    .file_name()
+                    .is_some_and(|name| name == "_forever_")
+                    || candidate.join("Wow.exe").is_file());
+            if valid && !found.contains(&candidate) {
+                found.push(candidate);
             }
         }
     }
     found
 }
 
-pub fn retail_dir(candidate: &Path) -> Option<PathBuf> {
-    let candidate = normalize_existing(candidate)?;
-    if is_retail(&candidate) {
-        return Some(candidate);
-    }
-    let nested = candidate.join("_retail_");
-    if is_retail(&nested) {
-        return Some(nested);
-    }
-    None
+pub fn game_dir(candidate: &Path) -> Option<PathBuf> {
+    find_game_dirs(&[candidate.to_path_buf()])
+        .into_iter()
+        .next()
 }
 
-fn normalize_existing(path: &Path) -> Option<PathBuf> {
-    if path.exists() {
-        Some(path.to_path_buf())
+pub fn game_for_dir(path: &Path) -> &'static str {
+    if path.file_name().is_some_and(|name| name == "_forever_") {
+        "forever"
     } else {
-        None
+        "retail"
     }
-}
-
-fn is_retail(path: &Path) -> bool {
-    path.is_dir() && path.join("Wow.exe").is_file()
 }
 
 pub fn common_roots() -> Vec<PathBuf> {
@@ -104,7 +113,7 @@ pub fn detect_installs() -> Vec<PathBuf> {
     let mut roots = registry_roots();
     roots.extend(common_roots());
     roots.extend(battle_net_install_roots());
-    find_retail_dirs(&roots)
+    find_game_dirs(&roots)
 }
 
 fn battle_net_install_roots() -> Vec<PathBuf> {
@@ -168,6 +177,7 @@ pub fn character_saved_variables(retail: &Path, account: Option<&str>) -> Vec<Ch
                 let path = character.path().join("SavedVariables").join("Unbored.lua");
                 if path.is_file() {
                     files.push(CharacterFile {
+                        game: game_for_dir(retail),
                         account: account_name.clone(),
                         realm: realm_name.clone(),
                         character: character_name,
@@ -203,6 +213,31 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn discovers_both_games_from_a_direct_install_and_reads_each_wtf() {
+        let root = std::env::temp_dir().join(format!("unbored-both-games-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for folder in ["_retail_", "_forever_"] {
+            let install = root.join(folder);
+            let saved = install.join("WTF/Account/111#1/Ruleset Name/Hero/SavedVariables");
+            fs::create_dir_all(&saved).unwrap();
+            fs::write(install.join("Wow.exe"), b"").unwrap();
+            fs::write(saved.join("Unbored.lua"), "UnboredCharDB = {}").unwrap();
+        }
+        let found = find_game_dirs(&[root.join("_retail_"), root.clone()]);
+        assert_eq!(found.len(), 2);
+        let forever = found
+            .iter()
+            .find(|path| path.ends_with("_forever_"))
+            .unwrap();
+        let files = character_saved_variables(forever, None);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].game, "forever");
+        assert_eq!(files[0].realm, "Ruleset Name");
+        assert_eq!(game_for_dir(&root.join("_retail_")), "retail");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn finds_retail_and_lists_accounts() {
         let root = std::env::temp_dir().join(format!("unbored-wow-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -218,7 +253,7 @@ mod tests {
         .unwrap();
         fs::create_dir_all(retail.join("WTF/Account/222222#1/SavedVariables")).unwrap();
 
-        let found = find_retail_dirs(&[install.clone(), retail.clone()]);
+        let found = find_game_dirs(&[install.clone(), retail.clone()]);
         assert_eq!(found.len(), 1);
         assert!(found[0].ends_with("_retail_"));
         assert_eq!(

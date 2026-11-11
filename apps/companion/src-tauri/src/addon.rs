@@ -383,25 +383,28 @@ mod tests {
         }
         let root = std::env::temp_dir().join(format!("unbored-zip-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        let retail = root.join("_retail_");
-        fs::create_dir_all(&retail).unwrap();
-        let stale = retail.join("Interface/AddOns/Unbored/Old.lua");
-        fs::create_dir_all(stale.parent().unwrap()).unwrap();
-        fs::write(&stale, "old").unwrap();
-        install_addon_zip(cursor.get_ref(), &retail).unwrap();
-        let toc = fs::read_to_string(retail.join("Interface/AddOns/Unbored/Unbored.toc")).unwrap();
-        assert!(toc.contains("120105"));
-        assert_eq!(installed_version(&retail).as_deref(), Some("0.3.0"));
-        assert!(retail
-            .join("Interface/AddOns/Unbored/Core/Namespace.lua")
-            .is_file());
-        assert!(!stale.exists());
-        assert!(!retail.join("Interface/AddOns/Unbored.new").exists());
-        assert!(!retail.join("Interface/AddOns/Unbored.old").exists());
-        assert!(install_addon_zip(b"not a zip", &retail).is_err());
-        assert!(retail
-            .join("Interface/AddOns/Unbored/Unbored.toc")
-            .is_file());
+        for folder in ["_retail_", "_forever_"] {
+            let retail = root.join(folder);
+            fs::create_dir_all(&retail).unwrap();
+            let stale = retail.join("Interface/AddOns/Unbored/Old.lua");
+            fs::create_dir_all(stale.parent().unwrap()).unwrap();
+            fs::write(&stale, "old").unwrap();
+            install_addon_zip(cursor.get_ref(), &retail).unwrap();
+            let toc =
+                fs::read_to_string(retail.join("Interface/AddOns/Unbored/Unbored.toc")).unwrap();
+            assert!(toc.contains("120105"));
+            assert_eq!(installed_version(&retail).as_deref(), Some("0.3.0"));
+            assert!(retail
+                .join("Interface/AddOns/Unbored/Core/Namespace.lua")
+                .is_file());
+            assert!(!stale.exists());
+            assert!(!retail.join("Interface/AddOns/Unbored.new").exists());
+            assert!(!retail.join("Interface/AddOns/Unbored.old").exists());
+            assert!(install_addon_zip(b"not a zip", &retail).is_err());
+            assert!(retail
+                .join("Interface/AddOns/Unbored/Unbored.toc")
+                .is_file());
+        }
         let _ = fs::remove_dir_all(&root);
     }
 

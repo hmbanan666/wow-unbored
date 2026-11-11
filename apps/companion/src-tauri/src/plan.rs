@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const HELPER_TOC: &str = "\
-## Interface: 120105, 120100
+## Interface: 120107, 120105, 120100, 16001
 ## Title: Unbored Plan
 ## Notes: Plans, answers and item tips from Unbored Companion. Bory reads them when you log in or press Refresh.
 ## Author: Unbored contributors
