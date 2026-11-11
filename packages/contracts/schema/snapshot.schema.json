@@ -8,6 +8,7 @@
   "required": ["schema", "account", "character", "sections"],
   "properties": {
     "schema": { "const": 2 },
+    "game": { "enum": ["retail", "forever"], "default": "retail" },
     "account": { "type": "string", "minLength": 1 },
     "accountLegacy": {
       "type": "string",

@@ -39,7 +39,7 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
   const now = at(2026, 11, 1);
   db.exec(`
     INSERT INTO accounts VALUES ('A', 'Brozin#1', ${now - 99}, ${now}, '{"z":1,"a":[1,2,{"y":null,"b":"ы"}]}');
-    INSERT INTO characters VALUES ('c1', 'A', 'Brozin', 'Gordunni', 'MAGE', 80, ${now}, ${now - 5}, NULL, 'd1');
+    INSERT INTO characters (id, account_id, name, realm, class, level, last_seen, saved_at, dropped_json, device_id) VALUES ('c1', 'A', 'Brozin', 'Gordunni', 'MAGE', 80, ${now}, ${now - 5}, NULL, 'd1');
     INSERT INTO sections_latest VALUES ('char', 'c1', 'bags', 3, 'h1', ${now}, ${now}, ${now}, 'addon', 0, 42,
       '{"items":[{"id":1,"n":2.5}],"big":1e3}');
     INSERT INTO section_history (id, owner_kind, owner_id, section, at, saved_at, hash, kind, body_json)

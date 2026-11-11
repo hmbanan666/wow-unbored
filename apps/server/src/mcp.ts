@@ -246,11 +246,18 @@ export function createMcpServer(
                 throw new Error("Only the Request's Account is available.");
               scoped.account = request.account;
             }
+            if (spec.inputSchema && "game" in spec.inputSchema) {
+              if (scoped.game !== undefined && scoped.game !== (request.game ?? "retail"))
+                throw new Error("Only the Request's Game is available.");
+              scoped.game = request.game ?? "retail";
+            }
             if (scoped.character !== undefined || scoped.realm !== undefined) {
               const matches = (name: string, realm: string) =>
                 (scoped.character === undefined || scoped.character === name) &&
                 (scoped.realm === undefined || scoped.realm === realm);
-              const characters = await store.data.characters();
+              const characters = (await store.data.characters()).filter(
+                (row) => row.game === (request.game ?? "retail"),
+              );
               const own = characters.some(
                 (row) => row.accountId === request.account && matches(row.name, row.realm),
               );
@@ -265,6 +272,8 @@ export function createMcpServer(
               if (!own && !requestOnly)
                 throw new Error("That Character is not on the Request's Account.");
             }
+            if (name === "put_item_advice" && request.game === "forever")
+              throw new Error("Personal item advice is not available for Forever yet.");
             if (
               name === "put_item_advice" &&
               (scoped.character !== request.character || scoped.realm !== request.realm)
@@ -278,7 +287,7 @@ export function createMcpServer(
               });
             if (name === "get_current_plan") {
               const stored = request.account
-                ? await store.latestPlanForAccount(request.account)
+                ? await store.latestPlanForAccount(request.account, request.game)
                 : undefined;
               return text(
                 stored
@@ -688,6 +697,7 @@ export function createMcpServer(
       description:
         'The latest player state from the game, assembled from the Game data snapshot Sections (and the 0.6 profile upload for older addons; an empty value never overwrites a known one): context (location, level, class, spec, ilvl, gold, hearth, tracked quests, active plan), professions with skill levels, equipped items, bags, the last seen bank, reagent bank and warband bank (itemID and count), currencies, collections (mounts, pets, toys, achievement points), renown, recent sessions (start, stop, zones), recent finished or skipped steps, and, from addons 0.7 and older, unmatchedItems (item ids Bory had no advice for; from 0.8 they are entries with kind "advice" in the unresolvedIds Section of get_game_data). Read it before planning so you need not ask for anything. Pass character (and realm) for one character. Pass account (from list_requests or the accounts list) to get every character of that Account: use it for alt routing, e.g. an herb on one character that an Alchemist alt needs. Without arguments you get the most recently updated character, the list of known characters, and the accounts. savedAt is when the game wrote it. sections lists which Sections it was built from. For quest, achievement, mount, toy, pet or recipe ids use check_ids; for raw Sections use get_game_data.',
       inputSchema: {
+        game: z.enum(["retail", "forever"]).optional(),
         character: z.string().max(80).optional().describe("Character name, as in list_requests."),
         realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
         account: z
@@ -699,14 +709,14 @@ export function createMcpServer(
           ),
       },
     },
-    async ({ character, realm, account }) => {
+    async ({ character, realm, account, game }) => {
       if (account) {
-        const characters = await store.profilesForAccount(account);
+        const characters = await store.profilesForAccount(account, game ?? "retail");
         if (characters.length === 0)
           return failure(new Error("No characters on that account yet."));
         return text({ account: characters[0]!.account, characters });
       }
-      const profile = await store.profileFor(character || undefined, realm || undefined);
+      const profile = await store.profileFor(character || undefined, realm || undefined, game);
       if (!profile)
         return failure(
           new Error("No profile yet. The companion uploads one after the next reload."),
@@ -726,6 +736,7 @@ export function createMcpServer(
       description:
         "Dated history the server keeps per character, newest first: request (what the player asked, with its context), answer (your reply), plan (a plan given, with its steps), failed (a request you failed), progress (steps done, skipped, remaining), profile (a summary of each profile upload: level, ilvl, gold, zone, bag item count, collections, professions), advice (a put_item_advice batch), and win (something a plan promised that game data later showed obtained: ref like mount:ID, body with planId, requestId, kind, id, token, planTitle, category; see list_wins). path_completion records a Character reaching all required goals of a published Path or Collection version (ref is the content version row; body has kind, slug, locale, version, title, done and total). What changed in the game data itself (new quests done, mounts, item counts, gold) is in get_data_changes. Pass character (and realm) for one character, or account for every character of that Account. Use it to avoid repeating yourself, to see what the player liked or skipped, and to show progress over time. includeSnapshots adds the full profile snapshots.",
       inputSchema: {
+        game: z.enum(["retail", "forever"]).optional(),
         character: z.string().max(80).optional(),
         realm: z.string().max(80).optional(),
         account: z
@@ -742,8 +753,9 @@ export function createMcpServer(
         includeSnapshots: z.boolean().optional().describe("Add full profile snapshots (up to 10)."),
       },
     },
-    async ({ character, realm, account, kinds, since, limit, includeSnapshots }) => {
+    async ({ character, realm, account, game, kinds, since, limit, includeSnapshots }) => {
       const filter = {
+        game: game ?? "retail",
         character: character || undefined,
         realm: realm || undefined,
         account: account || undefined,
@@ -765,6 +777,7 @@ export function createMcpServer(
 
   const data = store.data;
   const pickCharacters = async (input: {
+    game?: "retail" | "forever";
     account?: string;
     character?: string;
     realm?: string;
@@ -772,12 +785,14 @@ export function createMcpServer(
     let rows: CharacterRow[] = input.account
       ? await data.characters(input.account)
       : await data.characters();
+    rows = rows.filter((row) => row.game === (input.game ?? "retail"));
     if (input.character) rows = rows.filter((row) => row.name === input.character);
     if (input.realm) rows = rows.filter((row) => row.realm === input.realm);
     if (!input.account && !input.character) rows = rows.slice(0, 1);
     return rows;
   };
   const whoSchema = {
+    game: z.enum(["retail", "forever"]).optional(),
     account: z.string().max(80).optional().describe("Account key from list_requests."),
     character: z.string().max(80).optional().describe("Character name."),
     realm: z.string().max(80).optional().describe("Realm, when the name is on several realms."),
@@ -1045,9 +1060,9 @@ export function createMcpServer(
         expand: z.boolean().optional().describe("Unpack id sets (capped)."),
       },
     },
-    async ({ account, character, realm, sections, expand }) => {
+    async ({ game, account, character, realm, sections, expand }) => {
       await settle(account);
-      const row = (await pickCharacters({ account, character, realm }))[0];
+      const row = (await pickCharacters({ game, account, character, realm }))[0];
       if (!row) return failure(new Error("No game data for that character yet."));
       const all = await data.sectionsFor(row);
       const out: Record<string, unknown> = {};
@@ -1063,6 +1078,7 @@ export function createMcpServer(
         };
       }
       return text({
+        game: row.game,
         character: row.name,
         realm: row.realm,
         account: row.accountId,
@@ -1084,12 +1100,15 @@ export function createMcpServer(
         ...whoSchema,
       },
     },
-    async ({ kind, ids, account, character, realm }) => {
+    async ({ kind, ids, game, account, character, realm }) => {
       await settle(account);
-      const rows = await pickCharacters({ account, character, realm });
+      const rows = await pickCharacters({ game, account, character, realm });
       if (rows.length === 0) return failure(new Error("No game data for that player yet."));
       const first = rows[0]!;
-      const targets = character || !first.accountId ? rows : await data.characters(first.accountId);
+      const targets =
+        character || !first.accountId
+          ? rows
+          : (await data.characters(first.accountId)).filter((row) => row.game === first.game);
       return text(await data.checkIds(kind, ids, targets));
     },
   );
@@ -1107,12 +1126,18 @@ export function createMcpServer(
         limit: z.number().int().min(1).max(200).optional().describe("Default 50."),
       },
     },
-    async ({ account, character, realm, since, sections, limit }) => {
-      const rows = await pickCharacters({ account, character, realm });
+    async ({ game, account, character, realm, since, sections, limit }) => {
+      const rows = await pickCharacters({ game, account, character, realm });
       if (rows.length === 0) return failure(new Error("No game data for that player yet."));
       const owners = [
         ...rows.map((row) => ({ kind: "char" as const, id: row.id })),
-        ...[...new Set(rows.map((row) => row.accountId).filter(Boolean))].map((id) => ({
+        ...[
+          ...new Set(
+            rows
+              .filter((row) => row.accountId)
+              .map((row) => (row.game === "forever" ? `forever/${row.accountId}` : row.accountId)),
+          ),
+        ].map((id) => ({
           kind: "account" as const,
           id,
         })),

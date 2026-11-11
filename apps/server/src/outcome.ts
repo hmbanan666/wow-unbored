@@ -1,4 +1,4 @@
-import type { DataStore, SectionRow } from "./data.ts";
+import { accountSectionOwner, type DataStore, type SectionRow } from "./data.ts";
 import {
   isPackedIdSet,
   unpackIds,
@@ -29,18 +29,30 @@ export function requireOutcome(raw: unknown): PlanOutcome {
 export async function checkOutcome(
   raw: unknown,
   data: DataStore,
-  who?: { account: string; character: string; realm: string; context?: PlayerContext | null },
+  who?: {
+    game?: "retail" | "forever";
+    account: string;
+    character: string;
+    realm: string;
+    context?: PlayerContext | null;
+  },
 ): Promise<string[]> {
   const outcome = requireOutcome(raw);
   const character = who
     ? (await data.characters(who.account)).find(
         (row) =>
-          row.accountId === who.account && row.name === who.character && row.realm === who.realm,
+          row.game === (who.game ?? "retail") &&
+          row.accountId === who.account &&
+          row.name === who.character &&
+          row.realm === who.realm,
       )
     : await data.character();
   const sections = character ? await data.sectionsFor(character) : new Map<string, SectionRow>();
   if (!character && who?.account)
-    for (const section of await data.sections("account", who.account))
+    for (const section of await data.sections(
+      "account",
+      accountSectionOwner(who.account, who.game ?? "retail"),
+    ))
       sections.set(section.section, section);
   const body = (name: string) => sections.get(name)?.body;
   const rows = (value: unknown): Record<string, unknown>[] =>

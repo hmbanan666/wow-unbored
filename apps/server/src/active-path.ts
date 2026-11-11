@@ -36,7 +36,7 @@ export class ActivePaths {
 
   private async character(who: Character) {
     const character = (await this.data.characters(who.account)).find(
-      (row) => row.name === who.character && row.realm === who.realm,
+      (row) => row.game === "retail" && row.name === who.character && row.realm === who.realm,
     );
     if (!character) throw new ActivePathError("No game data for that Character on this Account.");
     return character;
@@ -53,7 +53,7 @@ export class ActivePaths {
 
   /** Delivery may still hold a Character row after Forget my data removed it. */
   async forCharacter(character: CharacterRow) {
-    if (!this.db.pg) return null;
+    if (!this.db.pg || character.game !== "retail") return null;
     return this.db.tx(async () => {
       await this.db.lockKey(`account:${character.accountId}`);
       const selected = await this.db.get<Selection>(

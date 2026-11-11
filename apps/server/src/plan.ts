@@ -1020,6 +1020,7 @@ export function encodeUnb1(plan: Plan): string {
 }
 
 export type ProgressBody = {
+  game?: "retail" | "forever";
   v: 1;
   kind: "progress";
   mode: string | null;
@@ -1036,6 +1037,7 @@ export type ProgressBody = {
 export type Stamp = { id: string; at: number | null };
 
 export type ProgressPost = {
+  game?: "retail" | "forever";
   account: string;
   realm: string;
   character: string;
@@ -1283,6 +1285,9 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
     throw new PlanError("The request must be a JSON object.");
   }
   const body = raw as Record<string, unknown>;
+  if (body.game !== undefined && body.game !== "retail" && body.game !== "forever") {
+    throw new PlanError("game must be retail or forever.");
+  }
   const id = typeof body.id === "string" ? body.id.trim() : "";
   if (!/^[A-Za-z0-9:._-]{1,80}$/.test(id)) {
     throw new PlanError(
@@ -1339,6 +1344,7 @@ export function cleanPlanRequest(raw: unknown): PlanRequestInput {
   const suggestionId = optionalText(body.suggestionId, "suggestionId", 120);
   const suggestion = cleanSuggestion(body.suggestion);
   return {
+    ...(body.game ? { game: body.game } : {}),
     id,
     type,
     character,
@@ -1363,6 +1369,9 @@ export function cleanProgress(raw: unknown): ProgressPost {
     throw new PlanError("Progress must be a JSON object.");
   }
   const body = raw as Record<string, unknown>;
+  if (body.game !== undefined && body.game !== "retail" && body.game !== "forever") {
+    throw new PlanError("game must be retail or forever.");
+  }
   const account = typeof body.account === "string" ? body.account : "";
   const realm = typeof body.realm === "string" ? body.realm : "";
   const character = typeof body.character === "string" ? body.character : "";
@@ -1417,11 +1426,13 @@ export function cleanProgress(raw: unknown): ProgressPost {
     return item;
   });
   const out: ProgressPost = {
+    ...(body.game ? { game: body.game } : {}),
     account,
     realm,
     character,
     savedAt,
     progress: {
+      ...(body.game ? { game: body.game } : {}),
       v: 1,
       kind: "progress",
       mode,

@@ -825,3 +825,191 @@ test("advice carries the Account digest: each character's Alts with faction and 
     close();
   }
 });
+
+test("Forever snapshots keep a separate character identity and catalog game", async () => {
+  const { app, store, close } = build();
+  try {
+    assert.equal((await post(app, fixture)).status, 200);
+    const forever = JSON.parse(
+      readFileSync(
+        new URL("../../../packages/contracts/fixtures/snapshot-forever.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    assert.equal((await post(app, forever)).status, 200);
+    const rows = await store.data.characters();
+    assert.equal(rows.length, 2);
+    assert.equal(
+      rows.find((row) => row.game === "retail")?.id,
+      `${fixture.realm}/${fixture.character}`,
+    );
+    assert.equal(
+      rows.find((row) => row.game === "forever")?.id,
+      `forever/${fixture.realm}/${fixture.character}`,
+    );
+    const retail = await store.data.character(fixture.character, fixture.realm);
+    const foreverRow = await store.data.character(fixture.character, fixture.realm, "forever");
+    assert.equal(retail?.level, 80);
+    assert.equal(foreverRow?.level, 23);
+    assert.equal((await store.data.sectionsFor(foreverRow!)).has("pets"), false);
+    const history = await store.history({
+      character: fixture.character,
+      realm: fixture.realm,
+      game: "forever",
+      limit: 10,
+    });
+    assert.equal(history.length, 1);
+    assert.equal(history[0]?.game, "forever");
+    const catalog = await store.data.catalog();
+    assert.deepEqual(catalog.accounts[0].characters.map((row) => row.game).sort(), [
+      "forever",
+      "retail",
+    ]);
+    const exposed = await mcpCall(app, "data_catalog", {});
+    assert.deepEqual(exposed.value.accounts, JSON.parse(JSON.stringify(catalog.accounts)));
+    const owner = await app.request("/owner/data", {
+      headers: { authorization: `Bearer ${planner}` },
+    });
+    assert.deepEqual(await json(owner), exposed.value);
+    const readForever = await mcpCall(app, "get_game_data", {
+      character: fixture.character,
+      realm: fixture.realm,
+      game: "forever",
+    });
+    assert.equal(readForever.value.game, "forever");
+    const profile = await mcpCall(app, "get_player_profile", {
+      character: fixture.character,
+      realm: fixture.realm,
+      game: "forever",
+    });
+    const value = profile.value.profile as {
+      game: string;
+      profile: { context: { level: number } };
+    };
+    assert.equal(value.game, "forever");
+    assert.equal(value.profile.context.level, 23);
+    assert.equal(
+      await store.readyNow({ character: fixture.character, realm: fixture.realm, game: "forever" }),
+      undefined,
+    );
+    assert.equal((await post(app, { ...fixture, game: "classic" })).status, 400);
+  } finally {
+    close();
+  }
+});
+
+test("Account Sections from both games stay separate and Forget erases both", async () => {
+  const { app, store, close } = build();
+  try {
+    await post(app, fixture);
+    await post(app, {
+      ...fixture,
+      game: "forever",
+      sections: {
+        mounts: { scope: "account", v: 1, body: { ids: packIds([42]), count: 1 } },
+      },
+    });
+    const retail = await store.data.character(fixture.character, fixture.realm);
+    const forever = await store.data.character(fixture.character, fixture.realm, "forever");
+    assert.equal((await store.data.sectionsFor(retail!)).get("mounts")?.body.count, 6);
+    assert.equal((await store.data.sectionsFor(forever!)).get("mounts")?.body.count, 1);
+    await store.deleteAccountData("111111");
+    assert.deepEqual(await store.data.characters(), []);
+    assert.deepEqual(await store.data.sections("account", "forever/111111"), []);
+  } finally {
+    close();
+  }
+});
+
+test("Requests and their history retain game and latest delivery stays in that game", async () => {
+  const { app, store, close } = build();
+  try {
+    for (const game of ["retail", "forever"]) {
+      const response = await app.request("/v1/requests", {
+        method: "POST",
+        headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          id: `same-name-${game}`,
+          game,
+          type: "plan",
+          mode: "quests",
+          character: "Mira",
+          realm: "Silvermoon",
+          account: "111111#1",
+        }),
+      });
+      assert.equal(response.status, 201);
+      assert.equal((await json(response)).game, game);
+    }
+    const collision = await app.request("/v1/requests", {
+      method: "POST",
+      headers: { authorization: `Bearer ${companion}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "same-name-retail",
+        game: "forever",
+        type: "plan",
+        mode: "quests",
+        character: "Mira",
+        realm: "Silvermoon",
+      }),
+    });
+    assert.equal(collision.status, 400);
+    const retail = await app.request("/v1/requests/latest", {
+      headers: { authorization: `Bearer ${companion}` },
+    });
+    const forever = await app.request("/v1/requests/latest?game=forever", {
+      headers: { authorization: `Bearer ${companion}` },
+    });
+    assert.equal((await json(retail)).id, "same-name-retail");
+    assert.equal((await json(forever)).id, "same-name-forever");
+    const plan = {
+      v: 1,
+      kind: "plan",
+      mode: "custom",
+      tasks: [{ id: "walk", title: "Take a walk" }],
+    };
+    const foreverPlan = await store.putPlan(plan, 100, {}, "same-name-forever");
+    const directPlan = await store.putPlan(plan, 101);
+    const retailPlanResponse = await app.request("/v1/plan", {
+      headers: { authorization: `Bearer ${companion}` },
+    });
+    const foreverPlanResponse = await app.request("/v1/plan?game=forever", {
+      headers: { authorization: `Bearer ${companion}` },
+    });
+    assert.equal((await json(retailPlanResponse)).id, directPlan.id);
+    assert.equal((await json(foreverPlanResponse)).id, foreverPlan.id);
+    const history = await store.history({
+      character: "Mira",
+      realm: "Silvermoon",
+      game: "forever",
+      limit: 10,
+    });
+    assert.equal(history.length, 1);
+    assert.equal(history[0]?.game, "forever");
+  } finally {
+    close();
+  }
+});
+
+test.skipIf(onPostgres)("existing SQLite characters and history migrate to Retail", async () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-game-migration-"));
+  const legacy = new DatabaseSync(sqlitePath(dataDir));
+  legacy.exec(`
+    CREATE TABLE characters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, name TEXT NOT NULL,
+      realm TEXT NOT NULL, class TEXT, level INTEGER, last_seen INTEGER NOT NULL,
+      saved_at INTEGER, dropped_json TEXT, device_id TEXT);
+    INSERT INTO characters VALUES ('Silvermoon/Mira', '111111', 'Mira', 'Silvermoon', 'MAGE', 80, 100, 100, NULL, NULL);
+    CREATE TABLE history (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, account TEXT NOT NULL DEFAULT '',
+      character_name TEXT NOT NULL, realm TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT, body_json TEXT NOT NULL);
+    INSERT INTO history VALUES (1, 100, '111111', 'Mira', 'Silvermoon', 'profile', NULL, '{}');
+  `);
+  legacy.close();
+  const { store, close } = build(dataDir);
+  try {
+    assert.equal((await store.data.character("Mira", "Silvermoon"))?.game, "retail");
+    assert.equal(await store.data.character("Mira", "Silvermoon", "forever"), undefined);
+    assert.equal((await store.history({ limit: 10 }))[0]?.game, "retail");
+  } finally {
+    close();
+  }
+});

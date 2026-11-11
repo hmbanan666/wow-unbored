@@ -56,9 +56,9 @@ export function registerWebPaths(app: Hono, store: Store, origin: string) {
       if (Object.keys(c.req.query()).length) return c.json({ error: "invalid_query" }, 400);
       const progress = await store.pathProgress({ account });
       const characters = [];
-      for (const { character, realm, paths } of progress) {
+      for (const { game, character, realm, paths } of progress) {
         const active = await store.activePaths.get({ account, character, realm });
-        characters.push({ character, realm, paths, active: active.path });
+        characters.push({ game, character, realm, paths, active: active.path });
       }
       return c.json({ characters });
     }),
@@ -80,7 +80,7 @@ export function registerWebPaths(app: Hono, store: Store, origin: string) {
       const { character, realm, path, expectedActive } = parsed.data;
       if (
         !(await store.data.characters(account)).some(
-          (row) => row.name === character && row.realm === realm,
+          (row) => row.game === "retail" && row.name === character && row.realm === realm,
         )
       )
         return c.json({ error: "character_not_found" }, 404);

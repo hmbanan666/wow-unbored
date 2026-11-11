@@ -15,7 +15,7 @@ export async function readRequestPath(
   game: GameDb,
 ) {
   const reference = request.suggestion?.path;
-  if (!reference) return null;
+  if (!reference || request.game === "forever") return null;
   const unavailable = (reason: string) => ({ reference, nextGoals: [], reason });
   if (!content.available) return unavailable("Path Plans need the Postgres Server.");
   const path = await content.read(
@@ -28,7 +28,10 @@ export async function readRequestPath(
     return unavailable("The picked Path version is not a publication. Refresh the Path pick.");
   const character = request.account
     ? (await data.characters(request.account)).find(
-        (row) => row.name === request.character && row.realm === request.realm,
+        (row) =>
+          row.game === (request.game ?? "retail") &&
+          row.name === request.character &&
+          row.realm === request.realm,
       )
     : undefined;
   if (!character)

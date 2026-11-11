@@ -140,7 +140,7 @@ export class UploadInbox {
        RETURNING id`,
       account,
       input.deviceId,
-      characterId(input.snapshot.character, input.snapshot.realm),
+      characterId(input.snapshot.character, input.snapshot.realm, input.snapshot.game),
       hash,
       priority,
       body,

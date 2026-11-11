@@ -9,6 +9,7 @@ import {
   unpackIds,
   unpackRows,
   type SectionScope,
+  type Game,
   type SnapshotIngestResult,
 } from "@unbored/contracts";
 
@@ -89,9 +90,25 @@ export type MissingSection = {
   hint?: string;
 };
 
-export function expectedSections(scope: SectionScope): string[] {
+const RETAIL_SECTIONS = new Set([
+  "talents",
+  "reagentBank",
+  "warband",
+  "pets",
+  "toys",
+  "transmog",
+  "mplus",
+  "vault",
+]);
+
+export function expectedSections(scope: SectionScope, game: Game = "retail"): string[] {
   return Object.entries(KNOWN_SECTIONS)
-    .filter(([name, known]) => known.scope === scope && !NOT_EXPECTED.has(name))
+    .filter(
+      ([name, known]) =>
+        known.scope === scope &&
+        !NOT_EXPECTED.has(name) &&
+        (game === "retail" || !RETAIL_SECTIONS.has(name)),
+    )
     .map(([name]) => name);
 }
 
@@ -154,6 +171,7 @@ export type DigestAlt = {
 };
 
 export type CharacterRow = {
+  game: Game;
   id: string;
   accountId: string;
   name: string;
@@ -187,6 +205,7 @@ export type HistoryRow = {
 };
 
 export type SnapshotResult = SnapshotIngestResult & {
+  game: Game;
   account: string;
   character: string;
   realm: string;
@@ -212,8 +231,13 @@ export function accountId(account: string): string {
   return account.trim().split("#")[0] ?? "";
 }
 
-export function characterId(name: string, realm: string): string {
-  return `${realm}/${name}`;
+/** Account identity stays shared; game-owned Sections cannot overwrite one another. */
+export function accountSectionOwner(account: string, game: Game = "retail"): string {
+  return game === "forever" ? `forever/${account}` : account;
+}
+
+export function characterId(name: string, realm: string, game: Game = "retail"): string {
+  return `${game === "forever" ? "forever/" : ""}${realm}/${name}`;
 }
 
 /** Every Packed id set in a body, by dotted path (`ids`, `byProfession.171.learned`). */
@@ -364,6 +388,7 @@ function cleanName(value: unknown, field: string, required: boolean): string {
 }
 
 export type CleanSnapshot = {
+  game: Game;
   account: string;
   character: string;
   realm: string;
@@ -421,6 +446,7 @@ export function cleanSnapshot(raw: unknown): CleanSnapshot {
     if (isObject(value)) dropped[scope] = value;
   }
   return {
+    game: body.game ?? "retail",
     account,
     character,
     realm,
@@ -448,6 +474,7 @@ type SectionDbRow = {
 };
 
 type CharacterDbRow = {
+  game: Game;
   id: string;
   account_id: string;
   name: string;
@@ -501,6 +528,7 @@ function sectionFromRow(row: SectionDbRow): SectionRow {
 function characterFromRow(row: CharacterDbRow): CharacterRow {
   return {
     id: row.id,
+    game: row.game,
     accountId: row.account_id,
     name: row.name,
     realm: row.realm,
@@ -645,6 +673,22 @@ export class DataStore {
     this.log = log;
     if (db instanceof SqliteDb) {
       db.raw.exec(SQLITE_SCHEMA);
+      if (
+        !db.raw
+          .prepare("PRAGMA table_info(characters)")
+          .all()
+          .some((row) => row.name === "game")
+      ) {
+        db.raw.exec(
+          "ALTER TABLE characters ADD COLUMN game TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'))",
+        );
+      }
+      const historyColumns = db.raw.prepare("PRAGMA table_info(history)").all();
+      if (historyColumns.length && !historyColumns.some((row) => row.name === "game")) {
+        db.raw.exec(
+          "ALTER TABLE history ADD COLUMN game TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'))",
+        );
+      }
       // SQLite migrations use data_meta; Postgres uses numbered SQL files.
       if (!db.raw.prepare("SELECT 1 FROM data_meta WHERE key = 'section_freshness'").get()) {
         db.raw.exec(`BEGIN;
@@ -684,6 +728,7 @@ export class DataStore {
   }
 
   private async touchCharacter(input: {
+    game?: Game;
     account: string;
     name: string;
     realm: string;
@@ -692,8 +737,8 @@ export class DataStore {
     dropped?: Raw;
     deviceId?: string;
   }): Promise<string> {
-    const id = characterId(input.name, input.realm);
-    const previous = await this.character(input.name, input.realm);
+    const id = characterId(input.name, input.realm, input.game);
+    const previous = await this.character(input.name, input.realm, input.game);
     if (previous?.savedAt && input.savedAt && input.savedAt < previous.savedAt) {
       // A late upload is still a contact, but cannot move this Character back
       // to an old Account/Device or restore obsolete dropped-Section metadata.
@@ -705,8 +750,8 @@ export class DataStore {
       return id;
     }
     await this.db.run(
-      `INSERT INTO characters (id, account_id, name, realm, last_seen, saved_at, dropped_json, device_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO characters (id, account_id, name, realm, last_seen, saved_at, dropped_json, device_id, game)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          account_id = CASE WHEN excluded.account_id = '' THEN characters.account_id ELSE excluded.account_id END,
          last_seen = ${this.db.greatest("characters.last_seen", "excluded.last_seen")},
@@ -721,6 +766,7 @@ export class DataStore {
       input.savedAt,
       input.dropped ? JSON.stringify(input.dropped) : null,
       input.deviceId ?? null,
+      input.game ?? "retail",
     );
     return id;
   }
@@ -942,6 +988,7 @@ export class DataStore {
       const account = await this.touchAccount(snapshot.account, now, snapshot.dropped.account);
       const character = await this.touchCharacter({
         account,
+        game: snapshot.game,
         name: snapshot.character,
         realm: snapshot.realm,
         now,
@@ -950,6 +997,7 @@ export class DataStore {
         deviceId,
       });
       const result: SnapshotResult = {
+        game: snapshot.game,
         account,
         character: snapshot.character,
         realm: snapshot.realm,
@@ -962,7 +1010,8 @@ export class DataStore {
       for (const section of snapshot.sections) {
         const outcome = await this.putSection({
           ownerKind: section.scope,
-          ownerId: section.scope === "account" ? account : character,
+          ownerId:
+            section.scope === "account" ? accountSectionOwner(account, snapshot.game) : character,
           name: section.name,
           v: section.v,
           at: section.at,
@@ -1159,15 +1208,17 @@ export class DataStore {
   /** One currency primary-key lookup for the Device's latest accepted Character save. */
   async latestCurrenciesForDevice(
     deviceId: string,
+    game: Game = "retail",
   ): Promise<Pick<SectionRow, "v" | "body"> | undefined> {
     const row = await this.db.get<{ v: number; body_json: unknown }>(
       `SELECT s.v, s.${this.db.body} AS body_json
-       FROM (SELECT id, saved_at FROM characters WHERE device_id = ?
+       FROM (SELECT id, saved_at FROM characters WHERE device_id = ? AND game = ?
              ORDER BY COALESCE(saved_at, last_seen) DESC, id LIMIT 1) c
        JOIN sections_latest s
          ON s.owner_kind = 'char' AND s.owner_id = c.id AND s.section = 'currencies'
        WHERE s.saved_at = c.saved_at`,
       deviceId,
+      game,
     );
     if (!row) return undefined;
     const body = fromJson<Raw>(row.body_json);
@@ -1212,20 +1263,26 @@ export class DataStore {
   }
 
   /** The named character (realm optional), or the most recently seen one. */
-  async character(name?: string, realm?: string): Promise<CharacterRow | undefined> {
+  async character(
+    name?: string,
+    realm?: string,
+    game: Game = "retail",
+  ): Promise<CharacterRow | undefined> {
     const order = `ORDER BY last_seen DESC, COALESCE(saved_at, 0) DESC LIMIT 1`;
     const row = name
       ? realm !== undefined
         ? await this.db.get<CharacterDbRow>(
-            `SELECT * FROM characters WHERE name = ? AND realm = ? ${order}`,
+            `SELECT * FROM characters WHERE name = ? AND realm = ? AND game = ? ${order}`,
             name,
             realm,
+            game,
           )
         : await this.db.get<CharacterDbRow>(
-            `SELECT * FROM characters WHERE name = ? ${order}`,
+            `SELECT * FROM characters WHERE name = ? AND game = ? ${order}`,
             name,
+            game,
           )
-      : await this.db.get<CharacterDbRow>(`SELECT * FROM characters ${order}`);
+      : await this.db.get<CharacterDbRow>(`SELECT * FROM characters WHERE game = ? ${order}`, game);
     return row ? characterFromRow(row) : undefined;
   }
 
@@ -1280,7 +1337,8 @@ export class DataStore {
   async sectionsFor(row: CharacterRow): Promise<Map<string, SectionRow>> {
     const out = new Map<string, SectionRow>();
     if (row.accountId)
-      for (const s of await this.sections("account", row.accountId)) out.set(s.section, s);
+      for (const s of await this.sections("account", accountSectionOwner(row.accountId, row.game)))
+        out.set(s.section, s);
     for (const s of await this.sections("char", row.id)) out.set(s.section, s);
     return out;
   }
@@ -1293,7 +1351,7 @@ export class DataStore {
   async accountAlts(row: CharacterRow, limit = MAX_DIGEST_ALTS): Promise<DigestAlt[]> {
     if (!row.accountId) return [];
     const others = (await this.characters(row.accountId))
-      .filter((other) => other.id !== row.id)
+      .filter((other) => other.id !== row.id && other.game === row.game)
       .slice(0, limit);
     const out: DigestAlt[] = [];
     for (const other of others) {
@@ -1328,8 +1386,13 @@ export class DataStore {
    */
   async holdings(row: CharacterRow, now = Math.floor(Date.now() / 1000)): Promise<Holdings> {
     if (!row.accountId) return { places: [], items: {} };
-    const characters = await this.characters(row.accountId);
-    const owners = [row.accountId, ...characters.map((other) => other.id)];
+    const characters = (await this.characters(row.accountId)).filter(
+      (other) => other.game === row.game,
+    );
+    const owners = [
+      accountSectionOwner(row.accountId, row.game),
+      ...characters.map((other) => other.id),
+    ];
     const stamp = (await this.db.get<{ at: number; n: number }>(
       `SELECT COALESCE(MAX(updated_at), 0) AS at, COUNT(*) AS n FROM sections_latest
        WHERE section IN ('bags', 'bank', 'reagentBank', 'warband')
@@ -1355,7 +1418,11 @@ export class DataStore {
         items: sections.flatMap(items),
       });
     }
-    const warband = await this.section("account", row.accountId, "warband");
+    const warband = await this.section(
+      "account",
+      accountSectionOwner(row.accountId, row.game),
+      "warband",
+    );
     if (warband)
       places.push({
         key: WARBAND_PLACE,
@@ -1386,10 +1453,16 @@ export class DataStore {
   }
 
   /** Expected Sections an owner does not have, each with why (D171). */
-  async missing(scope: SectionScope, ownerId: string, dropped: Raw | null, sharingOff: boolean) {
+  async missing(
+    scope: SectionScope,
+    ownerId: string,
+    dropped: Raw | null,
+    sharingOff: boolean,
+    game: Game = "retail",
+  ) {
     const present = new Set((await this.sections(scope, ownerId)).map((s) => s.section));
     const out: MissingSection[] = [];
-    for (const name of expectedSections(scope)) {
+    for (const name of expectedSections(scope, game)) {
       if (present.has(name)) continue;
       let reason: MissingReason = "never";
       if (dropped && isObject(dropped) && dropped[name] !== undefined) reason = "dropped";
@@ -1405,11 +1478,17 @@ export class DataStore {
   /** Missing Sections of a Character and of its Account. */
   async missingFor(row: CharacterRow): Promise<MissingSection[]> {
     const sharingOff = await this.sharingOff(row);
-    const out = await this.missing("char", row.id, row.dropped, sharingOff);
+    const out = await this.missing("char", row.id, row.dropped, sharingOff, row.game);
     if (row.accountId) {
       const account = await this.account(row.accountId);
       out.push(
-        ...(await this.missing("account", row.accountId, account?.dropped ?? null, sharingOff)),
+        ...(await this.missing(
+          "account",
+          accountSectionOwner(row.accountId, row.game),
+          account?.dropped ?? null,
+          sharingOff,
+          row.game,
+        )),
       );
     }
     return out;
@@ -1423,6 +1502,7 @@ export class DataStore {
     const context = isObject(legacy?.context) ? legacy.context : {};
     const professions = all.get("professions")?.body.list ?? legacy?.professions ?? null;
     return {
+      game: row.game,
       character: row.name,
       realm: row.realm,
       class: char.class ?? context.class ?? row.class,
@@ -1464,7 +1544,11 @@ export class DataStore {
     if (scope) {
       const accountIds = [...new Set(characters.map((row) => row.accountId).filter(Boolean))];
       const section = accountIds.length
-        ? await this.section("account", accountIds[0]!, scope.section)
+        ? await this.section(
+            "account",
+            accountSectionOwner(accountIds[0]!, characters[0]?.game),
+            scope.section,
+          )
         : undefined;
       const have = section ? pick(section.body[scope.key]) : [];
       out.account = section
@@ -1551,6 +1635,8 @@ export class DataStore {
     const character = async (row: CharacterRow) => {
       const sections = await this.sectionInfos("char", row.id);
       return {
+        id: row.id,
+        game: row.game,
         character: row.name,
         realm: row.realm,
         class: row.class,
@@ -1560,13 +1646,27 @@ export class DataStore {
         dropped: row.dropped,
         bytes: sections.reduce((sum, s) => sum + s.bytes, 0),
         sections,
-        expected: expectedSections("char"),
-        missing: await this.missing("char", row.id, row.dropped, await this.sharingOff(row)),
+        expected: expectedSections("char", row.game),
+        missing: await this.missing(
+          "char",
+          row.id,
+          row.dropped,
+          await this.sharingOff(row),
+          row.game,
+        ),
       };
     };
     const out = [];
     for (const row of accounts) {
-      const sections = await this.sectionInfos("account", row.id);
+      const sections = [
+        ...(await this.sectionInfos("account", row.id)).map((section) => ({
+          ...section,
+          game: "retail",
+        })),
+        ...(await this.sectionInfos("account", accountSectionOwner(row.id, "forever"))).map(
+          (section) => ({ ...section, game: "forever" }),
+        ),
+      ];
       const characters = await this.characters(row.id);
       let sharingOff = characters.length > 0;
       for (const other of characters) {
@@ -1608,6 +1708,7 @@ export class DataStore {
       const characters = (await this.characters(id)).map((row) => row.id);
       const owners: [string, string][] = [
         ["account", id],
+        ["account", accountSectionOwner(id, "forever")],
         ...characters.map((char) => ["char", char] as [string, string]),
       ];
       let sections = 0;
@@ -1701,6 +1802,7 @@ function profileViewOf(row: CharacterRow, all: Map<string, SectionRow>) {
   }
   const updatedAt = Math.max(0, ...[...all.values()].map((s) => s.updatedAt));
   return {
+    game: row.game,
     character: row.name,
     realm: row.realm,
     account: row.accountId,

@@ -59,6 +59,7 @@ function localCategory(source: string | null, mode: string | null): string | und
 }
 
 type ProgressBody = {
+  game?: "retail" | "forever";
   mode?: string | null;
   source?: string | null;
   generatedAt?: number;
@@ -109,7 +110,7 @@ export async function computeTaste(
   for (const row of progress) {
     if (!mine({ account: row.account, name: row.character, realm: row.realm })) continue;
     const body = parse<ProgressBody>(row.body_json);
-    if (!body) continue;
+    if (!body || body.game === "forever") continue;
     const ids = stepIds(body);
     const key =
       typeof body.generatedAt === "number"
@@ -143,7 +144,7 @@ export async function computeTaste(
     `SELECT r.account, r.character_name, r.realm, r.topic, r.mode, r.suggestion_json,
             p.generated_at, p.created_at AS plan_at, p.${db.body} AS plan_json
      FROM requests r LEFT JOIN plans p ON p.id = r.plan_id
-     WHERE r.type = 'plan' AND r.created_at >= ?
+     WHERE r.game = 'retail' AND r.type = 'plan' AND r.created_at >= ?
      ORDER BY r.created_at DESC, ${db.pg ? "r.id" : "r.rowid"} DESC`,
     since,
   );
@@ -194,7 +195,7 @@ export async function computeTaste(
     realm: string;
     body_json: unknown;
   }>(
-    `SELECT account, character_name, realm, ${db.body} AS body_json FROM history WHERE kind = 'win' AND at >= ?`,
+    `SELECT account, character_name, realm, ${db.body} AS body_json FROM history WHERE game = 'retail' AND kind = 'win' AND at >= ?`,
     since,
   );
   for (const win of wins) {
