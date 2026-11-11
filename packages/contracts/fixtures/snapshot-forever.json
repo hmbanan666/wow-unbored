@@ -19,6 +19,45 @@
         "level": 23,
         "class": "Mage"
       }
+    },
+    "professions": {
+      "scope": "char",
+      "v": 1,
+      "at": 1761830400,
+      "src": "login",
+      "hash": "d8fb47c40b8c1a629393b340463ed4692f5c5ac021b024b4ded977224f4c281e",
+      "body": {
+        "list": [
+          {
+            "skillLine": 171,
+            "name": "Alchemy",
+            "skill": 112,
+            "max": 150
+          }
+        ]
+      }
+    },
+    "recipes": {
+      "scope": "char",
+      "v": 1,
+      "at": 1761830400,
+      "src": "window",
+      "hash": "ccb0c66e108b213cbaf07de2633bf3cd7681354f72ef9e5c6108eb18d812a9e3",
+      "body": {
+        "byProfession": {
+          "171": {
+            "name": "Alchemy",
+            "learned": ["ids1", "2s,2,1,1"],
+            "difficulty": {
+              "orange": ["ids1", "2s"],
+              "yellow": ["ids1", "2u"],
+              "green": ["ids1", "2v"],
+              "grey": ["ids1", "2w"]
+            },
+            "seenAt": 1761830400
+          }
+        }
+      }
     }
   }
 }

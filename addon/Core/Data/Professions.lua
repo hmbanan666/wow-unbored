@@ -12,14 +12,19 @@ local function tradeSkillOpenForMe()
   if not api or not api.GetBaseProfessionInfo then
     return false
   end
+  if ns.Game == "forever" and (not S.IsOpen("recipes")
+    or type(api.IsTradeSkillLinked) ~= "function" or type(api.IsTradeSkillGuild) ~= "function"
+    or type(api.IsNPCCrafting) ~= "function") then
+    return false
+  end
   -- Another player's linked or guild list is not our data (D48).
-  if api.IsTradeSkillLinked and ns.Flag(call(api.IsTradeSkillLinked)) then
+  if api.IsTradeSkillLinked and ns.AsBoolean(call(api.IsTradeSkillLinked)) ~= false then
     return false
   end
-  if api.IsTradeSkillGuild and ns.Flag(call(api.IsTradeSkillGuild)) then
+  if api.IsTradeSkillGuild and ns.AsBoolean(call(api.IsTradeSkillGuild)) ~= false then
     return false
   end
-  if api.IsNPCCrafting and ns.Flag(call(api.IsNPCCrafting)) then
+  if api.IsNPCCrafting and ns.AsBoolean(call(api.IsNPCCrafting)) ~= false then
     return false
   end
   return true
@@ -30,9 +35,9 @@ local function openTiers()
   if not tradeSkillOpenForMe() or not api.GetChildProfessionInfos then
     return nil
   end
-  local base = call(api.GetBaseProfessionInfo)
+  local base = S.Clean(call(api.GetBaseProfessionInfo))
   local parent = type(base) == "table" and num(base.professionID) or nil
-  local children = call(api.GetChildProfessionInfos)
+  local children = S.Clean(call(api.GetChildProfessionInfos))
   if not parent or type(children) ~= "table" then
     return nil
   end
@@ -106,20 +111,29 @@ S.Register({
   events = { "TRADE_SKILL_LIST_UPDATE", "NEW_RECIPE_LEARNED" },
   read = function(previous)
     local api = C_TradeSkillUI
-    if not S.IsOpen("recipes") or not tradeSkillOpenForMe() or not api.GetAllRecipeIDs or not api.GetRecipeInfo then
+    if not S.IsOpen("recipes") or not tradeSkillOpenForMe() or not api.GetRecipeInfo then
       return nil
     end
-    local base = call(api.GetBaseProfessionInfo)
+    local base = S.Clean(call(api.GetBaseProfessionInfo))
     local professionID = type(base) == "table" and num(base.professionID) or nil
-    local ids = call(api.GetAllRecipeIDs)
-    if not professionID or type(ids) ~= "table" or #ids == 0 then
+    local enumerate = api.GetAllRecipeIDs or api.GetFilteredRecipeIDs
+    local ids = S.Clean(call(enumerate))
+    if not professionID or type(ids) ~= "table" then
       return nil
     end
     local learned = {}
+    local difficulty = { orange = {}, yellow = {}, green = {}, grey = {} }
+    local colours = { [0] = "orange", [1] = "yellow", [2] = "green", [3] = "grey" }
     for i = 1, #ids do
-      local info = call(api.GetRecipeInfo, ids[i])
-      if type(info) == "table" and info.learned == true then
-        learned[#learned + 1] = num(info.recipeID) or num(ids[i])
+      local id = num(ids[i])
+      local info = id and S.Clean(call(api.GetRecipeInfo, id))
+      -- An unavailable recipe read cannot establish a known count of zero.
+      if id and type(info) ~= "table" then return nil end
+      if type(info) == "table" and ns.AsBoolean(info.learned) == true then
+        local recipeID = num(info.recipeID) or id
+        learned[#learned + 1] = recipeID
+        local colour = colours[num(info.relativeDifficulty)]
+        if colour then difficulty[colour][#difficulty[colour] + 1] = recipeID end
       end
       if i % 50 == 0 then
         S.Yield()
@@ -131,9 +145,13 @@ S.Register({
         body.byProfession[key] = value
       end
     end
+    for colour, recipes in pairs(difficulty) do
+      difficulty[colour] = ns.Pack.Encode(recipes)
+    end
     body.byProfession[tostring(professionID)] = {
       name = str(base.professionName, 60),
       learned = ns.Pack.Encode(learned),
+      difficulty = difficulty,
       seenAt = ns.Now(),
     }
     return body

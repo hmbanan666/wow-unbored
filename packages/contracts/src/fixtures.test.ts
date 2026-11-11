@@ -121,7 +121,9 @@ test("Forever snapshot and old Retail snapshot both match the contract", () => {
   const forever = read("snapshot-forever.json");
   const parsed = snapshotBodySchema.parse(forever);
   expect(parsed.game).toBe("forever");
-  expect(sectionHash(parsed.sections.char.body)).toBe(parsed.sections.char.hash);
+  for (const section of Object.values(parsed.sections)) {
+    expect(sectionHash(section.body)).toBe(section.hash);
+  }
   expect(snapshotBodySchema.parse(read("snapshot.json")).game).toBeUndefined();
   expect(snapshotBodySchema.safeParse({ ...parsed, game: "classic" }).success).toBe(false);
 });

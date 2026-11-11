@@ -785,8 +785,8 @@ Unknown is never counted as an unfinished achievement or an open criterion.
 | `bank`, `reagentBank` | char | C_Container on the bank bags; `reagentBank` only where the client still has a reagent bank (retail folded it into the bank tabs in 11.2), so `data_catalog` does not expect it | while the bank is open | 20 KB |
 | `warband` | account | C_Container on the warband bank tabs | while the bank is open | 17 KB |
 | `currencies` | char | C_CurrencyInfo list (headers expanded, then restored) | login, CURRENCY_DISPLAY_UPDATE | 37 KB |
-| `professions` | char | GetProfessions, GetProfessionInfo | login, SKILL_LINES_CHANGED | |
-| `recipes` | char | C_TradeSkillUI.GetAllRecipeIDs, GetRecipeInfo (packed) | while a profession window is open | 5 KB |
+| `professions` | char | Retail: GetProfessions, GetProfessionInfo; Forever: guarded C_SkillInfo skill lines (primary/secondary categories) | login, settled SKILL_LINES_CHANGED and profession events | |
+| `recipes` | char | Both games: guarded C_TradeSkillUI.GetAllRecipeIDs, else GetFilteredRecipeIDs, learned-only GetRecipeInfo; learned ids and optional difficulty colour sets packed | while the player's own profession window is open | 5 KB |
 | `questsDone` | char | C_QuestLog.GetAllCompletedQuestIDs (packed) | login, QUEST_TURNED_IN | 52 KB |
 | `questLog` | char | C_QuestLog, GetQuestObjectives | QUEST_LOG_UPDATE and quest events | 16 KB |
 | `questLines` (v1) | char | C_CampaignInfo (InProgress or Stalled campaigns), C_QuestLine.GetQuestLineInfo for each log quest, GetAvailableQuestLines for the current map and the 3 most played maps; GetQuestLineQuests against IsQuestFlaggedCompleted gives `done`/`total`/`nextQuestID`. Up to 40 rows `{ questLineID, name, campaignID?, chapter?, mapID, x?, y?, done, total, nextQuestID?, flags }`, names in the client language | 20 s after the login pass (map requests 10 s before it), QUEST_TURNED_IN | ~4 KB |
@@ -1290,3 +1290,11 @@ shared source TOC but filters its packaged Interface line and upload metadata to
 Retail. A T0 client check therefore needs an archive of this branch's `addon/`
 source; the current release artifact does not advertise Forever. Changing that
 packaging/upload scope waits for T7.
+
+### Character professions (ADR 0095)
+
+`/my/<game>/<realm>/<name>` is owner-only and noindex, with encoded realm/name segments and the same live session as My page. It reads existing `professions.list` and `recipes.byProfession` Sections: `skillLine`, `name`, optional `skill`/`max`, and the count of `learned` ids. No catalog or migration is needed. Missing recipe observations stay unknown rather than zero.
+
+`recipes.byProfession[skillLine].difficulty` optionally holds `orange`, `yellow`, `green`, `grey` Packed id sets. `GetRecipeInfo.relativeDifficulty` values 0/1/2/3 map to those colours; unknown or secret values are omitted. Old Sections without difficulty remain valid. The filtered fallback respects current game filters and can undercount; no filters or skill headers are changed. T0 must verify collapsed skill headers, category ids 11/9, event timing and recipe API results. SelfCheck includes value-free Forever API probes, recipe probes only with the player's own profession open.
+
+API shape references: [skill lines](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_APIDocumentationGenerated/SkillInfoDocumentation.lua) and [recipe difficulty](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_APIDocumentationGenerated/TradeSkillUITypesDocumentation.lua).

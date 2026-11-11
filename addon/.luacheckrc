@@ -65,6 +65,7 @@ read_globals = {
   "C_PlayerInfo",
   "C_Reputation",
   "C_TradeSkillUI",
+  "C_SkillInfo",
   "C_Traits",
   "C_WeeklyRewards",
   "debugprofilestop",
