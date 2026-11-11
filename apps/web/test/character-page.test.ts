@@ -27,10 +27,81 @@ test("profession counts come only from its learned packed set, and unseen is not
       },
     ),
     [
-      { skillLine: 171, name: "Alchemy", skill: 112, max: 150, known: 4 },
-      { skillLine: 185, name: "Cooking", skill: 0, max: null, known: 0 },
-      { skillLine: 164, name: "Blacksmithing", skill: null, max: null, known: null },
+      {
+        skillLine: 171,
+        name: "Alchemy",
+        skill: 112,
+        max: 150,
+        known: 4,
+        total: null,
+        uncatalogued: 0,
+        missing: [],
+      },
+      {
+        skillLine: 185,
+        name: "Cooking",
+        skill: 0,
+        max: null,
+        known: 0,
+        total: null,
+        uncatalogued: 0,
+        missing: [],
+      },
+      {
+        skillLine: 164,
+        name: "Blacksmithing",
+        skill: null,
+        max: null,
+        known: null,
+        total: null,
+        uncatalogued: 0,
+        missing: [],
+      },
     ],
   );
   assert.deepEqual(professionViews(undefined, undefined), []);
+});
+
+test("catalog totals retain unknown learned recipes and group missing colours by category", () => {
+  const recipe = {
+    spellId: 2334,
+    skillLine: 171,
+    name: "Elixir of Minor Fortitude",
+    category: { id: 2450, name: "Elixirs", order: 30 },
+    minSkill: 50,
+    thresholds: { orange: 50, yellow: 80, green: 100, grey: 120 },
+    skillUps: 1,
+    acquireMethod: 0,
+    reagents: [],
+    craftedItems: [],
+    teachingItems: [],
+  };
+  for (const [skill, band] of [
+    [79, "orange"],
+    [80, "yellow"],
+    [100, "green"],
+    [120, "grey"],
+  ] as const) {
+    const [view] = professionViews(
+      { list: [{ skillLine: 171, name: "Alchemy", skill }] },
+      { byProfession: { "171": { learned: ["ids1", "1"] } } },
+      [recipe],
+    );
+    assert.equal(view.known, 1);
+    assert.equal(view.total, 1);
+    assert.equal(view.uncatalogued, 1);
+    assert.deepEqual(view.missing, [{ category: recipe.category, recipes: [{ ...recipe, band }] }]);
+  }
+  const [unseen] = professionViews({ list: [{ skillLine: 171, name: "Alchemy" }] }, undefined, [
+    recipe,
+  ]);
+  assert.equal(unseen.known, null);
+  assert.deepEqual(unseen.missing, []);
+  const [empty] = professionViews(
+    { list: [{ skillLine: 171, name: "Alchemy" }] },
+    { byProfession: { "171": { learned: ["ids1"] } } },
+    [],
+  );
+  assert.equal(empty.known, 0);
+  assert.equal(empty.total, null);
 });

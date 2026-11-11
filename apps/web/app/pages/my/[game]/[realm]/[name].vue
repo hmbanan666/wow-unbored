@@ -54,11 +54,82 @@ useSeoMeta({ title: () => character.value?.name || copy.value.title, robots: "no
               {{ copy.skill }}: {{ profession.skill
               }}<template v-if="profession.max !== null"> / {{ profession.max }}</template>
             </p>
-            <p v-if="profession.known !== null">{{ copy.known }}: {{ profession.known }}</p>
+            <p v-if="profession.known !== null">
+              {{ copy.known }}: {{ profession.known
+              }}<template v-if="profession.total != null">{{
+                ` ${copy.of} ${profession.total}`
+              }}</template>
+            </p>
             <p v-else>{{ copy.open }}</p>
+            <p v-if="profession.total == null">{{ copy.catalogEmpty }}</p>
+            <p v-if="profession.uncatalogued">
+              {{ copy.uncatalogued }}: {{ profession.uncatalogued }}
+            </p>
+            <template v-if="profession.known !== null && profession.total != null">
+              <p v-if="!profession.missing.length">{{ copy.complete }}</p>
+              <details v-else>
+                <summary>
+                  {{ copy.missing }} ({{
+                    profession.missing.reduce((n, group) => n + group.recipes.length, 0)
+                  }})
+                </summary>
+                <section
+                  v-for="group in profession.missing"
+                  :key="group.category.id"
+                  class="recipe-category"
+                >
+                  <h3>{{ group.category.name }}</h3>
+                  <ul>
+                    <li v-for="recipe in group.recipes" :key="recipe.spellId">
+                      <span>{{ recipe.name || copy.unnamed }}</span>
+                      <span>{{ copy.minSkill }}: {{ recipe.minSkill }}</span>
+                      <span
+                        v-if="recipe.band"
+                        :class="['recipe-band', `recipe-band--${recipe.band}`]"
+                        >{{ copy.bands[recipe.band] }}</span
+                      >
+                    </li>
+                  </ul>
+                </section>
+              </details>
+            </template>
           </DsCard>
         </DsCardGrid>
       </DsSection>
     </template>
   </DsPage>
 </template>
+
+<style scoped>
+.recipe-category {
+  margin-block: 1rem;
+}
+.recipe-category ul {
+  list-style: none;
+  padding: 0;
+}
+.recipe-category li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+.recipe-category li > span:first-child {
+  flex-basis: 100%;
+}
+.recipe-band {
+  font-weight: 600;
+}
+.recipe-band--orange {
+  color: #f0a14b;
+}
+.recipe-band--yellow {
+  color: #e4cd69;
+}
+.recipe-band--green {
+  color: #91c98b;
+}
+.recipe-band--grey {
+  color: #b6b0a9;
+}
+</style>

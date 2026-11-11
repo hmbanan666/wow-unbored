@@ -1,3 +1,4 @@
+import type { ProfessionRecipe } from "@unbored/contracts/profession-catalog";
 import type { Sql } from "./db";
 import {
   professionViews,
@@ -18,12 +19,21 @@ export async function readCharacterPage(
     LEFT JOIN sections_latest r ON r.owner_kind = 'char' AND r.owner_id = c.id AND r.section = 'recipes'
     WHERE c.account_id = ${accountId} AND c.game = ${identity.game}
       AND c.realm = ${identity.realm} AND c.name = ${identity.name}`;
-  return row
-    ? {
-        game: row.game,
-        realm: row.realm,
-        name: row.name,
-        professions: professionViews(row.professions, row.recipes),
-      }
-    : null;
+  if (!row) return null;
+  const catalog = await sql<{ body: ProfessionRecipe }[]>`
+    SELECT body FROM game.profession_recipes
+    WHERE game = ${identity.game} AND build = (
+      SELECT build FROM game.builds WHERE game = ${identity.game} ORDER BY build_number DESC LIMIT 1)
+      AND skill_line = ANY(${professionViews(row.professions, row.recipes).map((p) => p.skillLine)}::int[])
+    ORDER BY spell_id`;
+  return {
+    game: row.game,
+    realm: row.realm,
+    name: row.name,
+    professions: professionViews(
+      row.professions,
+      row.recipes,
+      catalog.map((r) => r.body),
+    ),
+  };
 }

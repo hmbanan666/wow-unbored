@@ -73,6 +73,32 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
     assert.equal(character?.professions[0]?.skill, 112);
     assert.equal(await readCharacterPage(sql, theirs, identity), null);
     assert.equal(await readCharacterPage(sql, mine, { ...identity, name: "Missing" }), null);
+    await sql`INSERT INTO game.builds (game, build, build_number, imported_at, achievements) VALUES
+      ('forever', '1.60.1.70888', 70888, 1762300000, 0), ('retail', '12.0.1.70889', 70889, 1762300000, 0)`;
+    const recipe = {
+      spellId: 2334,
+      skillLine: 171,
+      name: "Elixir of Minor Fortitude",
+      category: { id: 2450, name: "Elixirs", order: 30 },
+      minSkill: 50,
+      thresholds: { orange: 50, yellow: 80, green: 100, grey: 120 },
+      skillUps: 1,
+      acquireMethod: 0,
+      reagents: [],
+      craftedItems: [],
+      teachingItems: [],
+    };
+    await sql`INSERT INTO game.profession_recipes (game, build, skill_line, spell_id, body) VALUES
+      ('forever', '1.60.1.70888', 171, 2334, ${JSON.stringify(recipe)}::jsonb),
+      ('retail', '12.0.1.70889', 171, 2334, ${JSON.stringify({ ...recipe, name: "Retail recipe" })}::jsonb)`;
+    const withCatalog = await readCharacterPage(sql, mine, identity);
+    assert.equal(withCatalog?.professions[0]?.total, 1);
+    assert.equal(withCatalog?.professions[0]?.uncatalogued, 4);
+    assert.equal(withCatalog?.professions[0]?.missing[0]?.recipes[0]?.band, "green");
+    assert.equal(
+      withCatalog?.professions[0]?.missing[0]?.recipes[0]?.name,
+      "Elixir of Minor Fortitude",
+    );
     const retail = await readCharacterPage(sql, mine, { ...identity, game: "retail" });
     assert.deepEqual(retail?.professions, []);
 
