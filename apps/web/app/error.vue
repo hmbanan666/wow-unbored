@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CHARACTER_COPY } from "#shared/character-page";
 import type { NuxtError } from "#app";
 
 import { PRIVACY_URL, PUBLIC_COPY, REPO_URL, SITE_NAV } from "#shared/catalog";
@@ -7,6 +8,8 @@ import { SIGN_IN_COPY } from "#shared/sign-in";
 const props = defineProps<{ error: NuxtError }>();
 const known = new Set<string>([
   ...Object.values(PUBLIC_COPY),
+  CHARACTER_COPY.en.notFound,
+  CHARACTER_COPY.ru.notFound,
   ...Object.values(SIGN_IN_COPY.en),
   ...Object.values(SIGN_IN_COPY.ru),
 ]);

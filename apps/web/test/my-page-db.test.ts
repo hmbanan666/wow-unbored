@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { test } from "vite-plus/test";
 
 import { connectPostgres, migrate } from "../../server/src/postgres.ts";
+import { readCharacterPage } from "../server/utils/character-page.ts";
 import { readMyPage } from "../server/utils/account-page.ts";
 import { sessionIsLive } from "../server/utils/session.ts";
 
@@ -59,6 +60,21 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
       ],
     );
     assert.equal(both.characters[0]?.ilvl, null);
+
+    await sql`
+      INSERT INTO sections_latest (owner_kind, owner_id, section, v, hash, updated_at, bytes, body)
+      VALUES ('char', 'forever/Realm/Mine', 'professions', 1, 'p1', 1762300005, 10,
+        '{"list":[{"skillLine":171,"name":"Alchemy","skill":112,"max":150}]}'::jsonb),
+      ('char', 'forever/Realm/Mine', 'recipes', 1, 'r1', 1762300005, 10,
+        '{"byProfession":{"171":{"learned":["ids1","2s,2,1,1"]}}}'::jsonb)`;
+    const identity = { game: "forever" as const, realm: "Realm", name: "Mine" };
+    const character = await readCharacterPage(sql, mine, identity);
+    assert.equal(character?.professions[0]?.known, 4);
+    assert.equal(character?.professions[0]?.skill, 112);
+    assert.equal(await readCharacterPage(sql, theirs, identity), null);
+    assert.equal(await readCharacterPage(sql, mine, { ...identity, name: "Missing" }), null);
+    const retail = await readCharacterPage(sql, mine, { ...identity, game: "retail" });
+    assert.deepEqual(retail?.professions, []);
 
     const now = 1762300100;
     await sql`

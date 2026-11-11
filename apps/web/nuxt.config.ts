@@ -45,7 +45,7 @@ export default defineNuxtConfig({
   },
   sitemap: {
     sources: ["/api/__sitemap__/urls"],
-    exclude: ["/my", "/enter/**", "/download/**"],
+    exclude: ["/my", "/my/**", "/enter/**", "/download/**"],
   },
   nitro: {
     preset: "node-server",

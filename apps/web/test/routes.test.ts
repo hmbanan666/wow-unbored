@@ -27,7 +27,7 @@ test("public pages are home, install, guides, paths and collections", () => {
     "guides",
     "index.vue",
     "install.vue",
-    "my.vue",
+    "my",
     "paths",
   ]);
   assert.deepEqual(readdirSync(path.join(pages, "paths")).sort(), ["[slug].vue", "index.vue"]);
@@ -133,6 +133,6 @@ test("public SSR never fetches a player session or personal Path data", () => {
   const paths = readFileSync(path.join(web, "app/composables/usePaths.ts"), "utf8");
   assert.match(paths, /onMounted\(/);
   assert.equal(paths.includes("useFetch"), false);
-  const my = readFileSync(path.join(web, "app/pages/my.vue"), "utf8");
+  const my = readFileSync(path.join(web, "app/pages/my/index.vue"), "utf8");
   assert.match(my, /useFetch<Me>\("\/api\/me",\s*\{ server: false \}\)/);
 });
