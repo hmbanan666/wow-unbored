@@ -1405,9 +1405,9 @@ fn sync_game_plans(
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(app, session, retail, seal);
     let _ = sync_advice(app, session, retail);
+    let _ = sync_suggestions(app, session, retail);
     if game_for_dir(retail) == "retail" {
         let _ = post_profiles(app, session, retail, seal);
-        let _ = sync_suggestions(app, session, retail);
     } else if waiting.is_none() && rejection.is_none() {
         // A device-wide Retail Plan must never land in the Forever helper.
         return Ok(None);

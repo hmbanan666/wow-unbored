@@ -1,3 +1,4 @@
+import { readSkillRoutes } from "./skill-route.ts";
 import { pathCharacterSchema, setActivePathSchema } from "./active-path.ts";
 import { CONTENT_KINDS, ContentError, ContentStore } from "./content.ts";
 import { getItemSources } from "./item-sources.ts";
@@ -181,6 +182,7 @@ const LEASE_TOOLS = new Set([
   "get_game_entity",
   "get_profession_catalog",
   "get_recipe_sources",
+  "get_skill_route",
   "find_game_entity",
   "get_quest_line",
   "get_item_sources",
@@ -941,6 +943,31 @@ export function createMcpServer(
       },
     },
     async (query) => text(await findGameEntity(store.game, query)),
+  );
+
+  registerTool(
+    "get_skill_route",
+    {
+      title: "Get a profession skill Plan",
+      description:
+        "Deterministic skill stretches for one Character, with trainer stops, expected crafts, reagents and observed vendor prices. Gaps remain explicit. Pass realm or account if the name is ambiguous.",
+      inputSchema: {
+        ...whoSchema,
+        game: z.enum(["retail", "forever"]),
+        character: z.string().min(1).max(80),
+        skillLine: z.number().int().positive().max(2147483647),
+        target: z.number().int().positive().max(2000).optional(),
+      },
+    },
+    async (input) => {
+      await settle(input.account);
+      const rows = await pickCharacters(input);
+      if (rows.length !== 1) return text({ error: "Choose one Character with realm or account." });
+      return text(
+        (await readSkillRoutes(store.db, rows[0]!, input.skillLine, input.target))[0]?.route ??
+          null,
+      );
+    },
   );
 
   registerTool(

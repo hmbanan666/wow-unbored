@@ -17,7 +17,8 @@ S.MORE = 6
 S.SERVER_MAX = 10
 S.LOCAL_MAX = 3
 S.LOCAL_SECONDS = 30
-S.KINDS = { event = true, achievement = true, rare = true, collection = true, chain = true, path = true }
+S.KINDS = { event = true, achievement = true, rare = true, collection = true,
+  chain = true, path = true, profession = true }
 -- What kind of plan an idea asks for, with no time (D110).
 S.MODE = { event = "events", achievement = "fun", rare = "roam", collection = "farm", chain = "quests" }
 
@@ -125,37 +126,64 @@ function S.Clean(raw)
   if raw.kind == "path" and not path then
     return nil
   end
+  local profession, steps
+  if raw.kind == 'profession' then
+    local p = type(raw.profession) == 'table' and raw.profession or {}
+    local plan = type(raw.plan) == 'table' and raw.plan or {}
+    if p.game ~= ns.Game or not int(p.skillLine) or not int(p.target)
+      or not ns.AsNumber(p.from) or not int(p.nextCrafts) or type(plan.tasks) ~= 'table'
+      or #plan.tasks == 0 or #plan.tasks > 40 then return nil end
+    profession = { game = p.game, skillLine = p.skillLine, from = p.from, target = p.target, nextCrafts = p.nextCrafts }
+    steps = {}
+    for _, task in ipairs(plan.tasks) do
+      local clean = ns.NormalizeTask(task)
+      if not clean then return nil end
+      local facts = type(task.profession) == 'table' and task.profession or {}
+      if type(facts.recipe) == 'string' then
+        if facts.kind == 'train' then
+          clean.title = ns.T('PROFESSION_LEARN', facts.recipe)
+          clean.note = facts.trainer and ns.T('PROFESSION_VISIT', facts.trainer) or ns.T('PROFESSION_TRAINER')
+        elseif facts.kind == 'craft' and ns.AsNumber(facts.from) and int(facts.to) and int(facts.crafts) then
+          clean.title = ns.T('PROFESSION_CRAFT', facts.recipe)
+          clean.note = ns.T('PROFESSION_STRETCH', facts.from, facts.to, facts.crafts)
+            .. (facts.slow and (' ' .. ns.T('PROFESSION_SLOW')) or '') .. ' ' .. (text(facts.reagents, 400) or '')
+        end
+      end
+      steps[#steps + 1] = clean
+    end
+  end
   local request = type(raw.request) == "table" and raw.request or {}
   return {
     id = id,
     kind = raw.kind,
     path = path,
+    profession = profession,
+    steps = steps,
     displayKind = (S.KINDS[raw.displayKind] or raw.displayKind == "mount") and raw.displayKind or nil,
     action = raw.kind == "path" and ns.T("PATH_ACTION") or action(raw.action),
     progress = cleanProgress(raw.progress),
     title = title,
     titleToken = type(raw.titleToken) == "string" and #raw.titleToken <= 60
       and raw.titleToken:match(TOKEN) and raw.titleToken or nil,
-    goal = goal,
+    goal = profession and ns.T('PROFESSION_GOAL', title, steps[#steps].complete.minSkill or profession.target) or goal,
     why = text(raw.why, 100),
     rewards = rewards(raw.rewards),
     mapID = int(raw.mapID),
     expiresAt = int(raw.expiresAt),
     reason = reason(raw.reason),
     wish = text(request.wish, 300),
-    quick = raw.quick == true or nil,
+    quick = profession ~= nil or raw.quick == true or nil,
     chain = chain(raw.chain),
   }
 end
 
 local function mine()
-  if ns.Game ~= "retail" then return nil end
   local data = type(UnboredSuggestions) == "table" and UnboredSuggestions or nil
   if not data or data.v ~= 1 or type(data.characters) ~= "table" then
     return nil
   end
   local key = ns.Profile.AltKey(ns.Call(UnitName, "player"), ns.Call(GetRealmName))
-  local list = data.characters[key]
+  local list = data.characters[(ns.Game == "forever" and "forever/" or "") .. key]
   return type(list) == "table" and list or nil
 end
 
@@ -170,7 +198,7 @@ function S.Read(now)
   for i = 1, math.min(#list, S.SERVER_MAX) do
     local idea = S.Clean(list[i])
     if idea and not (idea.expiresAt and idea.expiresAt <= now) then
-      idea.quick = nil
+      if idea.kind ~= "profession" then idea.quick = nil end
       out[#out + 1] = idea
     end
   end
@@ -383,6 +411,13 @@ end
 -- Something done in the game since the idea was made: a reward got, the
 -- chain's next quest turned in (D141).
 function S.StillOpen(idea, now)
+  if idea.profession then
+    local p = idea.profession
+    local skill = ns.ProfessionSkill(p.skillLine)
+    local last = idea.steps and idea.steps[#idea.steps]
+    local reached = last and last.complete and ns.AsNumber(last.complete.minSkill)
+    return skill ~= nil and skill >= p.from and skill < math.min(p.target, reached or p.target)
+  end
   if idea.expiresAt and idea.expiresAt <= (now or ns.Now()) then
     return false
   end
@@ -518,6 +553,11 @@ end
 -- The title in the player's language: the game's own name for an achievement or
 -- a dungeon when it has one, else the title the idea came with.
 function S.Title(idea)
+  if idea.profession then
+    local p = idea.profession
+    local skill, name = ns.ProfessionSkill(p.skillLine)
+    return ns.T('PROFESSION_IDEA', name or idea.title, skill or p.from, p.target, p.nextCrafts)
+  end
   if idea.kind == "path" then
     return ns.T("PATH_CONTINUE")
   end

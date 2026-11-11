@@ -275,11 +275,28 @@ end
 
 -- offscreen (a grouped step that is not shown, docs/adr/0056): zone and
 -- proximity never count, and a rare only by its quest or a dead vignette.
+-- Read only the settled profession Section, never game APIs from a UI refresh.
+function ns.ProfessionSkill(skillLine)
+  if ns.IsCombat() then return nil end
+  local body = ns.Snapshot and ns.Snapshot.Body('professions')
+  for _, p in ipairs(type(body) == 'table' and body.list or {}) do
+    if p.skillLine == skillLine then return ns.AsNumber(p.skill), p.name end
+    for _, tier in ipairs(p.tiers or {}) do
+      if tier.skillLine == skillLine then return ns.AsNumber(tier.skill), tier.name end
+    end
+  end
+end
+
 function ns.SpecComplete(spec, offscreen)
   if type(spec) ~= "table" then
     return false
   end
   local kind = spec.kind
+  if kind == "profession" then
+    local skill = ns.ProfessionSkill(spec.skillLine)
+    local target = ns.AsNumber(spec.minSkill)
+    return skill ~= nil and target ~= nil and skill >= target
+  end
   if kind == nil or kind == "manual" then
     return false
   end

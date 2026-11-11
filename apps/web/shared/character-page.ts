@@ -1,3 +1,4 @@
+import type { SkillRoute } from "@unbored/contracts/skill-route";
 import {
   SOURCE_GROUPS,
   recipeSourceGroup,
@@ -14,6 +15,7 @@ import type { MyCharacter } from "./my-page";
 
 export type CharacterIdentity = Pick<MyCharacter, "game" | "realm" | "name">;
 export type Profession = {
+  routes?: { name: string; route: SkillRoute }[];
   skillLine: number;
   name: string;
   skill: number | null;

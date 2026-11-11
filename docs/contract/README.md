@@ -111,3 +111,5 @@ selects the installation's game via `?game=`, budgets the map with existing help
 and writes `UnboredRecipeTeaching` into Advice.lua; absence or a wrong game yields no Advice.
 
 The existing v1 `recipes.byProfession[skillLine]` may also carry `unlearned`, a Packed id set of explicit `GetRecipeInfo.learned=false` results. The own-profession window read probes delivered teaching-map spells even if hidden by filters. Old snapshots without this evidence remain silent for recipe Advice; absence from `learned` is never sufficient.
+
+T5 ([ADR 0098](../adr/0098-profession-skill-plans.md)) adds profession Suggestions with a standard Plan and `profession` skill metadata. Forever Suggestion keys are prefixed `forever/`; Retail keys are unchanged. Steps may carry `complete: { kind: "profession", skillLine, minSkill }` and optional `profession` facts for localized recipe/trainer text. See `profession-suggestions.json` / `.lua` in the shared fixtures. Merchant sightings retain their v1 shape and combined 200-entry cap; Recipe and Trade Goods prices are observed copper per item, with barter/unknown prices omitted.

@@ -59,7 +59,11 @@ dbTest(
         thresholds: { orange: 50, yellow: 80, green: 100, grey: 120 },
         skillUps: 1,
         acquireMethod: 0,
-        reagents: [],
+        reagents: [
+          { itemId: 2320, count: 1 },
+          { itemId: 2321, count: 1 },
+        ],
+        trainer: true,
         craftedItems: [],
         teachingItems: [2553],
       };
@@ -70,6 +74,10 @@ dbTest(
       await sql`INSERT INTO game.rows (game, build, table_name, locale, id, body) VALUES
       ('forever', '1.60.1.70888', 'UiMap', 'enUS', 1429, '{"Name_lang":"Elwynn Forest"}'::jsonb),
       ('forever', '1.60.1.70888', 'ItemSparse', 'enUS', 2553, '{"Display_lang":"Recipe: Elixir of Minor Fortitude"}'::jsonb)`;
+      await sql`INSERT INTO recipe_sightings (account_id, game, kind, source_key, item_id, npc_id, npc_name, cost, limited, first_seen, last_seen)
+        VALUES (${mine}, 'forever', 'vendor', 'i2320', 2320, 123, 'Reagent seller', 7, 0, 2, 2)`;
+      await sql`INSERT INTO game.rows (game, build, table_name, locale, id, body) VALUES
+        ('forever', '1.60.1.70888', 'ItemSparse', 'enUS', 2321, '{"Display_lang":"Unseen thread","BuyPrice":999}'::jsonb)`;
       await sql`SET LOCAL ROLE unbored_web`;
       const page = await readCharacterPage(sql, mine, {
         game: "forever",
@@ -77,6 +85,12 @@ dbTest(
         name: "Mine",
       });
       assert.equal(page?.professions[0]?.total, 1);
+      const route = page?.professions[0]?.routes?.[0]?.route;
+      assert.equal(route?.reached, 120);
+      assert.equal(route?.status, "gap");
+      assert.equal(route?.reagents[0]?.unitCopper, 7);
+      assert.equal(route?.reagents[1]?.name, "Unseen thread");
+      assert.equal(route?.reagents[1]?.unitCopper, null, "BuyPrice without a sighting is unknown");
       const group = page?.professions[0]?.missing[0];
       assert.equal(group?.id, "vendor");
       assert.equal(group?.recipes[0]?.name, "Elixir of Minor Fortitude");

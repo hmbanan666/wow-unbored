@@ -148,6 +148,82 @@
                 }
               }
             }
+          },
+          "complete": {
+            "type": "object",
+            "description": "Completion predicate. Profession Steps use kind profession, skillLine and minSkill.",
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "profession"
+                }
+              },
+              "required": ["kind"]
+            },
+            "then": {
+              "required": ["kind", "skillLine", "minSkill"],
+              "properties": {
+                "skillLine": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "minSkill": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2000
+                }
+              }
+            }
+          },
+          "profession": {
+            "type": "object",
+            "description": "Optional facts for localized profession Step text; the Plan retains readable title and note for older consumers.",
+            "required": ["kind", "recipe"],
+            "properties": {
+              "kind": {
+                "enum": ["train", "craft"]
+              },
+              "recipe": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "trainer": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "from": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "to": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2000
+              },
+              "crafts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "reagents": {
+                "type": "string",
+                "maxLength": 400
+              },
+              "slow": {
+                "type": "boolean"
+              }
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "craft"
+                }
+              }
+            },
+            "then": {
+              "required": ["from", "to", "crafts", "reagents", "slow"]
+            }
           }
         }
       },

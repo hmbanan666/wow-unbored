@@ -8,6 +8,8 @@ export type ProfessionRecipe = {
   thresholds: { orange: number; yellow: number; green: number; grey: number };
   skillUps: number;
   acquireMethod: number;
+  /** Confirmed trainer flag only; never inferred from raw AcquireMethod. */
+  trainer?: boolean;
   reagents: { itemId: number; count: number }[];
   craftedItems: number[];
   teachingItems: number[];

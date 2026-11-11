@@ -6,7 +6,7 @@
     "dev": "pnpm --filter @unbored/server start",
     "content:check": "node apps/server/scripts/check-guides.ts",
     "test": "pnpm test:addon && pnpm run test:js && pnpm test:companion",
-    "test:addon": "cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/data.lua && lua5.1 tests/ui.lua && lua5.1 tests/forever.lua && lua5.1 tests/recipe-sources.lua",
+    "test:addon": "cd addon && luacheck . && lua5.1 tests/run.lua && lua5.1 tests/data.lua && lua5.1 tests/ui.lua && lua5.1 tests/forever.lua && lua5.1 tests/recipe-sources.lua && lua5.1 tests/skill-route.lua",
     "test:companion": "cargo test --manifest-path apps/companion/src-tauri/Cargo.toml --lib --no-default-features",
     "test:js": "pnpm exec vp test && pnpm --filter @unbored/web test",
     "lint:js": "pnpm exec vp check",

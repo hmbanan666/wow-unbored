@@ -43,6 +43,8 @@ globals = {
 
 files["tests/forever-client.lua"] = { ignore = { "111", "121", "122" } }
 
+files["tests/skill-route.lua"] = { ignore = { "121" } }
+
 files["tests/recipe-sources.lua"] = { ignore = { "111", "112", "121", "122" } }
 
 read_globals = {

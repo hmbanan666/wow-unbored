@@ -180,6 +180,12 @@ function S.Write(name, body, src)
       data.dropped = nil
     end
   end
+  if name == 'professions' and ns.Suggestions then
+    ns.Suggestions.Invalidate()
+    if ns.Mascot and ns.Mascot.view and ns.Mascot.view.kind == 'choice' and not ns.IsCombat() then
+      pcall(ns.Mascot.Refresh, ns.Mascot)
+    end
+  end
   if ns.RecipeAdvice and (name == "recipes" or name == "professions") then
     ns.RecipeAdvice.Remember()
   end

@@ -263,6 +263,7 @@
                 "entries": {
                   "type": "array",
                   "maxItems": 200,
+                  "description": "Latest 200 NPC/recipe or combined merchant Recipe and Trade Goods NPC/item pairs. Merchant cost is copper per item; barter or unknown prices are omitted.",
                   "items": {
                     "type": "object",
                     "required": ["npcId", "npcName", "seenAt"],

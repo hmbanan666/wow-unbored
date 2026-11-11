@@ -247,3 +247,10 @@ test("recipe sightings use the shared snapshot envelope", () => {
   expect(Object.keys(parsed.sections)).toEqual(["trainerSeen", "merchantSeen", "recipes"]);
   expect(parsed.sections.trainerSeen.scope).toBe("char");
 });
+
+test("profession Ideas carry a standard Plan and skill completion", () => {
+  const parsed = suggestionsBodySchema.parse(read("profession-suggestions.json"));
+  const idea = parsed.characters["forever/Realm-Hero"]![0]!;
+  const plan = planSchema.parse(idea.plan);
+  expect(plan.tasks[1]!.complete).toEqual({ kind: "profession", skillLine: 197, minSkill: 75 });
+});

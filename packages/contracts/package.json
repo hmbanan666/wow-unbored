@@ -18,6 +18,7 @@
     "./game-media": "./src/game-media.ts",
     "./guide": "./src/guide.ts",
     "./profession-catalog": "./src/profession-catalog.ts",
+    "./skill-route": "./src/skill-route.ts",
     "./recipe-sources": "./src/recipe-sources.ts"
   },
   "dependencies": {
