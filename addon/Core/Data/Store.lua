@@ -180,6 +180,9 @@ function S.Write(name, body, src)
       data.dropped = nil
     end
   end
+  if ns.RecipeAdvice and (name == "recipes" or name == "professions") then
+    ns.RecipeAdvice.Remember()
+  end
   return true
 end
 
@@ -480,6 +483,8 @@ function S.ApplySharing()
   if S.Sharing() then
     return
   end
+  for _, alt in pairs(ns.DB and ns.DB.alts or {}) do alt.recipeKnowledge = nil end
+  if ns.RecipeAdvice then ns.RecipeAdvice.Invalidate() end
   for _, scope in ipairs({ "char", "account" }) do
     local data = root(scope)
     for name in pairs(data.sections) do

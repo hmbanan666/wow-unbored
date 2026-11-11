@@ -1,3 +1,4 @@
+import { readRecipeSources } from "./recipe-sources.ts";
 import { readProfessionCatalog, RECIPE_SQLITE_SCHEMA } from "./profession-catalog.ts";
 import type { BlizzardIds } from "./blizzard.ts";
 import { type Db, fromJson } from "./db.ts";
@@ -76,6 +77,10 @@ export class GameDb {
 
   async professionCatalog(skillLine: number) {
     return readProfessionCatalog(this.db, this.game, skillLine);
+  }
+
+  async recipeSources(skillLine: number) {
+    return readRecipeSources(this.db, this.game, skillLine);
   }
 
   async healthStatus() {

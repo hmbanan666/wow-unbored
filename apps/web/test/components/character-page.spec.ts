@@ -63,7 +63,7 @@ test("unseen professions have Russian guidance, with no fabricated zero", async 
   expect(wrapper.text()).not.toContain("0 / 0");
 });
 
-test("catalog recipes render totals, categories, colour text and uncatalogued count", async () => {
+test("catalog recipes render totals, sources, colour text and uncatalogued count", async () => {
   vi.stubGlobal("useRoute", () => ({ params: { game: "forever", realm: "Realm", name: "Mira" } }));
   vi.stubGlobal("useFetch", async () => ({
     data: ref({
@@ -84,10 +84,26 @@ test("catalog recipes render totals, categories, colour text and uncatalogued co
             uncatalogued: 1,
             missing: [
               {
-                category: { id: 2450, name: "Elixirs", order: 30 },
+                id: "unseen",
+                name: "Not seen yet",
+                explanation: "No place has been seen yet.",
                 recipes: [
-                  { spellId: 2334, name: "Elixir of Minor Fortitude", minSkill: 50, band: "green" },
-                  { spellId: 2330, name: null, minSkill: 1, band: "grey" },
+                  {
+                    spellId: 2334,
+                    name: "Elixir of Minor Fortitude",
+                    minSkill: 50,
+                    band: "green",
+                    sources: [],
+                    teachingItemNames: [],
+                  },
+                  {
+                    spellId: 2330,
+                    name: null,
+                    minSkill: 1,
+                    band: "grey",
+                    sources: [],
+                    teachingItemNames: [],
+                  },
                 ],
               },
             ],
@@ -106,10 +122,73 @@ test("catalog recipes render totals, categories, colour text and uncatalogued co
   expect(wrapper.text()).toContain("Known recipes: 2 of 4");
   expect(wrapper.text()).toContain("Known recipes not yet in this list: 1");
   expect(wrapper.find("summary").text()).toContain("Missing recipes (2)");
-  expect(wrapper.find("h3").text()).toBe("Elixirs");
+  expect(wrapper.find("h3").text()).toBe("Not seen yet");
   expect(wrapper.text()).toContain("Elixir of Minor Fortitude");
   expect(wrapper.text()).toContain("Minimum skill: 50");
   expect(wrapper.find(".recipe-band--green").text()).toBe("Green");
   expect(wrapper.text()).toContain(CHARACTER_COPY.en.unnamed);
   expect(wrapper.text()).not.toContain("2330");
+});
+
+test("source groups show past stock, places, item-only evidence and tap explanations", async () => {
+  const { default: ProfessionRecipes } = await import("../../app/components/ProfessionRecipes.vue");
+  const { professionViews } = await import("../../shared/character-page");
+  const { SOURCE_GROUPS } = await import("@unbored/contracts/recipe-sources");
+  const catalog = Array.from({ length: 5 }, (_, i) => ({
+    spellId: i + 1,
+    skillLine: 171,
+    name: `Recipe ${i + 1}`,
+    category: { id: 1, name: "Potions", order: 0 },
+    minSkill: 1,
+    thresholds: { orange: 1, yellow: 2, green: 3, grey: 4 },
+    skillUps: 1,
+    acquireMethod: 0,
+    reagents: [],
+    craftedItems: [],
+    teachingItems: i === 3 ? [2555] : [],
+  }));
+  const place = {
+    npcId: 123,
+    npcName: "Recipe vendor",
+    zone: "Elwynn Forest",
+    uiMapID: 1429,
+    x: 12.3,
+    y: 45.6,
+    cost: 12345,
+    requiredSkill: 50,
+    itemId: null,
+    firstSeen: 1,
+    lastSeen: 2,
+  };
+  const [profession] = professionViews(
+    { list: [{ skillLine: 171, name: "Alchemy", skill: 50 }] },
+    { byProfession: { "171": { learned: ["ids1"] } } },
+    catalog,
+    [
+      { spellId: 1, sources: [{ ...place, kind: "trainer", limited: false }], teachingItems: [] },
+      { spellId: 2, sources: [{ ...place, kind: "vendor", limited: false }], teachingItems: [] },
+      { spellId: 3, sources: [{ ...place, kind: "vendor", limited: true }], teachingItems: [] },
+      {
+        spellId: 4,
+        sources: [],
+        teachingItems: [{ itemId: 2555, name: "Recipe: Swiftness Potion" }],
+      },
+    ],
+  );
+  const wrapper = mount(ProfessionRecipes, { props: { profession, lang: "en" } });
+  expect(wrapper.findAll("h3").map((h) => h.text())).toEqual(SOURCE_GROUPS.map((g) => g.name));
+  expect(wrapper.text()).toContain("Elwynn Forest");
+  expect(wrapper.text()).toContain("1g 23s 45c");
+  expect(wrapper.text()).toContain("Required skill: 50");
+  expect(wrapper.text()).toContain("Comes from Recipe: Swiftness Potion.");
+  expect(wrapper.findAll(".source-explanation summary")).toHaveLength(5);
+  expect(wrapper.text()).toContain("not live availability");
+  expect(wrapper.text()).not.toContain("—");
+  const complete = professionViews(
+    { list: [{ skillLine: 171, name: "Alchemy" }] },
+    { byProfession: { "171": { learned: ["ids1", "1,1,1,1,1"] } } },
+    catalog,
+  )[0];
+  await wrapper.setProps({ profession: complete });
+  expect(wrapper.text()).toContain("You know every recipe in this list.");
 });

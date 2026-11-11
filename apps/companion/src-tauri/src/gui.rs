@@ -1314,13 +1314,22 @@ fn post_profiles(
 /// Personal advice for this PC's characters, into Advice.lua (docs/adr/0019).
 fn sync_advice(app: &AppHandle, session: &SyncSession, retail: &Path) -> Result<bool, String> {
     let client = http_client(Duration::from_secs(20))?;
-    let url = join_url(&effective_url(&session.settings), "v1/advice");
+    let url = join_url(
+        &effective_url(&session.settings),
+        &format!("v1/advice?game={}", game_for_dir(retail)),
+    );
     let Some(body) = get_json(&client, &url, &session.device.secret, None)? else {
         return Ok(false);
     };
     session
         .apply(app, |_| {
-            install_advice(retail, &body["characters"], &body["holdings"]).map_err(game_files)
+            install_advice(
+                retail,
+                &body["characters"],
+                &body["holdings"],
+                &body["teaching"],
+            )
+            .map_err(game_files)
         })?
         .transpose()
         .map(|changed| changed.unwrap_or(false))
@@ -1395,10 +1404,10 @@ fn sync_game_plans(
     }
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(app, session, retail, seal);
+    let _ = sync_advice(app, session, retail);
     if game_for_dir(retail) == "retail" {
         let _ = post_profiles(app, session, retail, seal);
         let _ = sync_suggestions(app, session, retail);
-        let _ = sync_advice(app, session, retail);
     } else if waiting.is_none() && rejection.is_none() {
         // A device-wide Retail Plan must never land in the Forever helper.
         return Ok(None);

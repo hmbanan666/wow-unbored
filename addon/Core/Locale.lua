@@ -202,6 +202,8 @@ local en = {
   -- v0.6: items (docs/adr/0015)
   DROP_HINT = "Drop it on me to ask",
   -- v0.6: tooltip advice (docs/adr/0019)
+  ADV_RECIPE_NEW = "new recipe for you, %s %d",
+  ADV_RECIPE_ALT = "%s can learn this",
   ADV_PLAN_STEP = "Needed for your plan: %s",
   ADV_COLLECTION = "New for your collection",
   ADV_STARTS_QUEST = "Use it: starts a quest",
@@ -503,6 +505,8 @@ local ru = {
   REASON_REJECTED = "Планировщик не смог это взять. Попробуем другую идею?",
   REASON_PLANNER_FAILED = "Планировщик на этом застрял. Попробуем ещё раз?",
   DROP_HINT = "Брось на меня, чтобы спросить",
+  ADV_RECIPE_NEW = "новый рецепт для тебя, %s %d",
+  ADV_RECIPE_ALT = "%s может это выучить",
   ADV_PLAN_STEP = "Нужно для плана: %s",
   ADV_COLLECTION = "Новое для коллекции",
   ADV_STARTS_QUEST = "Используй: начинает задание",

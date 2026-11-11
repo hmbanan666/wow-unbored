@@ -23,6 +23,7 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
   const sql = connectPostgres(url.toString(), { max: 2 });
   try {
     await migrate(sql);
+    await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, ${mine}, 1, 2), (${theirs}, ${theirs}, 1, 2)`;
     await sql`
       INSERT INTO characters (id, account_id, name, realm, class, level, last_seen, device_id)
       VALUES ('Realm/Mine', ${mine}, 'Mine', 'Realm', 'MAGE', 80, 1762300000, 'pc-mine'),
@@ -91,6 +92,13 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
     await sql`INSERT INTO game.profession_recipes (game, build, skill_line, spell_id, body) VALUES
       ('forever', '1.60.1.70888', 171, 2334, ${JSON.stringify(recipe)}::jsonb),
       ('retail', '12.0.1.70889', 171, 2334, ${JSON.stringify({ ...recipe, name: "Retail recipe" })}::jsonb)`;
+    await sql`INSERT INTO recipe_sightings (account_id, game, kind, source_key, spell_id, skill_line, npc_id, npc_name, ui_map_id, cost, required_skill, limited, first_seen, last_seen) VALUES
+      (${mine}, 'forever', 'trainer', 's2334', 2334, 171, 123, 'Teacher', 1429, 100, 50, 0, 10, 10),
+      (${theirs}, 'forever', 'trainer', 's2334', 2334, 171, 123, 'Teacher', 1429, 80, 50, 0, 20, 20),
+      (${mine}, 'retail', 'trainer', 's2334', 2334, 171, 123, 'Retail teacher', 1429, 999, 50, 0, 30, 30)`;
+    await sql`INSERT INTO game.rows (game, build, table_name, locale, id, body) VALUES
+      ('forever', '1.60.1.70888', 'UiMap', 'enUS', 1429, '{"Name_lang":"Elwynn Forest"}'::jsonb),
+      ('retail', '12.0.1.70889', 'UiMap', 'enUS', 1429, '{"Name_lang":"Different Retail zone"}'::jsonb)`;
     const withCatalog = await readCharacterPage(sql, mine, identity);
     assert.equal(withCatalog?.professions[0]?.total, 1);
     assert.equal(withCatalog?.professions[0]?.uncatalogued, 4);
@@ -99,6 +107,12 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
       withCatalog?.professions[0]?.missing[0]?.recipes[0]?.name,
       "Elixir of Minor Fortitude",
     );
+    const observed = withCatalog?.professions[0]?.missing[0];
+    assert.equal(observed?.id, "trainer");
+    assert.equal(observed?.recipes[0]?.sources.length, 1);
+    assert.equal(observed?.recipes[0]?.sources[0]?.cost, 80);
+    assert.equal(observed?.recipes[0]?.sources[0]?.zone, "Elwynn Forest");
+    assert.ok(!JSON.stringify(withCatalog).includes(theirs));
     const retail = await readCharacterPage(sql, mine, { ...identity, game: "retail" });
     assert.deepEqual(retail?.professions, []);
 
@@ -131,6 +145,7 @@ dbTest("My page shows Path completions with safe links, scoped to its Account", 
   const sql = connectPostgres(url.toString(), { max: 2 });
   try {
     await migrate(sql);
+    await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, ${mine}, 1, 2), (${theirs}, ${theirs}, 1, 2)`;
     const body = {
       kind: "collection",
       slug: "first-mounts",

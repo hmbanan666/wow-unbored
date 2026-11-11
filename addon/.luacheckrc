@@ -43,7 +43,12 @@ globals = {
 
 files["tests/forever-client.lua"] = { ignore = { "111", "121", "122" } }
 
+files["tests/recipe-sources.lua"] = { ignore = { "111", "112", "121", "122" } }
+
 read_globals = {
+  "UnitGUID", "C_Trainer", "C_TooltipInfo", "C_MerchantFrame",
+  "GetNumTrainerServices", "GetTrainerServiceStepIndex", "GetTrainerServiceInfo",
+  "GetTrainerServiceSkillReq", "GetTrainerServiceCost", "GetMerchantNumItems", "GetMerchantItemID",
   "GetBuildInfo",
   "BreakUpLargeNumbers",
   "EJ_GetInstanceInfo",
@@ -178,4 +183,5 @@ read_globals = {
   "ITEM_SPELL_KNOWN",
   "ITEM_OPENABLE",
   "UnboredAdvice",
+  "UnboredRecipeTeaching",
 }

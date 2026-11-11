@@ -180,6 +180,7 @@ const LEASE_TOOLS = new Set([
   "get_place",
   "get_game_entity",
   "get_profession_catalog",
+  "get_recipe_sources",
   "find_game_entity",
   "get_quest_line",
   "get_item_sources",
@@ -940,6 +941,20 @@ export function createMcpServer(
       },
     },
     async (query) => text(await findGameEntity(store.game, query)),
+  );
+
+  registerTool(
+    "get_recipe_sources",
+    {
+      title: "Read observed recipe sources",
+      description:
+        "Aggregated trainer and vendor sightings for one game's profession, with zone names, prices and teaching items. Past observations, not live stock. No Account identities or per-Account counts. No guessed places.",
+      inputSchema: {
+        game: z.enum(["retail", "forever"]),
+        skillLine: z.number().int().positive().max(2147483647),
+      },
+    },
+    async ({ game, skillLine }) => text(await store.game.forGame(game).recipeSources(skillLine)),
   );
 
   registerTool(

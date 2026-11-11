@@ -646,7 +646,7 @@ retain the Retail fields in `gameDb` and add the same fields at `gameDb.forever`
 
 Forever downloads enUS only, with strict selected columns from `SkillLine`,
 `SkillLineAbility`, `SpellReagents`, `ItemSparse`, `ItemEffect`, `SpellEffect`,
-`TradeSkillCategory`, `SpellName`, and `ItemXItemEffect`. The last is the necessary
+`TradeSkillCategory`, `SpellName`, `ItemXItemEffect`, and (T4) `UiMap`. The last is the necessary
 item-to-effect bridge absent from ItemEffect itself in build 1.60.1.70888. No
 third-party database or image is used. Retail's table and locale set is unchanged;
 it has no SkillLineAbility import, so Retail pages retain known-only counts.
@@ -680,9 +680,9 @@ links. Reads never download; an empty list is unavailable, not a claim of zero
 recipes. The private character page queries only its game/current build and
 professions. Known counts include learned ids absent from the catalog and note
 that count separately; M remains catalog size, so N can exceed M. Missing
-recipes are grouped by category in collapsible details; unknown skill has no
+recipes are grouped by observed source in collapsible details (T4); unknown skill has no
 invented colour. Unseen learned data prompts opening the profession in game.
-No source kinds, places, route or history are displayed.
+Routes and history are not displayed.
 
 Rollout order: start the new Server first so migration 0030 completes, then the
 new website (which queries the new table); replace all old Server instances before
@@ -696,6 +696,50 @@ Forever download/import retries hourly and cannot roll back a Retail import.
 Full local build 1.60.1.70888: 132,229 source rows and 2,540 unique catalog rows;
 41 names are absent in SpellName and stay null. See the ledger for table and
 profession counts. No deployment or live-game compatibility claim is part of T3.
+
+### Recipe sources and Advice (T4)
+
+[ADR 0097](adr/0097-recipe-sightings-and-advice.md) adds `trainerSeen` and
+`merchantSeen`, both v1 Character Sections. The [API evidence and limits](forever-recipe-sources.md)
+record the pinned Forever source checks. Each Section retains 200 latest observations;
+coordinates are percentage points rounded to 0.1. Sharing off prevents reads and removes
+these Sections exactly as for other nonessential Sections. Previously uploaded rows remain
+until Forget my data, matching existing retained snapshot behavior.
+
+Migration `0031_recipe_sightings.sql` creates per-Account/game/source rows on PostgreSQL;
+SQLite creates the same table when opening old databases. Ingest accepts only v1 Character
+Sections, validates each row, and keys by Account/game/kind/NPC/recipe-or-item. Only a newer
+observation increments `seen_count`; retries, unchanged pairs in a new Section and stale
+uploads cannot inflate it. Legacy Account binding preserves sightings, and both Forget
+paths erase them transactionally. Public source projections contain neither Account ids
+nor per-Account counts. Latest observations supply price, stock and place; earliest/latest
+observation times span the merged sources.
+
+`get_recipe_sources(game, skillLine)` returns per-recipe sources and named teaching items;
+`get_profession_catalog` stays unchanged. The private character page uses the same pure
+resolution/grouping rules: Trainer, Vendor, Limited supply, From item, Not seen yet.
+Explanations open on tap/keyboard and appear on hover. Place names use the selected game's
+enUS UiMap; unknown zones say Unknown zone plus the map id. No source is inferred from
+AcquireMethod. No drop/quest URLs are supplied; the future extension point is documented
+in the evidence ledger.
+
+`GET /v1/advice?game=retail|forever` adds an optional `teaching` map to the existing response;
+omitting game retains Retail advice/holdings. Forever carries no Retail advice or holdings.
+Tuples are item -> [spell, skill line, minimum skill], at most 4,000, with ambiguous items
+omitted. The Companion writes `UnboredRecipeTeaching` in Advice.lua for the installation's
+game, within the existing combined 260 KB / 20,000-literal helper budget, reducing the map
+when necessary. No new reload path is added. Current-character and Alt lookups rebuild
+only when profession/recipe data changes; tooltip calls use indexed items. The Alt learned
+sets stay packed, at most 12 KB per Alt and 60 KB combined, and clear with sharing off.
+
+Rollout notes for the owner: **Server first**, wait for migration 0031, grant the web read
+role SELECT on `recipe_sightings`, then update the website. UiMap is the tenth Forever
+source table, enUS only. An existing T3 import lacks its completion marker, so the next
+watch pass reimports all ten tables for that build in the background; allow time for the
+long download/import. The old catalog remains readable until the atomic publication;
+unknown-zone fallbacks work meanwhile. Retail does not reimport. Deliver the Companion
+and addon together when ready to test Advice; this task does not deploy, release, tag,
+change the addon version or assert live Forever compatibility.
 
 ### Game DB: automatic build watching
 
@@ -851,6 +895,8 @@ Unknown is never counted as an unfinished achievement or an open criterion.
 | `currencies` | char | C_CurrencyInfo list (headers expanded, then restored) | login, CURRENCY_DISPLAY_UPDATE | 37 KB |
 | `professions` | char | Retail: GetProfessions, GetProfessionInfo; Forever: guarded C_SkillInfo skill lines (primary/secondary categories) | login, settled SKILL_LINES_CHANGED and profession events | |
 | `recipes` | char | Both games: guarded C_TradeSkillUI.GetAllRecipeIDs, else GetFilteredRecipeIDs, learned-only GetRecipeInfo; learned ids and optional difficulty colour sets packed | while the player's own profession window is open | 5 KB |
+| `trainerSeen` | char | Both games where available: guarded trainer service APIs, spell tooltip data or name/skill/locale, Creature NPC and player map position | settled TRAINER_SHOW/UPDATE/name refresh while open | latest 200 NPC/recipe pairs |
+| `merchantSeen` | char | Both games where available: guarded merchant/item APIs, Recipe-class items only, observed copper price and stock, Creature NPC and player map position | settled MERCHANT_SHOW/UPDATE while open | latest 200 NPC/item pairs |
 | `questsDone` | char | C_QuestLog.GetAllCompletedQuestIDs (packed) | login, QUEST_TURNED_IN | 52 KB |
 | `questLog` | char | C_QuestLog, GetQuestObjectives | QUEST_LOG_UPDATE and quest events | 16 KB |
 | `questLines` (v1) | char | C_CampaignInfo (InProgress or Stalled campaigns), C_QuestLine.GetQuestLineInfo for each log quest, GetAvailableQuestLines for the current map and the 3 most played maps; GetQuestLineQuests against IsQuestFlaggedCompleted gives `done`/`total`/`nextQuestID`. Up to 40 rows `{ questLineID, name, campaignID?, chapter?, mapID, x?, y?, done, total, nextQuestID?, flags }`, names in the client language | 20 s after the login pass (map requests 10 s before it), QUEST_TURNED_IN | ~4 KB |

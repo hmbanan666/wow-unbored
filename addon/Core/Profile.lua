@@ -237,6 +237,7 @@ function ns.Profile.NoteAlt()
   local key = ns.Profile.AltKey(name, realm)
   local entry = type(ns.DB.alts[key]) == "table" and ns.DB.alts[key] or {}
   local _, classFile = ns.Call(UnitClass, "player")
+  entry.game = ns.Game
   entry.name = name
   entry.realm = realm
   entry.classFile = ns.SafeString(classFile, 20) or entry.classFile
