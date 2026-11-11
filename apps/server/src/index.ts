@@ -1,3 +1,4 @@
+import { backfillCharacterEvents } from "./character-history-backfill.ts";
 import { serve } from "@hono/node-server";
 import { createServer, type Server } from "node:http";
 
@@ -23,10 +24,11 @@ if (config.databaseUrl) {
     `Postgres schema ready (${applied.length ? `applied ${applied.join(", ")}` : "up to date"}); every table on Postgres, the SQLite file untouched`,
   );
 }
-const { app, webhook, inbox, runner, gameWatch, media, startReconnectCleanup, close } = createApp({
-  ...config,
-  database,
-});
+const { app, store, webhook, inbox, runner, gameWatch, media, startReconnectCleanup, close } =
+  createApp({
+    ...config,
+    database,
+  });
 runner?.start();
 gameWatch.start();
 media.start();
@@ -45,6 +47,25 @@ const server = serve(
   },
 ) as Server;
 
-const shutdown = createShutdown({ server, runner, webhook, inbox, close, log: console.log });
+const backfillAbort = new AbortController();
+// Scheduled after listen; neither health nor ingest waits for historical derivation.
+const historyBackfill = new Promise<void>((resolve) => setImmediate(resolve))
+  .then(() => store.data.ready)
+  .then(() => backfillCharacterEvents(store.db, { signal: backfillAbort.signal, log: console.log }))
+  .catch((error: unknown) =>
+    console.error("Character history backfill failed; will retry at next boot", error),
+  );
+const shutdown = createShutdown({
+  server,
+  runner,
+  webhook,
+  inbox,
+  close: async () => {
+    backfillAbort.abort();
+    await historyBackfill;
+    await close();
+  },
+  log: console.log,
+});
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
