@@ -287,6 +287,7 @@ test("mcp lists the planner tools", async () => {
       "find_game_entity",
       "get_account_overview",
       "get_active_path",
+      "get_character_history",
       "get_content",
       "get_current_plan",
       "get_data_changes",

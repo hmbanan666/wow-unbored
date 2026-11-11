@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vite-plus/test";
 import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h, ref, Suspense } from "vue";
-import CharacterPage from "../../app/pages/my/[game]/[realm]/[name].vue";
+import CharacterPage from "../../app/pages/my/[game]/[realm]/[name]/index.vue";
 import { CHARACTER_COPY } from "../../shared/character-page";
 
 for (const game of ["retail", "forever"]) {

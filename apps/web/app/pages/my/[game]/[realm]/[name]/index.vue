@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CHARACTER_COPY, type CharacterPage } from "#shared/character-page";
+import { CHARACTER_COPY, characterHref, type CharacterPage } from "#shared/character-page";
 
 type Result =
   | { ok: true; lang: "en" | "ru"; character: CharacterPage }
@@ -41,6 +41,7 @@ useSeoMeta({ title: () => character.value?.name || copy.value.title, robots: "no
     </DsEmptyState>
     <template v-else>
       <DsPageHeader :title="character.name" :eyebrow="character.realm" />
+      <DsButton :to="`${characterHref(character)}/history`">Character history</DsButton>
       <DsChip v-if="character.game === 'forever'">Forever</DsChip>
       <DsSection :title="copy.professions">
         <DsEmptyState v-if="!character.professions.length" :title="copy.empty" :text="copy.open" />

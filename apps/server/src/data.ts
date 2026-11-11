@@ -1,3 +1,9 @@
+import {
+  EVENTS_SQLITE_SCHEMA,
+  EVENT_SECTIONS,
+  deriveCharacterEvents,
+  writeCharacterEvents,
+} from "./character-events.ts";
 import { SIGHTINGS_SQLITE_SCHEMA, ingestRecipeSightings } from "./recipe-sources.ts";
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
@@ -677,7 +683,7 @@ export class DataStore {
     this.db = db;
     this.log = log;
     if (db instanceof SqliteDb) {
-      db.raw.exec(SQLITE_SCHEMA + SIGHTINGS_SQLITE_SCHEMA);
+      db.raw.exec(SQLITE_SCHEMA + SIGHTINGS_SQLITE_SCHEMA + EVENTS_SQLITE_SCHEMA);
       if (
         !db.raw
           .prepare("PRAGMA table_info(characters)")
@@ -873,6 +879,24 @@ export class DataStore {
       change.kind,
       JSON.stringify(change.body),
     );
+    if (input.ownerKind === "char" && !input.unknown && EVENT_SECTIONS.includes(input.name)) {
+      const character = await this.db.get<{ game: string }>(
+        "SELECT game FROM characters WHERE id = ?",
+        input.ownerId,
+      );
+      if (character)
+        await writeCharacterEvents(
+          this.db,
+          character.game,
+          input.ownerId,
+          deriveCharacterEvents(
+            input.name,
+            previous?.body ?? null,
+            input.body,
+            input.at ?? input.now,
+          ),
+        );
+    }
     input.changes?.push({
       section: input.name,
       scope: input.ownerKind,
@@ -1725,6 +1749,7 @@ export class DataStore {
   }> {
     const id = accountId(account);
     return this.db.tx(async () => {
+      await this.db.lockKey(`account:${id}`);
       const characters = (await this.characters(id)).map((row) => row.id);
       const owners: [string, string][] = [
         ["account", id],
@@ -1746,6 +1771,10 @@ export class DataStore {
         );
       }
       const errors = await this.db.run(`DELETE FROM addon_errors WHERE account = ?`, id);
+      await this.db.run(
+        `DELETE FROM character_events WHERE character_id IN (SELECT id FROM characters WHERE account_id = ?)`,
+        id,
+      );
       await this.db.run(`DELETE FROM characters WHERE account_id = ?`, id);
       await this.db.run(`DELETE FROM recipe_sightings WHERE account_id = ?`, id);
       await this.db.run(`DELETE FROM accounts WHERE id = ?`, id);

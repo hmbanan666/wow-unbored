@@ -1,3 +1,5 @@
+import { CHARACTER_EVENT_TYPES } from "@unbored/contracts/character-history";
+import { readCharacterHistory } from "./character-events.ts";
 import { readSkillRoutes } from "./skill-route.ts";
 import { pathCharacterSchema, setActivePathSchema } from "./active-path.ts";
 import { CONTENT_KINDS, ContentError, ContentStore } from "./content.ts";
@@ -182,6 +184,7 @@ const LEASE_TOOLS = new Set([
   "get_game_entity",
   "get_profession_catalog",
   "get_recipe_sources",
+  "get_character_history",
   "get_skill_route",
   "find_game_entity",
   "get_quest_line",
@@ -943,6 +946,36 @@ export function createMcpServer(
       },
     },
     async (query) => text(await findGameEntity(store.game, query)),
+  );
+
+  registerTool(
+    "get_character_history",
+    {
+      title: "Read character history",
+      description:
+        "Dated level, skill, recipe, daily gold, gear and reputation changes. First observations are baselines. Pass realm or account if the name is ambiguous; newest first, at most 100 events.",
+      inputSchema: {
+        ...whoSchema,
+        game: z.enum(["retail", "forever"]),
+        character: z.string().min(1).max(80),
+        types: z.array(z.enum(CHARACTER_EVENT_TYPES)).max(6).optional(),
+        since: z.number().int().nonnegative().optional(),
+        limit: z.number().int().min(1).max(100).default(100),
+      },
+    },
+    async (input) => {
+      await settle(input.account);
+      const rows = await pickCharacters(input);
+      if (rows.length !== 1) return text({ error: "Choose one Character with realm or account." });
+      const row = rows[0]!;
+      return text(
+        await readCharacterHistory(
+          store.db,
+          { accountId: row.accountId, game: row.game, characterId: row.id },
+          input,
+        ),
+      );
+    },
   );
 
   registerTool(

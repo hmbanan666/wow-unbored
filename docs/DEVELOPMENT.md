@@ -682,7 +682,7 @@ professions. Known counts include learned ids absent from the catalog and note
 that count separately; M remains catalog size, so N can exceed M. Missing
 recipes are grouped by observed source in collapsible details (T4); unknown skill has no
 invented colour. Unseen learned data prompts opening the profession in game.
-Routes and history are not displayed.
+The T5 skill Plans and T6 history are documented below.
 
 Rollout order: start the new Server first so migration 0030 completes, then the
 new website (which queries the new table); replace all old Server instances before
@@ -1101,7 +1101,7 @@ Locally, apply migrations by starting the Server once with `DATABASE_URL`, then:
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/unbored pnpm --filter @unbored/web dev
 ```
 
-Dev listens on port 3001. `NUXT_PUBLIC_SITE_URL` is the canonical origin. `NUXT_APP_SECRET` (at least 32 characters) seals the My page cookie and signs og-images; `nuxt-auth-utils` no longer reads `NUXT_SESSION_PASSWORD`. `NUXT_SERVER_URL` is how the site reaches the Server to redeem a sign-in link and call the session-authenticated Path routes; when it is empty the site uses its own origin, which works when `/v1` on that origin is the Server. `UNBORED_WEB_ORIGIN` on the Server is the public website origin written into the link and accepted by Path selection Origin checks; it must match the browser origin exactly. All three belong in Dokploy env, not in the repo. In production the site connects as a read-only Postgres role (`unbored_web`, `default_transaction_read_only`) with SELECT on `web`, `content`, `characters`, `sections_latest`, `history`, `plans`, `recipe_sightings`, `game.builds`, `game.rows`, `game.profession_recipes` and `devices (id, status)`, plus USAGE on schema `game`; migration `0031_recipe_sightings.sql` adds the recipe-source and Game DB grants when the role exists. It grants no writes or access to `accounts`; the Server's role owns and migrates every table. The site typecheck uses TypeScript 5.9 (`vue-tsc`); the rest of the repo stays on TypeScript 7. Website tests that read Postgres use `UNBORED_WEB_TEST_DATABASE_URL` (not `UNBORED_TEST_DATABASE_URL`, which also turns on the Server's Postgres backends).
+Dev listens on port 3001. `NUXT_PUBLIC_SITE_URL` is the canonical origin. `NUXT_APP_SECRET` (at least 32 characters) seals the My page cookie and signs og-images; `nuxt-auth-utils` no longer reads `NUXT_SESSION_PASSWORD`. `NUXT_SERVER_URL` is how the site reaches the Server to redeem a sign-in link and call the session-authenticated Path routes; when it is empty the site uses its own origin, which works when `/v1` on that origin is the Server. `UNBORED_WEB_ORIGIN` on the Server is the public website origin written into the link and accepted by Path selection Origin checks; it must match the browser origin exactly. All three belong in Dokploy env, not in the repo. In production the site connects as a read-only Postgres role (`unbored_web`, `default_transaction_read_only`) with SELECT on `web`, `content`, `characters`, `sections_latest`, `history`, `plans`, `recipe_sightings`, `character_events`, `game.builds`, `game.rows`, `game.profession_recipes` and `devices (id, status)`, plus USAGE on schema `game`; migration `0031_recipe_sightings.sql` adds the recipe-source and Game DB grants when the role exists; `0032_character_events.sql` conditionally grants SELECT on derived history. It grants no writes or access to `accounts`; the Server's role owns and migrates every table. The site typecheck uses TypeScript 5.9 (`vue-tsc`); the rest of the repo stays on TypeScript 7. Website tests that read Postgres use `UNBORED_WEB_TEST_DATABASE_URL` (not `UNBORED_TEST_DATABASE_URL`, which also turns on the Server's Postgres backends).
 
 
 The restricted-role website test also needs permission to create roles and `SET ROLE`
@@ -1438,3 +1438,67 @@ Picking a Profession Idea starts the delivered Steps immediately, without a Requ
 For owner testing, use Server then web from the same revision, with the T3 catalog already imported and T4 migration 0031 applied. The addon and Companion changes must be present in the test installation for in-game delivery; this task does not publish them. No version change, release, deployment or public Forever compatibility claim is included.
 
 Merchant field names (`price`, `stackCount`, `numAvailable`, `hasExtendedCost`) were checked against the [Forever client API documentation](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_APIDocumentationGenerated/MerchantFrameDocumentation.lua) on 2026-11-11; this is an API reference, not a source of imported game data.
+
+
+### Character history (T6)
+
+[ADR 0099](adr/0099-character-history.md) implements ADR 0094 section 4. Migration
+`0032_character_events.sql` creates `character_events` for both Games, linked to
+`characters.id` and scoped through that Character's Account. The unique
+(character_id, type, key, at) identity makes re-derivation safe; a partial unique
+(character_id, day) index gives gold one last observed close per UTC day. `at`
+is the source Section timestamp, falling back to ingest time only when absent.
+The gold row retains the latest source timestamp, including during backfill.
+
+`character-events.ts` derives changes inside the Section transaction: `char`
+level rises and money, `professions` skill changes (including Retail tiers),
+`recipes` learned packed ids, `gear` equipped item ids by slot, and `reputation`
+**reaction tiers**, never the raw `standing` points. A first Section is a
+baseline except for the current level and money. Unchanged uploads, stale
+Sections and missing values do not manufacture achievements. Gold charts cover
+days with recorded char changes, not invented closes on days without uploads.
+Events are not partitioned or removed by the 13-month retention job. Both Forget
+my data and account deletion erase them; SQLite-to-Postgres transfer includes
+them after Characters and accepts older SQLite files without this table.
+
+After boot, `character-history-backfill.ts` reads the retained 13 months by
+Character in timestamp/id order, 200 rows per transaction, yielding 10 ms
+between full batches. It holds only five prior Section bodies and one batch,
+shares the existing Account write lock per batch to coordinate erasure/ingest,
+and bulk-inserts events in groups of at most 100. Requests and `/health` never
+await the job. Progress is logged every 10,000 scanned rows and at completion;
+`data_meta.character_events_v1` marks success. Shutdown cancels between batches;
+failure leaves the marker absent so next boot retries, with unique keys making
+already-written events harmless. No new deployment command is required.
+
+Local synthetic PostgreSQL 18 benchmark (2026-11-11): 1.1 million history rows,
+100 Characters split across both Games and all five source Sections, plus
+concurrent same-Account uploads, completed in **138 seconds**, writing 34,802
+events; process RSS was 222 MB. During 1,176 samples, /health p95 was 3.5 ms and
+ingest p95 27.1 ms. Allow roughly **2–5 minutes** for this row count on comparable
+hardware; body sizes, event density, partition count and database load can
+increase it. This is a synthetic observation, not a production timing or a
+claim of zero database contention.
+
+Legacy recipe history stores capped id additions and initial counts, not full
+sets. Backfill uses only additions actually retained, skips the first retained
+Section as baseline, and cannot recover ids beyond an old `addedMore` cap or
+changes before retention. A full recipe snapshot after an unreconstructable
+legacy diff is another baseline. New ingests diff full latest Sections and do
+not inherit that historical cap. No third-party data is fetched.
+
+The linked private route `/my/<game>/<realm>/<name>/history` uses the existing
+live session, private/no-store caching and noindex/nofollow meta and headers.
+It renders inline SVG level, gold (g/s/c) and profession charts with one last
+point per UTC day, then a day-grouped timeline with type links and 100-row
+(at,id) cursor pages. Charts are independent of filters/cursors. Recipe names
+use the Game's current catalog when known, otherwise the numeric id. English
+copy is intentional for T6. Empty history directs the player back to play and
+the Companion. MCP `get_character_history(game, character, types?, since?,
+limit?)` returns newest first, at most 100 events, and accepts the existing
+optional realm/account disambiguators within the Account/Game lease boundary.
+
+Deployment order for owner review: Server first (migration 0032 and background
+backfill), then web. The web may start as soon as migration succeeds; history
+fills progressively. There is no addon or Companion update in T6 and no version,
+release, compatibility-listing or production change in this task.
