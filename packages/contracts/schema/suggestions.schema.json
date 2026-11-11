@@ -231,6 +231,9 @@
             "properties": {
               "nextCrafts": {
                 "const": 0
+              },
+              "game": {
+                "const": "forever"
               }
             }
           },

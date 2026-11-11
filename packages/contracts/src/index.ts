@@ -599,7 +599,10 @@ const suggestionSchema = z
         (p) =>
           p.rankMax === undefined
             ? p.target > p.from && p.nextCrafts > 0
-            : p.target === p.rankMax && p.from >= p.rankMax && p.nextCrafts === 0,
+            : p.game === "forever" &&
+              p.target === p.rankMax &&
+              p.from >= p.rankMax &&
+              p.nextCrafts === 0,
         "Profession Ideas need a craft target or a reached rank cap",
       )
       .optional(),

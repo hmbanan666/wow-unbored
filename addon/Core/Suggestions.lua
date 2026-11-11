@@ -134,7 +134,7 @@ function S.Clean(raw)
     if p.game ~= ns.Game or not int(p.skillLine) or not int(p.target)
       or not ns.AsNumber(p.from) or (not rank and not int(p.nextCrafts)) or type(plan.tasks) ~= 'table'
       or #plan.tasks == 0 or #plan.tasks > 40 then return nil end
-    if rank and (p.target ~= rank or p.from < rank or p.nextCrafts ~= 0) then return nil end
+    if rank and (p.game ~= 'forever' or p.target ~= rank or p.from < rank or p.nextCrafts ~= 0) then return nil end
     profession = { game = p.game, skillLine = p.skillLine, from = p.from,
       target = p.target, nextCrafts = p.nextCrafts, rankMax = rank }
     steps = {}

@@ -257,15 +257,19 @@ test("profession Ideas carry a standard Plan and skill completion", () => {
 
 test("rank-training Ideas deliver one Step without inventing a higher skill target", () => {
   const parsed = suggestionsBodySchema.parse(read("profession-rank-suggestions.json"));
-  for (const list of Object.values(parsed.characters)) {
-    const idea = list[0]!;
-    const plan = planSchema.parse(idea.plan);
-    expect(idea.profession?.target).toBe(75);
-    expect(plan.tasks).toHaveLength(1);
-    expect(plan.tasks[0]!.complete).toEqual({
-      kind: "profession_rank",
-      skillLine: 197,
-      previousMax: 75,
-    });
-  }
+  expect(parsed.characters["Realm-Hero"]).toEqual([]);
+  const stale = structuredClone(parsed);
+  const rankIdea = stale.characters["forever/Realm-Hero"]![0]!;
+  rankIdea.profession!.game = "retail";
+  stale.characters = { "Realm-Hero": [rankIdea] };
+  expect(suggestionsBodySchema.safeParse(stale).success).toBe(false);
+  const idea = parsed.characters["forever/Realm-Hero"]![0]!;
+  const plan = planSchema.parse(idea.plan);
+  expect(idea.profession?.target).toBe(75);
+  expect(plan.tasks).toHaveLength(1);
+  expect(plan.tasks[0]!.complete).toEqual({
+    kind: "profession_rank",
+    skillLine: 197,
+    previousMax: 75,
+  });
 });

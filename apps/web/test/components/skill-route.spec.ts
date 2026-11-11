@@ -61,7 +61,7 @@ test("at cap and missing catalog show a next action instead of an empty list", (
 });
 
 for (const game of ["forever", "retail"] as const)
-  test(`${game} rank training has no crafts or invented requirements`, () => {
+  test(`${game} at maximum only offers rank training in Forever`, () => {
     const input = {
       game,
       name: "Tailoring",
@@ -72,6 +72,12 @@ for (const game of ["forever", "retail"] as const)
       known: [],
     };
     const missing = mount(ProfessionRoute, { props: { route: computeSkillRoute(input) } });
+    if (game === "retail") {
+      expect(missing.text()).toContain("You have reached this cap");
+      expect(missing.text()).not.toContain("Train the next rank");
+      expect(missing.find("ol").exists()).toBe(false);
+      return;
+    }
     expect(missing.text()).toContain("Train the next rank of Tailoring at a trainer");
     expect(missing.text()).not.toContain("expected crafts");
     expect(missing.text()).not.toContain("Visit Teacher");

@@ -126,7 +126,7 @@ test("ranking uses reagent totals, held reagents, then ids and is independent of
   );
   assert.equal(computeSkillRoute({ ...input, held: { 20: 3 } }).stretches[0]!.spellId, 101);
   assert.equal(computeSkillRoute({ ...input, target: 11 }).reached, 11);
-  assert.equal(computeSkillRoute({ ...input, skill: 12 }).status, "needs_rank");
+  assert.equal(computeSkillRoute({ ...input, skill: 12 }).status, "at_cap");
 });
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -286,16 +286,28 @@ for (const backend of BACKENDS)
           game,
         );
         const [rank] = await readSkillRoutes(store.db, row, 197);
-        assert.equal(rank!.route.status, "needs_rank");
-        assert.deepEqual(rank!.route.stretches, []);
-        const rankIdea = (await store.suggestionsForDevice("pc")).characters[key]![0]!;
-        assert.equal(rankIdea.profession!.rankMax, 75);
-        assert.equal(rankIdea.plan!.tasks.length, 1);
-        assert.deepEqual(
-          [rankIdea.plan!.tasks[0]!.mapID, rankIdea.plan!.tasks[0]!.x, rankIdea.plan!.tasks[0]!.y],
-          [37, 0.12, 0.34],
-        );
-        assert.equal(rankIdea.plan!.tasks[0]!.note, "Visit Teacher.");
+        const cappedIdeas = (await store.suggestionsForDevice("pc")).characters[key];
+        if (game === "retail") {
+          assert.equal(rank!.route.status, "at_cap");
+          assert.equal(rank!.route.rankTraining, undefined);
+          assert.deepEqual(rank!.route.stretches, []);
+          assert.ok(!cappedIdeas?.some((idea) => idea.kind === "profession"));
+        } else {
+          assert.equal(rank!.route.status, "needs_rank");
+          assert.deepEqual(rank!.route.stretches, []);
+          const rankIdea = cappedIdeas![0]!;
+          assert.equal(rankIdea.profession!.rankMax, 75);
+          assert.equal(rankIdea.plan!.tasks.length, 1);
+          assert.deepEqual(
+            [
+              rankIdea.plan!.tasks[0]!.mapID,
+              rankIdea.plan!.tasks[0]!.x,
+              rankIdea.plan!.tasks[0]!.y,
+            ],
+            [37, 0.12, 0.34],
+          );
+          assert.equal(rankIdea.plan!.tasks[0]!.note, "Visit Teacher.");
+        }
         assert.ok(!JSON.stringify(rank!.route).includes("requiredSkill"));
         assert.ok(!JSON.stringify(rank!.route).includes('"cost"'));
         const rankResponse = await runtime.app.request("/mcp", {
@@ -370,7 +382,7 @@ test("a newly reachable trainer is inserted between stretches and green never di
 });
 
 for (const game of ["forever", "retail"] as const)
-  test(`${game} respects the observed rank cap and offers rank training`, () => {
+  test(`${game} respects the observed maximum and offers only supported rank training`, () => {
     const input = {
       game,
       skillLine: 197,
@@ -383,6 +395,12 @@ for (const game of ["forever", "retail"] as const)
     assert.equal(computeSkillRoute({ ...input, target: 200 }).target, 75);
     assert.equal(computeSkillRoute({ ...input, skill: 100, max: 150 }).reached, 150);
     const rank = computeSkillRoute({ ...input, skill: 75 });
+    if (game === "retail") {
+      assert.equal(rank.status, "at_cap");
+      assert.equal(rank.rankTraining, undefined);
+      assert.deepEqual(rank.stretches, []);
+      return;
+    }
     assert.equal(rank.status, "needs_rank");
     assert.equal(rank.target, 75);
     assert.deepEqual(rank.stretches, []);

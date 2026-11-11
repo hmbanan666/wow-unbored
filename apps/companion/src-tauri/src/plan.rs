@@ -727,7 +727,7 @@ fn clean_suggestion(item: &Value) -> Option<Value> {
         let target = p["target"].as_u64().filter(|v| *v > 0 && *v <= 2000)?;
         let crafts = p["nextCrafts"].as_u64()?;
         if let Some(max) = rank {
-            if target != max || from < max || crafts != 0 {
+            if game != "forever" || target != max || from < max || crafts != 0 {
                 return None;
             }
         } else if target <= from || crafts == 0 {
@@ -1677,7 +1677,7 @@ mod tests {
     }
 
     #[test]
-    fn profession_rank_plans_survive_delivery_for_both_games() {
+    fn profession_rank_plans_survive_delivery_only_for_forever() {
         let body: Value = serde_json::from_str(include_str!(
             "../../../../packages/contracts/fixtures/profession-rank-suggestions.json"
         ))
@@ -1697,16 +1697,20 @@ mod tests {
         let lua = render_suggestions_lua(&body);
         let parsed = parse_saved_variables(&lua).unwrap();
         let delivered = parsed["UnboredSuggestions"].to_json();
-        for key in ["forever/Realm-Hero", "Realm-Hero"] {
-            let expected = &body["characters"][key][0];
-            let idea = &delivered["characters"][key][0];
-            assert_eq!(idea["profession"], expected["profession"]);
-            assert_eq!(idea["plan"]["tasks"], expected["plan"]["tasks"]);
-            jsonschema::validator_for(&plan_schema)
-                .unwrap()
-                .validate(&expected["plan"])
-                .unwrap();
-        }
+        assert_eq!(body["characters"]["Realm-Hero"], serde_json::json!([]));
+        assert!(delivered["characters"]["Realm-Hero"].is_null());
+        let mut stale = body["characters"]["forever/Realm-Hero"][0].clone();
+        stale["profession"]["game"] = Value::from("retail");
+        assert!(clean_suggestion(&stale).is_none());
+        let key = "forever/Realm-Hero";
+        let expected = &body["characters"][key][0];
+        let idea = &delivered["characters"][key][0];
+        assert_eq!(idea["profession"], expected["profession"]);
+        assert_eq!(idea["plan"]["tasks"], expected["plan"]["tasks"]);
+        jsonschema::validator_for(&plan_schema)
+            .unwrap()
+            .validate(&expected["plan"])
+            .unwrap();
     }
 
     #[test]

@@ -95,7 +95,7 @@ export function computeSkillRoute(input: SkillRouteInput): SkillRoute {
     target > 2000
   )
     return route;
-  if (max !== null && max > 0 && skill >= max && (game !== "forever" || max < 300)) {
+  if (game === "forever" && max !== null && max > 0 && max < 300 && skill >= max) {
     route.status = "needs_rank";
     route.rankTraining = {
       profession: input.name ?? "your profession",
