@@ -85,8 +85,35 @@ function ns.Profile.CountItems(bagIds)
   return out
 end
 
+-- Forever skill categories: 11 professions, 9 secondary skills. Never expand
+-- headers or change the player's filters. TODO: confirm collapsed lines in T0.
+local function foreverProfessions()
+  local api = C_SkillInfo
+  if ns.IsCombat() or not api then return nil end
+  local count = ns.AsNumber(ns.Call(api.GetNumSkillLines))
+  if not count or type(api.GetSkillLineInfo) ~= "function" then return nil end
+  local out = {}
+  for i = 1, math.min(count, 500) do
+    local info = ns.Call(api.GetSkillLineInfo, i)
+    if type(info) == "table" and not ns.Call(issecretvalue, info) then
+      local category = ns.AsNumber(info.skillLineCategoryID)
+      local id = ns.AsNumber(info.skillID)
+      if ns.AsBoolean(info.isHeader) == false and id and (category == 11 or category == 9) then
+        out[#out + 1] = {
+          skillLine = id,
+          name = ns.SafeString(info.name, 60),
+          skill = ns.AsNumber(info.rank),
+          max = ns.AsNumber(info.maxRank),
+        }
+      end
+    end
+  end
+  return #out > 0 and out or nil
+end
+
 -- Primary professions, archaeology, fishing and cooking, with skill.
 function ns.Profile.Professions()
+  if ns.Game == "forever" then return foreverProfessions() end
   if type(GetProfessions) ~= "function" or type(GetProfessionInfo) ~= "function" then
     return nil
   end

@@ -13,6 +13,7 @@
     "./schema/snapshot.json": "./schema/snapshot.schema.json",
     "./schema/suggestions.json": "./schema/suggestions.schema.json",
     "./catalog.json": "./catalog/catalog.json",
+    "./packed": "./src/packed.ts",
     "./web-session": "./src/web-session.ts",
     "./game-media": "./src/game-media.ts",
     "./guide": "./src/guide.ts"

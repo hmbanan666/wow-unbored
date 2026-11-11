@@ -851,7 +851,10 @@ test("Forever snapshots keep a separate character identity and catalog game", as
     const foreverRow = await store.data.character(fixture.character, fixture.realm, "forever");
     assert.equal(retail?.level, 80);
     assert.equal(foreverRow?.level, 23);
-    assert.equal((await store.data.sectionsFor(foreverRow!)).has("pets"), false);
+    const foreverSections = await store.data.sectionsFor(foreverRow!);
+    assert.equal(foreverSections.has("pets"), false);
+    assert.deepEqual(foreverSections.get("professions")?.body, forever.sections.professions.body);
+    assert.deepEqual(foreverSections.get("recipes")?.body, forever.sections.recipes.body);
     const history = await store.history({
       character: fixture.character,
       realm: fixture.realm,

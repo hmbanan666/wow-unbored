@@ -55,7 +55,19 @@
                       "type": "object",
                       "additionalProperties": {
                         "type": "object",
-                        "properties": { "learned": { "$ref": "#/$defs/packedIdSet" } }
+                        "properties": {
+                          "learned": { "$ref": "#/$defs/packedIdSet" },
+                          "difficulty": {
+                            "type": "object",
+                            "description": "Optional learned recipe ids by current difficulty colour in both games.",
+                            "properties": {
+                              "orange": { "$ref": "#/$defs/packedIdSet" },
+                              "yellow": { "$ref": "#/$defs/packedIdSet" },
+                              "green": { "$ref": "#/$defs/packedIdSet" },
+                              "grey": { "$ref": "#/$defs/packedIdSet" }
+                            }
+                          }
+                        }
                       }
                     }
                   }

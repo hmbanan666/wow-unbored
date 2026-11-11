@@ -41,6 +41,13 @@ end
 -- filter setter, chat function, tooltip or game window is driven by a probe.
 -- Add a row here and point the corresponding verification TODO at this file.
 SC.checks = {
+  { api = "C_SkillInfo.GetNumSkillLines", game = "forever" },
+  { api = "C_SkillInfo.GetSkillLineInfo", args = { 1 }, game = "forever" },
+  { api = "C_TradeSkillUI.GetBaseProfessionInfo", game = "forever", profession = true },
+  { api = "C_TradeSkillUI.GetAllRecipeIDs", game = "forever", profession = true },
+  { api = "C_TradeSkillUI.GetFilteredRecipeIDs", game = "forever", profession = true },
+  { api = "C_TradeSkillUI.GetRecipeInfo", args = { 0 }, game = "forever", profession = true,
+    note = "empty-id probe; learned and difficulty require T0" },
   { api = "C_ToyBox.GetToyLink", args = { 54438 } },
   { api = "C_PetJournal.GetPetInfoBySpeciesID", args = { 39 } },
   { api = "C_PetJournal.GetNumCollectedInfo", args = { 39 } },
@@ -163,7 +170,15 @@ function SC.Run()
   local lineLimit = math.min(256, math.floor(8000 / #SC.checks) - 1)
   for _, check in ipairs(SC.checks) do
     local line = check.api
-    if ns.Game == "forever" and (check.api:match("^C_ToyBox%.") or check.api:match("^C_PetJournal%.")) then
+    if check.game and check.game ~= ns.Game then
+      line = line .. " skipped: " .. check.game
+    elseif check.profession and not (ns.Snapshot.IsOpen("recipes") and C_TradeSkillUI
+      and ns.AsBoolean(ns.Call(C_TradeSkillUI.IsTradeSkillLinked)) == false
+      and ns.AsBoolean(ns.Call(C_TradeSkillUI.IsTradeSkillGuild)) == false
+      and ns.AsBoolean(ns.Call(C_TradeSkillUI.IsNPCCrafting)) == false) then
+      report.manual = report.manual + 1
+      line = line .. " manual: open your own profession window"
+    elseif ns.Game == "forever" and (check.api:match("^C_ToyBox%.") or check.api:match("^C_PetJournal%.")) then
       line = line .. " skipped: retail"
     elseif check.manual then
       report.manual = report.manual + 1

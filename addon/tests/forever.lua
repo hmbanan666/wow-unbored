@@ -11,4 +11,6 @@ for _, interface in ipairs({ 15999, 16000, 16001, 16999, 17000, 120107 }) do
 end
 
 -- Reuse the frame harness, replacing its client APIs before loading the full TOC.
+-- The client fixture exercises profession Sections through login/window reads,
+-- including both recipe enumerators, secrets, combat and unavailable APIs.
 assert(loadfile("tests/ui.lua"))("forever")

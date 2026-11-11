@@ -6,6 +6,7 @@ import {
   type MyEntry,
   type MyCompletion,
 } from "#shared/my-page";
+import { characterHref, CHARACTER_COPY } from "#shared/character-page";
 import { catalogHref } from "#shared/catalog";
 import { SIGN_IN_COPY } from "#shared/sign-in";
 
@@ -74,6 +75,9 @@ useSeoMeta({
           :eyebrow="[character.realm, character.className].filter(Boolean).join(' · ')"
           :title="character.name"
         >
+          <DsButton :to="characterHref(character)" variant="ghost">{{
+            CHARACTER_COPY[lang].view
+          }}</DsButton>
           <DsChipRow>
             <DsChip v-if="character.game === 'forever'">Forever</DsChip>
             <DsChip v-if="character.level">{{ copy.level }} {{ character.level }}</DsChip>
