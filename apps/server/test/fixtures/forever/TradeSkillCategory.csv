@@ -20,3 +20,5 @@ ID,Name_lang,HordeName_lang,ParentTradeSkillCategoryID,SkillLineID,OrderIndex,Fl
 2651,Draughts,,2424,2937,55,0
 2516,Explosives,,2428,2941,20,0
 2594,SEASON OF DISCOVERY,,0,185,9999,0
+2400,Jewelcrafting (PROTOTYPE),,2399,2933,0,0
+2734,Poisons,,2733,2988,0,0

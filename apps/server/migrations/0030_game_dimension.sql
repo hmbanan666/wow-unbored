@@ -31,3 +31,40 @@ CREATE TABLE game.profession_recipes (
   body JSONB NOT NULL, PRIMARY KEY (game, build, skill_line, spell_id),
   FOREIGN KEY (game, build) REFERENCES game.builds(game, build)
 );
+
+-- Match game-scoped reads so the primary key cannot displace relationship indexes.
+DROP INDEX game.game_toy_itemid;
+CREATE INDEX game_toy_itemid ON game.rows (game, build, locale, (body ->> 'ItemID')) WHERE table_name = 'Toy';
+DROP INDEX game.game_mount_sourcespellid;
+CREATE INDEX game_mount_sourcespellid ON game.rows (game, build, locale, (body ->> 'SourceSpellID')) WHERE table_name = 'Mount';
+DROP INDEX game.game_battlepetspecies_summonspellid;
+CREATE INDEX game_battlepetspecies_summonspellid ON game.rows (game, build, locale, (body ->> 'SummonSpellID')) WHERE table_name = 'BattlePetSpecies';
+DROP INDEX game.game_battlepetspecies_creatureid;
+CREATE INDEX game_battlepetspecies_creatureid ON game.rows (game, build, locale, (body ->> 'CreatureID')) WHERE table_name = 'BattlePetSpecies';
+DROP INDEX game.game_uimapassignment_uimapid;
+CREATE INDEX game_uimapassignment_uimapid ON game.rows (game, build, locale, (body ->> 'UiMapID')) WHERE table_name = 'UiMapAssignment';
+DROP INDEX game.game_questpoiblob_questid;
+CREATE INDEX game_questpoiblob_questid ON game.rows (game, build, locale, (body ->> 'QuestID')) WHERE table_name = 'QuestPOIBlob';
+DROP INDEX game.game_questpoiblob_uimapid;
+CREATE INDEX game_questpoiblob_uimapid ON game.rows (game, build, locale, (body ->> 'UiMapID')) WHERE table_name = 'QuestPOIBlob';
+DROP INDEX game.game_questpoipoint_questpoiblobid;
+CREATE INDEX game_questpoipoint_questpoiblobid ON game.rows (game, build, locale, (body ->> 'QuestPOIBlobID')) WHERE table_name = 'QuestPOIPoint';
+DROP INDEX game.game_taxinodes_continentid;
+CREATE INDEX game_taxinodes_continentid ON game.rows (game, build, locale, (body ->> 'ContinentID')) WHERE table_name = 'TaxiNodes';
+DROP INDEX game.game_journalencounter_uimapid;
+CREATE INDEX game_journalencounter_uimapid ON game.rows (game, build, locale, (body ->> 'UiMapID')) WHERE table_name = 'JournalEncounter';
+DROP INDEX game.game_uimapgroupmember_uimapid;
+CREATE INDEX game_uimapgroupmember_uimapid ON game.rows (game, build, locale, (body ->> 'UiMapID')) WHERE table_name = 'UiMapGroupMember';
+DROP INDEX game.game_criteriatree_parent;
+CREATE INDEX game_criteriatree_parent ON game.rows (game, build, locale, (body ->> 'Parent')) WHERE table_name = 'CriteriaTree';
+DROP INDEX game.game_journalinstance_mapid;
+CREATE INDEX game_journalinstance_mapid ON game.rows (game, build, locale, (body ->> 'MapID')) WHERE table_name = 'JournalInstance';
+DROP INDEX game.game_journalencounter_journalinstanceid;
+CREATE INDEX game_journalencounter_journalinstanceid ON game.rows (game, build, locale, (body ->> 'JournalInstanceID')) WHERE table_name = 'JournalEncounter';
+DROP INDEX game.game_journalencounter_dungeonencounterid;
+CREATE INDEX game_journalencounter_dungeonencounterid ON game.rows (game, build, locale, (body ->> 'DungeonEncounterID')) WHERE table_name = 'JournalEncounter';
+DROP INDEX game.game_rows_name;
+CREATE INDEX game_rows_name ON game.rows (game, build, table_name, locale, (COALESCE(body ->> 'Display_lang', body ->> 'Name_lang', body ->> 'QuestTitle_lang', body ->> 'Title_lang')), id) WHERE COALESCE(body ->> 'Display_lang', body ->> 'Name_lang', body ->> 'QuestTitle_lang', body ->> 'Title_lang') IS NOT NULL;
+DROP INDEX game.game_questlinexquest_questlineid;
+CREATE INDEX game_questlinexquest_questlineid ON game.rows (game, build, locale, (body ->> 'QuestLineID')) WHERE table_name = 'QuestLineXQuest';
+ANALYZE game.rows;

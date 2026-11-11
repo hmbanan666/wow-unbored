@@ -687,8 +687,9 @@ No source kinds, places, route or history are displayed.
 Rollout order: start the new Server first so migration 0030 completes, then the
 new website (which queries the new table); replace all old Server instances before
 serving requests against the migrated schema, whose conflict keys have changed.
-The migration rewrites keys/indexes
-but does not download data. The first Server start begins a background Forever
+The migration rebuilds primary and relationship indexes and may take time on a
+large existing Retail import, but does not download data. Relationship indexes
+include `game` so game-scoped reads retain their selective index plans. The first Server start begins a background Forever
 import of nine tables; it does not delay readiness or reimport unchanged Retail
 data. Requests show the empty-catalog guidance until publication. A failed
 Forever download/import retries hourly and cannot roll back a Retail import.

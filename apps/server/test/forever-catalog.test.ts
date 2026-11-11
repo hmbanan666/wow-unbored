@@ -108,6 +108,12 @@ for (const backend of BACKENDS) {
       assert.equal(await app.store.game.currentBuild(), "12.0.1.66337");
       assert.equal(await app.store.game.row("SpellName", 2334), undefined);
       assert.equal((await game.professionCatalog(6)).recipes.length, 0);
+      assert.equal((await game.professionCatalog(40)).recipes.length, 0);
+      assert.equal((await game.professionCatalog(2933)).recipes.length, 0);
+      assert.deepEqual(
+        (await game.professionCatalog(202)).recipes.find((r) => r.spellId === 12716)?.teachingItems,
+        [],
+      );
       await assert.rejects(
         game.importBuild("1.60.1.70889", async () => {
           throw new Error("offline");
