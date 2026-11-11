@@ -1248,3 +1248,45 @@ For guide briefs, rewrites, sourced inline explanations and repeatable publicati
 The test fixture publishes synthetic Guides and a Collection, with a retired first version and a hidden draft. It does not import or modify live content. `publishedAt` is an additive field on Server content reads and web catalog detail responses. No migration, content import or deployment ordering is required for ADR 0082.
 
 Forever guide versions also expose `group`, stored separately as `content.paths.guide_group` (ADR 0084). New or changed Forever drafts need an enumerated group. See [topic groups and migration 0025](content-authoring.md#forever-topic-groups-and-migration-0025) for values, history compatibility, conflict guards and the Server-first deployment order.
+
+### Forever T1 (ADR 0094)
+
+The shared TOC adds interface `16001`; versions stay 0.13.0. `ns.Game` uses the
+fourth `GetBuildInfo()` result: 16000–16999 means `forever`, otherwise `retail`.
+Each Section and Provider declares `games`. Retail-only Sections are `talents`,
+`reagentBank`, `warband`, `pets`, `toys`, `transmog`, `mplus` and `vault`.
+Retail Knowledge base tables and Presets are empty on Forever; the `farm` and
+`fun` Providers do not register. Shared collectors retain API guards. Recipe
+fallbacks and the Forever profession reader belong to T2.
+
+Snapshot and Request `game` accepts `retail` or `forever`; omission means Retail
+for old Companions. Retail character ids remain `realm/name`; Forever uses
+`forever/<GetRealmName()>/<name>` until T0 establishes surname and region.
+Character Sections use that id. Both games share the Account identity, while
+Forever Account Sections use `forever/<account key>` as their owner to keep
+collections and freshness separate. Erasure removes both scopes. The catalog
+returns character `id` and `game`, and labels Account Sections with `game`.
+Migration `0029_character_game.sql` adds game to characters, history and Requests;
+the SQLite startup path preserves old rows with the Retail default.
+
+Companion scans both `_retail_` and `_forever_` from launcher, registry and chosen
+roots, including siblings of a directly selected game folder. It uses the same
+addon zip and helper TOC in both. WTF discovery assumes the existing Account /
+realm-folder / character / SavedVariables shape, preserves arbitrary folder
+names, and prefers the `char` Section's identity over folder names. Upload
+acknowledgements include the game so identical bodies from different games are
+sent independently. Retail Suggestions, Advice and Paths remain Retail-only.
+
+`pnpm test:addon` includes `tests/forever.lua`: the existing UI frame harness is
+reused with interface 16001, no ToyBox or PetJournal, and no recipe enumeration
+APIs. It loads every TOC file, runs init/login and the staged collection pass,
+checks registration and the `char` Section, then runs SelfCheck. The shared
+`snapshot-forever.lua` / `.json` fixture links addon, Rust and Server tests.
+The owner's client probe is still required; this does not change public install
+claims or catalog release flavors.
+
+The existing release workflow still passes `-g retail`. The packager accepts the
+shared source TOC but filters its packaged Interface line and upload metadata to
+Retail. A T0 client check therefore needs an archive of this branch's `addon/`
+source; the current release artifact does not advertise Forever. Changing that
+packaging/upload scope waits for T7.

@@ -47,6 +47,19 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
     );
     assert.equal(JSON.stringify(page).includes("Theirs"), false);
 
+    await sql`
+      INSERT INTO characters (id, game, account_id, name, realm, level, last_seen)
+      VALUES ('forever/Realm/Mine', 'forever', ${mine}, 'Mine', 'Realm', 23, 1762300005)`;
+    const both = await readMyPage(sql, mine, "en");
+    assert.deepEqual(
+      both.characters.map((row) => [row.name, row.game, row.level]),
+      [
+        ["Mine", "forever", 23],
+        ["Mine", "retail", 80],
+      ],
+    );
+    assert.equal(both.characters[0]?.ilvl, null);
+
     const now = 1762300100;
     await sql`
       INSERT INTO devices (id, name, secret_hash, status, created_at)
@@ -90,6 +103,7 @@ dbTest("My page shows Path completions with safe links, scoped to its Account", 
     const page = await readMyPage(sql, mine, "ru");
     assert.deepEqual(page.completions, [
       {
+        game: "retail",
         at: 1762300001,
         character: "Mine",
         realm: "Realm",
