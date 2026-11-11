@@ -18,6 +18,7 @@ COPY packages/contracts/src/game-media.ts packages/contracts/src/game-media.ts
 COPY packages/contracts/src/guide.ts packages/contracts/src/guide.ts
 COPY packages/contracts/src/packed.ts packages/contracts/src/packed.ts
 COPY packages/contracts/src/profession-catalog.ts packages/contracts/src/profession-catalog.ts
+COPY packages/contracts/src/skill-route.ts packages/contracts/src/skill-route.ts
 COPY packages/contracts/src/recipe-sources.ts packages/contracts/src/recipe-sources.ts
 
 RUN pnpm install --frozen-lockfile --filter @unbored/web...

@@ -1,3 +1,4 @@
+import { professionIdeas } from "./skill-route.ts";
 import type { ActivePaths } from "./active-path.ts";
 import { readFileSync } from "node:fs";
 
@@ -190,6 +191,7 @@ const TEXT: Record<
       event: "Complete the event activities",
       rare: "Find and defeat this rare",
       path: "Take the next step",
+      profession: "Raise your profession skill",
     },
     generic: {
       ach: "an achievement",
@@ -241,6 +243,7 @@ const TEXT: Record<
       event: "Выполни дела события",
       rare: "Найди и победи",
       path: "Сделай следующий шаг",
+      profession: "Повысь навык профессии",
     },
     generic: {
       ach: "достижение",
@@ -1014,12 +1017,15 @@ export class SuggestionStore {
   }
 
   async forCharacter(row: CharacterRow, now = Math.floor(Date.now() / 1000)) {
-    if (row.game !== "retail") return undefined;
-    const stored = await this.tables.read(row.id);
+    const stored = row.game === "retail" ? await this.tables.read(row.id) : undefined;
     const list = (stored?.list ?? []).filter(
       (item) => item.kind !== "path" && (item.expiresAt === undefined || item.expiresAt > now),
     );
-    const active = this.db.pg && this.activePaths ? await this.activePaths.forCharacter(row) : null;
+    list.unshift(...(await professionIdeas(this.db, row)));
+    const active =
+      row.game === "retail" && this.db.pg && this.activePaths
+        ? await this.activePaths.forCharacter(row)
+        : null;
     if (active && active.completedAt === null && active.total > 0 && active.done < active.total) {
       const section = await this.data.section("char", row.id, "char");
       const lang = ideaLang(section?.body.lang) ?? (await this.lastRequestLang(row)) ?? "en";
@@ -1060,7 +1066,8 @@ export class SuggestionStore {
     for (const row of rows) {
       const entry = await this.forCharacter(row, now);
       if (!entry) continue;
-      characters[`${row.realm}-${row.name}`] = entry.list;
+      characters[`${row.game === "forever" ? "forever/" : ""}${row.realm}-${row.name}`] =
+        entry.list;
       computedAt = Math.max(computedAt, entry.computedAt);
     }
     return { v: 1, computedAt, characters };

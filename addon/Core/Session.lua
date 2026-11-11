@@ -807,11 +807,11 @@ function ns.Session:IdeaPlan(idea, steps)
     UnboredCharDB.offer = nil
   end
   local mode = ns.Suggestions.MODE[idea.kind] or "roam"
-  self:ApplyPlan({ mode = mode, tasks = steps }, "provider", false)
+  self:ApplyPlan({ mode = mode, tasks = steps, title = idea.title, goal = idea.goal }, "provider", false)
   if not self.state then
     return
   end
-  self.state.quick = true
+  self.state.quick = idea.kind ~= "profession"
   self.state.topic = "suggestion"
   self:Save()
   self:Started()
@@ -828,6 +828,15 @@ local function ideaSteps(idea)
 end
 
 function ns.Session:BeginSuggestion(idea)
+  if idea.kind == 'profession' then
+    if ns.IsCombat() or not ns.Suggestions.StillOpen(idea) then return end
+    local steps = {}
+    for _, task in ipairs(idea.steps or {}) do
+      if not ns.IsTaskComplete(task) then steps[#steps + 1] = task end
+    end
+    if #steps > 0 then self:IdeaPlan(idea, steps) end
+    return
+  end
   local mode = ns.Suggestions.MODE[idea.kind] or "roam"
   local companion = ns.UI and ns.UI.HasCompanion()
   if idea.kind ~= "path" and (idea.quick or not companion) then

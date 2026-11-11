@@ -20,7 +20,9 @@ function GetTrainerServiceCost() return 100 end
 C_TooltipInfo = { GetTrainerService = function(i) return i == 1 and { type = 1, id = 2330 } or nil end }
 function GetMerchantNumItems() return 2 end
 function GetMerchantItemID(i) return i == 1 and 2553 or 6948 end
-C_MerchantFrame = { GetItemInfo = function() return { price = 400, numAvailable = -1 } end }
+C_MerchantFrame = { GetItemInfo = function()
+  return { price = 400, stackCount = 1, numAvailable = -1, hasExtendedCost = false }
+end }
 C_Item = { GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 2553 and 9 or 15 end }
 for _, file in ipairs({ 'Namespace', 'Locale', 'Util', 'Pack', 'Data/Store' }) do
   assert(loadfile('Core/' .. file .. '.lua'))('Unbored', ns)
@@ -123,3 +125,35 @@ assert(UnboredCharDB.data.sections.merchantSeen.body.entries[2].numAvailable == 
 assert(loadfile('../packages/contracts/fixtures/recipe-teaching.lua'))()
 assert(UnboredRecipeTeaching.items[2555][1] == 2335)
 assert(ns.Pack.Set(UnboredCharDB.data.sections.recipes.body.byProfession['171'].unlearned)[2335])
+
+-- Trade Goods share the bounded merchant Section; stack prices become unit prices.
+ns.DB.shareData = true; npc = 123
+function UnitName() return 'Reagent vendor' end
+function GetMerchantNumItems() return 2 end
+function GetMerchantItemID(i) return i == 1 and 2320 or 6948 end
+C_Item.GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 2320 and 7 or 15 end
+C_MerchantFrame.GetItemInfo = function()
+  return { price = 50, stackCount = 5, numAvailable = -1, hasExtendedCost = false }
+end
+S.OnEvent('MERCHANT_SHOW'); assert(S.Read('merchantSeen', 'window'))
+local reagent = S.Body('merchantSeen').entries[#S.Body('merchantSeen').entries]
+assert(reagent.itemId == 2320 and reagent.cost == 10)
+C_MerchantFrame.GetItemInfo = function()
+  return { price = 0, stackCount = 1, numAvailable = -1, hasExtendedCost = true }
+end
+now = now + 1; assert(S.Read('merchantSeen', 'window'))
+assert(S.Body('merchantSeen').entries[#S.Body('merchantSeen').entries].cost == nil, 'barter is not free copper')
+print('Reagent sightings passed')
+
+C_MerchantFrame.GetItemInfo = function()
+  return { price = 50, stackCount = 5, numAvailable = -1, hasExtendedCost = false }
+end
+for i = 1, 210 do npc = i; now = now + 1; S.Read('merchantSeen', 'window') end
+assert(#S.Body('merchantSeen').entries == 200)
+assert(S.Body('merchantSeen').entries[1].npcId == 11)
+assert(S.Measure(UnboredCharDB) < 400 * 1024)
+
+C_MerchantFrame.GetItemInfo = function()
+  return { price = 50, stackCount = 5, numAvailable = -1, hasExtendedCost = secret }
+end
+assert(not S.Read('merchantSeen', 'window'), 'secret extended cost never supplies a copper price')

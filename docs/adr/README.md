@@ -111,3 +111,5 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0096. Game-specific imports and a Forever recipe catalog](0096-forever-recipe-catalog.md)
 
 - [0097. Recipe sightings and personal recipe Advice](0097-recipe-sightings-and-advice.md)
+
+- [0098. Deterministic profession skill Plans](0098-profession-skill-plans.md)

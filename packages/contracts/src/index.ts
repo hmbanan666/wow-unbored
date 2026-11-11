@@ -57,7 +57,31 @@ export type Waypoint = {
   label?: string;
 };
 
+export const professionStepSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("rank"),
+    name: z.string().min(1).max(60),
+    trainer: z.string().min(1).max(100).optional(),
+  }),
+  z.object({
+    kind: z.literal("train"),
+    recipe: z.string().min(1).max(160),
+    trainer: z.string().min(1).max(100).optional(),
+  }),
+  z.object({
+    kind: z.literal("craft"),
+    recipe: z.string().min(1).max(160),
+    from: z.number().int().nonnegative(),
+    to: z.number().int().positive().max(2000),
+    crafts: z.number().int().positive(),
+    reagents: z.string().max(400),
+    slow: z.boolean(),
+  }),
+]);
+export type ProfessionStep = z.infer<typeof professionStepSchema>;
 export type Task = {
+  /** Facts for the addon's localized profession Step text. */
+  profession?: ProfessionStep;
   id: string;
   title: string;
   estMinutes: number;
@@ -292,6 +316,7 @@ export const planSchema = z
         z
           .object({
             id: z.string(),
+            profession: professionStepSchema.optional(),
             title: z
               .string()
               .min(1)
@@ -449,6 +474,7 @@ export const SUGGESTION_KINDS = [
   "collection",
   "chain",
   "path",
+  "profession",
 ] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
 
@@ -474,6 +500,15 @@ export type SuggestionChain = {
 
 /** One idea for the choice Bubble (D106). */
 export type Suggestion = {
+  profession?: {
+    game: "retail" | "forever";
+    skillLine: number;
+    from: number;
+    target: number;
+    nextCrafts: number;
+    rankMax?: number;
+  };
+  plan?: Plan;
   path?: PathReference;
   id: string;
   kind: SuggestionKind;
@@ -551,6 +586,27 @@ const suggestionSchema = z
     mapID: z.number().int().positive().optional(),
     expiresAt: z.number().int().optional(),
     path: pathReferenceSchema.optional(),
+    profession: z
+      .object({
+        game: z.enum(["retail", "forever"]),
+        skillLine: z.number().int().positive(),
+        from: z.number().int().nonnegative(),
+        target: z.number().int().positive().max(2000),
+        nextCrafts: z.number().int().nonnegative(),
+        rankMax: z.number().int().positive().max(2000).optional(),
+      })
+      .refine(
+        (p) =>
+          p.rankMax === undefined
+            ? p.target > p.from && p.nextCrafts > 0
+            : p.game === "forever" &&
+              p.target === p.rankMax &&
+              p.from >= p.rankMax &&
+              p.nextCrafts === 0,
+        "Profession Ideas need a craft target or a reached rank cap",
+      )
+      .optional(),
+    plan: planSchema.optional(),
     chain: z
       .object({
         questLineID: z.number().int().positive(),
@@ -569,6 +625,11 @@ const suggestionSchema = z
   .refine(
     (idea) => idea.kind !== "path" || idea.path !== undefined,
     "Path Idea needs a published reference",
+  )
+  .refine(
+    (idea) =>
+      idea.kind !== "profession" || (idea.profession !== undefined && idea.plan !== undefined),
+    "Profession Idea needs its skill and Plan",
   );
 
 export const suggestionsBodySchema = z

@@ -2,7 +2,7 @@
 local _, ns = ...
 local S = ns.Snapshot
 local num, str, call = ns.AsNumber, ns.SafeString, ns.Call
-local CAP = 200
+local CAP = 200 -- Combined recipe and Trade Goods NPC/item pairs.
 local PROFESSIONS = { [129] = true, [164] = true, [165] = true, [171] = true, [182] = true,
   [185] = true, [186] = true, [197] = true, [202] = true, [333] = true, [356] = true,
   [393] = true, [755] = true, [773] = true }
@@ -88,9 +88,16 @@ local function merchant(previous)
     local id = num(call(GetMerchantItemID, i))
     local _, _, _, _, _, class = call(C_Item and C_Item.GetItemInfoInstant, id)
     local info = S.Clean(call(C_MerchantFrame and C_MerchantFrame.GetItemInfo, i))
-    if id and num(class) == 9 and type(info) == 'table' then
+    if id and (num(class) == 9 or num(class) == 7) and type(info) == 'table' then
       local cost, available = num(info.price), num(info.numAvailable)
-      if cost and available then
+      local stack = num(info.stackCount)
+      if not stack or stack <= 0 or stack ~= math.floor(stack) then cost = nil
+      elseif cost then cost = cost / stack end
+      local extended = ns.AsBoolean(info.hasExtendedCost)
+      if extended ~= false then cost = nil end
+      if cost and (cost < 0 or cost > 1e12 or cost ~= math.floor(cost)) then cost = nil end
+      if (cost or ns.AsBoolean(info.hasExtendedCost) == true) and available
+        and available >= -1 and available == math.floor(available) then
         entries[#entries + 1] = { itemId = id, cost = cost, numAvailable = available }
       end
     end

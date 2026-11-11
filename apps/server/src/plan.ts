@@ -2,6 +2,7 @@ import { requireOutcome } from "./outcome.ts";
 import { distance, type PlaceData } from "./places.ts";
 import {
   CONDITION_KINDS,
+  professionStepSchema,
   pathReferenceSchema,
   cleanEntities,
   cleanMarkup,
@@ -385,6 +386,10 @@ function cleanComplete(raw: unknown, index: number, depth: number): Record<strin
   };
 
   if (kind === "manual") return { kind: "manual" };
+  if (kind === "profession_rank")
+    return { kind, skillLine: need("skillLine"), previousMax: need("previousMax", 1, 2000) };
+  if (kind === "profession")
+    return { kind, skillLine: need("skillLine"), minSkill: need("minSkill", 1, 2000) };
   if (kind === "achievement") {
     return { kind, achievementID: need("achievementID") };
   }
@@ -837,6 +842,11 @@ function cleanTask(raw: unknown, index: number, scope: MarkupScope): Task {
     estMinutes,
     complete,
   };
+  if (task.profession !== undefined) {
+    const facts = professionStepSchema.safeParse(task.profession);
+    if (!facts.success) throw new PlanError(`Task ${index} has invalid profession facts.`);
+    cleaned.profession = facts.data;
+  }
   if (mapID !== undefined) cleaned.mapID = mapID;
   if (x !== undefined && y !== undefined) {
     cleaned.x = x;

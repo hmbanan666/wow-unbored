@@ -72,6 +72,8 @@ fn default_mode() -> String {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profession: Option<Value>,
     pub id: String,
     pub title: String,
     #[serde(default = "default_est", rename = "estMinutes")]
@@ -713,6 +715,32 @@ fn clean_suggestion(item: &Value) -> Option<Value> {
             "path".into(),
             serde_json::json!({ "kind": kind, "locale": locale, "slug": slug, "version": version }),
         );
+    }
+    if item["kind"].as_str() == Some("profession") {
+        let p = &item["profession"];
+        let game = p["game"]
+            .as_str()
+            .filter(|v| matches!(*v, "retail" | "forever"))?;
+        let skill = p["skillLine"].as_u64().filter(|v| *v > 0)?;
+        let from = p["from"].as_u64()?;
+        let rank = p["rankMax"].as_u64().filter(|v| *v > 0 && *v <= 2000);
+        let target = p["target"].as_u64().filter(|v| *v > 0 && *v <= 2000)?;
+        let crafts = p["nextCrafts"].as_u64()?;
+        if let Some(max) = rank {
+            if game != "forever" || target != max || from < max || crafts != 0 {
+                return None;
+            }
+        } else if target <= from || crafts == 0 {
+            return None;
+        }
+        let plan = plan_from_value(item["plan"].clone()).ok()?;
+        out.insert("profession".into(), serde_json::json!({
+            "game": game, "skillLine": skill, "from": from, "target": target, "nextCrafts": crafts,
+        }));
+        if let Some(max) = rank {
+            out.get_mut("profession")?["rankMax"] = Value::from(max);
+        }
+        out.insert("plan".into(), serde_json::to_value(plan).ok()?);
     }
     let request = &item["request"];
     if let Some(wish) = request["wish"].as_str() {
@@ -1610,6 +1638,79 @@ mod tests {
             "items in one place go first"
         );
         assert!(parse_saved_variables(&text).is_ok());
+    }
+
+    #[test]
+    fn profession_plans_survive_suggestion_delivery_within_the_budget() {
+        let body: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/profession-suggestions.json"
+        ))
+        .unwrap();
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/schema/suggestions.schema.json"
+        ))
+        .unwrap();
+        jsonschema::validator_for(&schema)
+            .unwrap()
+            .validate(&body)
+            .unwrap();
+        let lua = render_suggestions_lua(&body);
+        let parsed = parse_saved_variables(&lua).unwrap();
+        let delivered = parsed["UnboredSuggestions"].to_json();
+        let idea = &delivered["characters"]["forever/Realm-Hero"][0];
+        assert_eq!(
+            idea["profession"],
+            body["characters"]["forever/Realm-Hero"][0]["profession"]
+        );
+        assert_eq!(
+            idea["plan"]["tasks"][1]["complete"],
+            serde_json::json!({"kind":"profession", "skillLine":197, "minSkill":75})
+        );
+        assert_eq!(idea["plan"]["tasks"][0]["x"], 0.12);
+        assert_eq!(idea["plan"]["tasks"][1]["profession"]["crafts"], 25);
+        assert!(lua.len() <= SUGGESTIONS_MAX_BYTES);
+        let mut large = body.clone();
+        let task = large["characters"]["forever/Realm-Hero"][0]["plan"]["tasks"][1].clone();
+        large["characters"]["forever/Realm-Hero"][0]["plan"]["tasks"] =
+            Value::Array(vec![task; 41]);
+        assert!(!render_suggestions_lua(&large).contains("profession:197"));
+    }
+
+    #[test]
+    fn profession_rank_plans_survive_delivery_only_for_forever() {
+        let body: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/profession-rank-suggestions.json"
+        ))
+        .unwrap();
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/schema/suggestions.schema.json"
+        ))
+        .unwrap();
+        let plan_schema: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/schema/plan.schema.json"
+        ))
+        .unwrap();
+        jsonschema::validator_for(&schema)
+            .unwrap()
+            .validate(&body)
+            .unwrap();
+        let lua = render_suggestions_lua(&body);
+        let parsed = parse_saved_variables(&lua).unwrap();
+        let delivered = parsed["UnboredSuggestions"].to_json();
+        assert_eq!(body["characters"]["Realm-Hero"], serde_json::json!([]));
+        assert!(delivered["characters"]["Realm-Hero"].is_null());
+        let mut stale = body["characters"]["forever/Realm-Hero"][0].clone();
+        stale["profession"]["game"] = Value::from("retail");
+        assert!(clean_suggestion(&stale).is_none());
+        let key = "forever/Realm-Hero";
+        let expected = &body["characters"][key][0];
+        let idea = &delivered["characters"][key][0];
+        assert_eq!(idea["profession"], expected["profession"]);
+        assert_eq!(idea["plan"]["tasks"], expected["plan"]["tasks"]);
+        jsonschema::validator_for(&plan_schema)
+            .unwrap()
+            .validate(&expected["plan"])
+            .unwrap();
     }
 
     #[test]

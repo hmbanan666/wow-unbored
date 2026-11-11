@@ -247,3 +247,29 @@ test("recipe sightings use the shared snapshot envelope", () => {
   expect(Object.keys(parsed.sections)).toEqual(["trainerSeen", "merchantSeen", "recipes"]);
   expect(parsed.sections.trainerSeen.scope).toBe("char");
 });
+
+test("profession Ideas carry a standard Plan and skill completion", () => {
+  const parsed = suggestionsBodySchema.parse(read("profession-suggestions.json"));
+  const idea = parsed.characters["forever/Realm-Hero"]![0]!;
+  const plan = planSchema.parse(idea.plan);
+  expect(plan.tasks[1]!.complete).toEqual({ kind: "profession", skillLine: 197, minSkill: 75 });
+});
+
+test("rank-training Ideas deliver one Step without inventing a higher skill target", () => {
+  const parsed = suggestionsBodySchema.parse(read("profession-rank-suggestions.json"));
+  expect(parsed.characters["Realm-Hero"]).toEqual([]);
+  const stale = structuredClone(parsed);
+  const rankIdea = stale.characters["forever/Realm-Hero"]![0]!;
+  rankIdea.profession!.game = "retail";
+  stale.characters = { "Realm-Hero": [rankIdea] };
+  expect(suggestionsBodySchema.safeParse(stale).success).toBe(false);
+  const idea = parsed.characters["forever/Realm-Hero"]![0]!;
+  const plan = planSchema.parse(idea.plan);
+  expect(idea.profession?.target).toBe(75);
+  expect(plan.tasks).toHaveLength(1);
+  expect(plan.tasks[0]!.complete).toEqual({
+    kind: "profession_rank",
+    skillLine: 197,
+    previousMax: 75,
+  });
+});

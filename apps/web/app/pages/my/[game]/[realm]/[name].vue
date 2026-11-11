@@ -54,6 +54,12 @@ useSeoMeta({ title: () => character.value?.name || copy.value.title, robots: "no
               {{ copy.skill }}: {{ profession.skill
               }}<template v-if="profession.max !== null"> / {{ profession.max }}</template>
             </p>
+            <ProfessionRoute
+              v-for="entry in profession.routes || []"
+              :key="entry.route.skillLine"
+              :route="entry.route"
+              :name="entry.name"
+            />
             <ProfessionRecipes :profession="profession" :lang="lang" />
           </DsCard>
         </DsCardGrid>
