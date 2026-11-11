@@ -14,6 +14,7 @@ export const SIGHTINGS_SQLITE_SCHEMA = readFileSync(
   new URL("../migrations/0031_recipe_sightings.sql", import.meta.url),
   "utf8",
 )
+  .split("\n-- PostgreSQL-only permissions", 1)[0]!
   .replaceAll("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")
   .replaceAll("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS ");
 

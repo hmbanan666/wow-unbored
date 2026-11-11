@@ -735,8 +735,10 @@ filters; unavailable/secret results stay unknown. Lookups rebuild
 only when profession/recipe data changes; tooltip calls use indexed items. The Alt learned
 sets stay packed, at most 12 KB per Alt and 60 KB combined, and clear with sharing off.
 
-Rollout notes for the owner: **Server first**, wait for migration 0031, grant the web read
-role SELECT on `recipe_sightings`, then update the website. UiMap is the tenth Forever
+Rollout notes for the owner: **Server first**, wait for migration 0031, then update the website.
+When `unbored_web` exists, that migration grants USAGE on schema `game` and SELECT on
+`game.builds`, `game.rows`, `game.profession_recipes` and `recipe_sightings`; no manual
+grant is needed. It adds no write privileges or access to `accounts`. UiMap is the tenth Forever
 source table, enUS only. An existing T3 import lacks its completion marker, so the next
 watch pass reimports all ten tables for that build in the background; allow time for the
 long download/import. The old catalog remains readable until the atomic publication;
@@ -1099,7 +1101,7 @@ Locally, apply migrations by starting the Server once with `DATABASE_URL`, then:
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/unbored pnpm --filter @unbored/web dev
 ```
 
-Dev listens on port 3001. `NUXT_PUBLIC_SITE_URL` is the canonical origin. `NUXT_APP_SECRET` (at least 32 characters) seals the My page cookie and signs og-images; `nuxt-auth-utils` no longer reads `NUXT_SESSION_PASSWORD`. `NUXT_SERVER_URL` is how the site reaches the Server to redeem a sign-in link and call the session-authenticated Path routes; when it is empty the site uses its own origin, which works when `/v1` on that origin is the Server. `UNBORED_WEB_ORIGIN` on the Server is the public website origin written into the link and accepted by Path selection Origin checks; it must match the browser origin exactly. All three belong in Dokploy env, not in the repo. In production the site connects as a read-only Postgres role (`unbored_web`, `default_transaction_read_only`) with SELECT on `web`, `content`, `characters`, `sections_latest`, `history`, `plans` and `devices (id, status)`; the Server's role owns and migrates every table. The site typecheck uses TypeScript 5.9 (`vue-tsc`); the rest of the repo stays on TypeScript 7. Website tests that read Postgres use `UNBORED_WEB_TEST_DATABASE_URL` (not `UNBORED_TEST_DATABASE_URL`, which also turns on the Server's Postgres backends).
+Dev listens on port 3001. `NUXT_PUBLIC_SITE_URL` is the canonical origin. `NUXT_APP_SECRET` (at least 32 characters) seals the My page cookie and signs og-images; `nuxt-auth-utils` no longer reads `NUXT_SESSION_PASSWORD`. `NUXT_SERVER_URL` is how the site reaches the Server to redeem a sign-in link and call the session-authenticated Path routes; when it is empty the site uses its own origin, which works when `/v1` on that origin is the Server. `UNBORED_WEB_ORIGIN` on the Server is the public website origin written into the link and accepted by Path selection Origin checks; it must match the browser origin exactly. All three belong in Dokploy env, not in the repo. In production the site connects as a read-only Postgres role (`unbored_web`, `default_transaction_read_only`) with SELECT on `web`, `content`, `characters`, `sections_latest`, `history`, `plans`, `recipe_sightings`, `game.builds`, `game.rows`, `game.profession_recipes` and `devices (id, status)`, plus USAGE on schema `game`; migration `0031_recipe_sightings.sql` adds the recipe-source and Game DB grants when the role exists. It grants no writes or access to `accounts`; the Server's role owns and migrates every table. The site typecheck uses TypeScript 5.9 (`vue-tsc`); the rest of the repo stays on TypeScript 7. Website tests that read Postgres use `UNBORED_WEB_TEST_DATABASE_URL` (not `UNBORED_TEST_DATABASE_URL`, which also turns on the Server's Postgres backends).
 
 
 ### Website Path progress and selection
