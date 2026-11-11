@@ -18,6 +18,10 @@
   --lamp-gold-light: #f5d27a;
   --lamp-gold-dark: #a87820;
   --lamp-chance: #d9b98a;
+  --recipe-orange: #f0a14b;
+  --recipe-yellow: #e4cd69;
+  --recipe-green: #91c98b;
+  --recipe-grey: #b6b0a9;
   --lamp-gold-gradient: linear-gradient(180deg, #f5d27a 0%, #e8b04a 55%, #c4922e 100%);
   --lamp-background: radial-gradient(
     circle at 50% 0%,
