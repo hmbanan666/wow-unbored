@@ -7,46 +7,91 @@
   "additionalProperties": true,
   "required": ["schema", "account", "character", "sections"],
   "properties": {
-    "schema": { "const": 2 },
-    "game": { "enum": ["retail", "forever"], "default": "retail" },
-    "account": { "type": "string", "minLength": 1 },
+    "schema": {
+      "const": 2
+    },
+    "game": {
+      "enum": ["retail", "forever"],
+      "default": "retail"
+    },
+    "account": {
+      "type": "string",
+      "minLength": 1
+    },
     "accountLegacy": {
       "type": "string",
       "description": "Unhashed Account key, sent once so existing rows can be renamed (docs/adr/0044). Not stored."
     },
-    "character": { "type": "string", "minLength": 1 },
-    "realm": { "type": "string" },
-    "savedAt": { "type": ["integer", "null"] },
+    "character": {
+      "type": "string",
+      "minLength": 1
+    },
+    "realm": {
+      "type": "string"
+    },
+    "savedAt": {
+      "type": ["integer", "null"]
+    },
     "sections": {
       "type": "object",
-      "additionalProperties": { "$ref": "#/$defs/section" },
+      "additionalProperties": {
+        "$ref": "#/$defs/section"
+      },
       "properties": {
         "errors": {
           "$ref": "#/$defs/section",
           "description": "Account diagnostic rows retain the existing error fields. A row with where=selfcheck carries the game build and counts in text (300 characters), and value-free API result shapes in stack (8000 characters; ordinary errors remain capped at 800)."
         },
-        "questsDone": { "$ref": "#/$defs/idSection" },
-        "mounts": { "$ref": "#/$defs/idSection" },
-        "toys": { "$ref": "#/$defs/idSection" },
-        "achievements": { "$ref": "#/$defs/idSection" },
-        "achievementsMine": { "$ref": "#/$defs/idSection" },
+        "questsDone": {
+          "$ref": "#/$defs/idSection"
+        },
+        "mounts": {
+          "$ref": "#/$defs/idSection"
+        },
+        "toys": {
+          "$ref": "#/$defs/idSection"
+        },
+        "achievements": {
+          "$ref": "#/$defs/idSection"
+        },
+        "achievementsMine": {
+          "$ref": "#/$defs/idSection"
+        },
         "pets": {
           "allOf": [
-            { "$ref": "#/$defs/section" },
+            {
+              "$ref": "#/$defs/section"
+            },
             {
               "properties": {
-                "body": { "properties": { "species": { "$ref": "#/$defs/packedIdSet" } } }
+                "body": {
+                  "properties": {
+                    "species": {
+                      "$ref": "#/$defs/packedIdSet"
+                    }
+                  }
+                }
               }
             }
           ]
         },
-        "bags": { "$ref": "#/$defs/itemSection" },
-        "bank": { "$ref": "#/$defs/itemSection" },
-        "reagentBank": { "$ref": "#/$defs/itemSection" },
-        "warband": { "$ref": "#/$defs/itemSection" },
+        "bags": {
+          "$ref": "#/$defs/itemSection"
+        },
+        "bank": {
+          "$ref": "#/$defs/itemSection"
+        },
+        "reagentBank": {
+          "$ref": "#/$defs/itemSection"
+        },
+        "warband": {
+          "$ref": "#/$defs/itemSection"
+        },
         "recipes": {
           "allOf": [
-            { "$ref": "#/$defs/section" },
+            {
+              "$ref": "#/$defs/section"
+            },
             {
               "properties": {
                 "body": {
@@ -56,15 +101,29 @@
                       "additionalProperties": {
                         "type": "object",
                         "properties": {
-                          "learned": { "$ref": "#/$defs/packedIdSet" },
+                          "learned": {
+                            "$ref": "#/$defs/packedIdSet"
+                          },
+                          "unlearned": {
+                            "$ref": "#/$defs/packedIdSet",
+                            "description": "Only ids explicitly reported learned=false, including direct teaching-map lookups while the profession is open. Absence from learned is not proof."
+                          },
                           "difficulty": {
                             "type": "object",
                             "description": "Optional learned recipe ids by current difficulty colour in both games.",
                             "properties": {
-                              "orange": { "$ref": "#/$defs/packedIdSet" },
-                              "yellow": { "$ref": "#/$defs/packedIdSet" },
-                              "green": { "$ref": "#/$defs/packedIdSet" },
-                              "grey": { "$ref": "#/$defs/packedIdSet" }
+                              "orange": {
+                                "$ref": "#/$defs/packedIdSet"
+                              },
+                              "yellow": {
+                                "$ref": "#/$defs/packedIdSet"
+                              },
+                              "green": {
+                                "$ref": "#/$defs/packedIdSet"
+                              },
+                              "grey": {
+                                "$ref": "#/$defs/packedIdSet"
+                              }
                             }
                           }
                         }
@@ -75,14 +134,24 @@
               }
             }
           ]
+        },
+        "trainerSeen": {
+          "$ref": "#/$defs/recipeSightings"
+        },
+        "merchantSeen": {
+          "$ref": "#/$defs/recipeSightings"
         }
       }
     },
     "dropped": {
       "type": "object",
       "properties": {
-        "char": { "$ref": "#/$defs/dropped" },
-        "account": { "$ref": "#/$defs/dropped" }
+        "char": {
+          "$ref": "#/$defs/dropped"
+        },
+        "account": {
+          "$ref": "#/$defs/dropped"
+        }
       }
     }
   },
@@ -91,40 +160,179 @@
       "type": "object",
       "required": ["scope", "v", "body"],
       "properties": {
-        "scope": { "enum": ["char", "account"] },
-        "v": { "type": "integer", "minimum": 1 },
-        "at": { "type": ["integer", "null"] },
-        "src": { "type": "string" },
-        "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "body": { "type": "object" }
+        "scope": {
+          "enum": ["char", "account"]
+        },
+        "v": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "at": {
+          "type": ["integer", "null"]
+        },
+        "src": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "body": {
+          "type": "object"
+        }
       }
     },
     "idSection": {
       "allOf": [
-        { "$ref": "#/$defs/section" },
-        { "properties": { "body": { "properties": { "ids": { "$ref": "#/$defs/packedIdSet" } } } } }
+        {
+          "$ref": "#/$defs/section"
+        },
+        {
+          "properties": {
+            "body": {
+              "properties": {
+                "ids": {
+                  "$ref": "#/$defs/packedIdSet"
+                }
+              }
+            }
+          }
+        }
       ]
     },
     "itemSection": {
       "allOf": [
-        { "$ref": "#/$defs/section" },
         {
-          "properties": { "body": { "properties": { "items": { "$ref": "#/$defs/packedIdSet" } } } }
+          "$ref": "#/$defs/section"
+        },
+        {
+          "properties": {
+            "body": {
+              "properties": {
+                "items": {
+                  "$ref": "#/$defs/packedIdSet"
+                }
+              }
+            }
+          }
         }
       ]
     },
     "packedIdSet": {
       "description": "Sorted unique ids, delta-encoded, base36, comma-joined, in chunks of at most 4,000 characters after the tag; idv1 adds :value parts per id (docs/contract/README.md).",
       "type": "array",
-      "prefixItems": [{ "enum": ["ids1", "idv1"] }],
-      "items": { "type": "string", "maxLength": 4000, "pattern": "^[0-9a-z:]+(,[0-9a-z:]+)*$" }
+      "prefixItems": [
+        {
+          "enum": ["ids1", "idv1"]
+        }
+      ],
+      "items": {
+        "type": "string",
+        "maxLength": 4000,
+        "pattern": "^[0-9a-z:]+(,[0-9a-z:]+)*$"
+      }
     },
     "dropped": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "properties": { "at": { "type": "integer" }, "bytes": { "type": "integer" } }
+        "properties": {
+          "at": {
+            "type": "integer"
+          },
+          "bytes": {
+            "type": "integer"
+          }
+        }
       }
+    },
+    "recipeSightings": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/section"
+        },
+        {
+          "properties": {
+            "scope": {
+              "const": "char"
+            },
+            "body": {
+              "type": "object",
+              "required": ["entries"],
+              "properties": {
+                "entries": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "object",
+                    "required": ["npcId", "npcName", "seenAt"],
+                    "properties": {
+                      "npcId": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "npcName": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "seenAt": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "spellId": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "itemId": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "name": {
+                        "type": "string",
+                        "maxLength": 160
+                      },
+                      "locale": {
+                        "type": "string",
+                        "maxLength": 8
+                      },
+                      "skillLine": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "requiredSkill": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "cost": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "numAvailable": {
+                        "type": "integer",
+                        "minimum": -1
+                      },
+                      "uiMapID": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "x": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "y": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

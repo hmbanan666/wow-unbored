@@ -1,0 +1,104 @@
+{
+  "schema": 2,
+  "game": "forever",
+  "account": "111111#1",
+  "character": "Mira",
+  "realm": "Realm",
+  "savedAt": 1790000000,
+  "sections": {
+    "trainerSeen": {
+      "scope": "char",
+      "v": 1,
+      "at": 1790000000,
+      "src": "window",
+      "body": {
+        "entries": [
+          {
+            "npcId": 123,
+            "npcName": "Recipe teacher",
+            "uiMapID": 1429,
+            "x": 12.3,
+            "y": 45.6,
+            "cost": 100,
+            "seenAt": 1790000000,
+            "spellId": 2335,
+            "skillLine": 171,
+            "requiredSkill": 60
+          },
+          {
+            "npcId": 124,
+            "npcName": "Recipe teacher",
+            "uiMapID": 1429,
+            "x": 12.3,
+            "y": 45.6,
+            "cost": 100,
+            "seenAt": 1790000000,
+            "name": "Swiftness Potion",
+            "locale": "enUS",
+            "skillLine": 171,
+            "requiredSkill": 60
+          },
+          {
+            "npcId": 125,
+            "npcName": "Recipe teacher",
+            "uiMapID": 1429,
+            "x": 12.3,
+            "y": 45.6,
+            "cost": 100,
+            "seenAt": 1790000000,
+            "name": "Swiftness Potion",
+            "locale": "ruRU",
+            "skillLine": 171,
+            "requiredSkill": 60
+          }
+        ]
+      }
+    },
+    "merchantSeen": {
+      "scope": "char",
+      "v": 1,
+      "at": 1790000000,
+      "src": "window",
+      "body": {
+        "entries": [
+          {
+            "npcId": 126,
+            "npcName": "Recipe vendor",
+            "uiMapID": 1429,
+            "x": 12.3,
+            "y": 45.6,
+            "cost": 400,
+            "seenAt": 1790000000,
+            "itemId": 2555,
+            "numAvailable": -1
+          },
+          {
+            "npcId": 127,
+            "npcName": "Limited vendor",
+            "uiMapID": 1429,
+            "x": 12.3,
+            "y": 45.6,
+            "cost": 500,
+            "seenAt": 1790000000,
+            "itemId": 2555,
+            "numAvailable": 0
+          }
+        ]
+      }
+    },
+    "recipes": {
+      "scope": "char",
+      "v": 1,
+      "at": 1790000000,
+      "src": "window",
+      "body": {
+        "byProfession": {
+          "171": {
+            "learned": ["ids1"],
+            "unlearned": ["ids1", "1sv"]
+          }
+        }
+      }
+    }
+  }
+}

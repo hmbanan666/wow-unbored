@@ -39,6 +39,10 @@ export default defineNuxtConfig({
   robots: {
     disallow: ["/download/"],
   },
+  routeRules: {
+    "/my": { robots: false },
+    "/my/**": { robots: false },
+  },
   /** Content-Signal is not a robots.txt directive validators know; leave it out. */
   aiReady: {
     contentSignal: false,

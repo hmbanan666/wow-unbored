@@ -1,4 +1,10 @@
 import {
+  SOURCE_GROUPS,
+  recipeSourceGroup,
+  type RecipeSources,
+  type RecipeSource,
+} from "@unbored/contracts/recipe-sources";
+import {
   recipeBand,
   type ProfessionRecipe,
   type RecipeBand,
@@ -16,8 +22,14 @@ export type Profession = {
   total: number | null;
   uncatalogued: number;
   missing: {
-    category: ProfessionRecipe["category"];
-    recipes: (ProfessionRecipe & { band: RecipeBand | null })[];
+    id: (typeof SOURCE_GROUPS)[number]["id"];
+    name: string;
+    explanation: string;
+    recipes: (ProfessionRecipe & {
+      band: RecipeBand | null;
+      sources: RecipeSource[];
+      teachingItemNames: RecipeSources["teachingItems"];
+    })[];
   }[];
 };
 export type CharacterPage = CharacterIdentity & { professions: Profession[] };
@@ -39,7 +51,9 @@ export function professionViews(
   professions: unknown,
   recipes: unknown,
   catalog: ProfessionRecipe[] = [],
+  sources: RecipeSources[] = [],
 ): Profession[] {
+  const bySpell = new Map(sources.map((s) => [s.spellId, s]));
   const list = record(professions).list;
   if (!Array.isArray(list)) return [];
   const byProfession = record(record(recipes).byProfession);
@@ -56,15 +70,30 @@ export function professionViews(
     if (known) {
       for (const recipe of entries) {
         if (known.has(recipe.spellId)) continue;
-        let group = missing.find((group) => group.category.id === recipe.category.id);
+        const evidence = bySpell.get(recipe.spellId) ?? {
+          spellId: recipe.spellId,
+          sources: [],
+          teachingItems: recipe.teachingItems.map((itemId) => ({ itemId, name: null })),
+        };
+        const id = recipeSourceGroup(evidence);
+        let group = missing.find((group) => group.id === id);
         if (!group) {
-          group = { category: recipe.category, recipes: [] };
+          group = { ...SOURCE_GROUPS.find((g) => g.id === id)!, recipes: [] };
           missing.push(group);
         }
-        group.recipes.push({ ...recipe, band: skill === null ? null : recipeBand(recipe, skill) });
+        group.recipes.push({
+          ...recipe,
+          band: skill === null ? null : recipeBand(recipe, skill),
+          sources: evidence.sources,
+          teachingItemNames: evidence.teachingItems,
+        });
       }
     }
-    missing.sort((a, b) => a.category.order - b.category.order || a.category.id - b.category.id);
+    missing.sort(
+      (a, b) =>
+        SOURCE_GROUPS.findIndex((g) => g.id === a.id) -
+        SOURCE_GROUPS.findIndex((g) => g.id === b.id),
+    );
     for (const group of missing)
       group.recipes.sort(
         (a, b) =>

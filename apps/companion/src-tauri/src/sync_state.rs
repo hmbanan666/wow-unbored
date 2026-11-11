@@ -131,7 +131,13 @@ mod tests {
             "advice" => {
                 let characters =
                     serde_json::json!([{ "character": "Hero", "realm": "Realm", "items": [] }]);
-                install_advice(retail, &characters, &serde_json::Value::Null).unwrap();
+                install_advice(
+                    retail,
+                    &characters,
+                    &serde_json::Value::Null,
+                    &serde_json::Value::Null,
+                )
+                .unwrap();
             }
             "suggestions" => {
                 let body = serde_json::from_str(include_str!(
@@ -182,6 +188,7 @@ mod tests {
                     &serde_json::json!([
                         { "character": label, "realm": "Realm", "items": [] }
                     ]),
+                    &serde_json::Value::Null,
                     &serde_json::Value::Null,
                 )
                 .unwrap();

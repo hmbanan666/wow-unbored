@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unbored.kosarev.space/schema/recipe-teaching.json",
+  "title": "Game-specific recipe teaching map",
+  "type": "object",
+  "required": ["v", "game", "items"],
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "game": {
+      "enum": ["retail", "forever"]
+    },
+    "items": {
+      "type": "object",
+      "maxProperties": 4000,
+      "propertyNames": {
+        "pattern": "^[1-9][0-9]*$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "prefixItems": [
+          {
+            "type": "integer",
+            "minimum": 1
+          },
+          {
+            "type": "integer",
+            "minimum": 1
+          },
+          {
+            "type": "integer",
+            "minimum": 0
+          }
+        ],
+        "items": false
+      }
+    }
+  }
+}

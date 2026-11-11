@@ -109,3 +109,5 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0095. Forever professions and a private character page](0095-forever-professions-and-character-page.md)
 
 - [0096. Game-specific imports and a Forever recipe catalog](0096-forever-recipe-catalog.md)
+
+- [0097. Recipe sightings and personal recipe Advice](0097-recipe-sightings-and-advice.md)

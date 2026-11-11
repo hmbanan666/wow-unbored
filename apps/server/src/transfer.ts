@@ -21,6 +21,8 @@ import { migrate, type Sql } from "./postgres.ts";
 export const LEGACY_TABLES = new Set(["profiles", "profile_snapshots"]);
 /** Sign-in tables the Server creates in SQLite only when a link is issued. */
 const WEBSITE_SQLITE = new Set(["web_sign_in_links", "web_sessions"]);
+/** Older SQLite files predate sightings; the target must still be empty. */
+const OPTIONAL_SQLITE = new Set(["recipe_sightings"]);
 /** Postgres-only tables: not in SQLite, must be empty before a transfer. */
 const POSTGRES_ONLY = new Set(["raw_uploads", "path_completions", "active_paths"]);
 /** Game DB was added after the original cutover; older SQLite files lack it. */
@@ -180,7 +182,12 @@ async function plan(db: DatabaseSync, sql: Sql): Promise<{ plans: Plan[]; skippe
     plans.push({ table, columns, key, identity });
   }
   for (const table of byTable.keys()) {
-    if (!seen.has(table) && !POSTGRES_ONLY.has(table) && !GAME_TABLES[table]) {
+    if (
+      !seen.has(table) &&
+      !POSTGRES_ONLY.has(table) &&
+      !OPTIONAL_SQLITE.has(table) &&
+      !GAME_TABLES[table]
+    ) {
       throw new TransferError(`Postgres table ${table} is missing in the SQLite file.`);
     }
   }
@@ -228,7 +235,12 @@ export async function transfer(options: TransferOptions): Promise<TransferReport
       await options.sql.begin(async (tx) => {
         await tx`SET LOCAL statement_timeout = 0`;
         const targets = [
-          ...new Set([...plans.map((p) => p.table), ...POSTGRES_ONLY, ...Object.keys(GAME_TABLES)]),
+          ...new Set([
+            ...plans.map((p) => p.table),
+            ...POSTGRES_ONLY,
+            ...OPTIONAL_SQLITE,
+            ...Object.keys(GAME_TABLES),
+          ]),
         ];
         const busy: string[] = [];
         for (const table of targets) {

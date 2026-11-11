@@ -777,16 +777,86 @@ pub fn install_suggestions(retail: &Path, body: &Value) -> Result<bool, PlanErro
     files.write("Suggestions.lua", &render_suggestions_lua(body))
 }
 
+/// Game-specific teaching tuples, bounded independently and inside the shared helper budget.
+fn render_recipe_teaching(body: &Value, limit: usize) -> String {
+    let Some(game @ ("forever" | "retail")) = body["game"].as_str() else {
+        return "UnboredRecipeTeaching = nil\n".to_string();
+    };
+    let mut out = format!("UnboredRecipeTeaching = {{ game = \"{game}\", items = {{\n");
+    if let Some(items) = body["items"].as_object() {
+        let mut rows: Vec<_> = items
+            .iter()
+            .filter_map(|(id, tuple)| {
+                let id: u32 = id.parse().ok()?;
+                let tuple = tuple.as_array()?;
+                if id == 0 || tuple.len() != 3 {
+                    return None;
+                }
+                let spell = tuple[0]
+                    .as_u64()
+                    .filter(|v| *v > 0 && *v <= i32::MAX as u64)?;
+                let skill = tuple[1]
+                    .as_u64()
+                    .filter(|v| *v > 0 && *v <= i32::MAX as u64)?;
+                let rank = tuple[2].as_u64().filter(|v| *v <= i32::MAX as u64)?;
+                Some((id, spell, skill, rank))
+            })
+            .collect();
+        rows.sort_unstable();
+        for (id, spell, skill, rank) in rows.into_iter().take(limit) {
+            out.push_str(&format!("  [{id}] = {{ {spell}, {skill}, {rank} }},\n"));
+        }
+    }
+    out.push_str("} }\n");
+    out
+}
+
+pub fn render_advice_with_teaching(
+    characters: &Value,
+    holdings: &Value,
+    teaching: &Value,
+    used_bytes: usize,
+    used_literals: usize,
+) -> String {
+    let mut limit = 4000;
+    loop {
+        let map = render_recipe_teaching(teaching, limit);
+        let advice = render_advice_within(
+            characters,
+            holdings,
+            used_bytes + map.len(),
+            used_literals + count_lua_literals(&map),
+        );
+        if used_bytes + map.len() + advice.len() <= HELPER_MAX_BYTES
+            && used_literals + count_lua_literals(&map) + count_lua_literals(&advice)
+                < HELPER_MAX_LITERALS
+        {
+            return advice + &map;
+        }
+        if limit == 0 {
+            return render_advice_within(characters, holdings, used_bytes, used_literals);
+        }
+        limit /= 2;
+    }
+}
+
 /// Writes Advice.lua only when it changed. Returns true when it did.
 pub fn install_advice(
     retail: &Path,
     characters: &Value,
     holdings: &Value,
+    teaching: &Value,
 ) -> Result<bool, PlanError> {
     let files = HelperFiles::open(retail)?;
     let mut used = files.read_text("Plan.lua")?;
     used.push_str(&files.read_text("Suggestions.lua")?);
-    let body = render_advice_within(characters, holdings, used.len(), count_lua_literals(&used));
+    let body = render_advice_with_teaching(
+        characters,
+        holdings,
+        teaching,
+        used.len(),
+        count_lua_literals(&used),
+    );
     files.write("Advice.lua", &body)
 }
 
@@ -1267,6 +1337,40 @@ mod tests {
     const SAMPLE: &str = "UNB1:eyJ2IjoxLCJraW5kIjoicGxhbiIsIm1vZGUiOiJjdXN0b20iLCJidWRnZXQiOjYwLCJub3RlIjoiZXZlbmluZyBzZXNzaW9uIiwidGFza3MiOlt7ImlkIjoibWVudG9yOmZhbGwiLCJ0aXRsZSI6IkdvaW5nIERvd24/IiwiZXN0TWludXRlcyI6NSwibm90ZSI6ItC/0YDQvtGB0YLQviDRg9C/0LDQtNC4IiwiY29tcGxldGUiOnsia2luZCI6ImFjaGlldmVtZW50IiwiYWNoaWV2ZW1lbnRJRCI6OTY0fX0seyJpZCI6Im1lbnRvcjphc2hlcyIsInRpdGxlIjoiQXNoZXMgb2YgQWwnYXIiLCJtYXBJRCI6MTA5LCJ4IjowLjczOSwieSI6MC42MzcsImVzdE1pbnV0ZXMiOjIwLCJub3RlIjoiVGVtcGVzdCBLZWVwLCBLYWVsJ3RoYXMuIiwiY29tcGxldGUiOnsia2luZCI6Im1vdW50IiwibW91bnRJRCI6MTgzfX1dfQ==";
 
     #[test]
+    fn recipe_teaching_uses_shared_fixture_and_stays_inside_the_helper_budget() {
+        let body: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/recipe-teaching.json"
+        ))
+        .unwrap();
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/schema/recipe-teaching.schema.json"
+        ))
+        .unwrap();
+        assert!(jsonschema::validator_for(&schema).unwrap().is_valid(&body));
+        assert_eq!(
+            render_recipe_teaching(&body, 4000),
+            include_str!("../../../../packages/contracts/fixtures/recipe-teaching.lua")
+        );
+        let lua = render_advice_with_teaching(&Value::Null, &Value::Null, &body, 0, 0);
+        let parsed = crate::savedvars::parse_saved_variables(&lua).unwrap();
+        assert!(parsed.contains_key("UnboredRecipeTeaching"));
+        let mut large = body.clone();
+        large["items"] = serde_json::json!((1..=10000)
+            .map(|id| (id.to_string(), serde_json::json!([id + 10000, 171, 60])))
+            .collect::<serde_json::Map<String, Value>>());
+        let used = HELPER_MAX_BYTES - 2000;
+        let limited = render_advice_with_teaching(&Value::Null, &Value::Null, &large, used, 19000);
+        assert!(limited.len() + used <= HELPER_MAX_BYTES);
+        assert!(count_lua_literals(&limited) + 19000 < HELPER_MAX_LITERALS);
+        assert!(render_recipe_teaching(&serde_json::json!({"game":"other"}), 10).contains("nil"));
+        assert!(!render_recipe_teaching(
+            &serde_json::json!({"game":"forever", "items":{"1":[0,171,60],"2":[2335,171,-1]}}),
+            10
+        )
+        .contains("[1]"));
+    }
+
+    #[test]
     fn decodes_the_documented_example() {
         let plan = decode_unb1(&format!("\n{SAMPLE}\n")).unwrap();
         assert_eq!(plan.tasks.len(), 2);
@@ -1384,8 +1488,8 @@ mod tests {
                 { "itemID": 5, "action": "keep", "line": "  " }
             ]
         }]);
-        assert!(install_advice(&retail, &advice, &Value::Null).unwrap());
-        assert!(!install_advice(&retail, &advice, &Value::Null).unwrap());
+        assert!(install_advice(&retail, &advice, &Value::Null, &Value::Null).unwrap());
+        assert!(!install_advice(&retail, &advice, &Value::Null, &Value::Null).unwrap());
         let text = fs::read_to_string(dir.join("Advice.lua")).unwrap();
         assert!(!text.contains("extra") && !text.contains("bad id"));
         let values = parse_saved_variables(&text).unwrap();
@@ -2003,7 +2107,7 @@ mod tests {
             let path = dir.join(name);
             let previous = fs::read(&path).unwrap();
             fs::write(&path, [0xff]).unwrap();
-            assert!(install_advice(&root, &Value::Null, &Value::Null).is_err());
+            assert!(install_advice(&root, &Value::Null, &Value::Null, &Value::Null).is_err());
             assert_eq!(fs::read(dir.join("Advice.lua")).unwrap(), advice);
             fs::write(path, previous).unwrap();
         }

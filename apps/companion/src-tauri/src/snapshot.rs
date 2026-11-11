@@ -301,6 +301,48 @@ mod tests {
     }
 
     #[test]
+    fn recipe_sightings_keep_the_shared_section_fields_and_upload_only_once() {
+        let data = data_from_saved_variables(
+            include_str!("../../../../packages/contracts/fixtures/recipe-sightings.lua"),
+            "UnboredCharDB",
+        )
+        .unwrap()
+        .unwrap();
+        let (body, revisions) = build_upload(
+            "forever",
+            "111111#1",
+            "Mira",
+            "Realm",
+            Some(&data),
+            None,
+            &SentSections::new(),
+        )
+        .unwrap();
+        let expected: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/recipe-sightings.json"
+        ))
+        .unwrap();
+        for name in ["trainerSeen", "merchantSeen", "recipes"] {
+            assert_eq!(
+                body["sections"][name]["body"],
+                expected["sections"][name]["body"]
+            );
+        }
+        let schema: Value = serde_json::from_str(SNAPSHOT_SCHEMA).unwrap();
+        assert!(jsonschema::validator_for(&schema).unwrap().is_valid(&body));
+        assert!(build_upload(
+            "forever",
+            "111111#1",
+            "Mira",
+            "Realm",
+            Some(&data),
+            None,
+            &revisions.into_iter().collect()
+        )
+        .is_none());
+    }
+
+    #[test]
     fn forever_saved_variables_match_the_shared_upload_contract() {
         let text = include_str!("../../../../packages/contracts/fixtures/snapshot-forever.lua");
         let data = data_from_saved_variables(text, "UnboredCharDB")

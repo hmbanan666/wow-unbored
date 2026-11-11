@@ -1,3 +1,4 @@
+import { mergeSightingAccount } from "./recipe-sources.ts";
 import { checkPathOutcome, readRequestPath } from "./path-plan.ts";
 import { ActivePaths } from "./active-path.ts";
 import { ContentStore } from "./content.ts";
@@ -1670,8 +1671,10 @@ export class Store {
       const hit = await this.db.get(`SELECT n FROM (${query}) AS hits LIMIT 1`, ...args);
       if (!hit) return;
       const dest = await this.db.get(`SELECT id FROM accounts WHERE id = ?`, to);
-      if (dest) await this.db.run(`DELETE FROM accounts WHERE id = ?`, from);
-      else await this.db.run(`UPDATE accounts SET id = ?, label = ? WHERE id = ?`, to, to, from);
+      if (dest) {
+        await mergeSightingAccount(this.db, from, to);
+        await this.db.run(`DELETE FROM accounts WHERE id = ?`, from);
+      } else await this.db.run(`UPDATE accounts SET id = ?, label = ? WHERE id = ?`, to, to, from);
       await this.db.run(`UPDATE characters SET account_id = ? WHERE account_id = ?`, to, from);
       // Same as UPDATE OR IGNORE: a report the new key already has stays as it is.
       await this.db.run(

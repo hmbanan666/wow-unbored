@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import postgres from "postgres";
 import { test } from "vite-plus/test";
 
-import { connectPostgres, migrate } from "../../server/src/postgres.ts";
+import { connectPostgres, migrate, migrationFiles } from "../../server/src/postgres.ts";
 import { readCharacterPage } from "../server/utils/character-page.ts";
 import { readMyPage } from "../server/utils/account-page.ts";
 import { sessionIsLive } from "../server/utils/session.ts";
@@ -14,6 +15,103 @@ const dbTest = test.skipIf(!adminUrl);
 const mine = "a".repeat(64);
 const theirs = "b".repeat(64);
 
+dbTest(
+  "migration 0031 lets the web role read recipe sources without write or Account access",
+  async () => {
+    const root = postgres(adminUrl!, { max: 1, onnotice: () => {} });
+    const name = `unbored_recipe_web_${randomBytes(4).toString("hex")}`;
+    await root.unsafe(`CREATE DATABASE "${name}"`);
+    const url = new URL(adminUrl!);
+    url.pathname = `/${name}`;
+    // Keep BEGIN, SET LOCAL ROLE and every page query on the same connection.
+    const sql = connectPostgres(url.toString(), { max: 1 });
+    try {
+      for (const file of migrationFiles().filter((file) => file.version < 31)) {
+        await sql.unsafe(readFileSync(file.url, "utf8"));
+      }
+      await sql`BEGIN`;
+      // A newly created cluster role remains invisible to other tests and rolls back below.
+      await sql`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unbored_web') THEN
+        CREATE ROLE unbored_web NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+      END IF;
+    END $$`;
+      await sql`GRANT SELECT ON characters, sections_latest TO unbored_web`;
+      await sql.unsafe(
+        readFileSync(migrationFiles().find((file) => file.version === 31)!.url, "utf8"),
+      );
+      await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, 'Mine', 1, 2)`;
+      await sql`INSERT INTO characters (id, game, account_id, name, realm, level, last_seen)
+      VALUES ('forever/Realm/Mine', 'forever', ${mine}, 'Mine', 'Realm', 23, 2)`;
+      await sql`INSERT INTO sections_latest (owner_kind, owner_id, section, v, hash, updated_at, bytes, body)
+      VALUES ('char', 'forever/Realm/Mine', 'professions', 1, 'p1', 2, 10,
+        '{"list":[{"skillLine":171,"name":"Alchemy","skill":112,"max":150}]}'::jsonb),
+        ('char', 'forever/Realm/Mine', 'recipes', 1, 'r1', 2, 10,
+        '{"byProfession":{"171":{"learned":["ids1"]}}}'::jsonb)`;
+      await sql`INSERT INTO game.builds (game, build, build_number, imported_at, achievements)
+      VALUES ('forever', '1.60.1.70888', 70888, 2, 0)`;
+      const recipe = {
+        spellId: 2334,
+        skillLine: 171,
+        name: "Elixir of Minor Fortitude",
+        category: { id: 2450, name: "Elixirs", order: 30 },
+        minSkill: 50,
+        thresholds: { orange: 50, yellow: 80, green: 100, grey: 120 },
+        skillUps: 1,
+        acquireMethod: 0,
+        reagents: [],
+        craftedItems: [],
+        teachingItems: [2553],
+      };
+      await sql`INSERT INTO game.profession_recipes (game, build, skill_line, spell_id, body)
+      VALUES ('forever', '1.60.1.70888', 171, 2334, ${JSON.stringify(recipe)}::jsonb)`;
+      await sql`INSERT INTO recipe_sightings (account_id, game, kind, source_key, item_id, npc_id, npc_name, ui_map_id, cost, limited, first_seen, last_seen)
+      VALUES (${mine}, 'forever', 'vendor', 'i2553', 2553, 123, 'Recipe seller', 1429, 100, 0, 2, 2)`;
+      await sql`INSERT INTO game.rows (game, build, table_name, locale, id, body) VALUES
+      ('forever', '1.60.1.70888', 'UiMap', 'enUS', 1429, '{"Name_lang":"Elwynn Forest"}'::jsonb),
+      ('forever', '1.60.1.70888', 'ItemSparse', 'enUS', 2553, '{"Display_lang":"Recipe: Elixir of Minor Fortitude"}'::jsonb)`;
+      await sql`SET LOCAL ROLE unbored_web`;
+      const page = await readCharacterPage(sql, mine, {
+        game: "forever",
+        realm: "Realm",
+        name: "Mine",
+      });
+      assert.equal(page?.professions[0]?.total, 1);
+      const group = page?.professions[0]?.missing[0];
+      assert.equal(group?.id, "vendor");
+      assert.equal(group?.recipes[0]?.name, "Elixir of Minor Fortitude");
+      assert.equal(group?.recipes[0]?.sources[0]?.npcName, "Recipe seller");
+      assert.equal(group?.recipes[0]?.sources[0]?.zone, "Elwynn Forest");
+      assert.equal(group?.recipes[0]?.sources[0]?.cost, 100);
+      assert.deepEqual(group?.recipes[0]?.teachingItemNames, [
+        { itemId: 2553, name: "Recipe: Elixir of Minor Fortitude" },
+      ]);
+      assert.equal(
+        await readCharacterPage(sql, theirs, { game: "forever", realm: "Realm", name: "Mine" }),
+        null,
+      );
+      for (const table of [
+        "game.builds",
+        "game.rows",
+        "game.profession_recipes",
+        "recipe_sightings",
+        "accounts",
+      ]) {
+        const [permissions] = await sql`SELECT
+        has_table_privilege(current_user, ${table}, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS write,
+        has_table_privilege(current_user, ${table}, 'SELECT') AS read`;
+        assert.equal(permissions.write, false, `${table} must not be writable`);
+        assert.equal(permissions.read, table !== "accounts", `${table} read access`);
+      }
+    } finally {
+      await sql`ROLLBACK`;
+      await sql.end();
+      await root.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      await root.end();
+    }
+  },
+);
+
 dbTest("My page reads one Account, and a session needs its open row and connected PC", async () => {
   const root = postgres(adminUrl!, { max: 1, onnotice: () => {} });
   const name = `unbored_my_${randomBytes(4).toString("hex")}`;
@@ -23,6 +121,7 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
   const sql = connectPostgres(url.toString(), { max: 2 });
   try {
     await migrate(sql);
+    await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, ${mine}, 1, 2), (${theirs}, ${theirs}, 1, 2)`;
     await sql`
       INSERT INTO characters (id, account_id, name, realm, class, level, last_seen, device_id)
       VALUES ('Realm/Mine', ${mine}, 'Mine', 'Realm', 'MAGE', 80, 1762300000, 'pc-mine'),
@@ -91,6 +190,13 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
     await sql`INSERT INTO game.profession_recipes (game, build, skill_line, spell_id, body) VALUES
       ('forever', '1.60.1.70888', 171, 2334, ${JSON.stringify(recipe)}::jsonb),
       ('retail', '12.0.1.70889', 171, 2334, ${JSON.stringify({ ...recipe, name: "Retail recipe" })}::jsonb)`;
+    await sql`INSERT INTO recipe_sightings (account_id, game, kind, source_key, spell_id, skill_line, npc_id, npc_name, ui_map_id, cost, required_skill, limited, first_seen, last_seen) VALUES
+      (${mine}, 'forever', 'trainer', 's2334', 2334, 171, 123, 'Teacher', 1429, 100, 50, 0, 10, 10),
+      (${theirs}, 'forever', 'trainer', 's2334', 2334, 171, 123, 'Teacher', 1429, 80, 50, 0, 20, 20),
+      (${mine}, 'retail', 'trainer', 's2334', 2334, 171, 123, 'Retail teacher', 1429, 999, 50, 0, 30, 30)`;
+    await sql`INSERT INTO game.rows (game, build, table_name, locale, id, body) VALUES
+      ('forever', '1.60.1.70888', 'UiMap', 'enUS', 1429, '{"Name_lang":"Elwynn Forest"}'::jsonb),
+      ('retail', '12.0.1.70889', 'UiMap', 'enUS', 1429, '{"Name_lang":"Different Retail zone"}'::jsonb)`;
     const withCatalog = await readCharacterPage(sql, mine, identity);
     assert.equal(withCatalog?.professions[0]?.total, 1);
     assert.equal(withCatalog?.professions[0]?.uncatalogued, 4);
@@ -99,6 +205,12 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
       withCatalog?.professions[0]?.missing[0]?.recipes[0]?.name,
       "Elixir of Minor Fortitude",
     );
+    const observed = withCatalog?.professions[0]?.missing[0];
+    assert.equal(observed?.id, "trainer");
+    assert.equal(observed?.recipes[0]?.sources.length, 1);
+    assert.equal(observed?.recipes[0]?.sources[0]?.cost, 80);
+    assert.equal(observed?.recipes[0]?.sources[0]?.zone, "Elwynn Forest");
+    assert.ok(!JSON.stringify(withCatalog).includes(theirs));
     const retail = await readCharacterPage(sql, mine, { ...identity, game: "retail" });
     assert.deepEqual(retail?.professions, []);
 
@@ -131,6 +243,7 @@ dbTest("My page shows Path completions with safe links, scoped to its Account", 
   const sql = connectPostgres(url.toString(), { max: 2 });
   try {
     await migrate(sql);
+    await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, ${mine}, 1, 2), (${theirs}, ${theirs}, 1, 2)`;
     const body = {
       kind: "collection",
       slug: "first-mounts",

@@ -91,3 +91,23 @@ Fixtures `path-suggestions.json`, `path-suggestions.lua`, `path-request.lua` and
 the matching case in `requests.json` cover delivery and upload. Unknown kinds
 are ignored by the 0.12 addon, so the helper-file format stays at v1. The Server
 rejects a Path Request with a malformed or missing reference.
+
+## Recipe sightings and teaching map (ADR 0097)
+
+`trainerSeen` and `merchantSeen` are v1 Character Sections with `{entries:[...]}`;
+shared [JSON](../../packages/contracts/fixtures/recipe-sightings.json) and
+[Lua](../../packages/contracts/fixtures/recipe-sightings.lua) fixtures describe the shape.
+Each keeps at most 200 latest observations, with per-entry `seenAt`, Creature `npcId`,
+`npcName`, optional `uiMapID`/percentage `x`/`y` and copper `cost`. Trainer entries carry
+`spellId` when exposed, otherwise `name`, `skillLine`, `locale`, plus `requiredSkill`;
+merchant entries carry `itemId` and `numAvailable` (-1 unlimited, >=0 limited).
+These synthetic NPC observations are test data, not game source claims.
+
+The existing `/v1/advice` delivery gains `teaching`, described by
+[recipe-teaching.schema.json](../../packages/contracts/schema/recipe-teaching.schema.json)
+and matching [JSON](../../packages/contracts/fixtures/recipe-teaching.json)/[Lua](../../packages/contracts/fixtures/recipe-teaching.lua)
+fixtures. At most 4,000 item keys map to [spell id, skill line, minimum skill]. The Companion
+selects the installation's game via `?game=`, budgets the map with existing helper files,
+and writes `UnboredRecipeTeaching` into Advice.lua; absence or a wrong game yields no Advice.
+
+The existing v1 `recipes.byProfession[skillLine]` may also carry `unlearned`, a Packed id set of explicit `GetRecipeInfo.learned=false` results. The own-profession window read probes delivered teaching-map spells even if hidden by filters. Old snapshots without this evidence remain silent for recipe Advice; absence from `learned` is never sufficient.

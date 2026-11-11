@@ -69,7 +69,10 @@ test.skipIf(!hasPostgres)(
       await db.sql`INSERT INTO game.rows VALUES (${oldBuild}, 'ItemSparse', 'enUS', 19019, '{"ID":19019,"Display_lang":"Thunderfury"}'::jsonb)`;
       await db.sql`INSERT INTO game.imports VALUES (${oldBuild}, '{"ItemSparse":1}'::jsonb)`;
       await db.sql`INSERT INTO game.watch VALUES (1, '12.0.1.66338', 20, 30, 'import_failed')`;
-      assert.deepEqual(await migrate(db.sql), ["0030_game_dimension.sql"]);
+      assert.deepEqual(await migrate(db.sql), [
+        "0030_game_dimension.sql",
+        "0031_recipe_sightings.sql",
+      ]);
       const game = new GameDb(new PostgresDb(db.sql), directory);
       assert.equal((await game.entity("achievement", 964))?.names.enUS, "Going Down?");
       assert.equal((await game.row("ItemSparse", 19019))?.fields.Display_lang, "Thunderfury");

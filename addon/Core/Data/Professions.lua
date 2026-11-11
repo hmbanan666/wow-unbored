@@ -109,6 +109,28 @@ S.Register({
   opens = { "TRADE_SKILL_SHOW" },
   closes = { "TRADE_SKILL_CLOSE" },
   events = { "TRADE_SKILL_LIST_UPDATE", "NEW_RECIPE_LEARNED" },
+  onEvent = function(event, recipeID)
+    -- This own-player event is positive evidence even with the profession closed.
+    -- Pure SavedVariables updates only; no game APIs are called for the delta.
+    if event == "NEW_RECIPE_LEARNED" then
+      local id = num(recipeID)
+      local body = id and S.Clean(S.Body("recipes"))
+      local changed = false
+      for _, row in pairs(type(body) == "table" and body.byProfession or {}) do
+        if type(row) == "table" and ns.Pack.Set(row.unlearned)[id] then
+          local remaining = {}
+          ns.Pack.Each(row.unlearned, function(value)
+            if value ~= id then remaining[#remaining + 1] = value end
+          end)
+          row.unlearned = ns.Pack.Encode(remaining)
+          row.learned = ns.Pack.Add(row.learned, id)
+          changed = true
+        end
+      end
+      if changed then S.Write("recipes", body, "event") end
+    end
+    if S.IsOpen("recipes") then S.Mark("recipes", "window") end
+  end,
   read = function(previous)
     local api = C_TradeSkillUI
     if not S.IsOpen("recipes") or not tradeSkillOpenForMe() or not api.GetRecipeInfo then
@@ -121,7 +143,7 @@ S.Register({
     if not professionID or type(ids) ~= "table" then
       return nil
     end
-    local learned = {}
+    local learned, unlearned, visited = {}, {}, {}
     local difficulty = { orange = {}, yellow = {}, green = {}, grey = {} }
     local colours = { [0] = "orange", [1] = "yellow", [2] = "green", [3] = "grey" }
     for i = 1, #ids do
@@ -129,6 +151,10 @@ S.Register({
       local info = id and S.Clean(call(api.GetRecipeInfo, id))
       -- An unavailable recipe read cannot establish a known count of zero.
       if id and type(info) ~= "table" then return nil end
+      if id then visited[id] = true end
+      if type(info) == "table" and ns.AsBoolean(info.learned) == false then
+        unlearned[#unlearned + 1] = num(info.recipeID) or id
+      end
       if type(info) == "table" and ns.AsBoolean(info.learned) == true then
         local recipeID = num(info.recipeID) or id
         learned[#learned + 1] = recipeID
@@ -137,6 +163,26 @@ S.Register({
       end
       if i % 50 == 0 then
         S.Yield()
+      end
+    end
+    -- Filters may hide learned recipes. Only an explicit false supports recipe Advice.
+    -- Probe delivered teaching spells while this Character's profession is open, never per tooltip.
+    local teaching = type(UnboredRecipeTeaching) == 'table' and UnboredRecipeTeaching
+    local checked = 0
+    if teaching and teaching.game == ns.Game and type(teaching.items) == 'table' then
+      for _, tuple in pairs(teaching.items) do
+        checked = checked + 1
+        if checked > 4000 then break end
+        local spell = type(tuple) == 'table' and num(tuple[1])
+        if spell and num(tuple[2]) == professionID and not visited[spell] then
+          visited[spell] = true
+          local info = S.Clean(call(api.GetRecipeInfo, spell))
+          local state
+          if type(info) == 'table' then state = ns.AsBoolean(info.learned) end
+          if state == false then unlearned[#unlearned + 1] = spell
+          elseif state == true then learned[#learned + 1] = spell end
+        end
+        if checked % 50 == 0 then S.Yield() end
       end
     end
     local body = { byProfession = {} }
@@ -151,6 +197,7 @@ S.Register({
     body.byProfession[tostring(professionID)] = {
       name = str(base.professionName, 60),
       learned = ns.Pack.Encode(learned),
+      unlearned = ns.Pack.Encode(unlearned),
       difficulty = difficulty,
       seenAt = ns.Now(),
     }

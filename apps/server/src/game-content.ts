@@ -72,6 +72,7 @@ export const RETAIL_TABLES = {
   ],
 } as const;
 export const FOREVER_TABLES = {
+  UiMap: RETAIL_TABLES.UiMap,
   SkillLine: ["ID", "DisplayName_lang", "CategoryID", "ParentSkillLineID"],
   SkillLineAbility: [
     "ID",

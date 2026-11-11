@@ -1,3 +1,4 @@
+import { recipeTeachingMap } from "./recipe-sources.ts";
 import { MediaStore } from "./media-store.ts";
 import { MediaResolver } from "./media.ts";
 import { mediaName } from "./media-name.ts";
@@ -468,9 +469,12 @@ export function createApp(
   app.get("/v1/advice", async (c) => {
     const access = await allowCompanion(c);
     if (access instanceof Response) return access;
-    const holdings = await store.holdingsForDevice(access.deviceId);
+    const game = c.req.query("game") ?? "retail";
+    if (game !== "retail" && game !== "forever") return c.json({ error: "Invalid game." }, 400);
+    const holdings = game === "retail" ? await store.holdingsForDevice(access.deviceId) : null;
     return c.json({
-      characters: await store.adviceForDevice(access.deviceId),
+      teaching: await recipeTeachingMap(store.db, game),
+      characters: game === "retail" ? await store.adviceForDevice(access.deviceId) : [],
       ...(holdings ? { holdings } : {}),
     });
   });

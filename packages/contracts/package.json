@@ -17,7 +17,8 @@
     "./web-session": "./src/web-session.ts",
     "./game-media": "./src/game-media.ts",
     "./guide": "./src/guide.ts",
-    "./profession-catalog": "./src/profession-catalog.ts"
+    "./profession-catalog": "./src/profession-catalog.ts",
+    "./recipe-sources": "./src/recipe-sources.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

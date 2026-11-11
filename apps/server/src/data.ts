@@ -1,3 +1,4 @@
+import { SIGHTINGS_SQLITE_SCHEMA, ingestRecipeSightings } from "./recipe-sources.ts";
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -40,6 +41,8 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   currencies: { scope: "char", v: 1 },
   professions: { scope: "char", v: 1 },
   recipes: { scope: "char", v: 1 },
+  trainerSeen: { scope: "char", v: 1 },
+  merchantSeen: { scope: "char", v: 1 },
   questsDone: { scope: "char", v: 1 },
   questLog: { scope: "char", v: 1 },
   questLines: { scope: "char", v: 1 },
@@ -78,6 +81,8 @@ const WINDOW_SECTIONS: Record<string, string> = {
   bank: "open the bank",
   warband: "open the warband bank",
   recipes: "open a profession",
+  trainerSeen: "visit a profession trainer",
+  merchantSeen: "visit a recipe vendor",
 };
 /** Written even with data sharing off (addon `S.ESSENTIAL`). */
 const ESSENTIAL_SECTIONS = new Set(["char", "gear", "questLog", "sessions"]);
@@ -672,7 +677,7 @@ export class DataStore {
     this.db = db;
     this.log = log;
     if (db instanceof SqliteDb) {
-      db.raw.exec(SQLITE_SCHEMA);
+      db.raw.exec(SQLITE_SCHEMA + SIGHTINGS_SQLITE_SCHEMA);
       if (
         !db.raw
           .prepare("PRAGMA table_info(characters)")
@@ -1036,6 +1041,21 @@ export class DataStore {
             body: section.body,
             now,
           });
+        }
+        if (
+          outcome === "stored" &&
+          section.scope === "char" &&
+          section.v === 1 &&
+          (section.name === "trainerSeen" || section.name === "merchantSeen")
+        ) {
+          await ingestRecipeSightings(
+            this.db,
+            account,
+            snapshot.game,
+            section.name === "trainerSeen" ? "trainer" : "vendor",
+            section.body,
+            now,
+          );
         }
         if (outcome === "stored") result.stored.push(section.name);
         else if (outcome === "unchanged") result.unchanged.push(section.name);
@@ -1727,6 +1747,7 @@ export class DataStore {
       }
       const errors = await this.db.run(`DELETE FROM addon_errors WHERE account = ?`, id);
       await this.db.run(`DELETE FROM characters WHERE account_id = ?`, id);
+      await this.db.run(`DELETE FROM recipe_sightings WHERE account_id = ?`, id);
       await this.db.run(`DELETE FROM accounts WHERE id = ?`, id);
       return { characters: characters.length, sections, history, errors };
     });

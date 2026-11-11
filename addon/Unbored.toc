@@ -23,6 +23,7 @@ Core\Data\Store.lua
 Core\Data\Character.lua
 Core\Data\Inventory.lua
 Core\Data\Professions.lua
+Core\Data\RecipeSources.lua
 Core\Data\Quests.lua
 Core\Data\QuestLines.lua
 Core\Data\Reputation.lua
@@ -32,6 +33,7 @@ Core\Data\World.lua
 Core\SelfCheck.lua
 Core\Markup.lua
 Core\Intents.lua
+Core\RecipeAdvice.lua
 Core\Advice.lua
 Core\Codec.lua
 Core\Import.lua

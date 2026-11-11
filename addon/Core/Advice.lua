@@ -347,9 +347,15 @@ local function altRule(ctx)
   return out
 end
 
+local function recipeRule(ctx)
+  local line = ns.RecipeAdvice and ns.RecipeAdvice.For(ctx.itemID, ctx.lang, soulbound(ctx))
+  if line then return result(line, "learn", "recipe") end
+end
+
 -- Only lines with a personal signal (D75); no line is the default.
 ns.Advice.RULES = {
   planRule,
+  recipeRule,
   questStartRule,
   collectionRule,
   personalRule,
