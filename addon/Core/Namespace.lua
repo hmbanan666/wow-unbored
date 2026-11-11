@@ -30,6 +30,10 @@ function ns.Hex(color)
 end
 -- A plan is 3-7 steps (docs/adr/0005); the in-game builder never makes more.
 ns.MAX_STEPS = 7
+local interface = type(GetBuildInfo) == "function" and select(4, GetBuildInfo()) or 0
+interface = tonumber(interface)
+ns.Game = interface and interface >= 16000 and interface < 17000 and "forever" or "retail"
+
 ns.Data = {}
 ns.Providers = {}
 ns.ProviderOrder = {}
@@ -53,6 +57,7 @@ ns.MODE_IDS = {
 }
 
 function ns.RegisterProvider(def)
+  if not def.games[ns.Game] then return end
   ns.Providers[def.id] = def
   ns.ProviderOrder[#ns.ProviderOrder + 1] = def.id
 end

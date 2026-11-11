@@ -18,6 +18,7 @@ end
 -- The full achievement scan is ~10k calls: staged, and at most once a day per
 -- Account (D51); ACHIEVEMENT_EARNED adds new ones in between.
 S.Register({
+  games = { retail = true, forever = true },
   name = "achievements",
   scope = "account",
   v = 1,
@@ -133,6 +134,7 @@ local function achievementProgress(id, counter)
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "achProgress",
   v = 1,
   prio = 20,
@@ -199,6 +201,7 @@ S.Register({
 
 -- Achievements this character earned itself; written by the daily scan.
 S.Register({
+  games = { retail = true, forever = true },
   name = "achievementsMine",
   v = 1,
   prio = 25,
@@ -220,6 +223,7 @@ S.Register({
 })
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "mounts",
   scope = "account",
   v = 1,
@@ -317,6 +321,7 @@ local function walkJournal()
 end
 
 S.Register({
+  games = { retail = true },
   name = "pets",
   scope = "account",
   v = 1,
@@ -365,6 +370,7 @@ S.Register({
 -- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): the Toy Box filters are restored exactly.
 S.Register({
+  games = { retail = true },
   name = "toys",
   scope = "account",
   v = 1,
@@ -430,6 +436,7 @@ S.Register({
 })
 
 S.Register({
+  games = { retail = true },
   name = "transmog",
   scope = "account",
   v = 1,

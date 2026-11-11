@@ -61,6 +61,7 @@ local function openTiers()
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "professions",
   v = 1,
   prio = 80,
@@ -95,6 +96,7 @@ S.Register({
 -- Learned recipes per profession, as Packed id sets. GetRecipeInfo is called
 -- thousands of times, so the read is staged across frames.
 S.Register({
+  games = { retail = true, forever = true },
   name = "recipes",
   v = 1,
   prio = 35,

@@ -143,6 +143,7 @@ local function Build(ctx)
 end
 
 ns.RegisterProvider({
+  games = { retail = true },
   id = "farm",
   Build = Build,
 })

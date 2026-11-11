@@ -188,6 +188,7 @@ local function Build(ctx)
 end
 
 ns.RegisterProvider({
+  games = { retail = true, forever = true },
   id = "quests",
   Build = Build,
 })

@@ -277,6 +277,7 @@ local function Build()
 end
 
 ns.RegisterProvider({
+  games = { retail = true, forever = true },
   id = "events",
   Build = Build,
   Collect = Collect,

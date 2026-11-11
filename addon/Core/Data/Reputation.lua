@@ -186,6 +186,7 @@ function S.ReadReputation()
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "reputation",
   v = 2,
   prio = 50,

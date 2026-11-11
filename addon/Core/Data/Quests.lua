@@ -9,6 +9,7 @@ local MAX_LOG = 60
 local MAX_OBJECTIVES = 10
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "questsDone",
   v = 1,
   prio = 65,
@@ -50,6 +51,7 @@ function S.QuestDone(questID)
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "questLog",
   v = 1,
   prio = 95,

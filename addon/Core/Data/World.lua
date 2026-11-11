@@ -115,6 +115,7 @@ end
 -- after that is read once it has settled, once per login. The login pass
 -- reads it too, for when the game's own calendar asked first.
 S.Register({
+  games = { retail = true, forever = true },
   name = "calendar",
   scope = "account",
   v = 2,
@@ -146,6 +147,7 @@ local function sessionsBody()
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "sessions",
   v = 1,
   prio = 90,
@@ -159,6 +161,7 @@ S.Register({
 local HELPERS = { "TomTom", "Auctionator", "TradeSkillMaster", "Bagnon" }
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "addons",
   scope = "account",
   v = 1,
@@ -177,6 +180,7 @@ local MAX_UNRESOLVED = 200
 -- A Plan id the game could not resolve (docs/adr/0034): kept so the Server
 -- can see which ids the Planner got wrong.
 S.Register({
+  games = { retail = true, forever = true },
   name = "unresolvedIds",
   v = 1,
   prio = 10,

@@ -11,6 +11,7 @@ local function round1(value)
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "char",
   v = 1,
   prio = 100,
@@ -26,7 +27,7 @@ S.Register({
     "PLAYER_GUILD_UPDATE",
   },
   read = function()
-    local body = {}
+    local body = { game = ns.Game }
     body.name = str(call(UnitName, "player"), 80)
     body.realm = str(call(GetRealmName), 80)
     local className, classFile, classID = call(UnitClass, "player")
@@ -79,6 +80,7 @@ function S.ItemString(link)
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "gear",
   v = 1,
   prio = 95,
@@ -111,6 +113,7 @@ S.Register({
 -- Loadouts per spec; the active one with its import string. Kept per spec so
 -- a respec does not forget the other specs' loadouts.
 S.Register({
+  games = { retail = true },
   name = "talents",
   v = 1,
   prio = 45,
@@ -184,6 +187,7 @@ local function restoreDisplay()
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "played",
   v = 1,
   prio = 30,

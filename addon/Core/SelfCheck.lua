@@ -157,13 +157,15 @@ function SC.Run()
       build = version:sub(1, 20) .. "/" .. number:sub(1, 20)
     end
   end
-  local report = { ok = 0, failed = 0, manual = 0 }
+  local report = { game = ns.Game, ok = 0, failed = 0, manual = 0 }
   local lines = {}
   -- Reserve room for every API, even if an earlier return has a large shape.
   local lineLimit = math.min(256, math.floor(8000 / #SC.checks) - 1)
   for _, check in ipairs(SC.checks) do
     local line = check.api
-    if check.manual then
+    if ns.Game == "forever" and (check.api:match("^C_ToyBox%.") or check.api:match("^C_PetJournal%.")) then
+      line = line .. " skipped: retail"
+    elseif check.manual then
       report.manual = report.manual + 1
       line = line .. " manual: " .. check.manual
     else
@@ -180,8 +182,8 @@ function SC.Run()
     end
     lines[#lines + 1] = line:sub(1, lineLimit)
   end
-  local summary = string.format("Self-check build=%s: %d ok, %d failed, %d manual",
-    build, report.ok, report.failed, report.manual)
+  local summary = string.format("Self-check game=%s build=%s: %d ok, %d failed, %d manual",
+    ns.Game, build, report.ok, report.failed, report.manual)
   ns.RecordSelfCheck(summary, table.concat(lines, "\n"))
   return report
 end

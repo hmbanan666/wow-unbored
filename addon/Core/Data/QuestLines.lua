@@ -280,6 +280,7 @@ end
 
 -- Read 20 s after the login pass; the map questions go out 10 s before that.
 S.Register({
+  games = { retail = true, forever = true },
   name = "questLines",
   v = 1,
   prio = 92,

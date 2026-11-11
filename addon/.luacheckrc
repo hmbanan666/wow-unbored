@@ -41,7 +41,10 @@ globals = {
   "UnboredSuggestions",
 }
 
+files["tests/forever-client.lua"] = { ignore = { "111", "121", "122" } }
+
 read_globals = {
+  "GetBuildInfo",
   "BreakUpLargeNumbers",
   "EJ_GetInstanceInfo",
   "EncounterJournal_OpenJournal",
