@@ -322,7 +322,7 @@ mod tests {
             "../../../../packages/contracts/fixtures/recipe-sightings.json"
         ))
         .unwrap();
-        for name in ["trainerSeen", "merchantSeen"] {
+        for name in ["trainerSeen", "merchantSeen", "recipes"] {
             assert_eq!(
                 body["sections"][name]["body"],
                 expected["sections"][name]["body"]

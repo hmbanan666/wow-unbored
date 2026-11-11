@@ -109,3 +109,5 @@ and matching [JSON](../../packages/contracts/fixtures/recipe-teaching.json)/[Lua
 fixtures. At most 4,000 item keys map to [spell id, skill line, minimum skill]. The Companion
 selects the installation's game via `?game=`, budgets the map with existing helper files,
 and writes `UnboredRecipeTeaching` into Advice.lua; absence or a wrong game yields no Advice.
+
+The existing v1 `recipes.byProfession[skillLine]` may also carry `unlearned`, a Packed id set of explicit `GetRecipeInfo.learned=false` results. The own-profession window read probes delivered teaching-map spells even if hidden by filters. Old snapshots without this evidence remain silent for recipe Advice; absence from `learned` is never sufficient.

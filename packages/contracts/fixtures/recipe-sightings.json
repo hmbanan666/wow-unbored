@@ -85,6 +85,20 @@
           }
         ]
       }
+    },
+    "recipes": {
+      "scope": "char",
+      "v": 1,
+      "at": 1790000000,
+      "src": "window",
+      "body": {
+        "byProfession": {
+          "171": {
+            "learned": ["ids1"],
+            "unlearned": ["ids1", "1sv"]
+          }
+        }
+      }
     }
   }
 }

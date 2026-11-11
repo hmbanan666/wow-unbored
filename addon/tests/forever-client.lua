@@ -102,6 +102,27 @@ return function(ns)
   ns.Snapshot.Read("recipes", "window")
   assert(#ns.Pack.Decode(ns.Snapshot.Body("recipes").byProfession["171"].learned) == 0, "seen empty list")
   api.GetFilteredRecipeIDs = filtered
+
+  -- Hidden recipes are checked explicitly through the delivered teaching map.
+  local oldRecipeInfo = api.GetRecipeInfo
+  api.GetFilteredRecipeIDs = function() return { 101 } end
+  api.GetRecipeInfo = function(id)
+    if id == 999 then return { recipeID = 999, learned = false } end
+    return oldRecipeInfo(id)
+  end
+  UnboredRecipeTeaching = { game = 'forever', items = { [2555] = { 999, 171, 60 } } }
+  ns.Snapshot.Read('recipes', 'window')
+  assert(ns.Pack.Set(ns.Snapshot.Body('recipes').byProfession['171'].unlearned)[999],
+    'explicit hidden unlearned recipe is observed without changing filters')
+  ns.Snapshot.OnEvent('TRADE_SKILL_CLOSE')
+  ns.Snapshot.OnEvent('NEW_RECIPE_LEARNED', 999)
+  local updated = ns.Snapshot.Body('recipes').byProfession['171']
+  assert(ns.Pack.Set(updated.learned)[999] and not ns.Pack.Set(updated.unlearned)[999],
+    'learning an item recipe with the profession closed clears new-recipe evidence')
+  ns.Snapshot.OnEvent('TRADE_SKILL_SHOW')
+  api.GetRecipeInfo = oldRecipeInfo
+  api.GetFilteredRecipeIDs = filtered
+  UnboredRecipeTeaching = nil
   local savedSkills = C_SkillInfo
   C_SkillInfo = nil
   UnboredCharDB.data.sections.professions = nil

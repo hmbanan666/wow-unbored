@@ -66,6 +66,10 @@ for _, game in ipairs({ 'forever', 'retail' }) do
   C_Trainer.GetTrainerType = function() return 0 end
   assert(not S.Read('trainerSeen', 'window'))
   C_Trainer.GetTrainerType = oldTrainer
+  local oldStep = GetTrainerServiceStepIndex
+  GetTrainerServiceStepIndex = function() return nil end
+  assert(S.Read('trainerSeen', 'window'), 'trainers without rank training still offer recipes')
+  GetTrainerServiceStepIndex = oldStep
   S.OnEvent('MERCHANT_CLOSED'); assert(not S.Read('merchantSeen', 'window'))
   ns.DB.shareData = false; S.ApplySharing()
   assert(not S.Body('trainerSeen') and not S.Body('merchantSeen'))
@@ -80,18 +84,21 @@ UnboredCharDB = {}
 function UnitName(unit) assert(unit == 'player'); return 'Hero' end
 function GetRealmName() return 'Realm' end
 ns.Profile.AltKey = function(name, realm) return realm .. '-' .. name end
+ns.Profile.currentAltKey = 'Realm-Hero'
 UnboredRecipeTeaching = { game = 'forever', items = { [2553] = { 2330, 171, 50 } } }
 assert(loadfile('Core/RecipeAdvice.lua'))('Unbored', ns)
 assert(ns.RecipeAdvice.For(2553, 'en') == nil)
 S.Register({ name = 'professions' }); S.Register({ name = 'recipes' })
 S.Write('professions', { list = { { skillLine = 171, name = 'Alchemy', skill = 25 } } })
 S.Write('recipes', { byProfession = { ['171'] = { learned = { 'ids1' } } } })
+assert(ns.RecipeAdvice.For(2553, 'en') == nil, 'filtered absence is not proof of unlearned')
+S.Write('recipes', { byProfession = { ['171'] = { learned = { 'ids1' }, unlearned = ns.Pack.Encode({ 2330 }) } } })
 assert(ns.RecipeAdvice.For(2553, 'en') == 'new recipe for you, Alchemy 50')
 S.Write('recipes', { byProfession = { ['171'] = { learned = ns.Pack.Encode({ 2330 }) } } })
 assert(ns.RecipeAdvice.For(2553, 'en') == nil)
 ns.DB.alts['Realm-Mira'] = { game = 'forever', name = 'Mira',
   professions = { { skillLine = 171, name = 'Alchemy', skill = 50 } },
-  recipeKnowledge = { ['171'] = { 'ids1' } } }
+  recipeKnowledge = { ['171'] = { learned = { 'ids1' }, unlearned = ns.Pack.Encode({ 2330 }) } } }
 ns.RecipeAdvice.Invalidate()
 assert(ns.RecipeAdvice.For(2553, 'en') == 'Mira can learn this')
 assert(ns.RecipeAdvice.For(2553, 'en', true) == nil)
@@ -115,3 +122,4 @@ assert(UnboredCharDB.data.sections.trainerSeen.body.entries[1].spellId == 2335)
 assert(UnboredCharDB.data.sections.merchantSeen.body.entries[2].numAvailable == 0)
 assert(loadfile('../packages/contracts/fixtures/recipe-teaching.lua'))()
 assert(UnboredRecipeTeaching.items[2555][1] == 2335)
+assert(ns.Pack.Set(UnboredCharDB.data.sections.recipes.body.byProfession['171'].unlearned)[2335])

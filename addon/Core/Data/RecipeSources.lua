@@ -57,9 +57,11 @@ local function trainer(previous)
   for _, p in ipairs(ns.Profile.Professions() or {}) do
     if p.name and PROFESSIONS[p.skillLine] then skills[p.name] = p.skillLine end
   end
-  local step = num(call(GetTrainerServiceStepIndex))
-  -- If the rank-training service cannot be identified, do not call it a recipe.
-  if step == nil then return nil end
+  if type(GetTrainerServiceStepIndex) ~= 'function' then return nil end
+  local ok, rawStep = pcall(GetTrainerServiceStepIndex)
+  local step = num(rawStep)
+  -- A successful nil means this trainer has no rank-training service.
+  if not ok or (rawStep ~= nil and step == nil) then return nil end
   local entries = {}
   for i = 1, math.min(num(call(GetNumTrainerServices)) or 0, 1000) do
     local name, serviceType = call(GetTrainerServiceInfo, i)

@@ -244,6 +244,6 @@ test("Path Ideas require a published reference in both delivery and Request fixt
 test("recipe sightings use the shared snapshot envelope", () => {
   const parsed = snapshotBodySchema.parse(read("recipe-sightings.json"));
   expect(parsed.game).toBe("forever");
-  expect(Object.keys(parsed.sections)).toEqual(["trainerSeen", "merchantSeen"]);
+  expect(Object.keys(parsed.sections)).toEqual(["trainerSeen", "merchantSeen", "recipes"]);
   expect(parsed.sections.trainerSeen.scope).toBe("char");
 });

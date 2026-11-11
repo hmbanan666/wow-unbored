@@ -728,7 +728,10 @@ omitting game retains Retail advice/holdings. Forever carries no Retail advice o
 Tuples are item -> [spell, skill line, minimum skill], at most 4,000, with ambiguous items
 omitted. The Companion writes `UnboredRecipeTeaching` in Advice.lua for the installation's
 game, within the existing combined 260 KB / 20,000-literal helper budget, reducing the map
-when necessary. No new reload path is added. Current-character and Alt lookups rebuild
+when necessary. No new reload path is added. Current-character and Alt lookups require the optional Packed `unlearned` set: only
+explicit `GetRecipeInfo.learned=false` supports Advice, never absence from a filtered list.
+The staged own-profession reader checks delivered teaching spells directly, without changing
+filters; unavailable/secret results stay unknown. Lookups rebuild
 only when profession/recipe data changes; tooltip calls use indexed items. The Alt learned
 sets stay packed, at most 12 KB per Alt and 60 KB combined, and clear with sharing off.
 

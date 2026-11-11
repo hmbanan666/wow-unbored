@@ -104,6 +104,10 @@
                           "learned": {
                             "$ref": "#/$defs/packedIdSet"
                           },
+                          "unlearned": {
+                            "$ref": "#/$defs/packedIdSet",
+                            "description": "Only ids explicitly reported learned=false, including direct teaching-map lookups while the profession is open. Absence from learned is not proof."
+                          },
                           "difficulty": {
                             "type": "object",
                             "description": "Optional learned recipe ids by current difficulty colour in both games.",

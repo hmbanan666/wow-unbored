@@ -11,17 +11,15 @@ function R.Invalidate() dirty = true end
 function R.Remember()
   local S = ns.Snapshot
   if not ns.DB or not S.Sharing() then return end
-  local name = ns.SafeString(ns.Call(UnitName, 'player'), 80)
-  local realm = ns.SafeString(ns.Call(GetRealmName), 80)
-  if not name or not realm then return end
+  local key = ns.Profile.currentAltKey
+  local entry = key and ns.DB.alts and ns.DB.alts[key]
   local recipes, professions = S.Body('recipes'), S.Body('professions')
-  if not recipes or not professions then return end
-  ns.DB.alts = ns.DB.alts or {}
-  local key = ns.Profile.AltKey(name, realm)
-  local entry = ns.DB.alts[key] or { name = name, realm = realm }
+  if not entry or not recipes or not professions then return end
   local knowledge = {}
   for skill, row in pairs(recipes.byProfession or {}) do
-    if type(row) == 'table' and ns.Pack.IsPacked(row.learned) then knowledge[skill] = row.learned end
+    if type(row) == 'table' and ns.Pack.IsPacked(row.unlearned) then
+      knowledge[skill] = { learned = row.learned, unlearned = row.unlearned }
+    end
   end
   -- Packed sets stay small; omit an oversized Alt instead of risking SavedVariables.
   if S.Measure(knowledge) > 12000 then knowledge = nil end
@@ -40,10 +38,12 @@ function R.Remember()
   R.Invalidate()
 end
 
-local function learnedBySkill(knowledge)
+local function knowledgeBySkill(knowledge)
   local out = {}
-  for skill, packed in pairs(knowledge or {}) do
-    if ns.Pack.IsPacked(packed) then out[tonumber(skill)] = ns.Pack.Set(packed) end
+  for skill, row in pairs(knowledge or {}) do
+    if type(row) == 'table' and ns.Pack.IsPacked(row.learned) and ns.Pack.IsPacked(row.unlearned) then
+      out[tonumber(skill)] = { learned = ns.Pack.Set(row.learned), unlearned = ns.Pack.Set(row.unlearned) }
+    end
   end
   return out
 end
@@ -51,12 +51,13 @@ end
 local function candidates(list, knowledge, teaching, target, alt)
   local skills = {}
   for _, p in ipairs(list or {}) do skills[p.skillLine] = p end
-  local learned = learnedBySkill(knowledge)
+  local learned = knowledgeBySkill(knowledge)
   for item, row in pairs(teaching) do
     if type(row) == 'table' then
       local spell, skill, minimum = ns.AsNumber(row[1]), ns.AsNumber(row[2]), ns.AsNumber(row[3])
       local p, known = skills[skill], learned[skill]
-      if spell and minimum and p and known and not known[spell] and type(p.name) == 'string'
+      if spell and minimum and p and known and known.unlearned[spell] and not known.learned[spell]
+        and type(p.name) == 'string'
         and (not alt or (ns.AsNumber(p.skill) and p.skill >= minimum)) and not target[item] then
         target[item] = { profession = p.name, minimum = minimum, alt = alt }
       end
@@ -73,10 +74,9 @@ local function rebuild()
   if type(map) ~= 'table' or map.game ~= ns.Game or type(map.items) ~= 'table' then return end
   local recipes, professions = S.Body('recipes'), S.Body('professions')
   local knowledge = {}
-  for skill, row in pairs(recipes and recipes.byProfession or {}) do knowledge[skill] = row.learned end
+  for skill, row in pairs(recipes and recipes.byProfession or {}) do knowledge[skill] = row end
   candidates(professions and professions.list, knowledge, map.items, own)
-  local me = ns.Profile.AltKey(ns.SafeString(ns.Call(UnitName, 'player'), 80),
-    ns.SafeString(ns.Call(GetRealmName), 80))
+  local me = ns.Profile.currentAltKey
   local keys = {}
   for key in pairs(ns.DB and ns.DB.alts or {}) do keys[#keys + 1] = key end
   table.sort(keys)
