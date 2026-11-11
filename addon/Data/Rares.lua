@@ -1,5 +1,10 @@
 local _, ns = ...
 
+if ns.Game == "forever" then
+  ns.Data.Rares = {}
+  return
+end
+
 -- Curated rares and treasures. Live vignettes are the main source; this
 -- table is for things you want suggested even when they are not currently
 -- on the minimap.

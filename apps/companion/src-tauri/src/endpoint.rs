@@ -58,6 +58,7 @@ pub fn page_link_from_response(status: u16, body: &str) -> Result<String, &'stat
 
 pub fn progress_payload(file: &CharacterFile, progress: &SessionProgress) -> Value {
     let mut payload = json!({
+        "game": file.game,
         "account": file.account,
         "realm": file.realm,
         "character": file.character,
@@ -113,6 +114,7 @@ mod tests {
     #[test]
     fn progress_body_matches_the_contract() {
         let file = CharacterFile {
+            game: "retail",
             account: "111111#1".into(),
             realm: "Area 52".into(),
             character: "Hero".into(),

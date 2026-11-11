@@ -150,6 +150,7 @@ pub fn parse_saved_variables(text: &str) -> Result<BTreeMap<String, LuaValue>, S
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedRequest {
+    pub game: String,
     pub id: String,
     pub created_at: Option<u64>,
     pub character: String,
@@ -200,6 +201,7 @@ pub fn request_from_saved_variables(text: &str) -> Result<Option<SavedRequest>, 
         .map(str::to_string)
         .filter(|text| !text.is_empty());
     Ok(Some(SavedRequest {
+        game: text_field(request, "game").unwrap_or_else(|| "retail".into()),
         id: id.to_string(),
         created_at: table_get(request, "createdAt").and_then(LuaValue::as_u64),
         character,

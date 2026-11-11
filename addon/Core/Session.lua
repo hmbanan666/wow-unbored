@@ -922,7 +922,8 @@ function ns.Session:BuildRequest(ask)
   local okContext, context = pcall(ns.PlayerContext)
   local wish = text(ask.wish, 600)
   local request = {
-    id = string.format("req-%d-%04d", ns.Now(), math.random(0, 9999)),
+    game = ns.Game,
+    id = string.format(ns.Game == "forever" and "req-forever-%d-%04d" or "req-%d-%04d", ns.Now(), math.random(0, 9999)),
     type = "plan",
     createdAt = ns.Now(),
     character = name,

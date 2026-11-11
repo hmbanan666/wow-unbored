@@ -1,5 +1,10 @@
 local _, ns = ...
 
+if ns.Game == "forever" then
+  ns.Data.Exploration = {}
+  return
+end
+
 -- Continent exploration achievements. Incomplete criteria become "go look
 -- at this zone" tasks. IDs from the public achievement tables
 -- (Explore Eastern Kingdoms is 42, Kalimdor 43, Outland 44, Northrend 45,

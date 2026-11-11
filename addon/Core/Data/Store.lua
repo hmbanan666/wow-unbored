@@ -95,6 +95,7 @@ local function root(scope)
   if type(data.sections) ~= "table" then
     data.sections = {}
   end
+  data.game = ns.Game
   return data, holder
 end
 S.Root = root
@@ -112,6 +113,7 @@ end
 -- login (default true), every (seconds between login reads), delay
 -- (seconds after the login pass), delta(body, event, ...) -> body.
 function S.Register(def)
+  if def.games and not def.games[ns.Game] then return end
   def.scope = def.scope or "char"
   def.v = def.v or 1
   def.prio = def.prio or 50
@@ -171,7 +173,7 @@ function S.Write(name, body, src)
     return false
   end
   local data = root(def.scope)
-  data.sections[name] = { v = def.v, at = ns.Now(), src = src or "event", body = body }
+  data.sections[name] = { game = ns.Game, v = def.v, at = ns.Now(), src = src or "event", body = body }
   if type(data.dropped) == "table" then
     data.dropped[name] = nil
     if next(data.dropped) == nil then
@@ -567,4 +569,5 @@ end
 
 -- Error reports (docs/adr/0051): written by ns.ReportError, never read. Prio
 -- 10, so it is the first Section to go when the file is too big.
-S.Register({ name = "errors", scope = "account", v = 1, prio = 10, login = false })
+S.Register({ games = { retail = true, forever = true },
+  name = "errors", scope = "account", v = 1, prio = 10, login = false })

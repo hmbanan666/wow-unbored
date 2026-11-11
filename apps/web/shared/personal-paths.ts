@@ -9,6 +9,7 @@ export type PathProgress = PathSelection & {
   goals: { position: number; done: boolean; required: boolean }[];
 };
 export type CharacterPaths = {
+  game?: "retail" | "forever";
   character: string;
   realm: string;
   paths: PathProgress[];

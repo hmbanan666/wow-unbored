@@ -149,6 +149,7 @@ function S.Clean(raw)
 end
 
 local function mine()
+  if ns.Game ~= "retail" then return nil end
   local data = type(UnboredSuggestions) == "table" and UnboredSuggestions or nil
   if not data or data.v ~= 1 or type(data.characters) ~= "table" then
     return nil

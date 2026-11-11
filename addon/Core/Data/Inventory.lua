@@ -69,6 +69,7 @@ function S.CountContainers(bagIds)
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "bags",
   v = 1,
   prio = 70,
@@ -85,6 +86,7 @@ local BANK_EVENTS = { "PLAYERBANKSLOTS_CHANGED", "PLAYERREAGENTBANKSLOTS_CHANGED
 
 local function bankSection(name, scope, prio, pick)
   S.Register({
+    games = { retail = true, forever = name == "bank" },
     name = name,
     scope = scope,
     v = 1,
@@ -185,6 +187,7 @@ function S.ReadCurrencies()
 end
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "currencies",
   v = 1,
   prio = 75,

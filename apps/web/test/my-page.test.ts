@@ -92,3 +92,17 @@ dbTest("My page reads one Account and hides the other", async () => {
     await root.end();
   }
 });
+
+test("My page preserves the game for same-named characters", () => {
+  const row = {
+    name: "Mira",
+    realm: "Silvermoon",
+    className: "Mage",
+    level: 23,
+    charBody: {},
+    mplusBody: {},
+    reputationBody: {},
+  };
+  assert.equal(characterView(row).game, "retail");
+  assert.equal(characterView({ ...row, game: "forever" }).game, "forever");
+});

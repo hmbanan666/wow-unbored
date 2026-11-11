@@ -917,7 +917,7 @@ export class SuggestionStore {
   }
 
   async computeAccount(account: string, now = Math.floor(Date.now() / 1000)): Promise<number> {
-    const characters = await this.data.characters(account);
+    const characters = (await this.data.characters(account)).filter((row) => row.game === "retail");
     const quests = new Map<string, Set<number>>();
     for (const row of characters) {
       quests.set(row.id, ids(await this.data.section("char", row.id, "questsDone")));
@@ -1001,10 +1001,11 @@ export class SuggestionStore {
   private async lastRequestLang(row: CharacterRow): Promise<IdeaLang | undefined> {
     try {
       const found = await this.db.get<{ lang: string }>(
-        `SELECT lang FROM requests WHERE character_name = ? AND realm = ? AND lang IS NOT NULL
+        `SELECT lang FROM requests WHERE character_name = ? AND realm = ? AND game = ? AND lang IS NOT NULL
          ORDER BY created_at DESC LIMIT 1`,
         row.name,
         row.realm,
+        row.game,
       );
       return ideaLang(found?.lang);
     } catch {
@@ -1013,6 +1014,7 @@ export class SuggestionStore {
   }
 
   async forCharacter(row: CharacterRow, now = Math.floor(Date.now() / 1000)) {
+    if (row.game !== "retail") return undefined;
     const stored = await this.tables.read(row.id);
     const list = (stored?.list ?? []).filter(
       (item) => item.kind !== "path" && (item.expiresAt === undefined || item.expiresAt > now),

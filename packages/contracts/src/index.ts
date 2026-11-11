@@ -147,6 +147,7 @@ export type RequestSuggestion = {
 
 /** The cleaned Request the Server stores. */
 export type PlanRequestInput = {
+  game?: "retail" | "forever";
   id: string;
   type: RequestType;
   character: string;
@@ -219,6 +220,7 @@ const requestItemSchema = z
 
 export const requestBodySchema = z
   .object({
+    game: z.enum(["retail", "forever"]).optional(),
     id: z.string().min(1),
     createdAt: z.number().int().optional(),
     character: z.string().min(1),
@@ -464,9 +466,13 @@ const sectionSchema = z
   })
   .passthrough();
 
+export const gameSchema = z.enum(["retail", "forever"]);
+export type Game = z.infer<typeof gameSchema>;
+
 export const snapshotBodySchema = z
   .object({
     schema: z.literal(2),
+    game: gameSchema.optional(),
     account: z.string().min(1),
     /** Old folder key, once, so the Server can rename rows (docs/adr/0044). */
     accountLegacy: z.string().optional(),

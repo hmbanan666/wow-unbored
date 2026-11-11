@@ -409,6 +409,11 @@ UnitClass = function()
   return "Warrior", "WARRIOR"
 end
 
+local verifyForever
+if ... == "forever" then
+  verifyForever = assert(loadfile("tests/forever-client.lua"))()
+end
+
 local ns = {}
 local toc = io.open("Unbored.toc", "r")
 local files = {}
@@ -438,6 +443,11 @@ driver.scripts.OnEvent(driver, "ADDON_LOADED", "Unbored")
 driver.scripts.OnEvent(driver, "PLAYER_LOGIN")
 if ns.Session and not ns.Session.started then
   driver.scripts.OnEvent(driver, "PLAYER_ENTERING_WORLD", true, false)
+end
+
+if verifyForever then
+  verifyForever(ns)
+  return
 end
 
 local ui = ns.UI

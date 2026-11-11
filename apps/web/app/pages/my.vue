@@ -24,7 +24,10 @@ const { data, status, refresh } = await useFetch<Me>("/api/me", { server: false 
 const paths = usePaths();
 function activeFor(character: MyCharacter) {
   return paths.data.value?.characters.find(
-    (row) => row.character === character.name && row.realm === character.realm,
+    (row) =>
+      (row.game ?? "retail") === character.game &&
+      row.character === character.name &&
+      row.realm === character.realm,
   )?.active;
 }
 const lang = computed(() => data.value?.lang || "en");
@@ -67,11 +70,12 @@ useSeoMeta({
       <DsCardGrid v-else>
         <DsCard
           v-for="character in data.characters"
-          :key="`${character.realm}-${character.name}`"
+          :key="`${character.game}-${character.realm}-${character.name}`"
           :eyebrow="[character.realm, character.className].filter(Boolean).join(' · ')"
           :title="character.name"
         >
           <DsChipRow>
+            <DsChip v-if="character.game === 'forever'">Forever</DsChip>
             <DsChip v-if="character.level">{{ copy.level }} {{ character.level }}</DsChip>
             <DsChip v-if="character.ilvl" tone="gold">{{ copy.ilvl }} {{ character.ilvl }}</DsChip>
             <DsChip v-if="character.keystone" tone="gold"
@@ -111,7 +115,7 @@ useSeoMeta({
         <DsCardGrid v-else>
           <DsCard
             v-for="entry in data.completions"
-            :key="`${entry.at}-${entry.character}-${entry.href}-${entry.version}`"
+            :key="`${entry.game}-${entry.at}-${entry.character}-${entry.href}-${entry.version}`"
             :to="entry.href"
             :title="entry.title"
             :eyebrow="`${formatDay(entry.at)} · ${entry.character} · ${entry.realm}`"
@@ -122,7 +126,7 @@ useSeoMeta({
         <p v-if="!data.plans.length" class="ds-meta">{{ copy.emptyPlans }}</p>
         <DsProse v-else>
           <ul>
-            <li v-for="plan in data.plans" :key="`${plan.at}-${plan.title}`">
+            <li v-for="plan in data.plans" :key="`${plan.game}-${plan.at}-${plan.title}`">
               <span class="ds-meta">{{ formatDay(plan.at) }} · {{ plan.character }}</span
               ><br />
               {{ plan.title }}
@@ -134,7 +138,7 @@ useSeoMeta({
         <p v-if="!data.wins.length" class="ds-meta">{{ copy.emptyWins }}</p>
         <DsProse v-else>
           <ul>
-            <li v-for="win in data.wins" :key="`${win.at}-${win.title}`">
+            <li v-for="win in data.wins" :key="`${win.game}-${win.at}-${win.title}`">
               <span class="ds-meta">{{ formatDay(win.at) }} · {{ win.character }}</span
               ><br />
               {{ win.title }}

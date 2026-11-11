@@ -162,11 +162,11 @@ pub fn unpack_ids(packed: &Value) -> Vec<u64> {
 }
 
 /// Who a Section belongs to, for the Companion's own "already sent" memory.
-pub fn owner_key(scope: &str, account: &str, realm: &str, character: &str) -> String {
+pub fn owner_key(game: &str, scope: &str, account: &str, realm: &str, character: &str) -> String {
     if scope == "account" {
-        format!("account:{account}")
+        format!("{game}:account:{account}")
     } else {
-        format!("char:{account}:{realm}-{character}")
+        format!("{game}:char:{account}:{realm}-{character}")
     }
 }
 
@@ -174,6 +174,7 @@ pub fn owner_key(scope: &str, account: &str, realm: &str, character: &str) -> St
 /// `(key, revision)` pairs to remember once the Server accepted it. None when
 /// nothing changed.
 pub fn build_upload(
+    game: &str,
     account: &str,
     character: &str,
     realm: &str,
@@ -188,7 +189,7 @@ pub fn build_upload(
         let Some(file) = file else {
             continue;
         };
-        let owner = owner_key(scope, account, realm, character);
+        let owner = owner_key(game, scope, account, realm, character);
         for (name, section) in &file.sections {
             if scope == "account" && sections.contains_key(name) {
                 continue;
@@ -230,6 +231,7 @@ pub fn build_upload(
         .and_then(|file| file.saved_at)
         .or_else(|| account_file.and_then(|file| file.saved_at));
     let mut body = Map::new();
+    body.insert("game".into(), Value::from(game));
     body.insert("schema".into(), Value::from(SCHEMA));
     body.insert("account".into(), Value::from(account));
     body.insert("character".into(), Value::from(character));
@@ -299,6 +301,62 @@ mod tests {
     }
 
     #[test]
+    fn forever_saved_variables_match_the_shared_upload_contract() {
+        let text = include_str!("../../../../packages/contracts/fixtures/snapshot-forever.lua");
+        let data = data_from_saved_variables(text, "UnboredCharDB")
+            .unwrap()
+            .unwrap();
+        let (name, realm) = character_identity(Some(&data), "folder realm", "folder name");
+        let (body, _) = build_upload(
+            "forever",
+            "111111#1",
+            &name,
+            &realm,
+            Some(&data),
+            None,
+            &SentSections::new(),
+        )
+        .unwrap();
+        let expected: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/snapshot-forever.json"
+        ))
+        .unwrap();
+        assert_eq!(body, expected);
+    }
+
+    #[test]
+    fn same_character_in_both_games_uploads_independently() {
+        let text = include_str!("../../../../packages/contracts/fixtures/snapshot.lua");
+        let data = data_from_saved_variables(text, "UnboredCharDB")
+            .unwrap()
+            .unwrap();
+        let (retail, revisions) = build_upload(
+            "retail",
+            "account",
+            "Mira",
+            "Realm",
+            Some(&data),
+            None,
+            &SentSections::new(),
+        )
+        .unwrap();
+        let sent = revisions.into_iter().collect();
+        let (forever, _) = build_upload(
+            "forever",
+            "account",
+            "Mira",
+            "Realm",
+            Some(&data),
+            None,
+            &sent,
+        )
+        .unwrap();
+        assert_eq!(retail["game"], "retail");
+        assert_eq!(forever["game"], "forever");
+        assert!(forever["sections"]["char"].is_object());
+    }
+
+    #[test]
     fn unpacks_the_shared_packed_id_fixture() {
         let doc: Value = serde_json::from_str(PACKED).unwrap();
         for case in doc["cases"].as_array().unwrap() {
@@ -330,6 +388,7 @@ mod tests {
         let (name, realm) = character_identity(Some(&char_file), "folder", "folder");
         assert_eq!((name.as_str(), realm.as_str()), ("Mira", "Silvermoon"));
         let (body, remember) = build_upload(
+            "retail",
             "111111#1",
             &name,
             &realm,
@@ -338,7 +397,8 @@ mod tests {
             &HashMap::new(),
         )
         .expect("an upload");
-        let expected: Value = serde_json::from_str(SNAPSHOT_JSON).unwrap();
+        let mut expected: Value = serde_json::from_str(SNAPSHOT_JSON).unwrap();
+        expected["game"] = Value::from("retail");
         assert_eq!(body, expected);
         assert_eq!(
             remember.len(),
@@ -371,6 +431,7 @@ mod tests {
             },
         );
         let (body, _) = build_upload(
+            "retail",
             "111111#1",
             "Mira",
             "Silvermoon",
@@ -389,6 +450,7 @@ mod tests {
     fn uploads_only_changed_sections() {
         let (mut char_file, account_file) = fixture_files();
         let (_, remember) = build_upload(
+            "retail",
             "a",
             "Mira",
             "Silvermoon",
@@ -399,6 +461,7 @@ mod tests {
         .unwrap();
         let sent: SentSections = remember.into_iter().collect();
         assert!(build_upload(
+            "retail",
             "a",
             "Mira",
             "Silvermoon",
@@ -409,6 +472,7 @@ mod tests {
         .is_none());
         char_file.sections.get_mut("char").unwrap().body["money"] = Value::from(1);
         let (body, remember) = build_upload(
+            "retail",
             "a",
             "Mira",
             "Silvermoon",
@@ -426,6 +490,7 @@ mod tests {
     fn uploads_a_new_section_version_even_when_its_body_is_unchanged() {
         let (mut char_file, account_file) = fixture_files();
         let (_, remember) = build_upload(
+            "retail",
             "a",
             "Mira",
             "Silvermoon",
@@ -438,6 +503,7 @@ mod tests {
         let old_hash = section_hash(&char_file.sections["char"].body);
         char_file.sections.get_mut("char").unwrap().v += 1;
         let (body, remember) = build_upload(
+            "retail",
             "a",
             "Mira",
             "Silvermoon",
@@ -455,6 +521,7 @@ mod tests {
         let mut sent = sent;
         sent.extend(remember);
         assert!(build_upload(
+            "retail",
             "a",
             "Mira",
             "Silvermoon",

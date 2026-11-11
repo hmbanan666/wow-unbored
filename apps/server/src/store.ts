@@ -80,6 +80,7 @@ export const ETA_MAX_SECONDS = 900;
 const ETA_MIN_SAMPLES = 3;
 
 export type StoredProfile = {
+  game: "retail" | "forever";
   character: string;
   realm: string;
   account: string;
@@ -398,24 +399,33 @@ export class Store {
   }
 
   /** Only Plans attached to Requests on this Account; direct Plans have no Account. */
-  async latestPlanForAccount(account: string): Promise<StoredPlan | undefined> {
+  async latestPlanForAccount(
+    account: string,
+    game: "retail" | "forever" = "retail",
+  ): Promise<StoredPlan | undefined> {
     const row = await this.db.get<{ id: number }>(
       `SELECT p.id FROM plans p JOIN requests r ON r.id = p.request_id
-      WHERE r.account = ? ORDER BY p.created_at DESC, p.id DESC LIMIT 1`,
+      WHERE r.account = ? AND r.game = ? ORDER BY p.created_at DESC, p.id DESC LIMIT 1`,
       accountKey(account),
+      game,
     );
     return row ? this.planById(Number(row.id)) : undefined;
   }
 
   /** Direct Plans plus Plans for this Device's Requests (ADR 0002). */
-  async latestPlanForDevice(deviceId: string): Promise<StoredPlan | undefined> {
+  async latestPlanForDevice(
+    deviceId: string,
+    game: "retail" | "forever" = "retail",
+  ): Promise<StoredPlan | undefined> {
     const row = await this.db.get<PlanRow>(
       `SELECT p.id, p.created_at, p.${this.db.body} AS body_json, p.unb1 FROM plans p
        LEFT JOIN requests r ON r.id = p.request_id
-       WHERE p.player_key = ? AND (p.request_id IS NULL OR r.device_id = ?)
+       WHERE p.player_key = ? AND ((p.request_id IS NULL AND ? = 'retail') OR (r.device_id = ? AND r.game = ?))
        ORDER BY p.id DESC LIMIT 1`,
       PLAYER,
+      game,
       deviceId,
+      game,
     );
     return row ? planFromRow(row) : undefined;
   }
@@ -452,6 +462,7 @@ export class Store {
       await this.addHistory({
         at: nowSeconds,
         account: accountKey(post.account),
+        game: post.game,
         character: post.character,
         realm: post.realm,
         kind: "progress",
@@ -469,6 +480,7 @@ export class Store {
         createdAt: nowSeconds,
         account: post.account,
         realm: post.realm,
+        game: post.game,
         character: post.character,
         savedAt: post.savedAt,
         progress: post.progress,
@@ -717,6 +729,7 @@ export class Store {
   }
 
   async addRequest(input: {
+    game?: "retail" | "forever";
     id: string;
     deviceId: string;
     character: string;
@@ -740,18 +753,19 @@ export class Store {
     const result = await this.db.tx(async () => {
       const existing = await this.requestById(input.id);
       if (existing) {
-        if (existing.deviceId !== input.deviceId)
+        if (existing.deviceId !== input.deviceId || existing.game !== (input.game ?? "retail"))
           throw new PlanError("Request id is already in use.");
         return { created: false, request: existing };
       }
       const account = input.account
         ? await this.bindAccount(input.account, input.accountLegacy)
-        : ((await this.profileFor(input.character, input.realm || undefined))?.account ?? "");
+        : ((await this.profileFor(input.character, input.realm || undefined, input.game))
+            ?.account ?? "");
       await this.db.run(
         `INSERT INTO requests
            (id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at,
-            context_json, type, question, topic, item_json, lang, account, suggestion_id, suggestion_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            context_json, type, question, topic, item_json, lang, account, suggestion_id, suggestion_json, game)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         input.id,
         input.deviceId,
         input.character,
@@ -770,6 +784,7 @@ export class Store {
         account,
         input.suggestionId ?? null,
         input.suggestion ? JSON.stringify(input.suggestion) : null,
+        input.game ?? "retail",
       );
       if (this.plannerRoute === "runner") {
         const now = this.runnerNow();
@@ -903,10 +918,14 @@ export class Store {
    * The newest Request this device made. Ordered by creation, never by
    * update: failing an old Request must not make it "latest" (D82).
    */
-  async latestRequestForDevice(deviceId: string): Promise<PlanRequest | undefined> {
+  async latestRequestForDevice(
+    deviceId: string,
+    game: "retail" | "forever" = "retail",
+  ): Promise<PlanRequest | undefined> {
     const row = await this.db.get<RequestRow>(
-      `SELECT ${REQUEST_COLUMNS} FROM requests WHERE device_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
+      `SELECT ${REQUEST_COLUMNS} FROM requests WHERE device_id = ? AND game = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
       deviceId,
+      game,
     );
     return row ? requestFromRow(row) : undefined;
   }
@@ -1078,6 +1097,7 @@ export class Store {
       const paths = await new ContentStore(this.db, this.game).publishedPaths();
       const characters = (await this.data.characters(filter.account)).filter(
         (row) =>
+          row.game === "retail" &&
           (!filter.character || row.name === filter.character) &&
           (!filter.realm || row.realm === filter.realm),
       );
@@ -1130,6 +1150,7 @@ export class Store {
         }
         results.push({
           account: character.accountId,
+          game: character.game,
           character: character.name,
           realm: character.realm,
           paths: progress,
@@ -1149,20 +1170,28 @@ export class Store {
       const changes: SectionChange[] = [];
       const result = await this.data.ingestSnapshot(snapshot, deviceId, nowSeconds, changes);
       try {
-        await this.db.savepoint(() =>
-          this.detectWins(result.account, snapshot.character, snapshot.realm, changes, nowSeconds),
-        );
+        if (snapshot.game === "retail")
+          await this.db.savepoint(() =>
+            this.detectWins(
+              result.account,
+              snapshot.character,
+              snapshot.realm,
+              changes,
+              nowSeconds,
+            ),
+          );
       } catch {
         // Wins are a bonus; a bad body must not fail the upload that was already stored.
       }
       if (result.stored.length > 0) {
         this.suggestions.schedule(result.account);
-        const view = await this.exactProfile(snapshot.character, snapshot.realm);
+        const view = await this.exactProfile(snapshot.character, snapshot.realm, snapshot.game);
         await this.addHistory({
           at: nowSeconds,
           account: result.account,
           character: snapshot.character,
           realm: snapshot.realm,
+          game: snapshot.game,
           kind: "profile",
           ref: snapshot.savedAt === null ? null : String(snapshot.savedAt),
           body: { ...profileSummary(view?.profile ?? {}), sections: result.stored },
@@ -1200,7 +1229,7 @@ export class Store {
       `SELECT r.id AS request_id, r.account, r.character_name, r.realm, r.topic, r.mode,
               r.suggestion_json, p.id AS plan_id, p.created_at, p.${this.db.body} AS body_json
        FROM requests r JOIN plans p ON p.id = r.plan_id
-       WHERE p.created_at >= ? ORDER BY p.created_at DESC, p.id DESC`,
+       WHERE r.game = 'retail' AND p.created_at >= ? ORDER BY p.created_at DESC, p.id DESC`,
       now - WIN_PLAN_DAYS * 86_400,
     );
     return rows
@@ -1241,7 +1270,9 @@ export class Store {
     const places: { scope: "char" | "account"; owner: string; section: string }[] = [
       { scope: "account", owner: account, section: "warband" },
     ];
-    for (const row of await this.data.characters(account)) {
+    for (const row of (await this.data.characters(account)).filter(
+      (row) => row.game === "retail",
+    )) {
       for (const section of ["bags", "bank", "reagentBank"]) {
         places.push({ scope: "char", owner: row.id, section });
       }
@@ -1346,19 +1377,20 @@ export class Store {
 
   /** Ready now for one Character (D179), computed from its latest Sections. */
   async readyNow(
-    filter: { account?: string; character?: string; realm?: string },
+    filter: { game?: "retail" | "forever"; account?: string; character?: string; realm?: string },
     now = Math.floor(Date.now() / 1000),
   ): Promise<ReadyNow | undefined> {
+    if (filter.game === "forever") return undefined;
     const row = filter.character
       ? await this.data.character(filter.character, filter.realm)
       : filter.account
-        ? (await this.data.characters(filter.account))[0]
+        ? (await this.data.characters(filter.account)).find((row) => row.game === "retail")
         : await this.data.character();
     if (!row || (filter.account && row.accountId !== accountKey(filter.account))) return undefined;
     const others: { name: string; sections: Map<string, SectionRow> }[] = [];
     if (row.accountId) {
       for (const other of await this.data.characters(row.accountId)) {
-        if (other.id === row.id) continue;
+        if (other.id === row.id || other.game !== row.game) continue;
         others.push({ name: other.name, sections: await this.data.sectionsFor(other) });
       }
     }
@@ -1400,30 +1432,40 @@ export class Store {
     return out;
   }
 
-  private async exactProfile(character: string, realm: string): Promise<StoredProfile | undefined> {
-    const row = await this.data.character(character, realm);
+  private async exactProfile(
+    character: string,
+    realm: string,
+    game: "retail" | "forever" = "retail",
+  ): Promise<StoredProfile | undefined> {
+    const row = await this.data.character(character, realm, game);
     return row && row.realm === realm ? this.data.profileView(row) : undefined;
   }
 
   /** Every character of one Account (docs/adr/0021). */
-  async profilesForAccount(account: string): Promise<StoredProfile[]> {
+  async profilesForAccount(account: string, game?: "retail" | "forever"): Promise<StoredProfile[]> {
     const out: StoredProfile[] = [];
     for (const row of await this.data.characters(account))
-      out.push(await this.data.profileView(row));
+      if (!game || row.game === game) out.push(await this.data.profileView(row));
     return out;
   }
 
   async listAccounts(): Promise<
-    { account: string; characters: { character: string; realm: string }[] }[]
+    {
+      account: string;
+      characters: { character: string; realm: string; game: "retail" | "forever" }[];
+    }[]
   > {
-    const out = new Map<string, { character: string; realm: string }[]>();
+    const out = new Map<
+      string,
+      { character: string; realm: string; game: "retail" | "forever" }[]
+    >();
     for (const row of [...(await this.data.characters())].sort((a, b) =>
       a.accountId === b.accountId
         ? a.name.localeCompare(b.name)
         : a.accountId.localeCompare(b.accountId),
     )) {
       if (!out.has(row.accountId)) out.set(row.accountId, []);
-      out.get(row.accountId)!.push({ character: row.name, realm: row.realm });
+      out.get(row.accountId)!.push({ character: row.name, realm: row.realm, game: row.game });
     }
     return [...out.entries()].map(([account, characters]) => ({ account, characters }));
   }
@@ -1451,7 +1493,9 @@ export class Store {
     if (!key) throw new Error("Name the Account to erase.");
     // Postgres: an upload of this Account waits until the erase is done.
     await this.db.lockKey(`account:${key}`);
-    const names = (await this.data.characters(key)).map((row) => [row.name, row.realm] as const);
+    const names = (await this.data.characters(key)).map(
+      (row) => [row.name, row.realm, row.game] as const,
+    );
     const removed = await this.data.deleteAccount(key);
     const website = await erasePageData(this.db, key);
     let legacy = 0;
@@ -1463,12 +1507,14 @@ export class Store {
       key,
       `${key}#%`,
     );
-    for (const [name, realm] of names) {
+    for (const [name, realm, game] of names) {
       for (const table of this.legacyTables()) {
+        if (table !== "history" && game !== "retail") continue;
         legacy += await this.db.run(
-          `DELETE FROM ${table} WHERE character_name = ? AND realm = ?`,
+          `DELETE FROM ${table} WHERE character_name = ? AND realm = ?${table === "history" ? " AND game = ?" : ""}`,
           name,
           realm,
+          ...(table === "history" ? [game] : []),
         );
       }
     }
@@ -1482,12 +1528,13 @@ export class Store {
       };
       if (key)
         add(await this.db.all<{ id: string }>(`SELECT id FROM requests WHERE account = ?`, key));
-      for (const [name, realm] of names) {
+      for (const [name, realm, game] of names) {
         add(
           await this.db.all<{ id: string }>(
-            `SELECT id FROM requests WHERE character_name = ? AND realm = ?`,
+            `SELECT id FROM requests WHERE character_name = ? AND realm = ? AND game = ?`,
             name,
             realm,
+            game,
           ),
         );
       }
@@ -1562,7 +1609,7 @@ export class Store {
         for (const profile of profiles) {
           for (const table of this.legacyTables()) {
             await this.db.run(
-              `DELETE FROM ${table} WHERE character_name = ? AND realm = ?`,
+              `DELETE FROM ${table} WHERE character_name = ? AND realm = ?${table === "history" ? " AND game = 'retail'" : ""}`,
               profile.character_name,
               profile.realm,
             );
@@ -1650,28 +1697,33 @@ export class Store {
         );
         await this.db.run(`DELETE FROM raw_uploads WHERE account_id = ?`, from);
       }
-      const clash = await this.db.all<{ section: string }>(
-        `SELECT section FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ?`,
-        to,
-      );
-      for (const row of clash) {
-        await this.db.run(
-          `DELETE FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ? AND section = ?`,
-          from,
-          row.section,
+      for (const game of ["retail", "forever"] as const) {
+        const source = game === "forever" ? `forever/${from}` : from;
+        const target = game === "forever" ? `forever/${to}` : to;
+        const clash = await this.db.all<{ section: string }>(
+          `SELECT section FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ?`,
+          target,
         );
-      }
-      for (const table of ["sections_latest", "section_history"]) {
-        await this.db.run(
-          `UPDATE ${table} SET owner_id = ? WHERE owner_kind = 'account' AND owner_id = ?`,
-          to,
-          from,
-        );
+        for (const row of clash) {
+          await this.db.run(
+            `DELETE FROM sections_latest WHERE owner_kind = 'account' AND owner_id = ? AND section = ?`,
+            source,
+            row.section,
+          );
+        }
+        for (const table of ["sections_latest", "section_history"]) {
+          await this.db.run(
+            `UPDATE ${table} SET owner_id = ? WHERE owner_kind = 'account' AND owner_id = ?`,
+            target,
+            source,
+          );
+        }
       }
     });
   }
 
   async addHistory(entry: {
+    game?: "retail" | "forever";
     at: number;
     account: string;
     character: string;
@@ -1681,7 +1733,7 @@ export class Store {
     body: unknown;
   }): Promise<void> {
     await this.db.run(
-      `INSERT INTO history (at, account, character_name, realm, kind, ref, ${this.db.body}) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO history (at, account, character_name, realm, kind, ref, ${this.db.body}, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       historyAt(this.db, entry.at, Math.floor(Date.now() / 1000)),
       entry.account,
       entry.character,
@@ -1689,6 +1741,7 @@ export class Store {
       entry.kind,
       entry.ref,
       JSON.stringify(entry.body),
+      entry.game ?? "retail",
     );
   }
 
@@ -1701,6 +1754,7 @@ export class Store {
     await this.addHistory({
       at,
       account: request.account,
+      game: request.game ?? "retail",
       character: request.character,
       realm: request.realm,
       kind,
@@ -1721,6 +1775,7 @@ export class Store {
 
   /** Dated Player history, newest first (docs/adr/0020). */
   async history(filter: {
+    game?: "retail" | "forever";
     account?: string;
     character?: string;
     realm?: string;
@@ -1733,6 +1788,10 @@ export class Store {
     if (filter.account) {
       where.push("account = ?");
       args.push(accountKey(filter.account));
+    }
+    if (filter.game || filter.character || filter.realm) {
+      where.push("game = ?");
+      args.push(filter.game ?? "retail");
     }
     if (filter.character) {
       where.push("character_name = ?");
@@ -1751,13 +1810,14 @@ export class Store {
       args.push(...filter.kinds);
     }
     const rows = await this.db.all<HistoryRow>(
-      `SELECT id, at, account, character_name, realm, kind, ref, ${this.db.body} AS body_json FROM history
+      `SELECT id, game, at, account, character_name, realm, kind, ref, ${this.db.body} AS body_json FROM history
        ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY at DESC, id DESC LIMIT ?`,
       ...args,
       filter.limit,
     );
     return rows.map((row) => ({
       id: Number(row.id),
+      game: row.game,
       at: row.at,
       account: row.account,
       character: row.character_name,
@@ -1770,6 +1830,7 @@ export class Store {
 
   /** Whole 0.6 profile uploads, newest first, from the `profile` Section history. */
   async profileSnapshots(filter: {
+    game?: "retail" | "forever";
     account?: string;
     character?: string;
     realm?: string;
@@ -1788,6 +1849,7 @@ export class Store {
       filter.account ? await this.data.characters(filter.account) : await this.data.characters()
     ).filter(
       (row) =>
+        row.game === (filter.game ?? "retail") &&
         (!filter.character || row.name === filter.character) &&
         (!filter.realm || row.realm === filter.realm),
     );
@@ -1876,7 +1938,10 @@ export class Store {
    */
   async holdingsForDevice(deviceId: string, now?: number): Promise<Holdings | null> {
     const row = (await this.data.characters()).find(
-      (other) => (deviceId === "legacy" || other.deviceId === deviceId) && other.accountId,
+      (other) =>
+        other.game === "retail" &&
+        (deviceId === "legacy" || other.deviceId === deviceId) &&
+        other.accountId,
     );
     if (!row) return null;
     const holdings = await this.data.holdings(row, now);
@@ -1897,13 +1962,14 @@ export class Store {
       updated_at: number;
     }>(
       `SELECT a.character_name, a.realm, a.item_id, a.${this.db.body} AS body_json, a.updated_at FROM advice a
-       JOIN characters c ON c.name = a.character_name AND c.realm = a.realm
+       JOIN characters c ON c.name = a.character_name AND c.realm = a.realm AND c.game = 'retail'
        ${legacy ? "" : "WHERE c.device_id = ?"}
        ORDER BY a.character_name${this.db.pg ? ' COLLATE "C"' : ""}, a.realm${this.db.pg ? ' COLLATE "C"' : ""}, a.item_id`,
       ...(legacy ? [] : [deviceId]),
     );
     const out = new Map<string, DeviceAdvice>();
     for (const character of await this.data.characters()) {
+      if (character.game !== "retail") continue;
       if (!legacy && character.deviceId !== deviceId) continue;
       const key = `${character.realm}\0${character.name}`;
       if (out.has(key)) continue;
@@ -1936,13 +2002,18 @@ export class Store {
   }
 
   /** The named character, or the most recently updated one. */
-  async profileFor(character?: string, realm?: string): Promise<StoredProfile | undefined> {
-    const row = await this.data.character(character, realm);
+  async profileFor(
+    character?: string,
+    realm?: string,
+    game: "retail" | "forever" = "retail",
+  ): Promise<StoredProfile | undefined> {
+    const row = await this.data.character(character, realm, game);
     return row ? this.data.profileView(row) : undefined;
   }
 
   async listProfiles(): Promise<Omit<StoredProfile, "profile">[]> {
     return (await this.data.characters()).map((row) => ({
+      game: row.game,
       character: row.name,
       realm: row.realm,
       account: row.accountId,
@@ -1981,7 +2052,7 @@ export class Store {
   }
 }
 
-const REQUEST_COLUMNS = `id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
+const REQUEST_COLUMNS = `game, id, device_id, character_name, realm, mode, budget, wish, status, reason, plan_id, created_at, updated_at, context_json,
                 type, question, topic, item_json, answer_json, lang, account, reason_code,
                 suggestion_id, suggestion_json`;
 
@@ -1996,6 +2067,7 @@ function prepareSqlite(db: DatabaseSync): void {
   db.exec(SQLITE_SCHEMA);
   addColumns(db, "profiles", [["account", "TEXT"]]);
   addColumns(db, "requests", [
+    ["game", "TEXT NOT NULL DEFAULT 'retail' CHECK (game IN ('retail', 'forever'))"],
     ["context_json", "TEXT"],
     ["type", "TEXT NOT NULL DEFAULT 'plan'"],
     ["question", "TEXT"],
@@ -2176,6 +2248,7 @@ function deliveryFromRow(row: WebhookDeliveryRow): WebhookDelivery {
 }
 
 export type PlanRequest = {
+  game?: "retail" | "forever";
   id: string;
   deviceId: string;
   character: string;
@@ -2205,6 +2278,7 @@ export type PlanRequest = {
 };
 
 type RequestRow = {
+  game: "retail" | "forever";
   id: string;
   device_id: string;
   character_name: string;
@@ -2240,6 +2314,7 @@ function requestFromRow(row: RequestRow): PlanRequest {
   return {
     id: row.id,
     deviceId: row.device_id,
+    game: row.game,
     character: row.character_name,
     realm: row.realm,
     mode: row.mode,
@@ -2268,6 +2343,7 @@ export function publicRequest(request: PlanRequest) {
   return {
     id: request.id,
     deviceId: request.deviceId,
+    game: request.game ?? "retail",
     character: request.character,
     realm: request.realm,
     mode: request.mode,
@@ -2337,6 +2413,7 @@ export const HISTORY_KINDS: HistoryKind[] = [
 ];
 
 export type HistoryEntry = {
+  game: "retail" | "forever";
   id: number;
   at: number;
   account: string;
@@ -2348,6 +2425,7 @@ export type HistoryEntry = {
 };
 
 type HistoryRow = {
+  game: "retail" | "forever";
   id: number;
   at: number;
   account: string;

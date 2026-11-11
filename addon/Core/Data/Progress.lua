@@ -8,6 +8,7 @@ local num, str, call = ns.AsNumber, ns.SafeString, ns.Call
 local MAX_INSTANCES = 60
 
 S.Register({
+  games = { retail = true, forever = true },
   name = "lockouts",
   v = 1,
   prio = 40,
@@ -73,6 +74,7 @@ S.Register({
 local mplusRetried = false
 
 S.Register({
+  games = { retail = true },
   name = "mplus",
   v = 1,
   prio = 40,
@@ -120,6 +122,7 @@ S.Register({
 -- Self-check registry: Core/SelfCheck.lua (probe limits and manual checks).
 -- TODO(verify-in-game): GetActivities returns data without opening the vault UI.
 S.Register({
+  games = { retail = true },
   name = "vault",
   v = 1,
   prio = 45,

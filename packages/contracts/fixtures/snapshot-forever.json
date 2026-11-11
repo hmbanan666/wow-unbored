@@ -1,0 +1,24 @@
+{
+  "schema": 2,
+  "game": "forever",
+  "account": "111111#1",
+  "character": "Mira",
+  "realm": "Silvermoon",
+  "savedAt": 1761830400,
+  "sections": {
+    "char": {
+      "scope": "char",
+      "v": 1,
+      "at": 1761830400,
+      "src": "login",
+      "hash": "de71ff848731fe567342ddf157db11faeee7486fb1f37ca8446e99bcfe65f1be",
+      "body": {
+        "game": "forever",
+        "name": "Mira",
+        "realm": "Silvermoon",
+        "level": 23,
+        "class": "Mage"
+      }
+    }
+  }
+}

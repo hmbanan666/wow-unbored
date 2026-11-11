@@ -1,5 +1,10 @@
 local _, ns = ...
 
+if ns.Game == "forever" then
+  ns.Data.Farm = {}
+  return
+end
+
 -- Old raids and one dungeon, for the mount at the end.
 -- instanceID matches GetSavedInstanceInfo's 14th return (added 10.0.5).
 -- https://warcraft.wiki.gg/wiki/API_GetSavedInstanceInfo

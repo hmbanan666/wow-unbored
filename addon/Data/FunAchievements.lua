@@ -1,5 +1,10 @@
 local _, ns = ...
 
+if ns.Game == "forever" then
+  ns.Data.FunAchievements = {}
+  return
+end
+
 -- Solo achievements that are fun in a sitting, not a grind checklist.
 -- estMinutes is a rough session size. The budget filler prefers shorter ones.
 -- IDs checked against the public achievement list (Going Down? is 964,

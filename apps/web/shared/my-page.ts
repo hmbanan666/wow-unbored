@@ -49,6 +49,7 @@ export const MY_PAGE_COPY = {
 } as const;
 
 export type MyCharacter = {
+  game: "retail" | "forever";
   name: string;
   realm: string;
   className: string | null;
@@ -59,6 +60,7 @@ export type MyCharacter = {
 };
 
 export type MyEntry = {
+  game?: "retail" | "forever";
   at: number;
   character: string;
   realm: string;
@@ -74,6 +76,7 @@ function text(value: unknown): string {
 }
 
 export function characterView(row: {
+  game?: "retail" | "forever";
   name: string;
   realm: string;
   className: string | null;
@@ -110,6 +113,7 @@ export function characterView(row: {
     }
   }
   return {
+    game: row.game ?? "retail",
     name: row.name,
     realm: row.realm,
     className: text(char.class) || row.className,

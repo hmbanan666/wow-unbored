@@ -11,6 +11,7 @@ import {
 import type { PageLang } from "#shared/sign-in";
 
 type CharacterRow = {
+  game: "retail" | "forever";
   id: string;
   name: string;
   realm: string;
@@ -21,6 +22,7 @@ type CharacterRow = {
 type SectionRow = { owner_id: string; section: string; body: unknown };
 
 type HistoryRow = {
+  game: "retail" | "forever";
   at: number;
   character_name: string;
   realm: string;
@@ -41,7 +43,7 @@ export async function readMyPage(
   completions: MyCompletion[];
 }> {
   const characters = await sql<CharacterRow[]>`
-    SELECT id, name, realm, class, level
+    SELECT id, game, name, realm, class, level
     FROM characters
     WHERE account_id = ${accountId}
     ORDER BY last_seen DESC, name`;
@@ -61,7 +63,7 @@ export async function readMyPage(
     byOwner.set(section.owner_id, owner);
   }
   const history = await sql<HistoryRow[]>`
-    SELECT h.at, h.character_name, h.realm, h.kind, h.body, p.body AS plan_body
+    SELECT h.game, h.at, h.character_name, h.realm, h.kind, h.body, p.body AS plan_body
     FROM history h
     LEFT JOIN plans p ON p.id = CASE
       WHEN (h.body->>'planId') ~ '^[0-9]+$' THEN (h.body->>'planId')::bigint
@@ -80,6 +82,7 @@ export async function readMyPage(
         completions.push({
           ...completion,
           at: Number(row.at),
+          game: row.game,
           character: row.character_name,
           realm: row.realm,
         });
@@ -90,6 +93,7 @@ export async function readMyPage(
     if (!title) continue;
     const entry = {
       at: Number(row.at),
+      game: row.game,
       character: row.character_name,
       realm: row.realm,
       title,
@@ -101,6 +105,7 @@ export async function readMyPage(
     characters: characters.map((row) => {
       const sectionsFor = byOwner.get(row.id);
       return characterView({
+        game: row.game,
         name: row.name,
         realm: row.realm,
         className: row.class,

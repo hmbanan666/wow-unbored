@@ -1,5 +1,10 @@
 local _, ns = ...
 
+if ns.Game == "forever" then
+  ns.Data.ItemNotes = {}
+  return
+end
+
 -- itemID -> locale key. A short line for the item tooltip, for items new
 -- players ask about most. Answers from the planner are kept separately.
 ns.Data.ItemNotes = {

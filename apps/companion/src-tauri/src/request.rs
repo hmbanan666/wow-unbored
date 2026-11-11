@@ -112,6 +112,7 @@ pub fn request_body(request: &SavedRequest, account: Option<&str>) -> Value {
     out.insert("id".into(), Value::String(request.id.clone()));
     put(&mut out, "createdAt", request.created_at.map(Value::from));
     out.insert("character".into(), Value::String(request.character.clone()));
+    out.insert("game".into(), Value::String(request.game.clone()));
     out.insert("realm".into(), Value::String(request.realm.clone()));
     out.insert("type".into(), Value::String(request.kind.clone()));
     if request.kind == "plan" {
@@ -219,7 +220,9 @@ mod tests {
             let file = case["savedVariables"].as_str().unwrap();
             let request = request_from_saved_variables(saved(file)).unwrap().unwrap();
             let body = request_body(&request, case["account"].as_str());
-            assert_eq!(body, case["body"], "contract case {}", case["name"]);
+            let mut expected = case["body"].clone();
+            expected["game"] = Value::from("retail");
+            assert_eq!(body, expected, "contract case {}", case["name"]);
         }
     }
 

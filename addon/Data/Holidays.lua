@@ -1,5 +1,10 @@
 local _, ns = ...
 
+if ns.Game == "forever" then
+  ns.Data.Holidays = {}
+  return
+end
+
 -- The event catalog (D128). A row matches a live calendar event if ANY key in
 -- `match` hits:
 --   holidayIDs  Holiday.db2 ids; NOT reliable as CalendarDayEvent.eventID

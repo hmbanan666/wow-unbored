@@ -185,7 +185,7 @@ export function createApp(
       ...publicRequest(request),
       plan: plan
         ? await planForAddon(plan, addonVersion, () =>
-            store.data.latestCurrenciesForDevice(request.deviceId),
+            store.data.latestCurrenciesForDevice(request.deviceId, request.game),
           )
         : null,
       eta: await store.planEta(),
@@ -408,6 +408,7 @@ export function createApp(
       if (inbox) await store.settle(cleaned.account ? accountKey(cleaned.account) : undefined);
       const saved = await store.asDevice(access.deviceId, () =>
         store.addRequest({
+          game: cleaned.game,
           id: cleaned.id,
           deviceId: access.deviceId,
           character: cleaned.character,
@@ -444,7 +445,9 @@ export function createApp(
     const access = await allowCompanion(c);
     if (access instanceof Response) return access;
     await store.expireRequests();
-    const request = await store.latestRequestForDevice(access.deviceId);
+    const game = c.req.query("game") ?? "retail";
+    if (game !== "retail" && game !== "forever") return c.json({ error: "Invalid game." }, 400);
+    const request = await store.latestRequestForDevice(access.deviceId, game);
     if (!request) return c.json({ error: "No request yet." }, 404);
     return c.json(await requestWithPlan(request, c.req.header("X-Unbored-Addon-Version")));
   });
@@ -482,13 +485,15 @@ export function createApp(
   app.get("/v1/plan", async (c) => {
     const access = await allowCompanion(c);
     if (access instanceof Response) return access;
-    const stored = await store.latestPlanForDevice(access.deviceId);
+    const game = c.req.query("game") ?? "retail";
+    if (game !== "retail" && game !== "forever") return c.json({ error: "Invalid game." }, 400);
+    const stored = await store.latestPlanForDevice(access.deviceId, game);
     if (!stored) return c.json({ error: "No plan yet." }, 404);
     return c.json({
       id: stored.id,
       createdAt: stored.createdAt,
       plan: await planForAddon(stored, c.req.header("X-Unbored-Addon-Version"), () =>
-        store.data.latestCurrenciesForDevice(access.deviceId),
+        store.data.latestCurrenciesForDevice(access.deviceId, game),
       ),
     });
   });
