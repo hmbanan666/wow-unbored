@@ -40,7 +40,10 @@ test.skipIf(!hasPostgres)(
         copyFileSync(file.url, path.join(dir, file.name));
       await migrate(db.sql, pathToFileURL(dir + "/"));
       await db.sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES ('old', 'old', 1, 2)`;
-      assert.deepEqual(await migrate(db.sql), ["0031_recipe_sightings.sql"]);
+      assert.deepEqual(await migrate(db.sql), [
+        "0031_recipe_sightings.sql",
+        "0032_character_events.sql",
+      ]);
       await db.sql`INSERT INTO recipe_sightings (account_id, game, kind, source_key, npc_id, npc_name, limited, first_seen, last_seen) VALUES ('old', 'forever', 'vendor', 'i2555', 123, 'Vendor', 1, 1, 2)`;
       assert.deepEqual(await migrate(db.sql), []);
       await db.sql`DELETE FROM accounts WHERE id = 'old'`;
