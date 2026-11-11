@@ -104,6 +104,35 @@ dbTest(
         await readCharacterPage(sql, theirs, { game: "forever", realm: "Realm", name: "Mine" }),
         null,
       );
+      await sql`RESET ROLE`;
+      await sql`UPDATE sections_latest SET body = '{"list":[{"skillLine":171,"name":"Alchemy","skill":75,"max":75}]}'::jsonb
+        WHERE owner_id = 'forever/Realm/Mine' AND section = 'professions'`;
+      await sql`DELETE FROM game.profession_recipes WHERE game = 'forever'`;
+      await sql`SET LOCAL ROLE unbored_web`;
+      const unplaced = await readCharacterPage(sql, mine, {
+        game: "forever",
+        realm: "Realm",
+        name: "Mine",
+      });
+      assert.equal(unplaced?.professions[0]?.routes?.[0]?.route.status, "needs_rank");
+      assert.equal(unplaced?.professions[0]?.routes?.[0]?.route.rankTraining?.trainer, null);
+      await sql`RESET ROLE`;
+      await sql`INSERT INTO recipe_sightings (account_id, game, kind, source_key, skill_line, spell_id, npc_id, npc_name, ui_map_id, x, y, cost, required_skill, limited, first_seen, last_seen)
+        VALUES (${mine}, 'forever', 'trainer', 's2334', 171, 2334, 456, 'Teacher', 37, 12, 34, 100, 50, 0, 2, 2)`;
+      await sql`SET LOCAL ROLE unbored_web`;
+      const rankPage = await readCharacterPage(sql, mine, {
+        game: "forever",
+        realm: "Realm",
+        name: "Mine",
+      });
+      const rankRoute = rankPage?.professions[0]?.routes?.[0]?.route;
+      assert.equal(rankRoute?.status, "needs_rank");
+      assert.deepEqual(rankRoute?.stretches, []);
+      assert.deepEqual(rankRoute?.rankTraining, {
+        profession: "Alchemy",
+        previousMax: 75,
+        trainer: { npcId: 456, npcName: "Teacher", uiMapID: 37, x: 12, y: 34 },
+      });
       for (const table of [
         "game.builds",
         "game.rows",

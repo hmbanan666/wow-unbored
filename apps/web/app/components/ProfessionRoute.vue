@@ -12,6 +12,25 @@ const count = (n: number) => Number(n.toFixed(2));
     <p v-if="route.status === 'at_cap'">
       You have reached this cap. Pick another profession or explore your missing recipes below.
     </p>
+    <div v-else-if="route.rankTraining">
+      <p>Train the next rank of {{ name || route.rankTraining.profession }} at a trainer.</p>
+      <p v-if="route.rankTraining.trainer">
+        Visit {{ route.rankTraining.trainer.npcName
+        }}<template
+          v-if="
+            route.rankTraining.trainer.uiMapID &&
+            route.rankTraining.trainer.x !== null &&
+            route.rankTraining.trainer.y !== null
+          "
+        >
+          ({{ route.rankTraining.trainer.x }}, {{ route.rankTraining.trainer.y }})</template
+        >.
+      </p>
+      <p>
+        Your current rank cap is {{ route.rankTraining.previousMax }}. Crafting can continue after
+        it increases.
+      </p>
+    </div>
     <template v-else>
       <p v-if="route.from !== null && route.target !== null">
         Skill {{ route.from }} to {{ route.target }}

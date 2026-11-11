@@ -280,9 +280,9 @@ function ns.ProfessionSkill(skillLine)
   if ns.IsCombat() then return nil end
   local body = ns.Snapshot and ns.Snapshot.Body('professions')
   for _, p in ipairs(type(body) == 'table' and body.list or {}) do
-    if p.skillLine == skillLine then return ns.AsNumber(p.skill), p.name end
+    if p.skillLine == skillLine then return ns.AsNumber(p.skill), p.name, ns.AsNumber(p.max) end
     for _, tier in ipairs(p.tiers or {}) do
-      if tier.skillLine == skillLine then return ns.AsNumber(tier.skill), tier.name end
+      if tier.skillLine == skillLine then return ns.AsNumber(tier.skill), tier.name, ns.AsNumber(tier.max) end
     end
   end
 end
@@ -292,6 +292,11 @@ function ns.SpecComplete(spec, offscreen)
     return false
   end
   local kind = spec.kind
+  if kind == "profession_rank" then
+    local _, _, max = ns.ProfessionSkill(spec.skillLine)
+    local previous = ns.AsNumber(spec.previousMax)
+    return max ~= nil and previous ~= nil and max > previous
+  end
   if kind == "profession" then
     local skill = ns.ProfessionSkill(spec.skillLine)
     local target = ns.AsNumber(spec.minSkill)

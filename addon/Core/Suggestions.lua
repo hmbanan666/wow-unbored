@@ -130,16 +130,22 @@ function S.Clean(raw)
   if raw.kind == 'profession' then
     local p = type(raw.profession) == 'table' and raw.profession or {}
     local plan = type(raw.plan) == 'table' and raw.plan or {}
+    local rank = int(p.rankMax)
     if p.game ~= ns.Game or not int(p.skillLine) or not int(p.target)
-      or not ns.AsNumber(p.from) or not int(p.nextCrafts) or type(plan.tasks) ~= 'table'
+      or not ns.AsNumber(p.from) or (not rank and not int(p.nextCrafts)) or type(plan.tasks) ~= 'table'
       or #plan.tasks == 0 or #plan.tasks > 40 then return nil end
-    profession = { game = p.game, skillLine = p.skillLine, from = p.from, target = p.target, nextCrafts = p.nextCrafts }
+    if rank and (p.target ~= rank or p.from < rank or p.nextCrafts ~= 0) then return nil end
+    profession = { game = p.game, skillLine = p.skillLine, from = p.from,
+      target = p.target, nextCrafts = p.nextCrafts, rankMax = rank }
     steps = {}
     for _, task in ipairs(plan.tasks) do
       local clean = ns.NormalizeTask(task)
       if not clean then return nil end
       local facts = type(task.profession) == 'table' and task.profession or {}
-      if type(facts.recipe) == 'string' then
+      if facts.kind == 'rank' and type(facts.name) == 'string' then
+        clean.title = ns.T('PROFESSION_RANK_STEP', facts.name)
+        clean.note = facts.trainer and ns.T('PROFESSION_VISIT', facts.trainer) or nil
+      elseif type(facts.recipe) == 'string' then
         if facts.kind == 'train' then
           clean.title = ns.T('PROFESSION_LEARN', facts.recipe)
           clean.note = facts.trainer and ns.T('PROFESSION_VISIT', facts.trainer) or ns.T('PROFESSION_TRAINER')
@@ -165,7 +171,8 @@ function S.Clean(raw)
     title = title,
     titleToken = type(raw.titleToken) == "string" and #raw.titleToken <= 60
       and raw.titleToken:match(TOKEN) and raw.titleToken or nil,
-    goal = profession and ns.T('PROFESSION_GOAL', title, steps[#steps].complete.minSkill or profession.target) or goal,
+    goal = profession and (profession.rankMax and ns.T('PROFESSION_RANK_STEP', title)
+      or ns.T('PROFESSION_GOAL', title, steps[#steps].complete.minSkill or profession.target)) or goal,
     why = text(raw.why, 100),
     rewards = rewards(raw.rewards),
     mapID = int(raw.mapID),
@@ -413,7 +420,8 @@ end
 function S.StillOpen(idea, now)
   if idea.profession then
     local p = idea.profession
-    local skill = ns.ProfessionSkill(p.skillLine)
+    local skill, _, max = ns.ProfessionSkill(p.skillLine)
+    if p.rankMax then return max == p.rankMax and skill ~= nil and skill >= max end
     local last = idea.steps and idea.steps[#idea.steps]
     local reached = last and last.complete and ns.AsNumber(last.complete.minSkill)
     return skill ~= nil and skill >= p.from and skill < math.min(p.target, reached or p.target)
@@ -556,6 +564,7 @@ function S.Title(idea)
   if idea.profession then
     local p = idea.profession
     local skill, name = ns.ProfessionSkill(p.skillLine)
+    if p.rankMax then return ns.T('PROFESSION_RANK_IDEA', name or idea.title, skill or p.from, p.rankMax) end
     return ns.T('PROFESSION_IDEA', name or idea.title, skill or p.from, p.target, p.nextCrafts)
   end
   if idea.kind == "path" then

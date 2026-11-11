@@ -12,6 +12,7 @@ local COMPLETE_KINDS = {
   pet = true,
   currency = true,
   profession = true,
+  profession_rank = true,
   zone = true,
   proximity = true,
   vignette = true,
@@ -152,6 +153,11 @@ local function cleanComplete(raw, index, depth)
       return nil, ns.T("ERR_COMPLETE_FIELD", index, "pet")
     end
     return { kind = kind, speciesID = id }
+  end
+  if kind == "profession_rank" then
+    local line, previous = need("skillLine"), whole(raw.previousMax, 1, 2000)
+    if not line or not previous then return nil, ns.T("ERR_COMPLETE_FIELD", index, "profession") end
+    return { kind = kind, skillLine = line, previousMax = previous }
   end
   if kind == "profession" then
     local line, target = need("skillLine"), whole(raw.minSkill, 1, 2000)

@@ -723,12 +723,23 @@ fn clean_suggestion(item: &Value) -> Option<Value> {
             .filter(|v| matches!(*v, "retail" | "forever"))?;
         let skill = p["skillLine"].as_u64().filter(|v| *v > 0)?;
         let from = p["from"].as_u64()?;
-        let target = p["target"].as_u64().filter(|v| *v > from && *v <= 2000)?;
-        let crafts = p["nextCrafts"].as_u64().filter(|v| *v > 0)?;
+        let rank = p["rankMax"].as_u64().filter(|v| *v > 0 && *v <= 2000);
+        let target = p["target"].as_u64().filter(|v| *v > 0 && *v <= 2000)?;
+        let crafts = p["nextCrafts"].as_u64()?;
+        if let Some(max) = rank {
+            if target != max || from < max || crafts != 0 {
+                return None;
+            }
+        } else if target <= from || crafts == 0 {
+            return None;
+        }
         let plan = plan_from_value(item["plan"].clone()).ok()?;
         out.insert("profession".into(), serde_json::json!({
             "game": game, "skillLine": skill, "from": from, "target": target, "nextCrafts": crafts,
         }));
+        if let Some(max) = rank {
+            out.get_mut("profession")?["rankMax"] = Value::from(max);
+        }
         out.insert("plan".into(), serde_json::to_value(plan).ok()?);
     }
     let request = &item["request"];
@@ -1663,6 +1674,39 @@ mod tests {
         large["characters"]["forever/Realm-Hero"][0]["plan"]["tasks"] =
             Value::Array(vec![task; 41]);
         assert!(!render_suggestions_lua(&large).contains("profession:197"));
+    }
+
+    #[test]
+    fn profession_rank_plans_survive_delivery_for_both_games() {
+        let body: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/fixtures/profession-rank-suggestions.json"
+        ))
+        .unwrap();
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/schema/suggestions.schema.json"
+        ))
+        .unwrap();
+        let plan_schema: Value = serde_json::from_str(include_str!(
+            "../../../../packages/contracts/schema/plan.schema.json"
+        ))
+        .unwrap();
+        jsonschema::validator_for(&schema)
+            .unwrap()
+            .validate(&body)
+            .unwrap();
+        let lua = render_suggestions_lua(&body);
+        let parsed = parse_saved_variables(&lua).unwrap();
+        let delivered = parsed["UnboredSuggestions"].to_json();
+        for key in ["forever/Realm-Hero", "Realm-Hero"] {
+            let expected = &body["characters"][key][0];
+            let idea = &delivered["characters"][key][0];
+            assert_eq!(idea["profession"], expected["profession"]);
+            assert_eq!(idea["plan"]["tasks"], expected["plan"]["tasks"]);
+            jsonschema::validator_for(&plan_schema)
+                .unwrap()
+                .validate(&expected["plan"])
+                .unwrap();
+        }
     }
 
     #[test]

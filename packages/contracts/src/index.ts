@@ -59,6 +59,11 @@ export type Waypoint = {
 
 export const professionStepSchema = z.discriminatedUnion("kind", [
   z.object({
+    kind: z.literal("rank"),
+    name: z.string().min(1).max(60),
+    trainer: z.string().min(1).max(100).optional(),
+  }),
+  z.object({
     kind: z.literal("train"),
     recipe: z.string().min(1).max(160),
     trainer: z.string().min(1).max(100).optional(),
@@ -501,6 +506,7 @@ export type Suggestion = {
     from: number;
     target: number;
     nextCrafts: number;
+    rankMax?: number;
   };
   plan?: Plan;
   path?: PathReference;
@@ -586,8 +592,16 @@ const suggestionSchema = z
         skillLine: z.number().int().positive(),
         from: z.number().int().nonnegative(),
         target: z.number().int().positive().max(2000),
-        nextCrafts: z.number().int().positive(),
+        nextCrafts: z.number().int().nonnegative(),
+        rankMax: z.number().int().positive().max(2000).optional(),
       })
+      .refine(
+        (p) =>
+          p.rankMax === undefined
+            ? p.target > p.from && p.nextCrafts > 0
+            : p.target === p.rankMax && p.from >= p.rankMax && p.nextCrafts === 0,
+        "Profession Ideas need a craft target or a reached rank cap",
+      )
       .optional(),
     plan: planSchema.optional(),
     chain: z

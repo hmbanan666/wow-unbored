@@ -19,17 +19,21 @@ export type SkillStretch = {
   reagents: RouteReagent[];
   trainer: RecipeSource | "catalog" | null;
 };
+export type RankTrainer = Pick<RecipeSource, "npcId" | "npcName" | "uiMapID" | "x" | "y">;
 export type SkillRoute = {
+  rankTraining?: { profession: string; previousMax: number; trainer: RankTrainer | null };
   game: "retail" | "forever";
   skillLine: number;
   from: number | null;
   target: number | null;
   reached: number | null;
-  status: "complete" | "gap" | "unavailable" | "at_cap";
+  status: "complete" | "gap" | "unavailable" | "at_cap" | "needs_rank";
   stretches: SkillStretch[];
   reagents: RouteReagent[];
 };
 export type SkillRouteInput = {
+  name?: string;
+  rankTrainer?: RankTrainer | null;
   game: "retail" | "forever";
   skillLine: number;
   skill: number | null;
@@ -63,11 +67,13 @@ export function skillUpChance(recipe: ProfessionRecipe, skill: number): number {
 /** Re-evaluate at each skill point, then coalesce adjacent choices into stretches. */
 export function computeSkillRoute(input: SkillRouteInput): SkillRoute {
   const { game, skillLine, skill, max, recipes } = input;
-  const ceiling = game === "forever" ? 300 : max;
+  const ceiling = game === "forever" ? Math.min(300, max ?? 300) : max;
   const cap = game === "forever" ? ([75, 150, 225, 300].find((n) => n > (skill ?? 0)) ?? 300) : max;
   const target =
     input.target === undefined
-      ? cap
+      ? cap === null
+        ? null
+        : Math.min(cap, ceiling ?? cap)
       : Number.isInteger(input.target) && input.target > 0 && ceiling !== null
         ? Math.min(input.target, ceiling)
         : null;
@@ -89,6 +95,15 @@ export function computeSkillRoute(input: SkillRouteInput): SkillRoute {
     target > 2000
   )
     return route;
+  if (max !== null && max > 0 && skill >= max && (game !== "forever" || max < 300)) {
+    route.status = "needs_rank";
+    route.rankTraining = {
+      profession: input.name ?? "your profession",
+      previousMax: max,
+      trainer: input.rankTrainer ?? null,
+    };
+    return route;
+  }
   if (skill >= target) {
     route.status = "at_cap";
     return route;
@@ -258,4 +273,28 @@ export function vendorPrices(sightings: RecipeSighting[]): Record<number, number
     if (s.cost !== null) prices[s.item_id!] = s.cost;
   }
   return prices;
+}
+
+/** Recipe sightings locate profession trainers, but do not prove rank fees or requirements. */
+export function observedRankTrainer(
+  sightings: RecipeSighting[],
+  skillLine: number,
+): RankTrainer | null {
+  const placed = (s: RecipeSighting) =>
+    s.ui_map_id !== null && s.x !== null && s.y !== null ? 1 : 0;
+  const row = sightings
+    .filter((s) => s.kind === "trainer" && s.skill_line === skillLine)
+    .sort(
+      (a, b) =>
+        placed(b) - placed(a) ||
+        b.last_seen - a.last_seen ||
+        a.npc_id - b.npc_id ||
+        (a.ui_map_id ?? 0) - (b.ui_map_id ?? 0) ||
+        (a.x ?? 0) - (b.x ?? 0) ||
+        (a.y ?? 0) - (b.y ?? 0) ||
+        (a.npc_name < b.npc_name ? -1 : a.npc_name > b.npc_name ? 1 : 0),
+    )[0];
+  return row
+    ? { npcId: row.npc_id, npcName: row.npc_name, uiMapID: row.ui_map_id, x: row.x, y: row.y }
+    : null;
 }

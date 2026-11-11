@@ -386,6 +386,8 @@ function cleanComplete(raw: unknown, index: number, depth: number): Record<strin
   };
 
   if (kind === "manual") return { kind: "manual" };
+  if (kind === "profession_rank")
+    return { kind, skillLine: need("skillLine"), previousMax: need("previousMax", 1, 2000) };
   if (kind === "profession")
     return { kind, skillLine: need("skillLine"), minSkill: need("minSkill", 1, 2000) };
   if (kind === "achievement") {

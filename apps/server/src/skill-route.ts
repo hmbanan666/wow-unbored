@@ -2,6 +2,7 @@ import { cleanPlan } from "./plan.ts";
 import type { Plan, Suggestion } from "@unbored/contracts";
 import {
   computeSkillRoute,
+  observedRankTrainer,
   heldReagents,
   learnedRecipes,
   professionSkills,
@@ -26,6 +27,15 @@ export async function readSkillRoutes(
         character.id,
       )
     ).map((r) => [r.section, fromJson(r.body)]),
+  );
+  const professions = professionSkills(sections.get("professions")).filter(
+    (p) => skillLine === undefined || p.skillLine === skillLine,
+  );
+  if (!professions.length) return [];
+  const trainers = await db.all<RecipeSighting>(
+    `SELECT ${SIGHTING_COLUMNS} FROM recipe_sightings WHERE game = ? AND kind = 'trainer' AND skill_line IN (${professions.map(() => "?").join(",")})`,
+    character.game,
+    ...professions.map((p) => p.skillLine),
   );
   const catalog = await currentRecipes(db, character.game);
   const items = [...new Set(catalog.flatMap((r) => (r.reagents ?? []).map((v) => v.itemId)))];
@@ -58,8 +68,7 @@ export async function readSkillRoutes(
     sections.get("reagentBank"),
   ]);
   const out = [];
-  for (const p of professionSkills(sections.get("professions"))) {
-    if (skillLine !== undefined && p.skillLine !== skillLine) continue;
+  for (const p of professions) {
     const sources = await readRecipeSources(db, character.game, p.skillLine);
     out.push({
       name: p.name,
@@ -70,6 +79,7 @@ export async function readSkillRoutes(
         recipes: catalog,
         known: learnedRecipes(sections.get("recipes"), p.skillLine),
         sources: sources.recipes,
+        rankTrainer: observedRankTrainer(trainers, p.skillLine),
         prices,
         held,
         itemNames,
@@ -81,6 +91,24 @@ export async function readSkillRoutes(
 
 export function skillRoutePlan(route: SkillRoute, name: string, generatedAt: number): Plan {
   const tasks: Plan["tasks"] = [];
+  if (route.rankTraining) {
+    const t = route.rankTraining.trainer;
+    tasks.push({
+      id: `rank:${route.skillLine}:${route.rankTraining.previousMax}`,
+      title: `Train the next rank of ${name} at a trainer`,
+      estMinutes: 1,
+      ...(t?.uiMapID && t.x !== null && t.y !== null
+        ? { mapID: t.uiMapID, x: t.x / 100, y: t.y / 100 }
+        : {}),
+      ...(t ? { note: `Visit ${t.npcName}.` } : {}),
+      complete: {
+        kind: "profession_rank",
+        skillLine: route.skillLine,
+        previousMax: route.rankTraining.previousMax,
+      },
+      profession: { kind: "rank", name, ...(t ? { trainer: t.npcName } : {}) },
+    });
+  }
   for (const s of route.stretches) {
     if (s.trainer) {
       const t = s.trainer === "catalog" ? null : s.trainer;
@@ -120,7 +148,9 @@ export function skillRoutePlan(route: SkillRoute, name: string, generatedAt: num
       mode: "custom",
       generatedAt,
       title: name.slice(0, 40),
-      goal: `Raise ${name} to ${route.reached}.`,
+      goal: route.rankTraining
+        ? `Train the next rank of ${name}.`
+        : `Raise ${name} to ${route.reached}.`,
       tasks,
     },
     generatedAt,
@@ -130,9 +160,9 @@ export function skillRoutePlan(route: SkillRoute, name: string, generatedAt: num
 export async function professionIdeas(db: Db, character: CharacterRow): Promise<Suggestion[]> {
   const ideas: Suggestion[] = [];
   for (const { name, route } of await readSkillRoutes(db, character)) {
-    if (!route.stretches.length) continue;
+    if (!route.stretches.length && !route.rankTraining) continue;
     const id = `profession:${route.skillLine}`;
-    const nextCrafts = Math.ceil(route.stretches[0]!.expectedCrafts);
+    const nextCrafts = route.rankTraining ? 0 : Math.ceil(route.stretches[0]!.expectedCrafts);
     const title = name.slice(0, 40);
     if (route.stretches.reduce((n, s) => n + (s.trainer ? 2 : 1), 0) > 40) continue;
     const plan = skillRoutePlan(route, title, character.savedAt ?? character.lastSeen);
@@ -141,7 +171,9 @@ export async function professionIdeas(db: Db, character: CharacterRow): Promise<
       kind: "profession",
       displayKind: "profession",
       title,
-      goal: `${route.from}/${route.target}: next ${nextCrafts} crafts`,
+      goal: route.rankTraining
+        ? `${route.from}/${route.target}: train the next rank`
+        : `${route.from}/${route.target}: next ${nextCrafts} crafts`,
       rewards: [],
       profession: {
         game: character.game,
@@ -149,6 +181,7 @@ export async function professionIdeas(db: Db, character: CharacterRow): Promise<
         from: route.from!,
         target: route.target!,
         nextCrafts,
+        ...(route.rankTraining ? { rankMax: route.rankTraining.previousMax } : {}),
       },
       plan,
       request: { topic: "suggestion", suggestionId: id, wish: title },

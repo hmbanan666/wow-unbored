@@ -44,10 +44,10 @@ for (const game of ["forever", "retail"] as const)
 
 test("at cap and missing catalog show a next action instead of an empty list", () => {
   const input = {
-    game: "retail" as const,
+    game: "forever" as const,
     skillLine: 197,
-    skill: 75,
-    max: 75,
+    skill: 300,
+    max: 300,
     recipes: [],
     known: [],
   };
@@ -59,3 +59,30 @@ test("at cap and missing catalog show a next action instead of an empty list", (
   });
   expect(empty.text()).toContain("Visit a profession trainer");
 });
+
+for (const game of ["forever", "retail"] as const)
+  test(`${game} rank training has no crafts or invented requirements`, () => {
+    const input = {
+      game,
+      name: "Tailoring",
+      skillLine: 197,
+      skill: 75,
+      max: 75,
+      recipes: [],
+      known: [],
+    };
+    const missing = mount(ProfessionRoute, { props: { route: computeSkillRoute(input) } });
+    expect(missing.text()).toContain("Train the next rank of Tailoring at a trainer");
+    expect(missing.text()).not.toContain("expected crafts");
+    expect(missing.text()).not.toContain("Visit Teacher");
+    const observed = mount(ProfessionRoute, {
+      props: {
+        route: computeSkillRoute({
+          ...input,
+          rankTrainer: { npcId: 123, npcName: "Teacher", uiMapID: 37, x: 12, y: 34 },
+        }),
+      },
+    });
+    expect(observed.text()).toContain("Visit Teacher (12, 34)");
+    expect(observed.text()).not.toContain("level");
+  });

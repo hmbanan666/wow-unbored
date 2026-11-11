@@ -1,5 +1,6 @@
 import {
   computeSkillRoute,
+  observedRankTrainer,
   heldReagents,
   learnedRecipes,
   professionSkills,
@@ -49,7 +50,7 @@ export async function readCharacterPage(
       SELECT build FROM game.builds WHERE game = ${identity.game} ORDER BY build_number DESC LIMIT 1)
       AND skill_line = ANY(${professionSkills(row.professions).map((p) => p.skillLine)}::int[])
     ORDER BY spell_id`;
-  const skills = [...new Set(catalog.map((r) => r.body.skillLine))];
+  const skills = professionSkills(row.professions).map((p) => p.skillLine);
   const spells = catalog.map((r) => r.body.spellId);
   const teachingIds = [
     ...new Set(
@@ -59,7 +60,7 @@ export async function readCharacterPage(
       ]),
     ),
   ];
-  const sightings = catalog.length
+  const sightings = skills.length
     ? await sql<RecipeSighting[]>`
     SELECT ${sql(SIGHTING_COLUMNS.split(", "))} FROM recipe_sightings WHERE game = ${identity.game}
       AND ((kind = 'trainer' AND (skill_line = ANY(${skills}::int[]) OR spell_id = ANY(${spells}::int[])))
@@ -100,6 +101,7 @@ export async function readCharacterPage(
       recipes: catalog.map((r) => r.body),
       known: learnedRecipes(row.recipes, p.skillLine),
       sources,
+      rankTrainer: observedRankTrainer(sightings, p.skillLine),
       itemNames: Object.fromEntries(items),
       held: heldReagents([row.bags, row.bank, row.reagentBank]),
       prices: vendorPrices(sightings),

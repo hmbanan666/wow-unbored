@@ -39,3 +39,31 @@ for _, game in ipairs({ 'forever', 'retail' }) do
   assert(not ns.Suggestions.StillOpen(ideas[1]))
 end
 print('Profession Steps and Ideas passed')
+
+assert(loadfile('../packages/contracts/fixtures/profession-rank-suggestions.lua'))()
+for _, game in ipairs({ 'forever', 'retail' }) do
+  ns.Game = game
+  ns.Snapshot.Write('professions', { list = { { skillLine = 197, name = 'Tailoring', skill = 75, max = 75 } } })
+  local idea = ns.Suggestions.Read()[1]
+  assert(idea and ns.Suggestions.StillOpen(idea))
+  assert(ns.Suggestions.Title(idea) == 'Tailoring 75/75: train the next rank')
+  assert(#idea.steps == 1 and idea.steps[1].x == 0.12)
+  local raw = UnboredSuggestions.characters[(game == 'forever' and 'forever/' or '') .. 'Realm-Hero'][1]
+  assert(ns.ValidatePlan(raw.plan, true).tasks[1].complete.kind == 'profession_rank')
+  ns.Session:BeginSuggestion(idea)
+  assert(ns.Session:Current() and not UnboredCharDB.request)
+  ns.Snapshot.Write('professions', { list = { { skillLine = 197, name = 'Tailoring', skill = 76, max = 75 } } })
+  ns.Session:CheckCurrent()
+  assert(ns.Session:Current(), 'skill alone cannot complete rank training')
+  ns.Snapshot.Write('professions', { list = { { skillLine = 197, name = 'Tailoring', skill = 75, max = 150 } } })
+  combat = true; assert(not ns.IsTaskComplete(idea.steps[1])); combat = false
+  ns.Session:CheckCurrent()
+  assert(ns.Session:Current() == nil and #ns.Session.state.done == 1)
+  assert(not ns.Suggestions.StillOpen(idea))
+end
+ns.Snapshot.Write('professions', { list = { { skillLine = 197, name = 'Tailoring', tiers = {
+  { skillLine = 2540, name = 'Expansion Tailoring', skill = 75, max = 150 },
+} } } })
+assert(ns.SpecComplete({ kind = 'profession_rank', skillLine = 2540, previousMax = 75 }))
+assert(not ns.SpecComplete({ kind = 'profession_rank', skillLine = 197, previousMax = 75 }))
+print('Profession rank training passed')

@@ -69,9 +69,9 @@ test("routes use reachable trainers, prefer bands, stop at gaps and keep targets
   assert.deepEqual(trained.stretches[0]!.trainer, source);
   assert.equal(trained.stretches.length, 1);
   assert.equal(computeSkillRoute({ ...input, known: [100] }).target, 75);
-  assert.equal(computeSkillRoute({ ...input, skill: 75, known: [100] }).target, 150);
-  assert.equal(computeSkillRoute({ ...input, target: 999 }).target, 300);
-  assert.equal(computeSkillRoute({ ...input, skill: 300 }).status, "at_cap");
+  assert.equal(computeSkillRoute({ ...input, skill: 75, known: [100] }).target, 75);
+  assert.equal(computeSkillRoute({ ...input, target: 999 }).target, 75);
+  assert.equal(computeSkillRoute({ ...input, skill: 300, max: 300 }).status, "at_cap");
   const orange = {
     ...recipe,
     spellId: 200,
@@ -83,6 +83,7 @@ test("routes use reachable trainers, prefer bands, stop at gaps and keep targets
     computeSkillRoute({
       ...input,
       skill: 75,
+      max: 150,
       target: 76,
       recipes: [recipe, orange],
       known: [100, 200],
@@ -125,7 +126,7 @@ test("ranking uses reagent totals, held reagents, then ids and is independent of
   );
   assert.equal(computeSkillRoute({ ...input, held: { 20: 3 } }).stretches[0]!.spellId, 101);
   assert.equal(computeSkillRoute({ ...input, target: 11 }).reached, 11);
-  assert.equal(computeSkillRoute({ ...input, skill: 12 }).status, "at_cap");
+  assert.equal(computeSkillRoute({ ...input, skill: 12 }).status, "needs_rank");
 });
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -260,6 +261,65 @@ for (const backend of BACKENDS)
         const ideas = await store.suggestionsForDevice("pc");
         const key = `${game === "forever" ? "forever/" : ""}Realm-Hero`;
         assert.equal(ideas.characters[key]?.[0]?.kind, "profession");
+        await store.putSnapshot(
+          cleanSnapshot({
+            schema: 2,
+            game,
+            account: "a",
+            character: "Hero",
+            realm: "Realm",
+            savedAt: NOW + 1,
+            sections: {
+              professions: {
+                scope: "char",
+                v: 1,
+                body: { list: [{ skillLine: 197, name: "Tailoring", skill: 75, max: 75 }] },
+              },
+            },
+          }),
+          "pc",
+          NOW + 1,
+        );
+        // Rank stops use profession sightings even before a recipe catalog is available.
+        await store.db.run(
+          `DELETE FROM ${store.db.pg ? "game.profession_recipes" : "game_profession_recipes"} WHERE game = ?`,
+          game,
+        );
+        const [rank] = await readSkillRoutes(store.db, row, 197);
+        assert.equal(rank!.route.status, "needs_rank");
+        assert.deepEqual(rank!.route.stretches, []);
+        const rankIdea = (await store.suggestionsForDevice("pc")).characters[key]![0]!;
+        assert.equal(rankIdea.profession!.rankMax, 75);
+        assert.equal(rankIdea.plan!.tasks.length, 1);
+        assert.deepEqual(
+          [rankIdea.plan!.tasks[0]!.mapID, rankIdea.plan!.tasks[0]!.x, rankIdea.plan!.tasks[0]!.y],
+          [37, 0.12, 0.34],
+        );
+        assert.equal(rankIdea.plan!.tasks[0]!.note, "Visit Teacher.");
+        assert.ok(!JSON.stringify(rank!.route).includes("requiredSkill"));
+        assert.ok(!JSON.stringify(rank!.route).includes('"cost"'));
+        const rankResponse = await runtime.app.request("/mcp", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer owner",
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "get_skill_route",
+              arguments: { game, character: "Hero", skillLine: 197 },
+            },
+          }),
+        });
+        const rankBody = await rankResponse.text();
+        const rankRpc = JSON.parse(
+          rankBody.startsWith("event:") ? rankBody.split("data: ")[1]!.trim() : rankBody,
+        );
+        assert.deepEqual(JSON.parse(rankRpc.result.content[0].text), rank!.route);
       }
     } finally {
       store.close();
@@ -308,3 +368,31 @@ test("a newly reachable trainer is inserted between stretches and green never di
   assert.equal(onlyYellow.stretches[0]!.spellId, 102);
   assert.equal(onlyYellow.stretches[0]!.slow, false);
 });
+
+for (const game of ["forever", "retail"] as const)
+  test(`${game} respects the observed rank cap and offers rank training`, () => {
+    const input = {
+      game,
+      skillLine: 197,
+      skill: 74,
+      max: 75,
+      recipes: [{ ...recipe, thresholds: { orange: 1, yellow: 160, green: 180, grey: 200 } }],
+      known: [100],
+    };
+    assert.equal(computeSkillRoute(input).reached, 75);
+    assert.equal(computeSkillRoute({ ...input, target: 200 }).target, 75);
+    assert.equal(computeSkillRoute({ ...input, skill: 100, max: 150 }).reached, 150);
+    const rank = computeSkillRoute({ ...input, skill: 75 });
+    assert.equal(rank.status, "needs_rank");
+    assert.equal(rank.target, 75);
+    assert.deepEqual(rank.stretches, []);
+    const plan = skillRoutePlan(rank, "Tailoring", 1000);
+    assert.equal(plan.tasks.length, 1);
+    assert.equal(plan.tasks[0]!.title, "Train the next rank of Tailoring at a trainer");
+    assert.equal(plan.tasks[0]!.mapID, undefined);
+    assert.deepEqual(plan.tasks[0]!.complete, {
+      kind: "profession_rank",
+      skillLine: 197,
+      previousMax: 75,
+    });
+  });

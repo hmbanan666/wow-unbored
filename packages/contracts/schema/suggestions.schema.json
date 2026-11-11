@@ -216,7 +216,29 @@
             },
             "nextCrafts": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 0
+            },
+            "rankMax": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000
+            }
+          },
+          "if": {
+            "required": ["rankMax"]
+          },
+          "then": {
+            "properties": {
+              "nextCrafts": {
+                "const": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "nextCrafts": {
+                "minimum": 1
+              }
             }
           }
         },
