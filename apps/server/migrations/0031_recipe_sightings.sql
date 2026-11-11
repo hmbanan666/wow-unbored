@@ -26,7 +26,7 @@ CREATE TABLE recipe_sightings (
 CREATE INDEX recipe_sightings_game ON recipe_sightings (game, skill_line);
 CREATE INDEX recipe_sightings_item ON recipe_sightings (game, item_id) WHERE kind = 'vendor';
 
--- PostgreSQL-only permissions: SQLite reuses the table and indexes above.
+-- PostgreSQL-only permissions: SIGHTINGS_SQLITE_SCHEMA splits at this marker.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unbored_web') THEN
     GRANT USAGE ON SCHEMA game TO unbored_web;
