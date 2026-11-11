@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 import { BACKENDS, postgresPerFile } from "./postgres-db.ts";
 import { coreResponse } from "./game-content-fixture.ts";
@@ -34,6 +34,10 @@ for (const backend of BACKENDS) {
       assert.equal(healthBefore.gameDb.forever.build, null);
       const game = app.store.game.forGame("forever");
       await game.importBuild(build, foreverResponse);
+      const unchanged = await game.importBuild(build, async () => {
+        throw new Error("Unexpected repeat download");
+      });
+      assert.equal(unchanged.status, "unchanged");
       const catalog = await game.professionCatalog(171);
       assert.equal(catalog.build, build);
       const health = await (await app.app.request("/health")).json();
@@ -119,7 +123,21 @@ for (const backend of BACKENDS) {
           throw new Error("offline");
         }),
       );
+      await assert.rejects(
+        game.importBuild("1.60.1.70891", async (input) => {
+          const response = await foreverResponse(input);
+          if (String(input).includes("/TradeSkillCategory/"))
+            return new Response(
+              (await response.text())
+                .split("\n")
+                .filter((line) => !line.startsWith("2450,"))
+                .join("\n"),
+            );
+          return response;
+        }),
+      );
       assert.equal(await game.currentBuild(), "1.60.1.70890");
+      assert.equal((await game.professionCatalog(171)).recipes.length, 4);
       assert.equal((await app.store.game.entity("achievement", 964))?.names.enUS, "Going Down?");
     } finally {
       await app.close();
@@ -131,6 +149,8 @@ for (const backend of BACKENDS) {
 for (const backend of BACKENDS) {
   test(`watch and health keep independent live builds and lag when Forever fails (${backend})`, async () => {
     const dataDir = mkdtempSync(path.join(import.meta.dirname, ".forever-watch-"));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-11T00:00:00Z"));
     let broken = false;
     let retail = "12.0.1.66337";
     let forever = build;
@@ -170,11 +190,17 @@ for (const backend of BACKENDS) {
       assert.equal(status.forever.liveBuild, forever);
       assert.equal(status.forever.lastError, "import_failed");
       assert.ok(status.forever.pendingSince > 0);
+      vi.setSystemTime(new Date("2026-11-11T06:00:01Z"));
+      const delayed = (await (await app.app.request("/health")).json()).gameDb;
+      assert.equal(delayed.forever.lagSeconds, 21601);
+      assert.equal(delayed.forever.lagging, true);
+      assert.equal(delayed.lagSeconds, 0);
       broken = false;
       await app.gameWatch.run();
       assert.equal((await app.store.game.forGame("forever").status()).lastError, null);
       assert.equal(await app.store.game.forGame("forever").currentBuild(), forever);
     } finally {
+      vi.useRealTimers();
       await app.close();
       rmSync(dataDir, { recursive: true, force: true });
     }
