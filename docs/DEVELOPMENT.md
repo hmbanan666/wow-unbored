@@ -1169,7 +1169,7 @@ Before the window:
      node --experimental-sqlite --experimental-strip-types scripts/sqlite-to-postgres.ts --dry-run
    ```
 
-   It prints one `table: N rows, checksum … ok` line per table and ends with `Dry run ok, rolled back: 18 tables, N rows verified`. Fix anything it reports before the window.
+   It prints one `table: N rows, checksum … ok` line per table and ends with `Dry run ok, rolled back: 31 tables, N rows verified`. Fix anything it reports before the window.
 
 The window (Companion saves fail meanwhile; unsent Sections stay unsent and go with the next save):
 
@@ -1189,7 +1189,7 @@ The window (Companion saves fail meanwhile; unsent Sections stay unsent and go w
      --experimental-sqlite --experimental-strip-types scripts/sqlite-to-postgres.ts
    ```
 
-   It must end with `Committed: 18 tables, N rows verified`, with the same counts as the dry run (plus whatever was written since). On `Transfer FAILED, nothing committed` the target is unchanged: start the Server again without `DATABASE_URL` and investigate.
+   It must end with `Committed: 31 tables, N rows verified`, with the same counts as the dry run (plus whatever was written since). On `Transfer FAILED, nothing committed` the target is unchanged: start the Server again without `DATABASE_URL` and investigate.
 9. Set `DATABASE_URL` (and `DATABASE_POOL_MAX` if not 10) in the Server's Dokploy environment, then Deploy.
 10. Verify:
     - The log has `Postgres schema ready (up to date); every table on Postgres, the SQLite file untouched` and `Upload inbox on`. A `Retention:` line on the first start is normal: it drops the empty month partitions older than 13 months.
