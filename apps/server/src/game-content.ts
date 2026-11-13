@@ -11,7 +11,8 @@ import { gameCsv } from "./game-csv.ts";
 export const GAME_IMPORT_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_STAGED_BYTES = 1024 * 1024 * 1024;
 const MAX_TABLE_ROWS = 2_000_000;
-const BATCH_ROWS = 500;
+// Keep richer ItemSparse rows within the import budget without lifting the byte bound.
+const BATCH_ROWS = 2000;
 const BATCH_BYTES = 1024 * 1024;
 
 export type Game = "retail" | "forever";
@@ -243,11 +244,31 @@ async function insertRows(db: Db, file: string, build: string, signal: AbortSign
     bytes = 0;
   const flush = async () => {
     signal.throwIfAborted();
-    if (batch.length)
-      await db.run(
-        `INSERT INTO ${table} (game, build, table_name, locale, id, ${db.body}) VALUES ${batch.map(() => "(?, ?, ?, ?, ?, ?)").join(",")}`,
-        ...batch.flatMap((row) => [game, build, ...row] as Param[]),
-      );
+    if (batch.length) {
+      if (db.pg) {
+        // One fixed statement avoids thousands of SQL parameters per richer client batch.
+        await db.run(
+          `INSERT INTO ${table} (game, build, table_name, locale, id, body)
+           SELECT ?, ?, table_name, locale, id, body FROM json_to_recordset(?::json)
+           AS imported(table_name text, locale text, id integer, body jsonb)`,
+          game,
+          build,
+          JSON.stringify(
+            batch.map(([table_name, locale, id, body]) => ({
+              table_name,
+              locale,
+              id,
+              body: JSON.parse(body),
+            })),
+          ),
+        );
+      } else {
+        await db.run(
+          `INSERT INTO ${table} (game, build, table_name, locale, id, ${db.body}) VALUES ${batch.map(() => "(?, ?, ?, ?, ?, ?)").join(",")}`,
+          ...batch.flatMap((row) => [game, build, ...row] as Param[]),
+        );
+      }
+    }
     batch = [];
     bytes = 0;
     await yieldTurn();

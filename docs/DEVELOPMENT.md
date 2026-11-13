@@ -238,8 +238,10 @@ of projected staging data and 15 minutes per import. Parsing yields every
 16 KiB, including within quoted cells. Temporary files under the data directory
 are removed on success or failure. After an unclean process exit, an operator
 may remove abandoned `.game-import-*` directories while the Server is stopped.
-Database writes use batches of at most 500 rows or about 1 MiB, then publish
-all tables, both locales, counts and Achievement names in one transaction.
+Database writes use batches of at most 2,000 rows or about 1 MiB. Postgres accepts
+each batch as JSON records in one parameter to avoid per-row SQL parameter overhead
+with the richer ItemSparse projection; SQLite keeps bound-value inserts. Publication
+keeps all tables, both locales, counts and Achievement names in one transaction.
 Duplicate ids, bad fields, truncated text or locale disagreement roll it back.
 Postgres readers retain the previous build during publication. SQLite queries
 queue during publication; its synchronous commit/checkpoint runs in an import
