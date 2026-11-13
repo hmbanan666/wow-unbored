@@ -47,34 +47,71 @@ local function merge(previous, fresh, location)
   return { entries = entries }
 end
 
-local function trainer(previous)
-  local location = place()
-  if not location then return nil end
+-- Forever profession trainers are not always TrainerType.Tradeskills. Either
+-- signal is enough; a class trainer is neither.
+local function professionTrainer()
+  local flagged
+  if type(IsTradeskillTrainer) == 'function' then
+    flagged = ns.AsBoolean(call(IsTradeskillTrainer))
+  end
+  if flagged == true then return true end
   local trainerType = num(call(C_Trainer and C_Trainer.GetTrainerType))
   local tradeskills = Enum and Enum.TrainerType and num(Enum.TrainerType.Tradeskills)
-  if not tradeskills or trainerType ~= tradeskills then return nil end
-  local skills = {}
-  for _, p in ipairs(ns.Profile.Professions() or {}) do
-    if p.name and PROFESSIONS[p.skillLine] then skills[p.name] = p.skillLine end
+  if tradeskills and trainerType == tradeskills then return true end
+  return false
+end
+
+-- Prefer the catalog parent (333) over an expansion tier (2940).
+local function spellSkillLine(spell)
+  if not spell then return nil end
+  local info = S.Clean(call(C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoByRecipeID, spell))
+  if type(info) == 'table' then
+    local parent = num(info.parentProfessionID)
+    local id = num(info.professionID)
+    if parent and parent > 0 and PROFESSIONS[parent] then return parent end
+    if id and PROFESSIONS[id] then return id end
   end
-  if type(GetTrainerServiceStepIndex) ~= 'function' then return nil end
-  local ok, rawStep = pcall(GetTrainerServiceStepIndex)
-  local step = num(rawStep)
-  -- A successful nil means this trainer has no rank-training service.
-  if not ok or (rawStep ~= nil and step == nil) then return nil end
+  local api = C_TradeSkillUI
+  if not api or type(api.IsRecipeInSkillLine) ~= 'function' then return nil end
+  for id in pairs(PROFESSIONS) do
+    if ns.AsBoolean(call(api.IsRecipeInSkillLine, spell, id)) == true then return id end
+  end
+  return nil
+end
+
+local function trainer(previous)
+  local location = place()
+  if not location or not professionTrainer() then return nil end
+  local names = {}
+  for _, p in ipairs(ns.Profile.Professions() or {}) do
+    local id = num(p.skillLine)
+    local parent = num(p.parentSkillLine)
+    if p.name and id and (PROFESSIONS[id] or (parent and PROFESSIONS[parent])) then
+      names[p.name] = (parent and PROFESSIONS[parent] and parent) or id
+    end
+  end
+  -- A missing, throwing or secret rank index is not a reason to drop the visit.
+  local step
+  if type(GetTrainerServiceStepIndex) == 'function' then
+    local ok, rawStep = pcall(GetTrainerServiceStepIndex)
+    if ok then step = num(rawStep) end
+  end
   local entries = {}
   for i = 1, math.min(num(call(GetNumTrainerServices)) or 0, 1000) do
     local name, serviceType = call(GetTrainerServiceInfo, i)
     name, serviceType = str(name, 160), str(serviceType, 30)
     local skill, rank = call(GetTrainerServiceSkillReq, i)
     skill, rank = str(skill, 60), num(rank)
-    local skillLine = skill and skills[skill]
-    if i ~= step and name and skillLine and serviceType ~= 'header' then
-      local data = S.Clean(call(C_TooltipInfo and C_TooltipInfo.GetTrainerService, i))
-      local spellType = Enum and Enum.TooltipDataType and num(Enum.TooltipDataType.Spell)
-      local spell = type(data) == 'table' and spellType and num(data.type) == spellType and num(data.id)
+    local money, rankService = call(GetTrainerServiceCost, i)
+    local data = S.Clean(call(C_TooltipInfo and C_TooltipInfo.GetTrainerService, i))
+    local spellType = Enum and Enum.TooltipDataType and num(Enum.TooltipDataType.Spell)
+    local spell = type(data) == 'table' and spellType and num(data.type) == spellType and num(data.id)
+    local skillLine = (skill and names[skill]) or spellSkillLine(spell)
+    -- The second cost return is the profession-rank purchase in the trainer UI.
+    if i ~= step and ns.AsBoolean(rankService) ~= true and name and skillLine
+      and serviceType ~= 'header' then
       entries[#entries + 1] = { spellId = spell or nil, name = name, skillLine = skillLine,
-        locale = str(call(GetLocale), 8), requiredSkill = rank, cost = num(call(GetTrainerServiceCost, i)) }
+        locale = str(call(GetLocale), 8), requiredSkill = rank, cost = num(money) }
     end
   end
   return merge(previous, entries, location)
@@ -105,7 +142,8 @@ local function merchant(previous)
   return merge(previous, entries, location)
 end
 
-if type(GetNumTrainerServices) == 'function' and C_Trainer and C_Trainer.GetTrainerType then
+if type(GetNumTrainerServices) == 'function' and ((C_Trainer and C_Trainer.GetTrainerType)
+  or type(IsTradeskillTrainer) == 'function') then
   S.Register({ name = 'trainerSeen', games = { retail = true, forever = true }, prio = 30,
     login = false, window = true, opens = { 'TRAINER_SHOW' }, closes = { 'TRAINER_CLOSED' },
     events = { 'TRAINER_UPDATE', 'TRAINER_SERVICE_INFO_NAME_UPDATE' }, read = trainer })

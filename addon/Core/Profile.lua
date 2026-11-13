@@ -99,12 +99,19 @@ local function foreverProfessions()
       local category = ns.AsNumber(info.skillLineCategoryID)
       local id = ns.AsNumber(info.skillID)
       if ns.AsBoolean(info.isHeader) == false and id and (category == 11 or category == 9) then
-        out[#out + 1] = {
+        local row = {
           skillLine = id,
           name = ns.SafeString(info.name, 60),
           skill = ns.AsNumber(info.rank),
           max = ns.AsNumber(info.maxRank),
         }
+        -- Forever lists the classic line and its expansion tier (333 and 2940).
+        -- The tier points at the line the recipe catalog uses.
+        local parent = ns.AsNumber(info.parentSkillLineID)
+        if parent and parent > 0 and parent ~= id then
+          row.parentSkillLine = parent
+        end
+        out[#out + 1] = row
       end
     end
   end
