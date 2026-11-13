@@ -46,6 +46,11 @@ useSchemaOrg([
         >Explore profession recipes</DsButton
       ></DsContainer
     >
+    <DsContainer width="wide"
+      ><DsButton to="/forever/quests" variant="ghost"
+        >Explore quests and chains</DsButton
+      ></DsContainer
+    >
     <ForeverHub :hub="hub" :unavailable="!!error" @refresh="refresh" />
   </div>
 </template>

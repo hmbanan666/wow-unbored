@@ -2,7 +2,7 @@ import { characterKey } from "#shared/selected-character";
 import type { Game } from "#shared/public-professions";
 import { useSelectedCharacter } from "./useSelectedCharacter";
 export function useProfessionOverlay<T>(
-  kind: "professions" | "recipes",
+  kind: "professions" | "recipes" | "quests" | "quest-chains",
   game: () => Game,
   slug: () => string,
 ) {

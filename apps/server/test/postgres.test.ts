@@ -171,6 +171,8 @@ pg("the schema has every SQLite table and column, but the legacy profiles", asyn
         "game_rows",
         "game_imports",
         "game_quest_names",
+        "game_quest_slugs",
+        "game_quest_chains",
         "game_profession_recipes",
       ].includes(table);
       const actual = (

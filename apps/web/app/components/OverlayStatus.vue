@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { gameName, type Game } from "#shared/public-professions";
-defineProps<{ otherGame: boolean; game: Game; status: string }>();
+withDefaults(
+  defineProps<{ otherGame: boolean; game: Game; status: string; subject?: "recipes" | "quests" }>(),
+  { subject: "recipes" },
+);
 defineEmits<{ retry: [] }>();
 </script>
 <template>
   <p v-if="otherGame" class="overlay-status">
-    Pick a {{ gameName(game) }} character in the header to see your recipes here.
+    Pick a {{ gameName(game) }} character in the header to see your {{ subject }} here.
   </p>
   <p v-else-if="status === 'loading'" class="overlay-status" role="status">
-    Bory is checking your recipes…
+    Bory is checking your {{ subject }}…
   </p>
   <div v-else-if="status === 'error'" class="overlay-status" role="status">
-    Bory could not check your recipes. Pick a character or
+    Bory could not check your {{ subject }}. Pick a character or
     <DsButton variant="ghost" @click="$emit('retry')">try again</DsButton>.
   </div>
 </template>

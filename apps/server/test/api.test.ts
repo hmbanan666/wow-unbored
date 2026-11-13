@@ -302,6 +302,7 @@ test("mcp lists the planner tools", async () => {
       "get_profession_catalog",
       "get_profession_progress",
       "get_progress",
+      "get_quest_chain_progress",
       "get_quest_line",
       "get_ready_now",
       "get_recipe_sources",
