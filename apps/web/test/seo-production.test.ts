@@ -25,6 +25,10 @@ beforeAll(async () => {
   database = await testDatabase();
   await seedSeoContent(database.sql);
   fixtureToday = JSON.stringify((await seedPublicProfessions(database.sql)).today);
+  const profileId = `forever/${fixtureCharacter.realm}/${fixtureCharacter.name}`;
+  await database.sql`INSERT INTO sections_latest (owner_kind, owner_id, section, v, hash, updated_at, bytes, body)
+    VALUES ('char', ${profileId}, 'char', 1, 'profile-fixture', 1, 10,
+      '{"class":"Warlock","classFile":"WARLOCK","race":"Troll","raceFile":"Troll","faction":"Horde","level":25,"xp":18993,"xpMax":34000}'::jsonb)`;
   mediaDir = await mkdtemp(fileURLToPath(new URL("./.seo-media-", import.meta.url)));
   await sharp(fileURLToPath(new URL("../public/bory.png", import.meta.url)))
     .webp()
@@ -406,7 +410,13 @@ productionTest("My pages keep private robots headers after the robots module run
   ]) {
     const response = await fetch(origin + path, { redirect: "manual" });
     expect(response.status, path).toBe(
-      path === "/my/" ? 301 : /\/(enchanting|tailoring)(\?|$)/.test(path) ? 404 : 200,
+      path === "/my/"
+        ? 301
+        : path.includes("/forever/") && path.includes("/enchanting")
+          ? 302
+          : /\/(enchanting|tailoring)(\?|$)/.test(path)
+            ? 404
+            : 200,
     );
     expect(response.headers.get("x-robots-tag"), path).toBe("noindex, nofollow");
     expect(response.headers.get("cache-control"), path).toBe("private, no-store");
@@ -655,7 +665,11 @@ productionTest(
     expect(redirect.headers.get("set-cookie")).toContain("Max-Age=31536000");
     expect(redirect.headers.get("set-cookie")).toMatch(/SameSite=Lax/i);
     const denied = await fetch(origin + old, { headers: { cookie: other }, redirect: "manual" });
-    expect(denied.status).toBe(404);
+    expect(denied.status).toBe(302);
+    expect(denied.headers.get("location")).toBe("/forever/professions/enchanting");
+    const anonymous = await fetch(origin + old, { redirect: "manual" });
+    expect(anonymous.status).toBe(302);
+    expect(anonymous.headers.get("set-cookie") ?? "").not.toContain("unbored_character=");
     expect(denied.headers.get("set-cookie")).toBeNull();
     expect(denied.headers.get("cache-control")).toBe("private, no-store");
   },
@@ -718,5 +732,37 @@ productionTest(
     expect(expired.headers.get("referrer-policy")).toBe("no-referrer");
     expect(await expired.text()).toContain("That link expired");
     for (const prefix of ["a", "p", "e"]) expect(serverLogs).not.toContain(prefix.repeat(43));
+  },
+);
+
+productionTest(
+  "profile home is private after mount and never puts personal data into SSR",
+  async () => {
+    const cookie = await signedCookie();
+    const other = await signedCookie(true);
+    for (const headers of [{}, { cookie }]) {
+      const response = await fetch(origin + "/my", { headers });
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("x-robots-tag")).toContain("noindex");
+      const html = await response.text();
+      expect(html).not.toContain("Kania");
+      expect(html).not.toContain("CAMWOW");
+      expect(html).not.toContain("18993");
+    }
+    const path = "/api/me/characters/" + characterKey(fixtureCharacter) + "/profile";
+    const response = await fetch(origin + path, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-robots-tag")).toContain("noindex");
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      character: {
+        name: "Kania",
+        hero: { cap: 60, level: 25, xp: 18993, xpMax: 34000 },
+        today: expect.any(Array),
+      },
+    });
+    expect((await fetch(origin + path, { headers: { cookie: other } })).status).toBe(404);
+    expect(await (await fetch(origin + path)).json()).toMatchObject({ ok: false });
   },
 );

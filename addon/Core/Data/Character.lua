@@ -42,6 +42,7 @@ S.Register({
     -- The language Bory speaks here, so the Server writes ideas in it.
     body.lang = ns.LANG
     body.level = num(call(UnitLevel, "player"))
+    body.levelCap = ns.Game == "forever" and 60 or num(call(_G.GetMaxPlayerLevel))
     body.xp = num(call(UnitXP, "player"))
     body.xpMax = num(call(UnitXPMax, "player"))
     body.rested = num(call(GetXPExhaustion))

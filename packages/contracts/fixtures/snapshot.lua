@@ -21,6 +21,7 @@ UnboredCharDB = {
 					["raceID"] = 10,
 					["faction"] = "Horde",
 					["level"] = 80,
+					["levelCap"] = 90,
 					["xp"] = 0,
 					["xpMax"] = 0,
 					["specID"] = 63,

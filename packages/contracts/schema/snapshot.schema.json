@@ -138,6 +138,24 @@
         "trainerSeen": {
           "$ref": "#/$defs/recipeSightings"
         },
+        "char": {
+          "allOf": [
+            { "$ref": "#/$defs/section" },
+            {
+              "properties": {
+                "body": {
+                  "properties": {
+                    "levelCap": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "Current client level cap, optional on older snapshots."
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
         "merchantSeen": {
           "$ref": "#/$defs/recipeSightings"
         }

@@ -181,6 +181,7 @@ function UnitClass() return "Mage", "MAGE", 8 end
 function UnitRace() return "Blood Elf", "BloodElf", 10 end
 function UnitFactionGroup() return "Horde" end
 function UnitLevel() return 80 end
+_G.GetMaxPlayerLevel = function() return 90 end
 function UnitXP() return 0 end
 function UnitXPMax() return 0 end
 function GetXPExhaustion() return nil end
@@ -433,6 +434,7 @@ local function body(name)
 end
 
 check(body("char") and body("char").level == 80 and body("char").classFile == "MAGE", "char reads class and level")
+check(body("char").levelCap == 90, "char reads the Retail level cap from the client")
 check(body("char").money == 183420000 and body("char").inGuild == true, "char reads money and guild flag only")
 check(body("char").ilvl == 652.4, "char rounds item level")
 check(body("char").lang == ns.LANG, "char says the language Bory speaks, for the Server's ideas")

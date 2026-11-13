@@ -1,4 +1,6 @@
 import * as vue from "vue";
+import MyPage from "../../app/pages/my/index.vue";
+import { kaniaProfile } from "../fixtures/profile-home";
 import PhoneSignIn from "../../app/components/PhoneSignIn.vue";
 import ProfessionPage from "../../app/pages/[game]/professions/[slug].vue";
 import RecipePage from "../../app/pages/[game]/recipes/[slug].vue";
@@ -12,11 +14,15 @@ import "../../app/assets/css/main.css";
 // Real pages and components, with only the Nuxt environment and HTTP boundary replaced.
 Object.assign(globalThis, vue);
 const query = new URLSearchParams(location.search);
-const signedIn = query.get("overlay") === "1";
+const signedIn = query.get("overlay") === "1" || query.get("profile") === "1";
 const enchanting = publicAlbum(),
   tailoring = publicAlbum("tailoring");
 const albums = [enchanting, tailoring];
-const c = { ...enchanting.overlay.character, level: 23, class: "WARLOCK" };
+const c = {
+  ...enchanting.overlay.character,
+  level: query.get("profile") === "1" ? 25 : 23,
+  class: "WARLOCK",
+};
 const characters = [c, { ...c, game: "retail", name: "Mira", level: 80, class: "MAGE" }];
 if (signedIn)
   document.cookie = `unbored_character=${encodeURIComponent(characterKey(c))}; Path=/; SameSite=Lax`;
@@ -62,6 +68,7 @@ Object.assign(globalThis, {
     };
   },
   $fetch: async (endpoint: string) => {
+    if (endpoint.endsWith("/profile")) return { ok: true, character: kaniaProfile() };
     if (endpoint === "/api/me/page-link")
       return {
         ok: true,
@@ -104,7 +111,9 @@ const app = vue.createApp({
         default: () =>
           vue.h(
             route.path === "/my"
-              ? PhoneSignIn
+              ? query.get("profile") === "1"
+                ? MyPage
+                : PhoneSignIn
               : route.path.includes("/recipes/")
                 ? RecipePage
                 : ProfessionPage,
