@@ -117,3 +117,5 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0099. Private character history](0099-character-history.md)
 
 - [0100. One release zip for Retail and Forever](0100-one-zip-for-retail-and-forever.md)
+
+- [0101. Personal profile home and profession album](0101-personal-profile-and-profession-album.md)
