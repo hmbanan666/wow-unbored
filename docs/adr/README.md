@@ -121,3 +121,5 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0101. Personal profile home and profession album](0101-personal-profile-and-profession-album.md)
 
 - [0102. English-only site, public game pages with a personal overlay](0102-english-only-public-pages-with-personal-overlay.md)
+
+- [0103. Forever profession tiers and trainer visits](0103-forever-profession-tiers-and-trainer-visits.md)

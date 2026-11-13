@@ -8,7 +8,12 @@ GetProfessions = nil
 GetProfessionInfo = nil
 local skills = {
   { skillID = 11, name = "Professions", isHeader = true },
-  { skillID = 171, name = "Alchemy", isHeader = false, skillLineCategoryID = 11, rank = 112, maxRank = 150 },
+  { skillID = 171, name = "Alchemy", isHeader = false, skillLineCategoryID = 11,
+    rank = 112, maxRank = 150, parentSkillLineID = 0 },
+  { skillID = 333, name = "Enchanting", isHeader = false, skillLineCategoryID = 11,
+    rank = 145, maxRank = 150, parentSkillLineID = 0 },
+  { skillID = 2940, name = "Enchanting", isHeader = false, skillLineCategoryID = 11,
+    rank = 145, maxRank = 150, parentSkillLineID = 333 },
   { skillID = 185, name = "Cooking", isHeader = false, skillLineCategoryID = 9, rank = 1, maxRank = 75 },
   { skillID = 43, name = "Swords", isHeader = false, skillLineCategoryID = 6, rank = 50, maxRank = 100 },
 }
@@ -58,9 +63,13 @@ return function(ns)
   assert(ns.Snapshot.Body("char").level == 23)
   assert(#(ns.DB.errors or {}) == 0, "login and staged collection must not report Lua errors")
   local professions = ns.Snapshot.Body("professions")
-  assert(professions and #professions.list == 2, "only primary and secondary professions")
+  assert(professions and #professions.list == 4, "classic line and its expansion tier both stay")
   assert(professions.list[1].skillLine == 171 and professions.list[1].skill == 112)
   assert(professions.list[1].max == 150 and professions.list[1].name == "Alchemy")
+  assert(professions.list[1].parentSkillLine == nil, "a root skill line has no parent")
+  local enchanting = professions.list[3]
+  assert(enchanting.skillLine == 2940 and enchanting.parentSkillLine == 333, "tier points at Enchanting")
+  assert(enchanting.name == "Enchanting" and enchanting.skill == 145)
   assert(ns.Snapshot.Body("recipes") == nil, "recipes wait for window")
   local filtered = C_TradeSkillUI.GetFilteredRecipeIDs
   C_TradeSkillUI.GetFilteredRecipeIDs = function() error("prefer all recipes") end

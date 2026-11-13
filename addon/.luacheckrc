@@ -50,6 +50,7 @@ files["tests/recipe-sources.lua"] = { ignore = { "111", "112", "121", "122" } }
 read_globals = {
   "UnitGUID", "C_Trainer", "C_TooltipInfo", "C_MerchantFrame",
   "GetNumTrainerServices", "GetTrainerServiceStepIndex", "GetTrainerServiceInfo",
+  "IsTradeskillTrainer",
   "GetTrainerServiceSkillReq", "GetTrainerServiceCost", "GetMerchantNumItems", "GetMerchantItemID",
   "GetBuildInfo",
   "BreakUpLargeNumbers",

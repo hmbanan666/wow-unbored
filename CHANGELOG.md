@@ -2,6 +2,11 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## Unreleased
+
+- Fixed: On WoW Forever, the extra Enchanting skill-book row stays tied to Enchanting, and opening a profession trainer saves what it teaches.
+- Исправлено: в WoW Forever дополнительная строка Наложения чар остаётся той же профессией, а визит к учителю профессии сохраняется.
+
 ## 0.14.0
 
 - WoW Forever: the same addon now loads in Forever as well as Retail. The Companion finds the `_forever_` folder, installs Bory there and sends Forever characters to My page with a Forever chip.
