@@ -43,3 +43,15 @@ Amends [0073](0073-website-and-account-link.md) and [0101](0101-personal-profile
 - **Chain definitions.** The Forever client tables have no usable chains. Build 1.60.1.70938 has 3 `QuestLine` rows, and `QuestV2` has no names. So chain definitions cannot come from client tables.
 - **Proposed source.** Authored chain lists, each step verified against player observations: quest ids and titles from `questLog`, accept and turn-in order. No third-party quest databases are imported.
 - **Before building.** This needs the owner's approval of authored chains, plus an addon change to record accept and turn-in events with quest ids.
+
+## Planned track: character feed and community feed (after professions, recipes and quests)
+
+- **No private sections.** The site has no private content sections. Only account controls stay private: `/my` settings, sign-in and Forget my data.
+- **Character feed.** Character history becomes a feed, like a photo feed: dated events (level rises, profession ranks, learned recipes, reputation tiers, dungeons) with the player's screenshots over time. From a character feed the visitor can jump to a global community feed of player content.
+- **Sharing is opt-in.**
+  - A character feed and its screenshots are public only when the player turns sharing on. It is off by default.
+  - The switch is in the Companion and on the site.
+  - Screenshots are collected only when sharing is on: the Companion reads the game's `Screenshots` folder and uploads only images taken while sharing is on.
+  - Turning sharing off hides the feed at once.
+- **Deletion and media.** Forget my data deletes everything, including uploaded screenshots and their variants. The media rules stay: only compression and format conversion, no edits and no third-party images.
+- **Not built yet.** Each step gets its own ADR before code. Until then, the existing private history page (0099) stays as it is.
