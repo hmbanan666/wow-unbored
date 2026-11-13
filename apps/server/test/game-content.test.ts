@@ -18,7 +18,7 @@ for (const backend of BACKENDS) {
       await store.game.importBuild(build, async (input) => {
         if (!new URL(String(input)).pathname.includes("/ItemSparse/")) return coreResponse(input);
         const bytes = new TextEncoder().encode(
-          '\uFEFFID,Display_lang,Ignored\r\n19019,"Летим, ""ещё""!\nAgain",unused\r\n',
+          '\uFEFFID,Display_lang,Ignored,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\r\n19019,"Летим, ""ещё""!\nAgain",unused,333,20,2,0\r\n',
         );
         let offset = 0;
         return new Response(
@@ -34,6 +34,10 @@ for (const backend of BACKENDS) {
       assert.deepEqual((await store.game.row("ItemSparse", 19019, "ruRU"))?.fields, {
         ID: 19019,
         Display_lang: 'Летим, "ещё"!\nAgain',
+        RequiredSkill: 333,
+        RequiredSkillRank: 20,
+        OverallQualityID: 2,
+        Bonding: 0,
       });
       assert.equal((await store.game.row("QuestV2", 90001, "ruRU"))?.fields.UniqueBitFlag, 42);
       assert.equal(await store.game.row("QuestV2", 99999), undefined);
@@ -49,16 +53,17 @@ for (const backend of BACKENDS) {
     const store = new Store(dir, { postgres: pg(backend) });
     try {
       for (const csv of [
-        "ID,Display_lang\n19019,One\n19019,Duplicate\n",
-        "ID,Display_lang\n-1,Negative id\n",
-        "ID,Display_lang\n2147483648,Too large id\n",
-        "ID,Display_lang\n19019,Missing,Extra column\n",
-        'ID,Display_lang\n19019,Unquoted "quote"\n',
-        'ID,Display_lang\n19019,"Truncated',
-        'ID,Display_lang\n19019,"Closed"unexpected\n',
-        "ID,Display_lang\n19019," + "x".repeat(262_145),
+        "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19019,One,0,0,1,0\n19019,Duplicate,0,0,1,0\n",
+        "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n-1,Negative id,0,0,1,0\n",
+        "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n2147483648,Too large id,0,0,1,0\n",
+        "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19019,Missing,Extra column,0,0,1,0\n",
+        'ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19019,Unquoted "quote",0,0,1,0\n',
+        'ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19019,"Truncated',
+        'ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19019,"Closed"unexpected,0,0,1,0\n',
+        "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19019," +
+          "x".repeat(262_145),
         "ID,Display_lang,Display_lang\n19019,One,Two\n",
-        "ID,Display_lang\n",
+        "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n",
       ]) {
         await assert.rejects(
           store.game.importBuild(build, async (input) =>
@@ -105,7 +110,9 @@ for (const backend of BACKENDS) {
         store.game.importBuild(newer, async (input) => {
           const url = new URL(String(input));
           return url.pathname.includes("ItemSparse") && url.searchParams.get("locale") === "ruRU"
-            ? new Response("ID,Display_lang\n19020,Another item\n")
+            ? new Response(
+                "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19020,Another item,0,0,1,0\n",
+              )
             : coreResponse(input);
         }),
       );

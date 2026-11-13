@@ -92,6 +92,24 @@ export async function materializeRecipes(db: Db, game: Game, build: string, sign
       ].sort((a, b) => a - b),
       teachingItems: [...(taught.get(spellId) ?? [])].sort((a, b) => a - b),
     };
+    // ADR 0101: a formula rank applies only to this profession or its client parent.
+    recipe.teaching = recipe.teachingItems.flatMap((itemId) => {
+      const item = items.get(itemId)!;
+      if (item.OverallQualityID === undefined || item.Bonding === undefined) return [];
+      const matches =
+        Number(item.RequiredSkill) === skillLine ||
+        (Number(skills.get(skillLine)?.ParentSkillLineID) > 0 &&
+          Number(item.RequiredSkill) === Number(skills.get(skillLine)?.ParentSkillLineID));
+      return [
+        {
+          itemId,
+          requiredSkill:
+            matches && item.RequiredSkillRank !== undefined ? Number(item.RequiredSkillRank) : null,
+          quality: Number(item.OverallQualityID),
+          bindOnPickup: Number(item.Bonding) === 1,
+        },
+      ];
+    });
     const reagent = reagents.get(spellId);
     for (let i = 0; reagent && i < 8; i++) {
       const itemId = Number(reagent[`Reagent_${i}`]),

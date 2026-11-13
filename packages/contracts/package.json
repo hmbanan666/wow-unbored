@@ -20,7 +20,9 @@
     "./guide": "./src/guide.ts",
     "./profession-catalog": "./src/profession-catalog.ts",
     "./skill-route": "./src/skill-route.ts",
-    "./recipe-sources": "./src/recipe-sources.ts"
+    "./recipe-sources": "./src/recipe-sources.ts",
+    "./recipe-difficulty": "./src/recipe-difficulty.ts",
+    "./profession-progress": "./src/profession-progress.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

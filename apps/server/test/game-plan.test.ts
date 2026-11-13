@@ -112,7 +112,8 @@ test("quest and achievement collectibles and vendor toys have guaranteed sources
       return new Response(coreCsv.BattlePetSpecies + "40,7391,10696,1,5\n");
     if (table === "Toy")
       return new Response("ID,ItemID,SourceTypeEnum\n1,1973,2\n2,1974,5\n3,1975,1\n");
-    if (table === "ItemSparse") return new Response(coreCsv.ItemSparse + "1973,Vendor toy\n");
+    if (table === "ItemSparse")
+      return new Response(coreCsv.ItemSparse + "1973,Vendor toy,0,0,1,0\n");
     return coreResponse(input);
   });
   try {
@@ -169,7 +170,7 @@ test("uncertain drop and unsupported categories stay notes across collectible ki
 test("chance-only item rejection preserves the previous Plan and pending Request on every submission path", async () => {
   const api = await setup(async (input) => {
     if (new URL(String(input)).pathname.includes("/ItemSparse/"))
-      return new Response(coreCsv.ItemSparse + "32458,Ashes of Al'ar\n");
+      return new Response(coreCsv.ItemSparse + "32458,Ashes of Al'ar,0,0,4,1\n");
     return coreResponse(input);
   });
   try {
@@ -502,7 +503,10 @@ test("a newer build replaces validation evidence immediately", async () => {
     assert.equal(before.value.stored.goal, "Find {item:19019|the blade}");
     await api.store.game.importBuild("12.0.1.70001", async (input) => {
       const table = new URL(String(input)).pathname.split("/")[2];
-      if (table === "ItemSparse") return new Response("ID,Display_lang\n19020,Another blade\n");
+      if (table === "ItemSparse")
+        return new Response(
+          "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19020,Another blade,0,0,1,0\n",
+        );
       if (table === "QuestPOIPoint") return new Response("ID,QuestPOIBlobID,X,Y\n201,200,80,20\n");
       return coreResponse(input);
     });

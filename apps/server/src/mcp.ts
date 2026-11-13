@@ -1,3 +1,4 @@
+import { readProfessionProgress } from "./profession-progress.ts";
 import { CHARACTER_EVENT_TYPES } from "@unbored/contracts/character-history";
 import { readCharacterHistory } from "./character-events.ts";
 import { readSkillRoutes } from "./skill-route.ts";
@@ -186,6 +187,7 @@ const LEASE_TOOLS = new Set([
   "get_recipe_sources",
   "get_character_history",
   "get_skill_route",
+  "get_profession_progress",
   "find_game_entity",
   "get_quest_line",
   "get_item_sources",
@@ -1000,6 +1002,27 @@ export function createMcpServer(
         (await readSkillRoutes(store.db, rows[0]!, input.skillLine, input.target))[0]?.route ??
           null,
       );
+    },
+  );
+
+  registerTool(
+    "get_profession_progress",
+    {
+      title: "Read character profession progress",
+      description:
+        "The private character page's profession object: known and total, missing recipes with difficulty reasons, formula facts, reagent names and observed sources. Forever aliases share one profession. No download on lookup.",
+      inputSchema: {
+        ...whoSchema,
+        game: z.enum(["retail", "forever"]),
+        character: z.string().min(1).max(80),
+        skillLine: z.number().int().positive().max(2147483647),
+      },
+    },
+    async (input) => {
+      await settle(input.account);
+      const rows = await pickCharacters(input);
+      if (rows.length !== 1) return text({ error: "Choose one Character with realm or account." });
+      return text(await readProfessionProgress(store.db, rows[0]!, input.skillLine));
     },
   );
 
