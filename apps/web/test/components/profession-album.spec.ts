@@ -41,69 +41,6 @@ test("unopened and absent catalog states give the player a way forward", () => {
 });
 
 import { flushPromises } from "@vue/test-utils";
-import { defineComponent, h, ref, reactive, Suspense } from "vue";
-import Page from "../../app/pages/my/[game]/[realm]/[name]/[profession].vue";
-
-for (const game of ["forever", "retail"] as const) {
-  test(`${game} profession route uses private character API and URL filter including back navigation`, async () => {
-    const character = albumCharacter("empty", game);
-    const route = reactive({
-      params: { game, realm: character.realm, name: character.name, profession: "enchanting" },
-      query: { f: "missing", keep: "value" },
-    });
-    const push = vi.fn();
-    vi.stubGlobal("useRoute", () => route);
-    vi.stubGlobal("useRouter", () => ({ push }));
-    const fetch = vi.fn(async () => ({
-      data: ref({ ok: true, character }),
-      error: ref(null),
-      status: ref("success"),
-      refresh: vi.fn(),
-    }));
-    vi.stubGlobal("useFetch", fetch);
-    const wrapper = mount(
-      defineComponent({ render: () => h(Suspense, null, { default: () => h(Page) }) }),
-    );
-    await flushPromises();
-    expect(fetch.mock.calls[0]?.[0].value).toBe(
-      `/api/me/characters/${game}/CAMWOW%20EU4%20Realm%203%20PvE/Kania`,
-    );
-    expect(wrapper.find('button[aria-pressed="true"]').text()).toBe("Missing");
-    await wrapper
-      .findAll("button")
-      .find((b) => b.text() === "Can get now")!
-      .trigger("click");
-    expect(push).toHaveBeenCalledWith({ query: { f: "now", keep: "value" } });
-    route.query.f = "trainer";
-    await flushPromises();
-    expect(wrapper.find('button[aria-pressed="true"]').text()).toBe("Trainer");
-    expect(vi.mocked(useSeoMeta)).toHaveBeenCalledWith(
-      expect.objectContaining({ robots: "noindex, nofollow" }),
-    );
-  });
-}
-
-test("unknown profession slugs return 404", async () => {
-  vi.stubGlobal("useRoute", () => ({
-    params: { game: "forever", realm: "Realm", name: "Kania", profession: "unknown" },
-    query: {},
-  }));
-  vi.stubGlobal("useRouter", () => ({ push: vi.fn() }));
-  vi.stubGlobal("useFetch", async () => ({
-    data: ref({ ok: true, character: albumCharacter() }),
-    error: ref(null),
-    status: ref("success"),
-    refresh: vi.fn(),
-  }));
-  vi.stubGlobal("createError", (input: unknown) => input);
-  const errors: unknown[] = [];
-  mount(defineComponent({ render: () => h(Suspense, null, { default: () => h(Page) }) }), {
-    global: { config: { errorHandler: (error) => errors.push(error) } },
-  });
-  await flushPromises();
-  expect(errors).toContainEqual({ statusCode: 404, message: "Profession not found." });
-});
-
 test("recipe details show formula facts, requirements, reagents and sighted places", async () => {
   const profession = albumCharacter().professions[0]!;
   const recipe = profession.album.find((r) => r.name === "Arcane Forge")!;
@@ -162,4 +99,85 @@ test("filtering dims album slots, filters the list, and resets Show all", async 
   expect(wrapper.text()).toContain("No missing recipes match this filter");
   await wrapper.setProps({ filter: "all" });
   expect(wrapper.findAll(".missing-recipe")).toHaveLength(12);
+});
+
+test("public album has all named recipes and base filters without personal state; overlay retains unread slots", async () => {
+  const { publicAlbum } = await import("../fixtures/public-professions");
+  const { base, overlay } = publicAlbum("enchanting");
+  const wrapper = mount(Album, { props: { base, filter: "all", game: "forever" } });
+  expect(wrapper.findAll(".recipe-slot")).toHaveLength(262);
+  expect(wrapper.find(".collection-ring").exists()).toBe(false);
+  expect(wrapper.text()).toContain("Base difficulty");
+  expect(wrapper.findAll("button").some((b) => b.text() === "Missing")).toBe(false);
+  expect(wrapper.find('a[href="/forever/recipes/runed-copper-rod"]').exists()).toBe(true);
+  await wrapper.setProps({ overlay });
+  expect(wrapper.text()).toContain("Open your Enchanting window");
+  expect(wrapper.findAll(".recipe-slot")).toHaveLength(262);
+  expect(wrapper.findAll(".recipe-slot.is-known")).toHaveLength(0);
+});
+
+test("Tailoring overlay fills known slots and shows skill and easiest missing recipes", async () => {
+  const { publicAlbum } = await import("../fixtures/public-professions");
+  const { base, overlay } = publicAlbum("tailoring");
+  const wrapper = mount(Album, { props: { base, overlay, filter: "all", game: "forever" } });
+  expect(wrapper.findAll(".recipe-slot.is-known")).toHaveLength(7);
+  expect(wrapper.text()).toContain("112 / 150");
+  expect(wrapper.text()).toContain("Missing, easiest first");
+});
+
+import RecipeDetail from "../../app/components/RecipeDetail.vue";
+test("single recipe base facts stay visible with a known or unread character overlay", async () => {
+  const { publicAlbum } = await import("../fixtures/public-professions");
+  const { base, overlay } = publicAlbum();
+  const recipe = base.album.find((r) => r.name === "Runed Copper Rod")!;
+  const wrapper = mount(RecipeDetail, { props: { recipe, inline: true, game: "forever" } });
+  expect(wrapper.text()).toContain("Base difficulty");
+  expect(wrapper.text()).toContain("from required skill");
+  expect(wrapper.text()).not.toContain("your skill");
+  expect(wrapper.find("aside").exists()).toBe(false);
+  await wrapper.setProps({
+    overlay: {
+      character: overlay.character,
+      skill: 145,
+      max: 150,
+      ...overlay.recipes[recipe.spellId]!,
+    },
+  });
+  expect(wrapper.text()).toContain("Kania has not checked this yet");
+  expect(wrapper.text()).toContain("145 / 150");
+  const tailoring = publicAlbum("tailoring");
+  const known = tailoring.base.album[0]!;
+  await wrapper.setProps({
+    recipe: known,
+    overlay: {
+      character: overlay.character,
+      skill: 112,
+      max: 150,
+      ...tailoring.overlay.recipes[known.spellId]!,
+    },
+  });
+  expect(wrapper.text()).toContain("Kania knows this");
+  expect(wrapper.text()).toContain("Base difficulty");
+});
+
+test("a missing recipe card shows character reasons and the next step", async () => {
+  const { publicAlbum } = await import("../fixtures/public-professions");
+  const { base, overlay } = publicAlbum("tailoring");
+  const recipe = base.album.find((r) => overlay.recipes[r.spellId]?.known === false)!;
+  const wrapper = mount(RecipeDetail, {
+    props: {
+      recipe,
+      inline: true,
+      game: "forever",
+      overlay: {
+        character: overlay.character,
+        skill: overlay.skill,
+        max: overlay.max,
+        ...overlay.recipes[recipe.spellId]!,
+      },
+    },
+  });
+  expect(wrapper.text()).toContain("Kania is missing this");
+  expect(wrapper.text()).toContain("Open a trainer or recipe vendor");
+  expect(wrapper.text()).toContain("Base difficulty");
 });

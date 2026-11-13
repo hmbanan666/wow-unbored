@@ -9,6 +9,7 @@ WORKDIR /src
 ENV NUXT_TELEMETRY_DISABLED=1
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# Includes shared/public-professions.ts and shared/selected-character.ts for SSR and overlays.
 COPY apps/web apps/web
 COPY apps/server/package.json apps/server/package.json
 COPY apps/companion/package.json apps/companion/package.json

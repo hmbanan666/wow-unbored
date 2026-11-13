@@ -25,8 +25,8 @@ const catalog: ProfessionRecipe[] = rows.map((row, index) => {
     minSkill: 1,
     thresholds: {
       orange: 1,
-      yellow: Number(grey) - 40,
-      green: Number(grey) - 20,
+      yellow: Math.max(1, Number(grey) - 40),
+      green: Math.max(1, Number(grey) - 20),
       grey: Number(grey),
     },
     skillUps: 1,

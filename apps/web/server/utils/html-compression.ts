@@ -13,7 +13,9 @@ export async function compressPublicHtml(
 ): Promise<void> {
   if (
     method !== "GET" ||
-    !/^\/(?:$|(?:guides|collections|paths)(?:\/[^/]+)?$)/.test(path.split("?")[0]!) ||
+    !/^\/(?:$|(?:guides|collections|paths)(?:\/[^/]+)?$|(?:forever|retail)\/(?:professions(?:\/[^/]+)?|recipes\/[^/]+)$)/.test(
+      path.split("?")[0]!,
+    ) ||
     typeof response.body !== "string" ||
     !response.headers["content-type"]?.startsWith("text/html") ||
     response.headers["content-encoding"] ||

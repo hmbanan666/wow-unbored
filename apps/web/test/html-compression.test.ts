@@ -41,3 +41,17 @@ test("identity clients share the Vary policy; excluded encodings and private rou
   expect(encoded.body).toBe(html);
   expect(encoded.headers["content-encoding"]).toBe("br");
 });
+
+test("public profession and recipe HTML uses the existing compression policy", async () => {
+  for (const path of [
+    "/forever/professions",
+    "/forever/professions/enchanting",
+    "/forever/recipes/runed-copper-rod",
+    "/retail/professions/alchemy",
+  ]) {
+    const page = response();
+    await compressPublicHtml(page, path, "GET", "gzip");
+    expect(page.headers["content-encoding"]).toBe("gzip");
+    expect(gunzipSync(page.body).toString()).toBe(html);
+  }
+});

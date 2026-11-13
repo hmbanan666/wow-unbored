@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
 import { testDatabase } from "../../server/test/postgres-db.ts";
+import { seedPublicProfessions, fixtureCharacter } from "./public-professions-fixture";
+import { characterKey } from "../shared/selected-character";
 import { seedSeoContent } from "./seo-fixture.ts";
 
 const enabled = process.env.UNBORED_WEB_SEO_TEST === "1";
@@ -15,11 +17,13 @@ let server: ChildProcess;
 let origin: string;
 let mediaDir: string;
 const windows: Window[] = [];
+let fixtureToday = "[]";
 
 beforeAll(async () => {
   if (!enabled) return;
   database = await testDatabase();
   await seedSeoContent(database.sql);
+  fixtureToday = JSON.stringify((await seedPublicProfessions(database.sql)).today);
   mediaDir = await mkdtemp(fileURLToPath(new URL("./.seo-media-", import.meta.url)));
   await sharp(fileURLToPath(new URL("../public/bory.png", import.meta.url)))
     .webp()
@@ -44,6 +48,9 @@ async function startWebServer(unavailable = false) {
     {
       env: {
         ...process.env,
+        NUXT_SERVER_URL: "http://fixture.test",
+        UNBORED_PROFESSION_FIXTURE: "1",
+        UNBORED_TODAY_FIXTURE: fixtureToday,
         UNBORED_RELEASE_FIXTURE: unavailable ? "unavailable" : "available",
         DATABASE_URL: database.url,
         NITRO_HOST: "127.0.0.1",
@@ -391,7 +398,9 @@ productionTest("My pages keep private robots headers after the robots module run
     "/api/me/characters/forever/Realm/Mine/history",
   ]) {
     const response = await fetch(origin + path, { redirect: "manual" });
-    expect(response.status, path).toBe(path === "/my/" ? 301 : 200);
+    expect(response.status, path).toBe(
+      path === "/my/" ? 301 : /\/(enchanting|tailoring)(\?|$)/.test(path) ? 404 : 200,
+    );
     expect(response.headers.get("x-robots-tag"), path).toBe("noindex, nofollow");
     expect(response.headers.get("cache-control"), path).toBe("private, no-store");
   }
@@ -516,5 +525,131 @@ productionTest(
       a.getAttribute("href"),
     );
     expect(siblings).toEqual(["/guides/forever-5", "/guides/forever-2", "/guides/forever-3"]);
+  },
+);
+
+async function signedCookie(other = false) {
+  const response = await fetch(origin + "/enter/" + (other ? "b" : "a").repeat(64), {
+    redirect: "manual",
+  });
+  expect(response.status).toBe(303);
+  return response.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .join("; ");
+}
+productionTest(
+  "profession and recipe SSR is byte-identical for anonymous and signed-in visitors with a character cookie",
+  async () => {
+    const cookie = await signedCookie();
+    for (const path of [
+      "/forever/professions",
+      "/forever/professions/enchanting",
+      "/forever/recipes/runed-copper-rod",
+    ]) {
+      const anonymous = await fetch(origin + path);
+      const personal = await fetch(origin + path, {
+        headers: {
+          cookie:
+            cookie + "; unbored_character=" + encodeURIComponent(characterKey(fixtureCharacter)),
+        },
+      });
+      expect(anonymous.status).toBe(200);
+      expect(personal.status).toBe(200);
+      const html = await anonymous.text();
+      expect(await personal.text()).toBe(html);
+      expect(html).not.toContain("Kania");
+      expect(html).not.toContain("fixture-session");
+      expect(html).not.toContain("fixture-set");
+      expect(Buffer.byteLength(html)).toBeLessThan(600_000);
+      expect(anonymous.headers.get("x-robots-tag")).toMatch(/^index, follow/);
+      expect(personal.headers.get("set-cookie")).toBeNull();
+    }
+  },
+);
+productionTest(
+  "public recipe SEO and sitemap include only supported named catalog rows",
+  async () => {
+    const doc = await page("/forever/recipes/runed-copper-rod");
+    expect(doc.title).toContain("Runed Copper Rod");
+    expect(doc.querySelector('meta[property="og:title"]')?.getAttribute("content")).toContain(
+      "Runed Copper Rod",
+    );
+    expect(doc.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(
+      "https://playunbored.com/forever/recipes/runed-copper-rod",
+    );
+    expect(doc.body.textContent).toContain("from required skill");
+    expect(doc.body.textContent).toContain("Base difficulty");
+    expect(doc.body.textContent).toContain("80 copper");
+    const graph = [...doc.querySelectorAll('script[type="application/ld+json"]')].flatMap(
+      (s) => JSON.parse(s.textContent!)["@graph"],
+    );
+    expect(
+      graph
+        .find((n) => n["@type"] === "BreadcrumbList")
+        .itemListElement.map((i: { name: string }) => i.name),
+    ).toEqual(["Home", "WoW Forever", "Professions", "Enchanting", "Runed Copper Rod"]);
+    const sitemap = await (await fetch(origin + "/sitemap.xml")).text();
+    for (const path of [
+      "/forever/professions",
+      "/forever/professions/enchanting",
+      "/forever/recipes/runed-copper-rod",
+    ])
+      expect(sitemap).toContain(path);
+    expect(sitemap).not.toContain("/retail/professions");
+    expect(sitemap).not.toContain("/api/me");
+    for (const path of [
+      "/retail/professions",
+      "/retail/professions/enchanting",
+      "/retail/recipes/runed-copper-rod",
+      "/forever/recipes/unnamed",
+    ])
+      expect((await fetch(origin + path)).status).toBe(404);
+  },
+);
+productionTest(
+  "overlay HTTP APIs and redirects require a live owner, with private no-store and noindex",
+  async () => {
+    const cookie = await signedCookie();
+    const other = await signedCookie(true);
+    const query = "?character=" + encodeURIComponent(characterKey(fixtureCharacter));
+    for (const path of [
+      "/api/me/overlay/professions/forever/enchanting",
+      "/api/me/overlay/recipes/forever/runed-copper-rod",
+    ]) {
+      const response = await fetch(origin + path + query, { headers: { cookie } });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("x-robots-tag")).toContain("noindex");
+      const body = await response.json();
+      expect(body.character.name).toBe("Kania");
+      expect(body.skill).toBe(145);
+      expect(body.known).toBeNull();
+      const denied = await fetch(origin + path + query, { headers: { cookie: other } });
+      expect(denied.status).toBe(404);
+      expect(denied.headers.get("cache-control")).toBe("private, no-store");
+      expect(denied.headers.get("x-robots-tag")).toContain("noindex");
+      expect((await fetch(origin + path + query)).status).toBe(401);
+      expect(
+        (await fetch(origin + path + "?character=retail/Realm/Kania", { headers: { cookie } }))
+          .status,
+      ).toBe(404);
+    }
+    const list = await fetch(origin + "/api/me/characters", { headers: { cookie } });
+    expect(list.headers.get("cache-control")).toBe("private, no-store");
+    expect(list.headers.get("x-robots-tag")).toContain("noindex");
+    expect((await list.json()).characters).toEqual([
+      { ...fixtureCharacter, class: "WARLOCK", level: 23 },
+    ]);
+    const old = "/my/" + characterKey(fixtureCharacter) + "/enchanting";
+    const redirect = await fetch(origin + old, { headers: { cookie }, redirect: "manual" });
+    expect(redirect.status).toBe(302);
+    expect(redirect.headers.get("location")).toBe("/forever/professions/enchanting");
+    expect(redirect.headers.get("set-cookie")).toContain("Max-Age=31536000");
+    expect(redirect.headers.get("set-cookie")).toMatch(/SameSite=Lax/i);
+    const denied = await fetch(origin + old, { headers: { cookie: other }, redirect: "manual" });
+    expect(denied.status).toBe(404);
+    expect(denied.headers.get("set-cookie")).toBeNull();
+    expect(denied.headers.get("cache-control")).toBe("private, no-store");
   },
 );

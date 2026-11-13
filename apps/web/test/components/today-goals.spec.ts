@@ -50,3 +50,12 @@ test("unavailable and empty Today states offer a way forward", async () => {
   await wrapper.setProps({ unavailable: false });
   expect(wrapper.text()).toContain("Browse your collection below.");
 });
+
+import TodayStrip from "../../app/components/TodayStrip.vue";
+test("Today keeps its advice but does not link to a profession without a catalog", () => {
+  const character = albumCharacter("unopened", "retail");
+  for (const profession of character.professions) profession.total = null;
+  const wrapper = mount(TodayStrip, { props: { character } });
+  expect(wrapper.text()).toContain("Open your Enchanting window once");
+  expect(wrapper.find('a[href*="/professions/"]').exists()).toBe(false);
+});

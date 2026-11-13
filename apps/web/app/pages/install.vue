@@ -163,6 +163,14 @@ useSchemaOrg([
         </p>
       </DsProse>
     </DsSection>
+    <DsSection id="sign-in" title="Sign in from the Companion" divided>
+      <DsProse
+        ><p>
+          Open the Companion and choose <strong>My page</strong>. Its one-time link signs you in.
+          Then pick a Character in the header to see your recipes on any profession page.
+        </p></DsProse
+      >
+    </DsSection>
     <DsSection title="Your game, your choices" divided>
       <DsProse>
         <ul>

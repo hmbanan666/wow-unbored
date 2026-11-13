@@ -168,6 +168,7 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
     const ownOnly = await readPublished(sql, "guide", "forever-start");
     assert.deepEqual(ownOnly?.media, illustrated?.media);
     vi.stubGlobal("defineSitemapEventHandler", (handler: unknown) => handler);
+    vi.stubGlobal("defineCachedFunction", (handler: unknown) => handler);
     const { default: sitemap } = await import("../server/api/__sitemap__/urls.ts");
     const locations = (await (sitemap as unknown as () => Promise<{ loc: string }[]>)()).map(
       (entry) => entry.loc,

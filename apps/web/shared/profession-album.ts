@@ -22,16 +22,18 @@ export const ALBUM_FILTERS = [
 ] as const;
 export function albumFilter(query: unknown): string {
   return typeof query === "string" &&
-    (ALBUM_FILTERS.some((f) => f.id === query) || query.startsWith("zone:"))
+    (ALBUM_FILTERS.some((f) => f.id === query) ||
+      query.startsWith("zone:") ||
+      query.startsWith("category:"))
     ? query
     : "all";
 }
 export function matchesAlbumFilter(recipe: AlbumRecipe, filter: string): boolean {
   if (filter === "all") return true;
   if (filter.startsWith("zone:")) return recipe.sources.some((s) => s.zone === filter.slice(5));
-  if (recipe.known !== false) return false;
-  if (filter === "missing") return true;
-  if (filter === "now") return recipe.difficulty.canGetNow;
+  if (filter.startsWith("category:")) return String(recipe.category.id) === filter.slice(9);
+  if (filter === "missing") return recipe.known === false;
+  if (filter === "now") return recipe.known === false && recipe.difficulty.canGetNow;
   const source = recipe.difficulty.source;
   return filter === "vendor"
     ? source === "vendor" || source === "vendor_limited"

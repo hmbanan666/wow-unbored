@@ -186,7 +186,9 @@ async function plan(db: DatabaseSync, sql: Sql): Promise<{ plans: Plan[]; skippe
       !seen.has(table) &&
       !POSTGRES_ONLY.has(table) &&
       !OPTIONAL_SQLITE.has(table) &&
-      !GAME_TABLES[table]
+      !GAME_TABLES[table] &&
+      // Derived by catalog import triggers, and retained through forced transfers to keep links stable.
+      table !== "game_recipe_slugs"
     ) {
       throw new TransferError(`Postgres table ${table} is missing in the SQLite file.`);
     }
