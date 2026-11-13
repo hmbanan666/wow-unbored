@@ -17,12 +17,15 @@ export function recipeDifficulty({
   skill,
   rankMax,
   game = "forever",
+  base = false,
 }: {
   recipe: ProfessionRecipe;
   sources: RecipeSource[];
   skill: number | null;
   rankMax: number | null;
   game?: "retail" | "forever";
+  /** Public Source + Reagents only; no character facts or skill reasons. */
+  base?: boolean;
 }): RecipeDifficulty {
   const minimum = (values: (number | null)[]) => {
     const known = values.filter((v): v is number => v !== null && Number.isFinite(v) && v >= 0);
@@ -67,20 +70,22 @@ export function recipeDifficulty({
   };
   let score = best.score;
   const reasons = [best.reason];
-  if (requiredSkill === null) {
-    score++;
-    reasons.push("Skill needed: unknown until seen");
-  } else if (skill !== null && requiredSkill <= skill) {
-    reasons.push(`Needs ${requiredSkill}: you have it`);
-  } else {
-    const nextRank = rankMax !== null && requiredSkill > rankMax;
-    score += nextRank ? 2 : 1;
-    reasons.push(
-      `Needs ${requiredSkill}: ${nextRank ? "next rank first" : skill === null ? "your skill is not known yet" : `you have ${skill}`}`,
-    );
-    if (skill !== null && requiredSkill - skill > 100) {
+  if (!base) {
+    if (requiredSkill === null) {
       score++;
-      reasons.push("More than 100 skill points away");
+      reasons.push("Skill needed: unknown until seen");
+    } else if (skill !== null && requiredSkill <= skill) {
+      reasons.push(`Needs ${requiredSkill}: you have it`);
+    } else {
+      const nextRank = rankMax !== null && requiredSkill > rankMax;
+      score += nextRank ? 2 : 1;
+      reasons.push(
+        `Needs ${requiredSkill}: ${nextRank ? "next rank first" : skill === null ? "your skill is not known yet" : `you have ${skill}`}`,
+      );
+      if (skill !== null && requiredSkill - skill > 100) {
+        score++;
+        reasons.push("More than 100 skill points away");
+      }
     }
   }
   const reagents = new Set(recipe.reagents.map((r) => r.itemId)).size;
@@ -95,6 +100,7 @@ export function recipeDifficulty({
     requiredSkill,
     source: best.source,
     canGetNow:
+      !base &&
       requiredSkill !== null &&
       skill !== null &&
       requiredSkill <= skill &&

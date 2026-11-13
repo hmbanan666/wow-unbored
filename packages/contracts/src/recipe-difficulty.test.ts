@@ -190,3 +190,29 @@ test("a trainer without a requirement does not make unknown skill available now"
     }),
   ).toMatchObject({ requiredSkill: null, score: 1, canGetNow: false });
 });
+
+test("public base difficulty excludes skill points and personal reasons", () => {
+  const recipe = {
+    spellId: 1,
+    skillLine: 333,
+    name: "Example",
+    category: { id: 1, name: "Example", order: 0 },
+    minSkill: 1,
+    thresholds: { orange: 1, yellow: 50, green: 75, grey: 100 },
+    skillUps: 1,
+    acquireMethod: 0,
+    craftedItems: [],
+    teachingItems: [],
+    reagents: [1, 2, 3, 4].map((itemId) => ({ itemId, count: 1 })),
+  };
+  expect(recipeDifficulty({ recipe, sources: [], skill: null, rankMax: null, base: true })).toEqual(
+    {
+      score: 2,
+      label: "medium",
+      requiredSkill: null,
+      source: "not_seen",
+      canGetNow: false,
+      reasons: ["No formula item. Not seen at a trainer yet", "4 different reagents"],
+    },
+  );
+});
