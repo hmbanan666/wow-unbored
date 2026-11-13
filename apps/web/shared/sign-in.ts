@@ -1,5 +1,4 @@
-/** The site is English only (ADR 0102). */
-export type PageLang = "en";
+export type PageLang = "en" | "ru";
 
 export const SIGN_IN_COPY = {
   en: {
@@ -10,12 +9,25 @@ export const SIGN_IN_COPY = {
     missing: "Open My page from the Companion.",
     here: "This is your page.",
   },
+  ru: {
+    used: "Эта ссылка уже использована. Открой Мою страницу из Companion ещё раз.",
+    expired: "Срок ссылки вышел. Открой Мою страницу из Companion ещё раз.",
+    failed: "Бори не смог открыть страницу. Попробуй ещё раз из Companion.",
+    closed: "Эта страница закрыта. Открой Мою страницу из Companion ещё раз.",
+    missing: "Открой Мою страницу из Companion.",
+    here: "Это твоя страница.",
+  },
 } as const;
 
 export type SignInReason = "used" | "expired" | "failed";
 
-/** The site is English only (ADR 0102); the browser language is ignored. */
-export function browserLang(_header?: string): PageLang {
+/** The first language the browser asks for, English unless it asks for Russian. */
+export function browserLang(header: string | undefined): PageLang {
+  for (const part of (header || "").split(",")) {
+    const tag = part.trim().split(";")[0]?.trim().toLowerCase() || "";
+    if (tag.startsWith("ru")) return "ru";
+    if (tag.startsWith("en")) return "en";
+  }
   return "en";
 }
 

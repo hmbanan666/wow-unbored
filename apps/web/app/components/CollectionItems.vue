@@ -8,7 +8,7 @@ defineProps<{
   items: CatalogItem[];
   media?: PageMedia;
   progress?: PathProgress;
-  copy?: typeof PATH_COPY.en;
+  copy?: typeof PATH_COPY.en | typeof PATH_COPY.ru;
 }>();
 
 function chips(item: CatalogItem) {

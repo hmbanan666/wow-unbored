@@ -345,7 +345,7 @@ dbTest("My page shows Path completions with safe links, scoped to its Account", 
     await sql`INSERT INTO history (at, account, character_name, realm, kind, body) VALUES
       (1762300001, ${mine}, 'Mine', 'Realm', 'path_completion', ${JSON.stringify(body)}::jsonb),
       (1762300002, ${theirs}, 'Other', 'Realm', 'path_completion', ${JSON.stringify({ ...body, title: "Other completion" })}::jsonb)`;
-    const page = await readMyPage(sql, mine, "en");
+    const page = await readMyPage(sql, mine, "ru");
     assert.deepEqual(page.completions, [
       {
         game: "retail",

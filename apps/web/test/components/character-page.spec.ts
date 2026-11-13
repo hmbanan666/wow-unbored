@@ -43,12 +43,12 @@ for (const game of ["retail", "forever"]) {
   });
 }
 
-test("unseen professions have English guidance, with no fabricated zero", async () => {
+test("unseen professions have Russian guidance, with no fabricated zero", async () => {
   vi.stubGlobal("useRoute", () => ({ params: { game: "forever", realm: "Realm", name: "Mira" } }));
   vi.stubGlobal("useFetch", async () => ({
     data: ref({
       ok: true,
-      lang: "en",
+      lang: "ru",
       character: { name: "Mira", realm: "Realm", game: "forever", professions: [] },
     }),
     error: ref(null),
@@ -59,8 +59,8 @@ test("unseen professions have English guidance, with no fabricated zero", async 
     defineComponent({ render: () => h(Suspense, null, { default: () => h(CharacterPage) }) }),
   );
   await flushPromises();
-  expect(wrapper.text()).toContain(CHARACTER_COPY.en.empty);
-  expect(wrapper.text()).toContain(CHARACTER_COPY.en.open);
+  expect(wrapper.text()).toContain(CHARACTER_COPY.ru.empty);
+  expect(wrapper.text()).toContain(CHARACTER_COPY.ru.open);
   expect(wrapper.text()).not.toContain("0 / 0");
 });
 
