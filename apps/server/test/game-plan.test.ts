@@ -502,7 +502,10 @@ test("a newer build replaces validation evidence immediately", async () => {
     assert.equal(before.value.stored.goal, "Find {item:19019|the blade}");
     await api.store.game.importBuild("12.0.1.70001", async (input) => {
       const table = new URL(String(input)).pathname.split("/")[2];
-      if (table === "ItemSparse") return new Response("ID,Display_lang\n19020,Another blade\n");
+      if (table === "ItemSparse")
+        return new Response(
+          "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19020,Another blade,0,0,1,0\n",
+        );
       if (table === "QuestPOIPoint") return new Response("ID,QuestPOIBlobID,X,Y\n201,200,80,20\n");
       return coreResponse(input);
     });

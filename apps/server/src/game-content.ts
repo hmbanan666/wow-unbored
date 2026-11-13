@@ -22,7 +22,14 @@ export const RETAIL_TABLES = {
   QuestLine: ["ID", "Name_lang"],
   QuestLineXQuest: ["ID", "QuestLineID", "QuestID", "OrderIndex"],
   Faction: ["ID", "Name_lang", "ParentFactionID", "Expansion"],
-  ItemSparse: ["ID", "Display_lang"],
+  ItemSparse: [
+    "ID",
+    "Display_lang",
+    "RequiredSkill",
+    "RequiredSkillRank",
+    "OverallQualityID",
+    "Bonding",
+  ],
   Mount: ["ID", "Name_lang", "SourceSpellID", "SourceTypeEnum"],
   BattlePetSpecies: ["ID", "CreatureID", "SummonSpellID", "PetTypeEnum", "SourceTypeEnum"],
   Toy: ["ID", "ItemID", "SourceTypeEnum"],
@@ -290,7 +297,11 @@ async function completedImport(db: Db, build: string, game: Game) {
     build,
   );
   const counts = previous ? fromJson<Counts>(previous[db.body]) : undefined;
-  return counts && tablesFor(game).every((table) => counts[table] > 0) ? counts : undefined;
+  // ADR 0101: refresh current builds once, through the non-blocking build watch.
+  if (!counts || counts._itemFacts !== 1 || !tablesFor(game).every((table) => counts[table] > 0))
+    return undefined;
+  const { _itemFacts, ...tables } = counts;
+  return tables;
 }
 
 function importResult(build: string, status: string, tables: Counts) {
@@ -404,7 +415,7 @@ export async function publishGameContent(
       `INSERT INTO ${imports} (game, build, ${db.body}) VALUES (?, ?, ?) ON CONFLICT (game, build) DO UPDATE SET ${db.body} = excluded.${db.body}`,
       game,
       build,
-      JSON.stringify(counts),
+      JSON.stringify({ ...counts, _itemFacts: 1 }),
     );
     if (game === "forever") await materializeRecipes(db, game, build, signal);
     return importResult(build, "imported", counts);

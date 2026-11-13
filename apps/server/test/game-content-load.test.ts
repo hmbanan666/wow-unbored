@@ -25,7 +25,8 @@ const source: typeof fetch = async (input) => {
         let text =
           id === 0
             ? ({
-                ItemSparse: "ID,Display_lang,Ignored\n",
+                ItemSparse:
+                  "ID,Display_lang,Ignored,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n",
                 QuestPOIPoint: "ID,QuestPOIBlobID,X,Y\n",
                 QuestV2: "ID,UniqueBitFlag\n",
                 Achievement: "ID,Title_lang,Description_lang,Instance_ID,Criteria_tree\n",
@@ -37,7 +38,7 @@ const source: typeof fetch = async (input) => {
             table === "Achievement"
               ? `${id},Achievement ${id},Description,0,100\n`
               : table === "ItemSparse"
-                ? `${id},Item ${id},${"x".repeat(200)}\n`
+                ? `${id},Item ${id},${"x".repeat(200)},0,0,1,0\n`
                 : table === "QuestPOIPoint"
                   ? `${id},200,25,75\n`
                   : `${id},42\n`;

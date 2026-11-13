@@ -7,7 +7,8 @@ export const coreCsv: Record<string, string> = {
   QuestLine: "ID,Name_lang\n10,A new beginning\n",
   QuestLineXQuest: "ID,QuestLineID,QuestID,OrderIndex\n11,10,90001,0\n",
   Faction: "ID,Name_lang,ParentFactionID,Expansion\n72,Stormwind,0,0\n",
-  ItemSparse: "ID,Display_lang\n19019,Thunderfury\n",
+  ItemSparse:
+    "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n19019,Thunderfury,0,0,5,1\n",
   Mount: "ID,Name_lang,SourceSpellID,SourceTypeEnum\n6,Brown Horse,458,1\n",
   BattlePetSpecies: "ID,CreatureID,SummonSpellID,PetTypeEnum,SourceTypeEnum\n39,7390,10695,1,1\n",
   Toy: "ID,ItemID,SourceTypeEnum\n1,1973,1\n",

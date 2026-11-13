@@ -163,7 +163,8 @@ for (const backend of BACKENDS) {
         ),
         [19021],
       );
-      app.tables.ItemSparse = "ID,Display_lang\n1,Replacement\n";
+      app.tables.ItemSparse =
+        "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n1,Replacement,0,0,1,0\n";
       await app.load("12.0.1.66338");
       assert.deepEqual(
         (await app.call("find_game_entity", { kind: "item", name: "Thunderfury" })).entities,
@@ -319,7 +320,8 @@ for (const backend of BACKENDS) {
       assert.deepEqual(sources.sources, []);
       assert.equal(sources.coverage.blizzard, "unavailable");
       app.tables.ItemSparse =
-        "ID,Display_lang\n" + Array.from({ length: 55 }, (_, i) => `${i + 1},Same name\n`).join("");
+        "ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n" +
+        Array.from({ length: 55 }, (_, i) => `${i + 1},Same name,0,0,1,0\n`).join("");
       app.tables.QuestLineXQuest =
         "ID,QuestLineID,QuestID,OrderIndex\n" +
         Array.from({ length: 257 }, (_, i) => `${i + 1},10,90001,${i}\n`).join("");

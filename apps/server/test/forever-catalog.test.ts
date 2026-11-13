@@ -91,6 +91,7 @@ for (const backend of BACKENDS) {
           ],
           craftedItems: [2458],
           teachingItems: [2554],
+          teaching: [{ itemId: 2554, requiredSkill: 50, quality: 1, bindOnPickup: false }],
         },
       );
       await game.importBuild("1.60.1.70890", async (input) => {
@@ -152,6 +153,7 @@ for (const backend of BACKENDS) {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-11T00:00:00Z"));
     let broken = false;
+    let downloads = 0;
     let retail = "12.0.1.66337";
     let forever = build;
     const app = createApp({
@@ -169,6 +171,7 @@ for (const backend of BACKENDS) {
           const product = url.pathname.split("/")[3];
           return Response.json({ product, version: product === "wow" ? retail : forever });
         }
+        downloads++;
         if (url.searchParams.get("build")?.startsWith("1.")) {
           if (broken) throw new Error("Forever unavailable");
           return foreverResponse(input);
@@ -179,6 +182,29 @@ for (const backend of BACKENDS) {
     try {
       await app.gameWatch.run();
       assert.equal(await app.store.game.forGame("forever").currentBuild(), build);
+      const firstDownloads = downloads;
+      await app.gameWatch.run();
+      assert.equal(downloads, firstDownloads, "completed imports do not download again");
+      // Simulate both current builds imported before ADR 0101's ItemSparse projection.
+      const db = app.store.db;
+      await db.run(
+        `UPDATE ${db.pg ? "game.imports" : "game_imports"} SET ${db.body} = ${db.pg ? "body - '_itemFacts'" : "json_remove(body_json, '$._itemFacts')"}`,
+      );
+      await app.gameWatch.run();
+      assert.equal(downloads, firstDownloads * 2, "the watch refreshes each current build once");
+      assert.equal((await app.store.game.row("ItemSparse", 19019))?.fields.OverallQualityID, 5);
+      assert.equal(
+        (await app.store.game.forGame("forever").professionCatalog(171)).recipes.find(
+          (r) => r.spellId === 2334,
+        )?.teaching?.[0]?.requiredSkill,
+        50,
+      );
+      await app.gameWatch.run();
+      assert.equal(
+        downloads,
+        firstDownloads * 2,
+        "the new projection stays complete across watch ticks",
+      );
       broken = true;
       retail = "12.0.1.66338";
       forever = "1.60.1.70889";
@@ -201,6 +227,49 @@ for (const backend of BACKENDS) {
       assert.equal(await app.store.game.forGame("forever").currentBuild(), forever);
     } finally {
       vi.useRealTimers();
+      await app.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const backend of BACKENDS) {
+  test(`teaching ranks match the client parent and ignore unrelated skills; only Bonding 1 is BoP (${backend})`, async () => {
+    const dataDir = mkdtempSync(path.join(import.meta.dirname, ".teaching-"));
+    const app = createApp({
+      database: pg(backend),
+      dataDir,
+      ingest: "inline",
+      blizzard: null,
+      companionToken: "companion",
+      plannerToken: "owner",
+      webhook: { url: "", key: "", headerName: "" },
+      log: () => {},
+    });
+    try {
+      for (const [version, requiredSkill, bonding, expected] of [
+        ["1.60.1.70938", 333, 1, 50],
+        ["1.60.1.70939", 185, 3, null],
+      ] as const) {
+        const game = app.store.game.forGame("forever");
+        await game.importBuild(version, async (input) => {
+          const table = new URL(String(input)).pathname.split("/")[2];
+          if (table === "SkillLine")
+            return new Response(
+              "ID,DisplayName_lang,CategoryID,ParentSkillLineID\n171,Alchemy,9,333\n",
+            );
+          if (table === "ItemSparse")
+            return new Response(
+              `ID,Display_lang,RequiredSkill,RequiredSkillRank,OverallQualityID,Bonding\n2554,Recipe,${requiredSkill},50,2,${bonding}\n`,
+            );
+          return foreverResponse(input);
+        });
+        assert.deepEqual(
+          (await game.professionCatalog(171)).recipes.find((r) => r.spellId === 2334)?.teaching,
+          [{ itemId: 2554, requiredSkill: expected, quality: 2, bindOnPickup: bonding === 1 }],
+        );
+      }
+    } finally {
       await app.close();
       rmSync(dataDir, { recursive: true, force: true });
     }
