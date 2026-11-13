@@ -1,3 +1,4 @@
+import { erasePlayerMedia } from "./character-sharing.ts";
 import { mergeQuestAccount } from "./quest-sightings.ts";
 import { mergeSightingAccount } from "./recipe-sources.ts";
 import { checkPathOutcome, readRequestPath } from "./path-plan.ts";
@@ -1498,6 +1499,7 @@ export class Store {
     const names = (await this.data.characters(key)).map(
       (row) => [row.name, row.realm, row.game] as const,
     );
+    await erasePlayerMedia(this.db, key);
     const removed = await this.data.deleteAccount(key);
     const website = await erasePageData(this.db, key);
     let legacy = 0;

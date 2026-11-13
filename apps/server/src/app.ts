@@ -1,3 +1,5 @@
+import { registerDeviceFeed } from "./device-feed.ts";
+import { registerWebFeed } from "./web-feed.ts";
 import { registerWebToday } from "./web-today.ts";
 import { recipeTeachingMap } from "./recipe-sources.ts";
 import { MediaStore } from "./media-store.ts";
@@ -796,7 +798,9 @@ export function createApp(
     }
   });
 
+  registerDeviceFeed(app, store, allowCompanion);
   registerWebToday(app, store);
+  registerWebFeed(app, store, config.webOrigin || DEFAULT_WEB_ORIGIN);
   registerWebPaths(app, store, config.webOrigin || DEFAULT_WEB_ORIGIN);
 
   app.get("/v1/paths/active", async (c) => {

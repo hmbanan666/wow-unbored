@@ -1,5 +1,7 @@
 import { expect, test, vi } from "vite-plus/test";
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, config } from "@vue/test-utils";
+// Sharing has its own mounted/SSR tests; these tests exercise history/profile loading.
+config.global.stubs.FeedControls = true;
 import { defineComponent, h, ref, Suspense, createSSRApp } from "vue";
 import { renderToString } from "@vue/server-renderer";
 import Page from "../../app/pages/my/[game]/[realm]/[name]/history.vue";

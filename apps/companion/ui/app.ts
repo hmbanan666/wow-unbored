@@ -16,6 +16,7 @@ type ProgressRow = {
   currentId?: string;
 };
 type UiState = {
+  feedStatus?: string;
   phase?: string;
   mascot?: string;
   headline?: string;
@@ -103,6 +104,7 @@ function translate(state: UiState) {
 }
 
 function paint(state: UiState) {
+  if (state.feedStatus) el("feed-status").textContent = state.feedStatus;
   translate(state);
   const notice = settingsNoticeDismissed ? "" : state.settingsNotice || "";
   el("settings-notice").hidden = !notice;
@@ -124,6 +126,7 @@ function paint(state: UiState) {
   setup.hidden = phase !== "setup";
   reconnect.hidden = !state.canReconnect;
   el("my-page").hidden = state.pairing !== "approved";
+  el("feed-sharing").hidden = state.pairing !== "approved";
   document.title = state.mascot || "Unbored";
 
   if (document.activeElement !== url) url.value = state.settings.endpointUrl || "";
@@ -279,3 +282,46 @@ setInterval(
 );
 
 run(() => invoke("get_state")).then(armPoll);
+
+// Explicit attribution: never guess which character a game-folder image belongs to.
+type FeedChoice = { realm: string; name: string; enabled: boolean };
+let feedChoices: FeedChoice[] = [];
+el("feed-load").addEventListener("click", async () => {
+  el("feed-status").textContent = "Reading your sharing settings…";
+  try {
+    feedChoices = (await call("feed_characters")) as FeedChoice[];
+    const select = el<HTMLSelectElement>("feed-character");
+    select.replaceChildren(
+      ...feedChoices.map((c, i) => {
+        const option = document.createElement("option");
+        option.value = String(i);
+        option.textContent = `${c.name} · ${c.realm} · sharing ${c.enabled ? "on" : "off"}`;
+        return option;
+      }),
+    );
+    el<HTMLButtonElement>("feed-on").disabled = !feedChoices.length;
+    el<HTMLButtonElement>("feed-off").disabled = !feedChoices.length;
+    el("feed-status").textContent = feedChoices.length
+      ? "Pick the character for your new screenshots, then turn sharing on. This also publishes their recorded milestones."
+      : "Open a Forever character in the game once, then try again.";
+  } catch {
+    el("feed-status").textContent = "Could not read sharing settings. Try again.";
+  }
+});
+for (const [id, enabled] of [
+  ["feed-on", true],
+  ["feed-off", false],
+] as const) {
+  el(id).addEventListener("click", async () => {
+    const who = feedChoices[Number(el<HTMLSelectElement>("feed-character").value)];
+    if (!who) return;
+    el("feed-status").textContent = "Changing sharing…";
+    try {
+      const state = await invoke("set_feed_sharing", { realm: who.realm, name: who.name, enabled });
+      paint(state);
+      el("feed-status").textContent = state.status ?? "Sharing updated.";
+    } catch {
+      el("feed-status").textContent = "Could not change sharing. Try again.";
+    }
+  });
+}

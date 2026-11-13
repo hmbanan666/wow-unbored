@@ -57,6 +57,7 @@ useSeoMeta({ title: PROFILE_COPY.title, robots: "noindex, nofollow" });
 </script>
 <template>
   <DsPage width="wide">
+    <FeedControls />
     <ProfileHome v-if="profile" :character="profile" @retry="load" />
     <DsEmptyState
       v-else

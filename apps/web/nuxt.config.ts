@@ -40,6 +40,9 @@ export default defineNuxtConfig({
     disallow: ["/download/"],
   },
   routeRules: {
+    "/forever/feed": { headers: { "cache-control": "no-store" } },
+    "/forever/players/**": { headers: { "cache-control": "no-store" } },
+    "/player-media/**": { headers: { "cache-control": "no-store" } },
     "/api/me/**": { robots: false, headers: { "cache-control": "private, no-store" } },
     "/my": { robots: false, headers: { "cache-control": "private, no-store" } },
     "/my/**": { robots: false, headers: { "cache-control": "private, no-store" } },
@@ -49,6 +52,7 @@ export default defineNuxtConfig({
     contentSignal: false,
   },
   sitemap: {
+    cacheMaxAgeSeconds: 0,
     sources: ["/api/__sitemap__/urls"],
     exclude: ["/my", "/my/**", "/enter/**", "/download/**"],
   },

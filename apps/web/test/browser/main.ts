@@ -1,3 +1,6 @@
+import CharacterFeedPage from "../../app/pages/[game]/players/[realm]/[name].vue";
+import CommunityFeedPage from "../../app/pages/[game]/feed.vue";
+import { characterFeedFixture } from "../fixtures/character-feed";
 import QuestPage from "../../app/pages/[game]/quests/[slug].vue";
 import ChainPage from "../../app/pages/[game]/quests/chains/[slug].vue";
 import QuestIndexPage from "../../app/pages/[game]/quests/index.vue";
@@ -34,7 +37,12 @@ const route = vue.reactive({
   path: location.pathname,
   fullPath: location.pathname + location.search,
   meta: {},
-  params: { game: "forever", slug: location.pathname.split("/").pop() || "enchanting" },
+  params: {
+    game: "forever",
+    realm: "camwow-eu4-realm-3-pve",
+    name: "kania",
+    slug: location.pathname.split("/").pop() || "enchanting",
+  },
   query: Object.fromEntries(query),
 });
 const refreshRoute = () => {
@@ -58,6 +66,16 @@ Object.assign(globalThis, {
     },
   }),
   useFetch: async (endpoint: string) => {
+    if (endpoint.startsWith("/api/feed/"))
+      return {
+        data: vue.ref(
+          query.get("shared") === "0"
+            ? { shared: false, posts: [], next: null }
+            : characterFeedFixture,
+        ),
+        error: vue.ref(null),
+        refresh: () => {},
+      };
     if (endpoint === "/api/game/forever/quests")
       return {
         data: vue.ref({ quests: [questFixture], chains: [chainFixture] }),
@@ -82,6 +100,12 @@ Object.assign(globalThis, {
     };
   },
   $fetch: async (endpoint: string) => {
+    if (endpoint === "/api/me/feed/sharing")
+      return {
+        enabled: query.get("shared") !== "0",
+        href: "/forever/players/camwow-eu4-realm-3-pve/kania",
+        generation: "fixture",
+      };
     if (endpoint.includes("/overlay/quests/") || endpoint.includes("/overlay/quest-chains/"))
       return questOverlayFixture;
     if (endpoint.endsWith("/profile")) return { ok: true, character: kaniaProfile() };
@@ -126,19 +150,23 @@ const app = vue.createApp({
       vue.h(vue.Suspense, null, {
         default: () =>
           vue.h(
-            route.path === "/forever/quests"
-              ? QuestIndexPage
-              : route.path.includes("/quests/chains/")
-                ? ChainPage
-                : route.path.includes("/quests/")
-                  ? QuestPage
-                  : route.path === "/my"
-                    ? query.get("profile") === "1"
-                      ? MyPage
-                      : PhoneSignIn
-                    : route.path.includes("/recipes/")
-                      ? RecipePage
-                      : ProfessionPage,
+            route.path === "/forever/feed"
+              ? CommunityFeedPage
+              : route.path.includes("/players/")
+                ? CharacterFeedPage
+                : route.path === "/forever/quests"
+                  ? QuestIndexPage
+                  : route.path.includes("/quests/chains/")
+                    ? ChainPage
+                    : route.path.includes("/quests/")
+                      ? QuestPage
+                      : route.path === "/my"
+                        ? query.get("profile") === "1"
+                          ? MyPage
+                          : PhoneSignIn
+                        : route.path.includes("/recipes/")
+                          ? RecipePage
+                          : ProfessionPage,
             {
               key: route.path,
             },

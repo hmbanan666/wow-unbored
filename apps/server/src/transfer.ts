@@ -31,7 +31,14 @@ const OPTIONAL_SQLITE = new Set([
   "character_goals",
 ]);
 /** Postgres-only tables: not in SQLite, must be empty before a transfer. */
-const POSTGRES_ONLY = new Set(["raw_uploads", "path_completions", "active_paths"]);
+const POSTGRES_ONLY = new Set([
+  "raw_uploads",
+  "path_completions",
+  "active_paths",
+  "character_sharing",
+  "character_screenshots",
+  "character_feed_boundaries",
+]);
 /** Game DB was added after the original cutover; older SQLite files lack it. */
 const GAME_TABLES: Record<string, string> = {
   game_quest_slugs: "game.quest_slugs",

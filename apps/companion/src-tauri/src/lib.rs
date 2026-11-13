@@ -10,6 +10,7 @@ pub mod mood;
 pub mod plan;
 pub mod request;
 pub mod savedvars;
+pub mod screenshots;
 #[cfg(any(feature = "gui", test))]
 mod settings;
 pub mod snapshot;

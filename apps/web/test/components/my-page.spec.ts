@@ -1,5 +1,7 @@
 import { expect, test, vi } from "vite-plus/test";
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, config } from "@vue/test-utils";
+// Sharing has its own mounted/SSR tests; these tests exercise history/profile loading.
+config.global.stubs.FeedControls = true;
 import { ref, defineComponent, h } from "vue";
 import Picker from "../../app/components/CharacterPicker.vue";
 const mountHome = () => mount(defineComponent({ render: () => h("div", [h(Picker), h(MyPage)]) }));
