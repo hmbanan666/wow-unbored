@@ -22,6 +22,9 @@ COPY packages/contracts/src/profession-catalog.ts packages/contracts/src/profess
 COPY packages/contracts/src/skill-route.ts packages/contracts/src/skill-route.ts
 COPY packages/contracts/src/recipe-sources.ts packages/contracts/src/recipe-sources.ts
 
+COPY packages/contracts/src/recipe-difficulty.ts packages/contracts/src/recipe-difficulty.ts
+COPY packages/contracts/src/profession-progress.ts packages/contracts/src/profession-progress.ts
+
 RUN pnpm install --frozen-lockfile --filter @unbored/web...
 RUN pnpm --filter @unbored/web build
 

@@ -384,6 +384,7 @@ for (const backend of BACKENDS) {
       assert.ok(names.includes("get_place"));
       assert.ok(names.includes("get_path_progress"));
       assert.ok(names.includes("get_character_history"));
+      assert.ok(names.includes("get_profession_progress"));
       for (const name of ["save_content_draft", "publish_content", "get_content"]) {
         assert.ok(!names.includes(name));
         assert.ok((await call(name)).body.result.isError);
@@ -424,6 +425,15 @@ for (const backend of BACKENDS) {
       const request = await call("get_request");
       assert.equal(JSON.parse(request.body.result.content[0].text).id, "runner-first");
       for (const [name, args] of [
+        [
+          "get_profession_progress",
+          { game: "retail", character: "SomeoneElse", realm: "Elsewhere", skillLine: 333 },
+        ],
+        ["get_profession_progress", { game: "forever", character: "Mira", skillLine: 333 }],
+        [
+          "get_profession_progress",
+          { game: "retail", character: "Mira", account: "another-account", skillLine: 333 },
+        ],
         ["get_character_history", { game: "retail", character: "SomeoneElse", realm: "Elsewhere" }],
         ["get_character_history", { game: "forever", character: "Mira" }],
         [

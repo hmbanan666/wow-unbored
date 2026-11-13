@@ -1502,3 +1502,15 @@ Deployment order for owner review: Server first (migration 0032 and background
 backfill), then web. The web may start as soon as migration succeeds; history
 fills progressively. There is no addon or Companion update in T6 and no version,
 release, compatibility-listing or production change in this task.
+
+### Profession difficulty data (ADR 0101, slice a)
+
+Both Games retain `ItemSparse.RequiredSkill`, `RequiredSkillRank`, `OverallQualityID` and `Bonding`. Forever recipe bodies add optional `teaching` facts: item id, applicable required rank (null when the item's skill line matches neither the recipe nor its client parent), quality and whether Bonding is exactly 1. No migration or new web-role grants are needed; these facts live in the existing JSON body. `BuyPrice` is not imported or exposed.
+
+`game.imports` records `_itemFacts: 1` alongside its table counts. An older marker is incomplete even for the current build. The existing background GameWatch runs on Server startup and hourly, downloads each Game's current tables once, then atomically replaces its rows, materialized Forever recipes and marker. Failed attempts leave the previous data readable and retry next hour. Readiness does not wait for this work. Allow one import cycle after deployment: duration depends on wago.tools and database throughput, with a 15-minute timeout per attempt; failures can extend this by an hourly retry. There is no manual import or cache-clearing step. The existing production-size fixture test measures local import timing, not live download time.
+
+Deploy the Server first and allow its background import to finish, then deploy the web app. The new web app is also compatible with old catalog bodies while importing: missing teaching facts stay null/unknown. No addon or Companion release is required for this slice.
+
+The private character API and MCP `get_profession_progress(game, character, skillLine)` use the same contracts projection. Existing `known`, `total`, missing source groups and routes remain; `difficultyCounts` counts missing recipes by easy/medium/hard. Each missing recipe adds `difficulty` (score, label, reasons, requiredSkill, source, canGetNow), nullable quality/BoP in `teachingItemNames`, and nullable reagent names. Before a learned Section exists, known remains null and missing lists/counts stay empty. Reasons are plain English in this data-only slice. The later UI can filter by `difficulty.canGetNow`, `difficulty.source`, category and observed source zone; it must not invent a zone where none has been observed.
+
+Forever rows of the same profession name collapse to the id with catalog recipes, retaining other ids in `aliases`, including nested tiers. Learned sets and trainer sightings under those aliases resolve to the canonical profession; MCP accepts either id. Retail keeps its existing profession/tier layout and minimum-skill fallback. A missing client requirement in Forever stays unknown regardless of orange/minSkill. Old unrefreshed teaching links without facts stay `not_seen`, with unknown formula metadata, until import completes.

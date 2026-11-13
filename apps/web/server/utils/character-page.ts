@@ -1,23 +1,9 @@
-import {
-  computeSkillRoute,
-  observedRankTrainer,
-  heldReagents,
-  learnedRecipes,
-  professionSkills,
-  vendorPrices,
-} from "@unbored/contracts/skill-route";
-import {
-  aggregateRecipeSources,
-  SIGHTING_COLUMNS,
-  type RecipeSighting,
-} from "@unbored/contracts/recipe-sources";
+import { professionProgress } from "@unbored/contracts/profession-progress";
+import { professionSkills } from "@unbored/contracts/skill-route";
+import { SIGHTING_COLUMNS, type RecipeSighting } from "@unbored/contracts/recipe-sources";
 import type { ProfessionRecipe } from "@unbored/contracts/profession-catalog";
 import type { Sql } from "./db";
-import {
-  professionViews,
-  type CharacterIdentity,
-  type CharacterPage,
-} from "#shared/character-page";
+import { type CharacterIdentity, type CharacterPage } from "#shared/character-page";
 
 /** Resolve ownership in the same query as the Sections, including the game. */
 export async function readCharacterPage(
@@ -86,44 +72,16 @@ export async function readCharacterPage(
     if (typeof name === "string" && name)
       (row.table_name === "UiMap" ? zones : items).set(row.id, name);
   }
-  const sources = aggregateRecipeSources(
-    catalog.map((r) => r.body),
-    sightings,
-    zones,
-    items,
-  );
-  const professions = professionSkills(row.professions);
-  const plans = professions.map((p) => ({
-    name: p.name,
-    route: computeSkillRoute({
-      game: row.game,
-      ...p,
-      recipes: catalog.map((r) => r.body),
-      known: learnedRecipes(row.recipes, p.skillLine),
-      sources,
-      rankTrainer: observedRankTrainer(sightings, p.skillLine),
-      itemNames: Object.fromEntries(items),
-      held: heldReagents([row.bags, row.bank, row.reagentBank]),
-      prices: vendorPrices(sightings),
-    }),
-  }));
   return {
     game: row.game,
     realm: row.realm,
     name: row.name,
-    professions: professionViews(
-      row.professions,
-      row.recipes,
-      catalog.map((r) => r.body),
-      sources,
-    ).map((p) => ({
-      ...p,
-      routes: plans.filter((plan) => {
-        if (plan.route.skillLine === p.skillLine) return true;
-        return professions.some(
-          (tier) => tier.parentSkillLine === p.skillLine && tier.skillLine === plan.route.skillLine,
-        );
-      }),
-    })),
+    professions: professionProgress({
+      ...row,
+      catalog: catalog.map((r) => r.body),
+      sightings,
+      zones,
+      items,
+    }),
   };
 }

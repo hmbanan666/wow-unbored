@@ -245,6 +245,43 @@ for (const backend of BACKENDS)
         const body = await response.text();
         const rpc = JSON.parse(body.startsWith("event:") ? body.split("data: ")[1]!.trim() : body);
         assert.deepEqual(JSON.parse(rpc.result.content[0].text), entry!.route);
+        const progressResponse = await runtime.app.request("/mcp", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer owner",
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 3,
+            method: "tools/call",
+            params: {
+              name: "get_profession_progress",
+              arguments: { game, character: "Hero", skillLine: 197 },
+            },
+          }),
+        });
+        const progressBody = await progressResponse.text();
+        const progressRpc = JSON.parse(
+          progressBody.startsWith("event:")
+            ? progressBody.split("data: ")[1]!.trim()
+            : progressBody,
+        );
+        assert.equal(progressRpc.result.isError, false);
+        const progress = JSON.parse(progressRpc.result.content[0].text);
+        assert.equal(progress.known, 0);
+        assert.equal(progress.total, 1);
+        assert.deepEqual(progress.difficultyCounts, { easy: 1, medium: 0, hard: 0 });
+        assert.deepEqual(progress.missing[0].recipes[0].difficulty, {
+          score: 0,
+          label: "easy",
+          reasons: ["Seen at a trainer", "Needs 50: you have it"],
+          requiredSkill: 50,
+          source: "trainer",
+          canGetNow: true,
+        });
+        assert.equal(progress.routes[0].route.skillLine, 197);
         assert.equal(entry!.route.reagents[0]!.unitCopper, 7);
         const plan = skillRoutePlan(entry!.route, "Tailoring", 1000);
         assert.equal(plan.tasks.length, 2);

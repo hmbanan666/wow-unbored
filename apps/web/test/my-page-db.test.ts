@@ -1,3 +1,5 @@
+import { PostgresDb } from "../../server/src/db.ts";
+import { readProfessionProgress } from "../../server/src/profession-progress.ts";
 import { readHistoryPage } from "../server/utils/character-history.ts";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -70,6 +72,7 @@ dbTest(
         trainer: true,
         craftedItems: [],
         teachingItems: [2553],
+        teaching: [{ itemId: 2553, requiredSkill: 50, quality: 2, bindOnPickup: false }],
       };
       await sql`INSERT INTO game.profession_recipes (game, build, skill_line, spell_id, body)
       VALUES ('forever', '1.60.1.70888', 171, 2334, ${JSON.stringify(recipe)}::jsonb)`;
@@ -100,7 +103,29 @@ dbTest(
         realm: "Realm",
         name: "Mine",
       });
+      assert.deepEqual(
+        await readProfessionProgress(
+          new PostgresDb(sql),
+          { game: "forever", id: "forever/Realm/Mine" },
+          171,
+        ),
+        page?.professions[0],
+        "MCP and private API return the same object with restricted SELECT access",
+      );
       assert.equal(page?.professions[0]?.total, 1);
+      assert.deepEqual(page?.professions[0]?.difficultyCounts, { easy: 1, medium: 0, hard: 0 });
+      assert.deepEqual(page?.professions[0]?.missing[0]?.recipes[0]?.difficulty, {
+        score: 1,
+        label: "easy",
+        reasons: ["Seen at a vendor: unlimited supply", "Needs 50: you have it"],
+        requiredSkill: 50,
+        source: "vendor",
+        canGetNow: true,
+      });
+      assert.equal(
+        page?.professions[0]?.missing[0]?.recipes[0]?.reagents[1]?.name,
+        "Unseen thread",
+      );
       const route = page?.professions[0]?.routes?.[0]?.route;
       assert.equal(route?.reached, 120);
       assert.equal(route?.status, "gap");
@@ -114,7 +139,12 @@ dbTest(
       assert.equal(group?.recipes[0]?.sources[0]?.zone, "Elwynn Forest");
       assert.equal(group?.recipes[0]?.sources[0]?.cost, 100);
       assert.deepEqual(group?.recipes[0]?.teachingItemNames, [
-        { itemId: 2553, name: "Recipe: Elixir of Minor Fortitude" },
+        {
+          itemId: 2553,
+          name: "Recipe: Elixir of Minor Fortitude",
+          quality: 2,
+          bindOnPickup: false,
+        },
       ]);
       assert.equal(
         await readCharacterPage(sql, theirs, { game: "forever", realm: "Realm", name: "Mine" }),
