@@ -1,3 +1,11 @@
+import {
+  CHARACTER_COOKIE,
+  CHARACTER_COOKIE_AGE,
+  characterKey,
+  parseCharacter,
+} from "#shared/selected-character";
+import { db } from "../../utils/db";
+import { ownsCharacter } from "../../utils/selected-character";
 import { isLinkToken, sessionFromRedeem, SIGN_IN_COPY } from "#shared/sign-in";
 
 export default defineEventHandler(async (event) => {
@@ -13,7 +21,12 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const server = config.serverUrl || getRequestURL(event).origin;
   let status = 0;
-  let body: { sessionId?: unknown; accountId?: unknown; error?: unknown } = {};
+  let body: {
+    sessionId?: unknown;
+    accountId?: unknown;
+    error?: unknown;
+    character?: { game?: unknown; realm?: unknown; name?: unknown };
+  } = {};
   try {
     const response = await fetch(`${server.replace(/\/$/, "")}/v1/page-links/redeem`, {
       method: "POST",
@@ -40,5 +53,23 @@ export default defineEventHandler(async (event) => {
     user: { signedIn: true },
     secure: { sessionId: result.sessionId, accountId: result.accountId },
   });
+  const raw = body.character;
+  const character =
+    raw &&
+    typeof raw.game === "string" &&
+    typeof raw.realm === "string" &&
+    typeof raw.name === "string"
+      ? parseCharacter(
+          `${raw.game}/${encodeURIComponent(raw.realm)}/${encodeURIComponent(raw.name)}`,
+        )
+      : null;
+  const sql = db();
+  if (character && sql && (await ownsCharacter(sql, result.accountId, character))) {
+    setCookie(event, CHARACTER_COOKIE, characterKey(character), {
+      path: "/",
+      sameSite: "lax",
+      maxAge: CHARACTER_COOKIE_AGE,
+    });
+  }
   return sendRedirect(event, "/my", 303);
 });

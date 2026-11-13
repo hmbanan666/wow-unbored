@@ -7,7 +7,7 @@ import { test } from "vite-plus/test";
 import { sha256Hex } from "../src/auth.ts";
 import { createApp } from "../src/app.ts";
 import { cleanSnapshot } from "../src/data.ts";
-import { storage } from "./backend.ts";
+import { storage, onPostgres, database } from "./backend.ts";
 
 const companion = "companion-test-token";
 const planner = "planner-test-token";
@@ -22,7 +22,7 @@ const legacyFixture = JSON.parse(
 const hashedAccount = "7333440414623d4053ac778ca99e938ae2cf885cd54333c1c5f053e4a896c4ee";
 const fixture = { ...legacyFixture, account: hashedAccount };
 
-function setup() {
+function setup(logs: string[] = []) {
   const dataDir = mkdtempSync(path.join(tmpdir(), "unbored-page-"));
   return createApp({
     ...storage(),
@@ -30,7 +30,7 @@ function setup() {
     plannerToken: planner,
     dataDir,
     webOrigin: "https://unbored.test",
-    log: () => {},
+    log: (line) => logs.push(line),
   });
 }
 
@@ -363,3 +363,188 @@ for (const action of ["delete_account_data", "keep_requests", "forget"] as const
     }
   });
 }
+
+test("a page link binds only an owned character, and rechecks ownership on redeem", async () => {
+  const built = setup();
+  await pair(built);
+  await built.store.putSnapshot(
+    cleanSnapshot(fixture),
+    "pc-page-01",
+    Math.floor(Date.now() / 1000),
+  );
+  const owned = { game: "retail", realm: fixture.realm, name: fixture.character };
+  for (const character of [
+    owned,
+    { ...owned, game: "forever" },
+    { ...owned, name: "Stranger" },
+    undefined,
+  ]) {
+    const issued = await built.app.request("/v1/devices/me/page-link", {
+      method: "POST",
+      headers: auth(secret),
+      body: JSON.stringify({ character }),
+    });
+    assert.equal(issued.status, 200);
+    const { url } = (await issued.json()) as { url: string };
+    const redeemed = await built.app.request("/v1/page-links/redeem", {
+      method: "POST",
+      headers: auth(secret),
+      body: JSON.stringify({ token: url.split("/enter/")[1] }),
+    });
+    assert.equal(redeemed.status, 200);
+    assert.deepEqual(
+      ((await redeemed.json()) as { character?: unknown }).character,
+      character === owned ? owned : undefined,
+    );
+  }
+  const issued = await built.app.request("/v1/devices/me/page-link", {
+    method: "POST",
+    headers: auth(secret),
+    body: JSON.stringify({ character: owned }),
+  });
+  const { url } = (await issued.json()) as { url: string };
+  await built.store.db.run("DELETE FROM characters WHERE account_id = ?", hashedAccount);
+  const redeemed = await built.app.request("/v1/page-links/redeem", {
+    method: "POST",
+    headers: auth(secret),
+    body: JSON.stringify({ token: url.split("/enter/")[1] }),
+  });
+  assert.equal(redeemed.status, 200);
+  assert.equal(((await redeemed.json()) as { character?: unknown }).character, undefined);
+  built.store.close();
+});
+
+test.skipIf(!onPostgres)(
+  "phone links use the sealed session's Device and Account, share limits, and end on Forget",
+  async () => {
+    const logs: string[] = [];
+    const built = setup(logs);
+    const device = await pair(built);
+    await built.store.putSnapshot(cleanSnapshot(fixture), device, Math.floor(Date.now() / 1000));
+    const issue = (credential: string, phone = false) =>
+      built.app.request(phone ? "/v1/web/page-link" : "/v1/devices/me/page-link", {
+        method: "POST",
+        headers: { ...auth(credential), origin: "https://unbored.test" },
+        body: JSON.stringify({ deviceId: "forged-device", accountId: "forged-account" }),
+      });
+    const redeem = (url: string) =>
+      built.app.request("/v1/page-links/redeem", {
+        method: "POST",
+        headers: auth(secret),
+        body: JSON.stringify({ token: url.split("/enter/")[1] }),
+      });
+    try {
+      const first = await issue(secret);
+      const desktop = (await (
+        await redeem(((await first.json()) as { url: string }).url)
+      ).json()) as { sessionId: string };
+      assert.equal((await issue(secret, true)).status, 401);
+      const phoneLink = await issue(desktop.sessionId, true);
+      assert.equal(phoneLink.status, 200);
+      assert.match(phoneLink.headers.get("cache-control")!, /no-store/);
+      assert.equal(phoneLink.headers.get("referrer-policy"), "no-referrer");
+      const { url, expiresAt } = (await phoneLink.json()) as { url: string; expiresAt: number };
+      assert.ok(Math.abs(expiresAt - Math.floor(Date.now() / 1000) - 600) <= 1);
+      const phone = (await (await redeem(url)).json()) as { sessionId: string; accountId: string };
+      assert.equal(phone.accountId, hashedAccount);
+      assert.notEqual(phone.sessionId, desktop.sessionId);
+      assert.equal((await redeem(url)).status, 410);
+      for (const credential of [
+        secret,
+        desktop.sessionId,
+        phone.sessionId,
+        url.split("/enter/")[1]!,
+      ]) {
+        assert.ok(!logs.join("\n").includes(credential));
+      }
+      // A newer Account on the PC must not replace the Account of the desktop session.
+      await built.store.putSnapshot(
+        cleanSnapshot({ ...fixture, account: "b".repeat(64) }),
+        device,
+        Math.floor(Date.now() / 1000) + 1,
+      );
+      const next = await issue(phone.sessionId, true);
+      const nextUrl = ((await next.json()) as { url: string }).url;
+      assert.equal(
+        ((await (await redeem(nextUrl)).json()) as { accountId: string }).accountId,
+        hashedAccount,
+      );
+      const expiredLink = await issue(phone.sessionId, true);
+      const expiredUrl = ((await expiredLink.json()) as { url: string }).url;
+      await built.store.db.run(
+        "UPDATE web.sign_in_links SET expires_at = 1 WHERE token_hash = ?",
+        sha256Hex(expiredUrl.split("/enter/")[1]!),
+      );
+      assert.equal((await redeem(expiredUrl)).status, 410);
+      for (let i = 4; i < 10; i++) assert.equal((await issue(phone.sessionId, true)).status, 200);
+      assert.equal((await issue(desktop.sessionId, true)).status, 429);
+      assert.equal((await issue(secret)).status, 429);
+      await built.store.setDeviceStatus(device, "revoked");
+      assert.equal((await issue(phone.sessionId, true)).status, 401);
+      await built.store.setDeviceStatus(device, "approved");
+      await built.store.db.run(
+        "UPDATE web.sessions SET created_at = 1 WHERE id = ?",
+        phone.sessionId,
+      );
+      assert.equal((await issue(phone.sessionId, true)).status, 401);
+      await built.store.db.run(
+        "UPDATE web.sessions SET created_at = ? WHERE id = ?",
+        Math.floor(Date.now() / 1000),
+        phone.sessionId,
+      );
+      const forgotten = await built.app.request("/v1/devices/me/forget", {
+        method: "POST",
+        headers: auth(secret),
+        body: JSON.stringify({ confirm: true }),
+      });
+      assert.equal(forgotten.status, 200);
+      assert.equal((await issue(desktop.sessionId, true)).status, 401);
+      assert.equal((await issue(phone.sessionId, true)).status, 401);
+    } finally {
+      built.store.close();
+    }
+  },
+);
+
+test.skipIf(!onPostgres)(
+  "redeeming a sign-in link waits for Account erasure and cannot reopen its session",
+  async () => {
+    const built = setup();
+    const device = await pair(built);
+    await built.store.putSnapshot(cleanSnapshot(fixture), device, Math.floor(Date.now() / 1000));
+    const issue = await built.app.request("/v1/devices/me/page-link", {
+      method: "POST",
+      headers: auth(secret),
+    });
+    const { url } = (await issue.json()) as { url: string };
+    let redeem: Promise<Response> | undefined;
+    const sql = database()!;
+    try {
+      await sql.begin(async (erasing) => {
+        await erasing`SELECT pg_advisory_xact_lock(hashtext(${`account:${hashedAccount}`}))`;
+        redeem = Promise.resolve(
+          built.app.request("/v1/page-links/redeem", {
+            method: "POST",
+            headers: auth(secret),
+            body: JSON.stringify({ token: url.split("/enter/")[1] }),
+          }),
+        );
+        let waiting = false;
+        for (let attempt = 0; attempt < 100 && !waiting; attempt++) {
+          const rows = await sql`SELECT 1 FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+          WHERE a.datname = current_database() AND l.locktype = 'advisory' AND NOT l.granted`;
+          waiting = rows.length > 0;
+          if (!waiting) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        assert.equal(waiting, true, "redeem waits for Account erasure");
+        await erasing`SET LOCAL statement_timeout = '500ms'`;
+        await erasing`DELETE FROM web.sign_in_links WHERE account_id = ${hashedAccount}`;
+        await erasing`DELETE FROM web.sessions WHERE account_id = ${hashedAccount}`;
+      });
+      assert.equal((await redeem!).status, 404);
+    } finally {
+      await redeem?.catch(() => {});
+      built.store.close();
+    }
+  },
+);

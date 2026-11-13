@@ -6,14 +6,26 @@ globalThis.fetch = (input, options) => {
     String(input).startsWith("http://fixture.test/")
   ) {
     if (String(input).endsWith("/v1/page-links/redeem")) {
+      if (JSON.parse(options.body).token.startsWith("e"))
+        return Promise.resolve(Response.json({ error: "expired" }, { status: 410 }));
       const other = JSON.parse(options.body).token.startsWith("b");
       return Promise.resolve(
         Response.json({
           sessionId: other ? "other-fixture-session" : "fixture-session",
           accountId: (other ? "d" : "c").repeat(64),
+          ...(JSON.parse(options.body).token.startsWith("c") || other
+            ? { character: { game: "forever", realm: "CAMWOW EU4 Realm 3 PvE", name: "Kania" } }
+            : {}),
         }),
       );
     }
+    if (String(input).endsWith("/v1/web/page-link"))
+      return Promise.resolve(
+        Response.json({
+          url: `${options.headers.origin}/enter/${"p".repeat(43)}`,
+          expiresAt: Math.floor(Date.now() / 1000) + 600,
+        }),
+      );
     if (String(input).includes("/v1/web/today?"))
       return Promise.resolve(
         Response.json({ sets: JSON.parse(process.env.UNBORED_TODAY_FIXTURE || "[]") }),

@@ -30,6 +30,32 @@ pub fn join_url(base: &str, path: &str) -> String {
     format!("{base}/{path}")
 }
 
+/// Last played on this PC, using the same save data and identity as uploads.
+/// Missing or unreadable saves keep the old request body working.
+pub fn page_link_payload(files: &[CharacterFile]) -> Value {
+    let latest = files
+        .iter()
+        .filter_map(|file| {
+            let text = std::fs::read_to_string(&file.path).ok()?;
+            let data =
+                crate::snapshot::data_from_saved_variables(&text, "UnboredCharDB").ok()??;
+            let at = data
+                .saved_at
+                .or_else(|| data.sections.get("char").and_then(|section| section.at))?;
+            let (name, realm) =
+                crate::snapshot::character_identity(Some(&data), &file.realm, &file.character);
+            Some((
+                at,
+                json!({ "game": file.game, "realm": realm, "name": name }),
+            ))
+        })
+        .max_by_key(|(at, _)| *at);
+    match latest {
+        Some((_, character)) => json!({ "character": character }),
+        None => json!({}),
+    }
+}
+
 /// The sign-in URL from `POST /v1/devices/me/page-link`, or the i18n key to show.
 pub fn page_link_from_response(status: u16, body: &str) -> Result<String, &'static str> {
     match status {
@@ -93,6 +119,36 @@ mod tests {
     use super::*;
     use crate::savedvars::Stamp;
     use std::path::PathBuf;
+
+    #[test]
+    fn page_link_body_uses_latest_save_across_games_and_falls_back() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("unbored-page-body-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(page_link_payload(&[]), json!({}));
+        let mut files = Vec::new();
+        for (game, saved, at, name) in [("retail", 30, 10, "Old"), ("forever", 40, 5, "Kania")] {
+            let path = root.join(game).join("Unbored.lua");
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, format!(r#"UnboredCharDB = {{ data = {{ schema = 2, savedAt = {saved}, sections = {{ char = {{ at = {at}, body = {{ name = "{name}", realm = "Actual Realm" }} }} }} }} }}"#)).unwrap();
+            files.push(CharacterFile {
+                game,
+                account: "111#1".into(),
+                realm: "Folder Realm".into(),
+                character: "Folder Name".into(),
+                path,
+            });
+        }
+        assert_eq!(
+            page_link_payload(&files),
+            json!({"character": {"game": "forever", "realm": "Actual Realm", "name": "Kania"}})
+        );
+        fs::write(&files[1].path, "broken Lua").unwrap();
+        assert_eq!(page_link_payload(&files)["character"]["name"], "Old");
+        fs::remove_file(&files[0].path).unwrap();
+        assert_eq!(page_link_payload(&files), json!({}));
+        fs::remove_dir_all(root).unwrap();
+    }
 
     /// D151: the updater trusts the committed new public key, never a revert.
     #[test]

@@ -18,7 +18,8 @@ use crate::account::{self, AccountSeal};
 use crate::addon::{install_addon_zip, installed_version, select_addon_zip, should_update};
 use crate::device::{self, registration_json, DeviceCredential};
 use crate::endpoint::{
-    join_url, page_link_from_response, progress_payload, validate_endpoint, DEFAULT_PLANNER_URL,
+    join_url, page_link_from_response, page_link_payload, progress_payload, validate_endpoint,
+    DEFAULT_PLANNER_URL,
 };
 use crate::i18n::{self, tr, trf};
 use crate::mood::{self, MoodInput, MASCOT_NAME};
@@ -585,11 +586,12 @@ fn open_privacy() -> Result<(), Shown> {
     Ok(open_in_browser(i18n::privacy_url(i18n::current()))?)
 }
 
-fn request_page_link(url: &str, secret: &str) -> Result<String, String> {
+fn request_page_link(url: &str, secret: &str, body: &serde_json::Value) -> Result<String, String> {
     let client = http_client(Duration::from_secs(20))?;
     let response = client
         .post(join_url(url, "v1/devices/me/page-link"))
         .bearer_auth(secret)
+        .json(body)
         .send()
         .map_err(|_| tr("MY_PAGE_OFFLINE"))?;
     let status = response.status().as_u16();
@@ -615,7 +617,11 @@ fn open_my_page(app: AppHandle, state: State<AppState>) -> Result<UiState, Shown
     }
     let url = effective_url(&session.settings);
     validate_endpoint(&url)?;
-    let page = request_page_link(&url, &session.device.secret)?;
+    let files: Vec<_> = game_paths(&session.settings)
+        .iter()
+        .flat_map(|path| character_saved_variables(path, None))
+        .collect();
+    let page = request_page_link(&url, &session.device.secret, &page_link_payload(&files))?;
     open_in_browser(&page)?;
     session.apply(&app, |model| model.status = tr("MY_PAGE_OPENED"))?;
     let model = state.inner.lock().map_err(|err| err.to_string())?;

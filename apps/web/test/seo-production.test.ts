@@ -18,6 +18,7 @@ let origin: string;
 let mediaDir: string;
 const windows: Window[] = [];
 let fixtureToday = "[]";
+let serverLogs = "";
 
 beforeAll(async () => {
   if (!enabled) return;
@@ -63,6 +64,12 @@ async function startWebServer(unavailable = false) {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  server.stdout!.on("data", (chunk) => {
+    serverLogs += String(chunk);
+  });
+  server.stderr!.on("data", (chunk) => {
+    serverLogs += String(chunk);
+  });
   const origin = await new Promise<string>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Production preview did not start")), 20_000);
     server.once("exit", () => {
@@ -651,5 +658,65 @@ productionTest(
     expect(denied.status).toBe(404);
     expect(denied.headers.get("set-cookie")).toBeNull();
     expect(denied.headers.get("cache-control")).toBe("private, no-store");
+  },
+);
+
+productionTest(
+  "sign-in sets the one-year character cookie only for an owned character",
+  async () => {
+    for (const prefix of ["a", "b", "c"]) {
+      const response = await fetch(`${origin}/enter/${prefix.repeat(43)}`, { redirect: "manual" });
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe("/my");
+      expect(response.headers.get("cache-control")).toContain("no-store");
+      expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+      const cookie = response.headers
+        .getSetCookie()
+        .find((c) => c.startsWith("unbored_character="));
+      if (prefix === "c") {
+        expect(cookie).toContain(encodeURIComponent(characterKey(fixtureCharacter)));
+        expect(cookie).toContain("Max-Age=31536000");
+        expect(cookie).toContain("SameSite=Lax");
+      } else expect(cookie).toBeUndefined();
+    }
+  },
+);
+
+productionTest(
+  "phone link API and rejected sign-in keep tokens out of caches, referrers and logs",
+  async () => {
+    const login = await fetch(`${origin}/enter/${"a".repeat(43)}`, { redirect: "manual" });
+    const cookie = login.headers
+      .getSetCookie()
+      .map((c) => c.split(";")[0])
+      .join("; ");
+    for (const signedIn of [false, true]) {
+      const response = await fetch(`${origin}/api/me/page-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json", ...(signedIn ? { cookie } : {}) },
+        body: "{}",
+      });
+      expect(response.headers.get("cache-control")).toContain("no-store");
+      expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(response.headers.get("x-robots-tag")).toContain("noindex");
+      const body = await response.json();
+      expect(body.ok).toBe(signedIn);
+      if (signedIn) expect(body.url).toBe(`${origin}/enter/${"p".repeat(43)}`);
+      expect(JSON.stringify(body)).not.toContain("fixture-session");
+    }
+    const denied = await fetch(`${origin}/api/me/page-link`, {
+      method: "POST",
+      headers: { origin: "https://evil.test", cookie, "content-type": "application/json" },
+      body: "{}",
+    });
+    expect((await denied.json()).ok).toBe(false);
+    const expired = await fetch(`${origin}/enter/${"e".repeat(43)}`, {
+      headers: { accept: "text/html" },
+    });
+    expect(expired.status).toBe(410);
+    expect(expired.headers.get("cache-control")).toContain("no-store");
+    expect(expired.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(await expired.text()).toContain("That link expired");
+    for (const prefix of ["a", "p", "e"]) expect(serverLogs).not.toContain(prefix.repeat(43));
   },
 );
