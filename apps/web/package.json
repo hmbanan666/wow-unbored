@@ -20,7 +20,7 @@
     "@unbored/contracts": "workspace:*",
     "nuxt": "^4.6.4",
     "nuxt-auth-utils": "^0.6.0",
-    "postgres": "^3.4.9",
+    "postgres": "^4.1.0",
     "qrcode-generator": "^2.0.4",
     "satori": "^0.63.2",
     "sharp": "^0.35.5"
