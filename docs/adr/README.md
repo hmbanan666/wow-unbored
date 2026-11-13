@@ -119,3 +119,5 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0100. One release zip for Retail and Forever](0100-one-zip-for-retail-and-forever.md)
 
 - [0101. Personal profile home and profession album](0101-personal-profile-and-profession-album.md)
+
+- [0102. English-only site, public game pages with a personal overlay](0102-english-only-public-pages-with-personal-overlay.md)
