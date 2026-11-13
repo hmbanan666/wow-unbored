@@ -138,10 +138,20 @@ test("missing order is score, required skill with unknown last, then English nam
     known: true,
     category: { id: 2, name: "Wands", order: 10 },
   });
-  expect(easiestMissing([a, b, c, d], "all").map((r) => r.name)).toEqual([
+  const easy = slot("Easy but higher skill", {
+    spellId: 5,
+    difficulty: { ...a.difficulty, score: 1, label: "easy", requiredSkill: 300 },
+  });
+  const hard = slot("Hard but lower skill", {
+    spellId: 6,
+    difficulty: { ...a.difficulty, score: 4, label: "hard", requiredSkill: 1 },
+  });
+  expect(easiestMissing([a, b, c, d, hard, easy], "all").map((r) => r.name)).toEqual([
+    "Easy but higher skill",
     "Alpha",
     "Bravo",
     "Zulu",
+    "Hard but lower skill",
   ]);
   expect(albumCategories([a, b, c, d]).map((c) => c.name)).toEqual(["Wands", "Rods"]);
 });

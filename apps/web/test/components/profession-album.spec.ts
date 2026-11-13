@@ -10,6 +10,9 @@ test("album exposes accessible slots, disables zones without sightings and emits
   expect(wrapper.find('[aria-label="Runed Copper Rod, known"]').exists()).toBe(true);
   expect(wrapper.find('[aria-label="Arcane Forge, missing, hard"]').exists()).toBe(true);
   expect(wrapper.find("[data-zone-disabled]").attributes("disabled")).toBeDefined();
+  expect(wrapper.find("[data-zone-disabled]").attributes("title")).toBe(
+    "Zones appear after the first trainer or vendor sighting",
+  );
   expect(wrapper.text()).toContain("Zones appear after the first trainer or vendor sighting");
   await wrapper
     .findAll("button")

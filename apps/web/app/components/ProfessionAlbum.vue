@@ -133,6 +133,7 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
                 type="button"
                 class="filter-chip"
                 disabled
+                title="Zones appear after the first trainer or vendor sighting"
                 data-zone-disabled
                 :aria-describedby="zoneId"
               >
