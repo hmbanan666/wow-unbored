@@ -4,7 +4,7 @@ import { browserLang, SIGN_IN_COPY } from "#shared/sign-in";
 /** Mounted fetches only: personal data never enters a public SSR payload. */
 export function usePaths() {
   const data = ref<PersonalPaths | null>(null);
-  const lang = ref<"en" | "ru">("en");
+  const lang = ref<"en">("en");
   const copy = computed(() => PATH_COPY[lang.value]);
   const loading = ref(true);
   const signedOut = ref(false);

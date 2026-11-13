@@ -9,9 +9,7 @@ const props = defineProps<{ error: NuxtError }>();
 const known = new Set<string>([
   ...Object.values(PUBLIC_COPY),
   CHARACTER_COPY.en.notFound,
-  CHARACTER_COPY.ru.notFound,
   ...Object.values(SIGN_IN_COPY.en),
-  ...Object.values(SIGN_IN_COPY.ru),
 ]);
 const line = computed(() => {
   const message = String(props.error.statusMessage || props.error.message || "");

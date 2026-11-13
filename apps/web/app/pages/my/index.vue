@@ -13,13 +13,13 @@ import { SIGN_IN_COPY } from "#shared/sign-in";
 type Me =
   | {
       ok: true;
-      lang: "en" | "ru";
+      lang: "en";
       characters: MyCharacter[];
       plans: MyEntry[];
       wins: MyEntry[];
       completions: MyCompletion[];
     }
-  | { ok: false; lang: "en" | "ru"; closed: boolean; message: string };
+  | { ok: false; lang: "en"; closed: boolean; message: string };
 
 const { data, status, refresh } = await useFetch<Me>("/api/me", { server: false });
 const paths = usePaths();

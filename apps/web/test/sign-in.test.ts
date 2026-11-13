@@ -3,12 +3,12 @@ import { test } from "vite-plus/test";
 
 import { browserLang, sessionFromRedeem, SIGN_IN_COPY } from "../shared/sign-in.ts";
 
-test("signed-in pages follow the browser language", () => {
+test("signed-in pages are English whatever the browser asks", () => {
   assert.equal(browserLang(undefined), "en");
   assert.equal(browserLang("en-US,en;q=0.9"), "en");
-  assert.equal(browserLang("ru-RU,ru;q=0.9,en;q=0.8"), "ru");
+  assert.equal(browserLang("ru-RU,ru;q=0.9,en;q=0.8"), "en");
   assert.equal(browserLang("fr-FR,fr;q=0.9"), "en");
-  assert.notEqual(SIGN_IN_COPY.en.here, SIGN_IN_COPY.ru.here);
+  assert.deepEqual(Object.keys(SIGN_IN_COPY), ["en"]);
 });
 
 test("a redeem answer opens one session or says why it did not", () => {

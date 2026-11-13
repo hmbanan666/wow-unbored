@@ -24,28 +24,6 @@ export const MY_PAGE_COPY = {
       quest: "Quest",
     },
   },
-  ru: {
-    title: "Моя страница",
-    level: "Уровень",
-    ilvl: "Уровень предметов",
-    keystone: "Ключ",
-    renown: "Известность",
-    plans: "Планы",
-    wins: "Победы",
-    completions: "Завершённые Пути",
-    emptyCompletions: "Завершённых Путей пока нет. Выбери Путь — Бори поможет пройти его.",
-    emptyCharacters: "Бори ещё не видел твоих персонажей. Поиграй разок, и они появятся здесь.",
-    emptyPlans: "Планов пока нет. Выбери один с Бори в игре.",
-    emptyWins: "Пока ничего из плана не пришло.",
-    kinds: {
-      mount: "Маунт",
-      ach: "Достижение",
-      toy: "Игрушка",
-      pet: "Питомец",
-      item: "Предмет",
-      quest: "Задание",
-    },
-  },
 } as const;
 
 export type MyCharacter = {

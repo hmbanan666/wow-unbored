@@ -84,7 +84,7 @@ dbTest("My page reads one Account and hides the other", async () => {
     assert.equal(theirs.includes("Not yours"), false);
     assert.equal("accountId" in mine, false);
 
-    const empty = await readMyPage(sql, "nobody", "ru");
+    const empty = await readMyPage(sql, "nobody", "en");
     assert.deepEqual(empty, { characters: [], plans: [], wins: [], completions: [] });
   } finally {
     await sql.end();

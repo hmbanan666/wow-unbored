@@ -4,8 +4,8 @@ import { CHARACTER_COPY, characterHref, type CharacterPage } from "#shared/chara
 import { professionSlug } from "#shared/profession-album";
 
 type Result =
-  | { ok: true; lang: "en" | "ru"; character: CharacterPage }
-  | { ok: false; lang: "en" | "ru"; message: string };
+  | { ok: true; lang: "en"; character: CharacterPage }
+  | { ok: false; lang: "en"; message: string };
 const route = useRoute();
 const endpoint = computed(
   () =>
