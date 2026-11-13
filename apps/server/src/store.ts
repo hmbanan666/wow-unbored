@@ -1,3 +1,4 @@
+import { mergeQuestAccount } from "./quest-sightings.ts";
 import { mergeSightingAccount } from "./recipe-sources.ts";
 import { checkPathOutcome, readRequestPath } from "./path-plan.ts";
 import { ActivePaths } from "./active-path.ts";
@@ -1673,6 +1674,7 @@ export class Store {
       const dest = await this.db.get(`SELECT id FROM accounts WHERE id = ?`, to);
       if (dest) {
         await mergeSightingAccount(this.db, from, to);
+        await mergeQuestAccount(this.db, from, to);
         await this.db.run(`DELETE FROM accounts WHERE id = ?`, from);
       } else await this.db.run(`UPDATE accounts SET id = ?, label = ? WHERE id = ?`, to, to, from);
       await this.db.run(`UPDATE characters SET account_id = ? WHERE account_id = ?`, to, from);

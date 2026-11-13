@@ -46,6 +46,7 @@ test.skipIf(!hasPostgres)(
         "0033_character_goals.sql",
         "0034_recipe_slugs.sql",
         "0035_page_link_character.sql",
+        "0036_quest_sightings.sql",
       ]);
       await db.sql`INSERT INTO recipe_sightings (account_id, game, kind, source_key, npc_id, npc_name, limited, first_seen, last_seen) VALUES ('old', 'forever', 'vendor', 'i2555', 123, 'Vendor', 1, 1, 2)`;
       assert.deepEqual(await migrate(db.sql), []);

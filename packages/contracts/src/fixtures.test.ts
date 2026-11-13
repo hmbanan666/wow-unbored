@@ -1,3 +1,4 @@
+import { questSeenBodySchema } from "./quests.ts";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -272,4 +273,11 @@ test("rank-training Ideas deliver one Step without inventing a higher skill targ
     skillLine: 197,
     previousMax: 75,
   });
+});
+
+test("quest sightings use the shared snapshot envelope", () => {
+  const parsed = snapshotBodySchema.parse(read("quest-sightings.json"));
+  expect(parsed.game).toBe("forever");
+  expect(parsed.sections.questSeen.scope).toBe("char");
+  expect(questSeenBodySchema.safeParse(parsed.sections.questSeen.body).success).toBe(true);
 });

@@ -92,7 +92,7 @@ pg("a pre-Game-DB SQLite file still transfers to the current schema", async () =
   const db = await testDatabase();
   try {
     const report = await transfer({ sqlitePath: file, sql: db.sql });
-    assert.equal(report.tables.length, 21);
+    assert.equal(report.tables.length, 24);
     const store = new Store(path.dirname(file), { postgres: db.sql });
     try {
       assert.equal(await store.game.entity("achievement", 964), undefined);
@@ -125,7 +125,7 @@ pg("every table is copied, JSON as jsonb objects, partitions back to the oldest 
     } finally {
       stored.close();
     }
-    assert.equal(report.tables.length, 28);
+    assert.equal(report.tables.length, 31);
     assert.equal(
       (
         await db.sql`SELECT slug FROM game.recipe_slugs WHERE game = 'retail' AND spell_id = 2334`

@@ -47,7 +47,10 @@ files["tests/skill-route.lua"] = { ignore = { "121" } }
 
 files["tests/recipe-sources.lua"] = { ignore = { "111", "112", "121", "122" } }
 
+files["tests/quest-sightings.lua"] = { ignore = { "111", "112", "121", "122" } }
+
 read_globals = {
+  "GetQuestID", "GetTitleText",
   "UnitGUID", "C_Trainer", "C_TooltipInfo", "C_MerchantFrame",
   "GetNumTrainerServices", "GetTrainerServiceStepIndex", "GetTrainerServiceInfo",
   "IsTradeskillTrainer",
