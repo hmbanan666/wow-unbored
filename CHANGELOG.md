@@ -2,6 +2,16 @@
 
 History only. Each GitHub release shows just its own changes, generated from Conventional Commits (docs/adr/0022).
 
+## 0.14.0
+
+- WoW Forever: the same addon now loads in Forever as well as Retail. The Companion finds the `_forever_` folder, installs Bory there and sends Forever characters to My page with a Forever chip.
+- Professions: open a profession window once and your private character page shows each profession, your skill and how many recipes you know out of the full list for that game. Missing recipes are grouped by category.
+- Where to get a recipe: trainers and recipe vendors you visit are remembered (NPC data only), so missing recipes show the trainer or vendor and the place. Bory's tooltip tells you when a recipe item is new for you or for an alt.
+- Skill-up route in Forever: the next stretch of your profession with the cheapest known or trainable recipes, reagent totals and stops at the trainer for the next rank. Follow it in game as a Plan or read it on your character page.
+- Character history: a private page per character with level, gold and profession skill charts and a timeline of levels, learned recipes, gear and reputation changes. Forget my data deletes it too.
+- playunbored.com: an install page with direct downloads, and new guides for WoW Forever (systems, money, professions, raids, class guides).
+- Новое: аддон работает и в WoW Forever, один и тот же для Retail. Профессии и «знаешь N из M» рецептов на личной странице персонажа, где взять недостающий рецепт (тренер или продавец с местом), маршрут прокачки профессии в Forever со стопами у тренера и история персонажа с графиками уровня, золота и навыков. На playunbored.com страница установки и новые гайды по Forever.
+
 ## 0.13.0
 
 - Visit playunbored.com for guides, Collections and the Paths catalog. Open My page from the Companion with one click to see your Characters and Plans.
