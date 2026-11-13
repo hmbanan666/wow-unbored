@@ -120,7 +120,6 @@ mod tests {
     use crate::savedvars::Stamp;
     use std::path::PathBuf;
 
-    /// D151: the updater trusts the committed new public key, never a revert.
     #[test]
     fn page_link_body_uses_latest_save_across_games_and_falls_back() {
         use std::fs;
@@ -151,6 +150,7 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    /// D151: the updater trusts the committed new public key, never a revert.
     #[test]
     fn embeds_the_new_updater_pubkey() {
         let conf: serde_json::Value =

@@ -507,7 +507,7 @@ test.skipIf(!onPostgres)(
 );
 
 test.skipIf(!onPostgres)(
-  "redeeming a phone link waits for Account erasure and cannot reopen its session",
+  "redeeming a sign-in link waits for Account erasure and cannot reopen its session",
   async () => {
     const built = setup();
     const device = await pair(built);
