@@ -14,7 +14,10 @@ test.skipIf(!hasPostgres)(
         copyFileSync(f.url, path.join(dir, f.name));
       await migrate(db.sql, pathToFileURL(dir + "/"));
       await db.sql`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'unbored_web') THEN CREATE ROLE unbored_web NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; END IF; END $$`;
-      expect(await migrate(db.sql)).toEqual(["0036_quest_sightings.sql"]);
+      expect(await migrate(db.sql)).toEqual([
+        "0036_quest_sightings.sql",
+        "0037_character_feeds.sql",
+      ]);
       expect(await migrate(db.sql)).toEqual([]);
       await db.sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES ('owner', 'Owner', 1, 1)`;
       for (const [id, title] of [
