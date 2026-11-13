@@ -1,0 +1,45 @@
+import type { FeedPage } from "../../shared/character-feed";
+export const characterFeedFixture: FeedPage = {
+  shared: true,
+  name: "Kania",
+  realm: "CAMWOW EU4 Realm 3 PvE",
+  next: "1794528000:e1",
+  posts: [
+    {
+      id: "e4",
+      at: 1794590000,
+      name: "Kania",
+      realm: "CAMWOW EU4 Realm 3 PvE",
+      href: "/forever/players/camwow-eu4-realm-3-pve/kania",
+      kind: "level",
+      label: "Level 25",
+    },
+    {
+      id: "e3",
+      at: 1794580000,
+      name: "Kania",
+      realm: "CAMWOW EU4 Realm 3 PvE",
+      href: "/forever/players/camwow-eu4-realm-3-pve/kania",
+      kind: "recipe",
+      label: "Learned Enchant Bracer — Lesser Stamina",
+    },
+    {
+      id: "e2",
+      at: 1794500000,
+      name: "Kania",
+      realm: "CAMWOW EU4 Realm 3 PvE",
+      href: "/forever/players/camwow-eu4-realm-3-pve/kania",
+      kind: "profession",
+      label: "Enchanting · first recorded skill 145",
+    },
+    {
+      id: "e1",
+      at: 1794400000,
+      name: "Kania",
+      realm: "CAMWOW EU4 Realm 3 PvE",
+      href: "/forever/players/camwow-eu4-realm-3-pve/kania",
+      kind: "reputation",
+      label: "Orgrimmar · Friendly",
+    },
+  ],
+};

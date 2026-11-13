@@ -26,6 +26,7 @@ useSeoMeta({ title: () => `${identity.value.name} history`, robots: "noindex, no
 </script>
 <template>
   <DsPage>
+    <FeedControls :identity="identity" />
     <DsButton :to="back" variant="ghost">Back to character</DsButton>
     <DsPageHeader :title="`${identity.name} history`" :eyebrow="identity.realm" />
     <DsEmptyState

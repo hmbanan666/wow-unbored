@@ -1,3 +1,4 @@
+import { sharedFeedPaths } from "../../utils/character-feed";
 import { readPublicQuests, readPublicQuestChains } from "../../utils/quests";
 import { listPublished } from "../../utils/content.ts";
 import { publicCatalog } from "../../utils/public-catalog";
@@ -8,6 +9,7 @@ export default defineSitemapEventHandler(async () => {
   const fixed = [
     "/forever",
     "/forever/quests",
+    "/forever/feed",
     "/guides",
     "/collections",
     "/paths",
@@ -21,6 +23,7 @@ export default defineSitemapEventHandler(async () => {
   const pages = await listPublished(sql);
   return [
     ...fixed,
+    ...(await sharedFeedPaths(sql)).map((loc) => ({ loc })),
     ...(
       await Promise.all(
         (["forever", "retail"] as const).map(async (game) => {

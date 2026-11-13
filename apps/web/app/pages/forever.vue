@@ -41,6 +41,9 @@ useSchemaOrg([
 
 <template>
   <div>
+    <DsContainer width="wide"
+      ><DsButton to="/forever/feed" variant="ghost">Meet the community</DsButton></DsContainer
+    >
     <DsContainer v-if="professions?.length" width="wide"
       ><DsButton to="/forever/professions" variant="ghost"
         >Explore profession recipes</DsButton

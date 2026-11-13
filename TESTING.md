@@ -658,3 +658,14 @@
 - Анонимно и после входа публичная страница одинакова до загрузки личного прогресса. Выбрать персонажа в существующем меню: выполнено / в журнале / следующий шаг. При переключении старый прогресс исчезает сразу; Retail не получает Forever-прогресс. Ошибка загрузки предлагает повторить.
 - Цепочек пока нет: индекс честно сообщает об этом. Публикация файла с хотя бы одним ненаблюдавшимся id оставляет цепочку черновиком; подтверждённая цепочка содержит ссылки на задания по порядку.
 - Forget my data убирает собственные наблюдения и личный прогресс; общие наблюдения других Accounts остаются. Если исчезло последнее подтверждение шага, цепочка не публикуется. Новое наблюдение того же задания сохраняет прежний адрес.
+
+## P9 — character and community feeds (English website)
+
+- With sharing off by default, open `/my`, pick a Forever character, and open its history. Its private events remain visible; the sharing control explains what turning sharing on publishes.
+- Turn sharing on. Open the public feed in a signed-out browser: dated level, profession, named recipe and reputation milestones appear, and “Meet the community” opens `/forever/feed`. Gold, gear and inferred dungeon visits never appear. Follow “Older moments”; equal timestamps neither repeat nor omit posts.
+- Sign in and pick that character in the header: sharing and upload controls appear after the page loads. Pick another character or sign out: controls disappear. The initial public HTML is identical, without personal controls or account identifiers.
+- Confirm the image is your own game screenshot, then upload a PNG/JPEG/WebP below 12 MB. The full image appears without edits. Re-uploading it does not duplicate the post. A visitor cannot upload or change sharing.
+- Turn sharing off. Fresh character requests show “This character has not shared a feed”; the global feed and sitemap omit its posts/address, and old screenshot requests return 404 without a reusable cache. Private history still works and remains noindex/no-store.
+- Turn sharing on again, then use Forget my data. All events, consent and screenshots/variants disappear. Previously downloaded copies outside the service cannot be recalled.
+- In the next Companion build, choose “Share your Forever story”, explicitly choose the screenshot character, and enable sharing. Take a fresh game screenshot; after two normal checks it appears on that character's feed. Existing screenshots never upload. Turn sharing off on the site; new screenshots stay on the PC. Turn it back on: screenshots from the disabled interval never appear. Restart the Companion: collection requires a new explicit character choice. Switching characters in game never silently changes the chosen destination.
+- Check 390px and desktop widths: no horizontal overflow, readable dates, working keyboard controls, and a useful empty state. Review captures are CI artifacts, not repository images.

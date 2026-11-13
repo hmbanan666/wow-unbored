@@ -831,3 +831,39 @@ productionTest(
       expect((await fetch(origin + path)).status).toBe(404);
   },
 );
+
+productionTest(
+  "public feed SSR and sitemap react immediately to consent, without private HTML",
+  async () => {
+    const { PostgresDb } = await import("../../server/src/db.ts");
+    const { setSharing } = await import("../../server/src/character-sharing.ts");
+    const db = new PostgresDb(database.sql);
+    const id = `forever/${fixtureCharacter.realm}/${fixtureCharacter.name}`;
+    await database.sql`INSERT INTO character_events (character_id, game, type, key, at, from_value, to_value) VALUES (${id}, 'forever', 'level_up', 'feed-fixture', 1794500000, '24', '25')`;
+    const cookie = await signedCookie();
+    const state = await setSharing(db, fixtureAccount, fixtureCharacter, true);
+    for (const path of [state.href, "/forever/feed"]) {
+      const anonymous = await fetch(origin + path);
+      expect(anonymous.status).toBe(200);
+      expect(anonymous.headers.get("cache-control")).toContain("no-store");
+      expect(anonymous.headers.get("x-robots-tag") ?? "").not.toContain("noindex");
+      const html = await anonymous.text();
+      expect(html).toContain("Level 25");
+      expect(html).not.toContain("Your story, your choice.");
+      expect(html).not.toContain(fixtureAccount);
+      expect(await (await fetch(origin + path, { headers: { cookie } })).text()).toBe(html);
+    }
+    expect(await (await fetch(origin + "/sitemap.xml")).text()).toContain(state.href);
+    await setSharing(db, fixtureAccount, fixtureCharacter, false);
+    const stub = await fetch(origin + state.href);
+    expect(stub.status).toBe(200);
+    const html = await stub.text();
+    expect(html).toContain("This character has not shared a feed");
+    expect(html).not.toContain("Level 25");
+    // The URL itself is public; the hidden character's display identity and events are not rendered.
+    expect(html).not.toContain("Kania");
+    expect(html).not.toContain("CAMWOW EU4 Realm 3 PvE");
+    expect(await (await fetch(origin + "/forever/feed")).text()).not.toContain("Level 25");
+    expect(await (await fetch(origin + "/sitemap.xml")).text()).not.toContain(state.href);
+  },
+);
