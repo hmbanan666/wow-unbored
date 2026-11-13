@@ -1,0 +1,5 @@
+# 0104. Forever quest observations and authored chains
+
+Status: accepted
+
+Following [0102](0102-english-only-public-pages-with-personal-overlay.md), Forever records the latest 500 quest observations under the recipe-sighting sharing setting, with English-client titles, levels, first acceptance and turn-in times, rounded player positions and NPC-only interaction facts; transient interaction facts are captured out of combat while the quest interaction is available and stored on the settled event pass. The Server keeps idempotent per-Account observations erased by Forget my data, and publishes authored repository chains only when every step has evidence in quest sightings or completed quests, with no third-party quest databases and no initial authored chains. Public English quest pages use stable reserved slugs at `/forever/quests/<slug>`, chains use `/forever/quests/chains/<slug>` (refining 0102's provisional address), and character progress is an ownership-checked, private no-store overlay that never enters shared HTML.

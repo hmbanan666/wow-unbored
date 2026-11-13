@@ -123,3 +123,4 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0102. English-only site, public game pages with a personal overlay](0102-english-only-public-pages-with-personal-overlay.md)
 
 - [0103. Forever profession tiers and trainer visits](0103-forever-profession-tiers-and-trainer-visits.md)
+- [0104. Forever quest observations and authored chains](0104-forever-quest-observations-and-chains.md)

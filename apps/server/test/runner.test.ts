@@ -385,6 +385,7 @@ for (const backend of BACKENDS) {
       assert.ok(names.includes("get_path_progress"));
       assert.ok(names.includes("get_character_history"));
       assert.ok(names.includes("get_profession_progress"));
+      assert.ok(names.includes("get_quest_chain_progress"));
       for (const name of ["save_content_draft", "publish_content", "get_content"]) {
         assert.ok(!names.includes(name));
         assert.ok((await call(name)).body.result.isError);
@@ -435,6 +436,15 @@ for (const backend of BACKENDS) {
         ],
         ["get_profession_progress", { game: "forever", character: "Mira", skillLine: 333 }],
         ["get_today_goals", { game: "forever", character: "Mira" }],
+        [
+          "get_quest_chain_progress",
+          { game: "retail", character: "SomeoneElse", realm: "Elsewhere", slug: "a-chain" },
+        ],
+        ["get_quest_chain_progress", { game: "forever", character: "Mira", slug: "a-chain" }],
+        [
+          "get_quest_chain_progress",
+          { game: "retail", character: "Mira", account: "another-account", slug: "a-chain" },
+        ],
         ["get_today_goals", { game: "retail", character: "Mira", account: "another-account" }],
         ["get_today_goals", { game: "retail", character: "SomeoneElse", realm: "Elsewhere" }],
         [

@@ -1,3 +1,8 @@
+import {
+  QUESTS_SQLITE_SCHEMA,
+  ingestQuestSightings,
+  ingestCompletedQuestSightings,
+} from "./quest-sightings.ts";
 import { GOALS_SQLITE_SCHEMA, tickAccountGoals } from "./today-goals.ts";
 import {
   EVENTS_SQLITE_SCHEMA,
@@ -48,6 +53,7 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
   currencies: { scope: "char", v: 1 },
   professions: { scope: "char", v: 1 },
   recipes: { scope: "char", v: 1 },
+  questSeen: { scope: "char", v: 1 },
   trainerSeen: { scope: "char", v: 1 },
   merchantSeen: { scope: "char", v: 1 },
   questsDone: { scope: "char", v: 1 },
@@ -82,12 +88,13 @@ export const KNOWN_SECTIONS: Record<string, { scope: SectionScope; v: number }> 
  * retail folded the reagent bank into the bank tabs (11.2), so most clients
  * never write it. Old bodies are still read for holdings and wins.
  */
-const NOT_EXPECTED = new Set(["errors", "profile", "reagentBank"]);
+const NOT_EXPECTED = new Set(["errors", "profile", "reagentBank", "questSeen"]);
 /** Read only while a window is open, with the hint the owner sees (D171). */
 const WINDOW_SECTIONS: Record<string, string> = {
   bank: "open the bank",
   warband: "open the warband bank",
   recipes: "open a profession",
+  questSeen: "accept or turn in a quest",
   trainerSeen: "visit a profession trainer",
   merchantSeen: "visit a recipe vendor",
 };
@@ -685,7 +692,11 @@ export class DataStore {
     this.log = log;
     if (db instanceof SqliteDb) {
       db.raw.exec(
-        SQLITE_SCHEMA + SIGHTINGS_SQLITE_SCHEMA + EVENTS_SQLITE_SCHEMA + GOALS_SQLITE_SCHEMA,
+        SQLITE_SCHEMA +
+          QUESTS_SQLITE_SCHEMA +
+          SIGHTINGS_SQLITE_SCHEMA +
+          EVENTS_SQLITE_SCHEMA +
+          GOALS_SQLITE_SCHEMA,
       );
       if (
         !db.raw
@@ -1083,6 +1094,22 @@ export class DataStore {
             section.body,
             now,
           );
+        }
+        if (
+          outcome === "stored" &&
+          section.scope === "char" &&
+          section.v === 1 &&
+          section.name === "questSeen"
+        ) {
+          await ingestQuestSightings(this.db, account, snapshot.game, section.body, now);
+        }
+        if (
+          outcome === "stored" &&
+          section.scope === "char" &&
+          section.v === 1 &&
+          section.name === "questsDone"
+        ) {
+          await ingestCompletedQuestSightings(this.db, account, snapshot.game, section.body, now);
         }
         if (outcome === "stored") result.stored.push(section.name);
         else if (outcome === "unchanged") result.unchanged.push(section.name);
@@ -1785,6 +1812,7 @@ export class DataStore {
       );
       await this.db.run(`DELETE FROM characters WHERE account_id = ?`, id);
       await this.db.run(`DELETE FROM recipe_sightings WHERE account_id = ?`, id);
+      await this.db.run(`DELETE FROM quest_sightings WHERE account_id = ?`, id);
       await this.db.run(`DELETE FROM accounts WHERE id = ?`, id);
       return { characters: characters.length, sections, history, errors };
     });

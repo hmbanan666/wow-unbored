@@ -1,3 +1,7 @@
+import QuestPage from "../../app/pages/[game]/quests/[slug].vue";
+import ChainPage from "../../app/pages/[game]/quests/chains/[slug].vue";
+import QuestIndexPage from "../../app/pages/[game]/quests/index.vue";
+import { questFixture, chainFixture, questOverlayFixture } from "../fixtures/quests";
 import * as vue from "vue";
 import MyPage from "../../app/pages/my/index.vue";
 import { kaniaProfile } from "../fixtures/profile-home";
@@ -54,6 +58,16 @@ Object.assign(globalThis, {
     },
   }),
   useFetch: async (endpoint: string) => {
+    if (endpoint === "/api/game/forever/quests")
+      return {
+        data: vue.ref({ quests: [questFixture], chains: [chainFixture] }),
+        error: vue.ref(null),
+      };
+    if (endpoint.includes("/quests/"))
+      return {
+        data: vue.ref(endpoint.includes("/chains/") ? chainFixture : questFixture),
+        error: vue.ref(null),
+      };
     const slug = endpoint.split("/").pop();
     const album = albums.find((p) => p.base.slug === slug) ?? enchanting;
     const recipe = albums.flatMap((p) => p.base.album).find((r) => r.slug === slug);
@@ -68,6 +82,8 @@ Object.assign(globalThis, {
     };
   },
   $fetch: async (endpoint: string) => {
+    if (endpoint.includes("/overlay/quests/") || endpoint.includes("/overlay/quest-chains/"))
+      return questOverlayFixture;
     if (endpoint.endsWith("/profile")) return { ok: true, character: kaniaProfile() };
     if (endpoint === "/api/me/page-link")
       return {
@@ -104,19 +120,25 @@ const app = vue.createApp({
       vue.h(
         "div",
         { style: "padding: 4px 20px; color: #b8a385; font: 12px system-ui" },
-        "Local fixture · synthetic recipe observations",
+        "Local fixture · synthetic game observations",
       ),
       vue.h(Nav, { links: SITE_NAV }, { character: () => vue.h(Picker) }),
       vue.h(vue.Suspense, null, {
         default: () =>
           vue.h(
-            route.path === "/my"
-              ? query.get("profile") === "1"
-                ? MyPage
-                : PhoneSignIn
-              : route.path.includes("/recipes/")
-                ? RecipePage
-                : ProfessionPage,
+            route.path === "/forever/quests"
+              ? QuestIndexPage
+              : route.path.includes("/quests/chains/")
+                ? ChainPage
+                : route.path.includes("/quests/")
+                  ? QuestPage
+                  : route.path === "/my"
+                    ? query.get("profile") === "1"
+                      ? MyPage
+                      : PhoneSignIn
+                    : route.path.includes("/recipes/")
+                      ? RecipePage
+                      : ProfessionPage,
             {
               key: route.path,
             },

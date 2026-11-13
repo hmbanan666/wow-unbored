@@ -71,6 +71,9 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
     INSERT INTO game_quest_names (build, id, locale, name, url) VALUES ('12.0.1.66337', 90001, 'enUS', 'An adventure', 'https://us.api.blizzard.com/data/wow/quest/90001?namespace=static-us&locale=en_US');
     INSERT INTO game_profession_recipes (game, build, skill_line, spell_id, body_json) VALUES ('retail', '12.0.1.66337', 171, 2334, '{"spellId":2334,"name":"Elixir of Minor Fortitude"}');
     INSERT INTO game_watch (id, live_build, pending_since, checked_at, last_error) VALUES (1, '12.0.1.66338', ${now}, ${now}, 'import_failed');
+    INSERT INTO game_quest_slugs VALUES ('forever', 42, 'existing-quest-address');
+    INSERT INTO game_quest_chains VALUES ('forever', 'first-steps', '{"slug":"first-steps","title":"First steps","status":"draft","faction":"Both","zone":"Elwynn Forest","steps":[{"questID":42,"title":"First quest"}]}');
+    INSERT INTO quest_sightings (account_id, game, quest_id, kind, title, first_seen, last_seen) VALUES ('A', 'forever', 42, 'accept', 'Changed name', ${now}, ${now});
     INSERT INTO recipe_sightings (account_id, game, kind, source_key, npc_id, npc_name, limited, first_seen, last_seen) VALUES ('A', 'retail', 'vendor', 'i2555', 123, 'Recipe vendor', 0, ${now}, ${now});
     INSERT INTO game_ids VALUES ('achievement', 6, 1, ${now});
     INSERT INTO creature_names VALUES (1, 'enUS', NULL, ${now});
@@ -92,7 +95,7 @@ pg("a pre-Game-DB SQLite file still transfers to the current schema", async () =
   const db = await testDatabase();
   try {
     const report = await transfer({ sqlitePath: file, sql: db.sql });
-    assert.equal(report.tables.length, 21);
+    assert.equal(report.tables.length, 24);
     const store = new Store(path.dirname(file), { postgres: db.sql });
     try {
       assert.equal(await store.game.entity("achievement", 964), undefined);
@@ -125,7 +128,7 @@ pg("every table is copied, JSON as jsonb objects, partitions back to the oldest 
     } finally {
       stored.close();
     }
-    assert.equal(report.tables.length, 28);
+    assert.equal(report.tables.length, 31);
     assert.equal(
       (
         await db.sql`SELECT slug FROM game.recipe_slugs WHERE game = 'retail' AND spell_id = 2334`
@@ -277,9 +280,9 @@ pg("the script runs under node as in the Docker image, URL from the environment 
       },
     );
     const dry = await node(["--sqlite", file, "--dry-run"], { DATABASE_URL: db.url });
-    assert.match(dry.stdout, /Dry run ok, rolled back: 28 tables, \d+ rows verified/);
+    assert.match(dry.stdout, /Dry run ok, rolled back: 31 tables, \d+ rows verified/);
     const real = await node([], { DATABASE_URL: db.url, UNBORED_DATA_DIR: path.dirname(file) });
-    assert.match(real.stdout, /Committed: 28 tables/);
+    assert.match(real.stdout, /Committed: 31 tables/);
     await assert.rejects(
       node(["--sqlite", file], { DATABASE_URL: db.url }),
       (error: { code: number; stderr: string }) => {

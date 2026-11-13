@@ -65,6 +65,14 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Forever quest review screenshots
+        uses: actions/upload-artifact@v7
+        with:
+          name: forever-quest-screenshots
+          path: artifacts/forever-quests/*.png
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Website pages come from Postgres
         run: UNBORED_WEB_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm exec vp test apps/web
 

@@ -14,6 +14,7 @@ RUN pnpm install --frozen-lockfile --filter @unbored/server... --prod
 
 COPY apps/server/src apps/server/src
 COPY apps/server/migrations apps/server/migrations
+COPY apps/server/content/forever/quest-chains apps/server/content/forever/quest-chains
 # The one-off SQLite -> Postgres transfer (ADR 0057), run with node in this image.
 COPY apps/server/scripts apps/server/scripts
 COPY apps/server/docker-entrypoint.sh /usr/local/bin/unbored-entrypoint

@@ -94,6 +94,7 @@ pg("migrate applies each file once, also when two Servers start together", async
       "0033_character_goals.sql",
       "0034_recipe_slugs.sql",
       "0035_page_link_character.sql",
+      "0036_quest_sightings.sql",
     ]);
     assert.deepEqual(await migrate(db.sql), []);
     const rows = await db.sql`SELECT version, name FROM schema_migrations ORDER BY version`;
@@ -135,6 +136,7 @@ pg("migrate applies each file once, also when two Servers start together", async
         [33, "0033_character_goals.sql"],
         [34, "0034_recipe_slugs.sql"],
         [35, "0035_page_link_character.sql"],
+        [36, "0036_quest_sightings.sql"],
       ],
     );
   } finally {
@@ -169,6 +171,8 @@ pg("the schema has every SQLite table and column, but the legacy profiles", asyn
         "game_rows",
         "game_imports",
         "game_quest_names",
+        "game_quest_slugs",
+        "game_quest_chains",
         "game_profession_recipes",
       ].includes(table);
       const actual = (

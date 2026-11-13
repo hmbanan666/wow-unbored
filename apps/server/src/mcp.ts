@@ -1,3 +1,4 @@
+import { readQuestChainProgress } from "./quest-chains.ts";
 import { todayGoals } from "./today-goals.ts";
 import { readProfessionProgress } from "./profession-progress.ts";
 import { CHARACTER_EVENT_TYPES } from "@unbored/contracts/character-history";
@@ -189,6 +190,7 @@ const LEASE_TOOLS = new Set([
   "get_character_history",
   "get_skill_route",
   "get_profession_progress",
+  "get_quest_chain_progress",
   "get_today_goals",
   "find_game_entity",
   "get_quest_line",
@@ -1053,6 +1055,30 @@ export function createMcpServer(
       const rows = await pickCharacters(input);
       if (rows.length !== 1) return text({ error: "Choose one Character with realm or account." });
       return text(await readProfessionProgress(store.db, rows[0]!, input.skillLine));
+    },
+  );
+
+  registerTool(
+    "get_quest_chain_progress",
+    {
+      title: "Read quest chain progress",
+      description:
+        "Published, observation-verified authored chain steps with done, inLog and next from this Character's quest Sections. Missing data stays unknown. Pass realm or account for ambiguous names.",
+      inputSchema: {
+        ...whoSchema,
+        game: z.enum(["retail", "forever"]),
+        character: z.string().min(1).max(80),
+        slug: z
+          .string()
+          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+          .max(100),
+      },
+    },
+    async (input) => {
+      await settle(input.account);
+      const rows = await pickCharacters(input);
+      if (rows.length !== 1) return text({ error: "Choose one Character with realm or account." });
+      return text(await readQuestChainProgress(store.db, rows[0]!, input.slug));
     },
   );
 

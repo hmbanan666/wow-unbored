@@ -489,6 +489,9 @@ function S.ApplySharing()
   if S.Sharing() then
     return
   end
+  for _, def in pairs(S.defs) do
+    if def.clear and not S.ESSENTIAL[def.name] then def.clear() end
+  end
   for _, alt in pairs(ns.DB and ns.DB.alts or {}) do alt.recipeKnowledge = nil end
   if ns.RecipeAdvice then ns.RecipeAdvice.Invalidate() end
   for _, scope in ipairs({ "char", "account" }) do

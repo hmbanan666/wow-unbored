@@ -6,7 +6,11 @@ import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
 import { testDatabase } from "../../server/test/postgres-db.ts";
-import { seedPublicProfessions, fixtureCharacter } from "./public-professions-fixture";
+import {
+  seedPublicProfessions,
+  fixtureCharacter,
+  fixtureAccount,
+} from "./public-professions-fixture";
 import { characterKey } from "../shared/selected-character";
 import { seedSeoContent } from "./seo-fixture.ts";
 
@@ -29,6 +33,9 @@ beforeAll(async () => {
   await database.sql`INSERT INTO sections_latest (owner_kind, owner_id, section, v, hash, updated_at, bytes, body)
     VALUES ('char', ${profileId}, 'char', 1, 'profile-fixture', 1, 10,
       '{"class":"Warlock","classFile":"WARLOCK","race":"Troll","raceFile":"Troll","faction":"Horde","level":25,"xp":18993,"xpMax":34000}'::jsonb)`;
+  await database.sql`INSERT INTO quest_sightings (account_id, game, quest_id, kind, title, level, npc_id, npc_name, ui_map_id, x, y, first_seen, last_seen) VALUES (${fixtureAccount}, 'forever', 42, 'accept', 'A Beginning', 5, 123, 'Marshal', 37, 48.2, 42.1, 1, 1)`;
+  await database.sql`INSERT INTO game.quest_chains (game, slug, body) VALUES ('forever', 'first-steps', '{"slug":"first-steps","title":"First steps","faction":"Both","zone":"Elwynn Forest","status":"published","steps":[{"questID":42,"title":"A Beginning"}]}'::jsonb)`;
+  await database.sql`INSERT INTO sections_latest (owner_kind, owner_id, section, v, hash, updated_at, bytes, body) VALUES ('char', ${profileId}, 'questsDone', 1, 'quests-fixture', 1, 10, '{"ids":["ids1","16"],"count":1}'::jsonb)`;
   mediaDir = await mkdtemp(fileURLToPath(new URL("./.seo-media-", import.meta.url)));
   await sharp(fileURLToPath(new URL("../public/bory.png", import.meta.url)))
     .webp()
@@ -563,6 +570,9 @@ productionTest(
       "/forever/professions",
       "/forever/professions/enchanting",
       "/forever/recipes/runed-copper-rod",
+      "/forever/quests",
+      "/forever/quests/a-beginning",
+      "/forever/quests/chains/first-steps",
     ]) {
       const anonymous = await fetch(origin + path);
       const personal = await fetch(origin + path, {
@@ -764,5 +774,60 @@ productionTest(
     });
     expect((await fetch(origin + path, { headers: { cookie: other } })).status).toBe(404);
     expect(await (await fetch(origin + path)).json()).toMatchObject({ ok: false });
+  },
+);
+
+productionTest(
+  "quest SEO, sitemap and private overlays use observed facts without owner leaks",
+  async () => {
+    const cookie = await signedCookie(),
+      other = await signedCookie(true);
+    const sitemap = await (await fetch(origin + "/sitemap.xml")).text();
+    for (const path of [
+      "/forever/quests",
+      "/forever/quests/a-beginning",
+      "/forever/quests/chains/first-steps",
+    ]) {
+      const doc = await page(path);
+      expect(doc.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(
+        "https://playunbored.com" + path,
+      );
+      expect(sitemap).toContain(path);
+      expect(doc.querySelector('script[type="application/ld+json"]')?.textContent).toContain(
+        "BreadcrumbList",
+      );
+    }
+    for (const path of [
+      "/api/me/overlay/quests/forever/a-beginning",
+      "/api/me/overlay/quest-chains/forever/first-steps",
+    ]) {
+      const address =
+        origin + path + "?character=" + encodeURIComponent(characterKey(fixtureCharacter));
+      const response = await fetch(address, { headers: { cookie } });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("x-robots-tag")).toContain("noindex");
+      expect((await response.json()).steps[0]).toEqual({
+        questID: 42,
+        done: true,
+        inLog: null,
+        next: false,
+      });
+      for (const [headers, status] of [
+        [{}, 401],
+        [{ cookie: other }, 404],
+      ] as const) {
+        const denied = await fetch(address, { headers });
+        expect(denied.status).toBe(status);
+        expect(denied.headers.get("cache-control")).toBe("private, no-store");
+        expect(denied.headers.get("x-robots-tag")).toContain("noindex");
+      }
+    }
+    for (const path of [
+      "/forever/quests/missing",
+      "/forever/quests/chains/draft",
+      "/retail/quests/a-beginning",
+    ])
+      expect((await fetch(origin + path)).status).toBe(404);
   },
 );

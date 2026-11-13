@@ -30,6 +30,7 @@ local files = {
   "Core/Data/Inventory.lua",
   "Core/Data/Professions.lua",
   "Core/Data/RecipeSources.lua",
+  "Core/Data/QuestSeen.lua",
   "Core/Data/Quests.lua",
   "Core/Data/QuestLines.lua",
   "Core/Data/Reputation.lua",

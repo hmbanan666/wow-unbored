@@ -22,11 +22,20 @@ export const LEGACY_TABLES = new Set(["profiles", "profile_snapshots"]);
 /** Sign-in tables the Server creates in SQLite only when a link is issued. */
 const WEBSITE_SQLITE = new Set(["web_sign_in_links", "web_sessions"]);
 /** Older SQLite files predate sightings and derived history; the target must still be empty. */
-const OPTIONAL_SQLITE = new Set(["recipe_sightings", "character_events", "character_goals"]);
+const OPTIONAL_SQLITE = new Set([
+  "recipe_sightings",
+  "quest_sightings",
+  "game_quest_slugs",
+  "game_quest_chains",
+  "character_events",
+  "character_goals",
+]);
 /** Postgres-only tables: not in SQLite, must be empty before a transfer. */
 const POSTGRES_ONLY = new Set(["raw_uploads", "path_completions", "active_paths"]);
 /** Game DB was added after the original cutover; older SQLite files lack it. */
 const GAME_TABLES: Record<string, string> = {
+  game_quest_slugs: "game.quest_slugs",
+  game_quest_chains: "game.quest_chains",
   game_profession_recipes: "game.profession_recipes",
   game_builds: "game.builds",
   game_achievements: "game.achievements",
