@@ -10,3 +10,6 @@ apps/web/.nuxt/
 apps/web/.output/
 apps/web/.data/
 __pycache__/
+
+apps/web/test/browser/.results/
+artifacts/

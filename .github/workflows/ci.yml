@@ -52,6 +52,11 @@ jobs:
           pnpm test
           pnpm check-version
 
+      - name: Profession album in Chromium
+        run: |
+          pnpm --filter @unbored/web exec playwright install --with-deps chromium
+          pnpm --filter @unbored/web test:browser
+
       - name: Website pages come from Postgres
         run: UNBORED_WEB_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm exec vp test apps/web
 

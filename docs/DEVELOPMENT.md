@@ -1516,3 +1516,43 @@ Deploy the Server first and allow its background import to finish, then deploy t
 The private character API and MCP `get_profession_progress(game, character, skillLine)` use the same contracts projection. Existing `known`, `total`, missing source groups and routes remain; `difficultyCounts` counts missing recipes by easy/medium/hard. Each missing recipe adds `difficulty` (score, label, reasons, requiredSkill, source, canGetNow), nullable quality/BoP in `teachingItemNames`, and nullable reagent names. Before a learned Section exists, known remains null and missing lists/counts stay empty. Reasons are plain English in this data-only slice. The later UI can filter by `difficulty.canGetNow`, `difficulty.source`, category and observed source zone; it must not invent a zone where none has been observed.
 
 Forever rows of the same profession name collapse to the id with catalog recipes, retaining other ids in `aliases`, including nested tiers. Learned sets and trainer sightings under those aliases resolve to the canonical profession; MCP accepts either id. Retail keeps its existing profession/tier layout and minimum-skill fallback. A missing client requirement in Forever stays unknown regardless of orange/minSkill. Old unrefreshed teaching links without facts stay `not_seen`, with unknown formula metadata, until import completes.
+
+### Profession album (ADR 0101, slice b)
+
+The private `/my/<game>/<realm>/<name>/<profession-slug>` page reuses the owner-checked
+character endpoint and the `/my/**` no-store/noindex/nofollow middleware. Base skill-line
+names supply stable English slugs; an unknown profession returns 404. Character cards
+link with **Open collection** and retain their skill Plans. Hero, journey and Today remain
+separate follow-ups, with room for Today before the album.
+
+The shared progress projection now includes `album`: every catalog recipe with nullable
+`known`, thresholds, source observations, difficulty, formula facts and named reagents.
+The ring counts known **catalog** recipes; uncatalogued learned ids remain a separate
+note. `known: null` is an unread profession, distinct from a recorded empty learned set.
+Retail albums include their expansion skill lines and evaluate each recipe against its
+own tier's skill. Learned sets use the addon's base-profession read, or per-tier reads
+when the base read is absent. Routes remain the existing per-tier skill Plans.
+
+Filters use a single `?f=` value: `all` (also absent), `now`, `missing`, `trainer`, `vendor`
+(including limited supply), `tradable`, `bop`, `unseen`, or `zone:<observed zone name>`.
+Source chips use the difficulty calculation's selected source, matching the approved
+mockup. Zones use actual sightings, including known recipes; no sightings means a disabled
+Zone chip and a keyboard/touch explanation. Other query values are preserved. Filters dim
+album slots and constrain the missing list; Show all resets on a filter change. The native
+dialog supports Escape, close, focus return and a mobile bottom sheet. Required skill never
+comes from Forever's orange threshold.
+
+Run `pnpm --filter @unbored/web test:browser` after
+`pnpm --filter @unbored/web exec playwright install chromium` (the host needs Chromium's
+shared libraries). The isolated Vite fixture harness renders the actual Vue page/components,
+replacing only routing and API loading. It checks widths 360/390/640/768/1024/1280, 44px tap
+targets, no overflow, dialog focus, URL filters and empty/Retail states, and writes screenshots
+to `artifacts/profession-album/`. These offline fixtures use the approved mockup's recipe
+facts and Kania's skill shape; formula/reagent ids, Tailoring entries and learned sets are
+explicit test data. Production imports no fixture. CI runs Chromium alongside the component,
+owner/API, restricted web-role and production SEO checks.
+
+Deployment: web only; no migration, grants, import or version change. The modified shared
+projection is compiled into web. The Server uses it on its next ordinary build; the page does
+not depend on a Server rollout. The shared files were already included in `apps/web/Dockerfile`;
+all new web files are covered by `COPY apps/web apps/web`.

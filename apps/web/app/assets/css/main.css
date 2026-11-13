@@ -5,6 +5,8 @@
 :root {
   /* Color. Text on --lamp-bg: text about 13:1, muted about 7:1, gold about 9:1 (WCAG AA). */
   --lamp-deep: #140d0a;
+  --lamp-burgundy: #7a2230;
+  --lamp-faint: #806e5c;
   --lamp-bg: #1e1410;
   --lamp-glow: #2a1c15;
   --render-bg: #181818;

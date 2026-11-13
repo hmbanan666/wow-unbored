@@ -30,6 +30,7 @@ for (const game of ["retail", "forever"]) {
     );
     await flushPromises();
     expect(wrapper.text()).toContain("Alchemy");
+    expect(wrapper.find(`a[href="/my/${game}/Realm/Mira/alchemy"]`).text()).toBe("Open collection");
     expect(wrapper.text()).toContain("112 / 150");
     expect(wrapper.text()).toContain("Known recipes: 4");
     expect(wrapper.text()).toContain(CHARACTER_COPY.en.catalogEmpty);
