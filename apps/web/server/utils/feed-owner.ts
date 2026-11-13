@@ -16,6 +16,26 @@ async function boundedBody(event: H3Event, max: number) {
 export async function feedOwnerRequest(event: H3Event, action: "sharing" | "screenshots") {
   setResponseHeader(event, "cache-control", "private, no-store");
   setResponseHeader(event, "x-robots-tag", "noindex");
+  // Return expected failures directly: Nitro's generic error renderer replaces no-store.
+  try {
+    return await forwardFeedOwnerRequest(event, action);
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "statusCode" in error ? Number(error.statusCode) : 503;
+    const status = [400, 401, 403, 404, 413].includes(code) ? code : 503;
+    setResponseStatus(event, status);
+    const messages: Record<number, string> = {
+      400: "Choose a character and a valid sharing setting.",
+      401: "Sign in from the Companion first.",
+      403: "Open your character on the website to change sharing.",
+      404: "Pick your Forever character first.",
+      413: "Choose a screenshot under 12 MB.",
+      503: "Sharing settings are resting. Please try again.",
+    };
+    return { message: messages[status] };
+  }
+}
+async function forwardFeedOwnerRequest(event: H3Event, action: "sharing" | "screenshots") {
   const origin = getRequestURL(event).origin;
   if (
     event.method !== "GET" &&
@@ -38,7 +58,13 @@ export async function feedOwnerRequest(event: H3Event, action: "sharing" | "scre
     query.set("own", own);
     body = await boundedBody(event, 12 * 1024 * 1024);
   } else if (event.method === "PUT") {
-    const input = JSON.parse((await boundedBody(event, 1024)).toString("utf8"));
+    const raw = await boundedBody(event, 1024);
+    let input;
+    try {
+      input = JSON.parse(raw.toString("utf8"));
+    } catch {
+      throw createError({ statusCode: 400 });
+    }
     body = JSON.stringify({ realm: who.realm, name: who.name, enabled: input?.enabled });
   }
   const config = useRuntimeConfig(event);

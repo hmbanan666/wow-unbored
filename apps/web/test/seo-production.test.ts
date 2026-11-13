@@ -867,3 +867,22 @@ productionTest(
     expect(await (await fetch(origin + "/sitemap.xml")).text()).not.toContain(state.href);
   },
 );
+
+productionTest("private sharing failures remain no-store and noindex", async () => {
+  for (const options of [
+    undefined,
+    {
+      method: "PUT",
+      headers: { origin: "https://elsewhere.example", "content-type": "application/json" },
+      body: "{}",
+    },
+  ]) {
+    const response = await fetch(origin + "/api/me/feed/sharing", options);
+    expect(response.status).toBe(options ? 403 : 404);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-robots-tag")).toContain("noindex");
+    const body = await response.text();
+    expect(body).not.toContain(fixtureAccount);
+    expect(body).not.toContain("Kania");
+  }
+});
