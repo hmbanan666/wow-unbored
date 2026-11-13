@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
-import { browserLang, sessionFromRedeem, SIGN_IN_COPY } from "../shared/sign-in.ts";
+import * as signIn from "../shared/sign-in.ts";
+import { sessionFromRedeem, SIGN_IN_COPY } from "../shared/sign-in.ts";
 
-test("signed-in pages follow the browser language", () => {
-  assert.equal(browserLang(undefined), "en");
-  assert.equal(browserLang("en-US,en;q=0.9"), "en");
-  assert.equal(browserLang("ru-RU,ru;q=0.9,en;q=0.8"), "ru");
-  assert.equal(browserLang("fr-FR,fr;q=0.9"), "en");
-  assert.notEqual(SIGN_IN_COPY.en.here, SIGN_IN_COPY.ru.here);
+test("sign-in lines are English and do not follow a browser language", () => {
+  assert.equal(SIGN_IN_COPY.here, "This is your page.");
+  assert.equal(SIGN_IN_COPY.missing, "Open My page from the Companion.");
+  assert.equal("ru" in SIGN_IN_COPY, false);
+  assert.equal("browserLang" in signIn, false);
 });
 
 test("a redeem answer opens one session or says why it did not", () => {

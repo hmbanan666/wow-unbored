@@ -1,5 +1,7 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import type { H3Event } from "h3";
+import { CHARACTER_COPY } from "../shared/character-page";
+import { SIGN_IN_COPY } from "../shared/sign-in";
 
 const session = vi.hoisted(() => ({ live: vi.fn(), prior: vi.fn() }));
 const read = vi.hoisted(() => vi.fn());
@@ -18,7 +20,7 @@ async function request(game = "forever") {
   const headers = new Map();
   vi.stubGlobal("defineEventHandler", (handler: unknown) => handler);
   vi.stubGlobal("getUserSession", session.prior);
-  vi.stubGlobal("getRequestHeader", () => "en");
+  vi.stubGlobal("getRequestHeader", () => "ru-RU,ru;q=0.9,en;q=0.8");
   vi.stubGlobal("setResponseHeader", (_event: unknown, key: string, value: string) =>
     headers.set(key, value),
   );
@@ -34,10 +36,12 @@ async function request(game = "forever") {
 
 test("character endpoint uses the live Account, returns only its character and forbids caching", async () => {
   session.prior.mockResolvedValue({ secure: { sessionId: "s", accountId: "mine" } });
-  session.live.mockResolvedValue({ accountId: "mine", lang: "en" });
+  session.live.mockResolvedValue({ accountId: "mine" });
   read.mockResolvedValue({ game: "forever", name: "Mira Sun", realm: "A / B", professions: [] });
   const { result, headers } = await request();
-  expect(await result).toMatchObject({ ok: true, character: { name: "Mira Sun" } });
+  const body = await result;
+  expect(body).toMatchObject({ ok: true, character: { name: "Mira Sun" } });
+  expect(body).not.toHaveProperty("lang");
   expect(read).toHaveBeenCalledWith({}, "mine", {
     game: "forever",
     realm: "A / B",
@@ -52,18 +56,24 @@ test("missing or revoked sessions cannot read character Sections", async () => {
   for (const prior of [{}, { secure: { sessionId: "ended", accountId: "mine" } }]) {
     session.prior.mockResolvedValue(prior);
     const { result } = await request();
-    expect(await result).toMatchObject({ ok: false });
+    expect(await result).toMatchObject({
+      ok: false,
+      message: "secure" in prior ? SIGN_IN_COPY.closed : SIGN_IN_COPY.missing,
+    });
   }
   expect(read).not.toHaveBeenCalled();
 });
 
 test("unknown, unowned and invalid-game characters return 404", async () => {
   session.prior.mockResolvedValue({});
-  session.live.mockResolvedValue({ accountId: "mine", lang: "en" });
+  session.live.mockResolvedValue({ accountId: "mine" });
   read.mockResolvedValue(null);
   for (const game of ["forever", "retail", "other"]) {
     const { result } = await request(game);
-    await expect(result).rejects.toMatchObject({ statusCode: 404 });
+    await expect(result).rejects.toMatchObject({
+      statusCode: 404,
+      message: CHARACTER_COPY.notFound,
+    });
   }
   expect(read).toHaveBeenCalledTimes(2);
 });

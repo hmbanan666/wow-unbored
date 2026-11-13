@@ -1,35 +1,13 @@
-export type PageLang = "en" | "ru";
-
 export const SIGN_IN_COPY = {
-  en: {
-    used: "That link was already used. Open My page from the Companion again.",
-    expired: "That link expired. Open My page from the Companion again.",
-    failed: "Bory couldn't open your page just now. Try again from the Companion.",
-    closed: "This page was closed. Open My page from the Companion again.",
-    missing: "Open My page from the Companion.",
-    here: "This is your page.",
-  },
-  ru: {
-    used: "Эта ссылка уже использована. Открой Мою страницу из Companion ещё раз.",
-    expired: "Срок ссылки вышел. Открой Мою страницу из Companion ещё раз.",
-    failed: "Бори не смог открыть страницу. Попробуй ещё раз из Companion.",
-    closed: "Эта страница закрыта. Открой Мою страницу из Companion ещё раз.",
-    missing: "Открой Мою страницу из Companion.",
-    here: "Это твоя страница.",
-  },
+  used: "That link was already used. Open My page from the Companion again.",
+  expired: "That link expired. Open My page from the Companion again.",
+  failed: "Bory couldn't open your page just now. Try again from the Companion.",
+  closed: "This page was closed. Open My page from the Companion again.",
+  missing: "Open My page from the Companion.",
+  here: "This is your page.",
 } as const;
 
 export type SignInReason = "used" | "expired" | "failed";
-
-/** The first language the browser asks for, English unless it asks for Russian. */
-export function browserLang(header: string | undefined): PageLang {
-  for (const part of (header || "").split(",")) {
-    const tag = part.trim().split(";")[0]?.trim().toLowerCase() || "";
-    if (tag.startsWith("ru")) return "ru";
-    if (tag.startsWith("en")) return "en";
-  }
-  return "en";
-}
 
 /** Same shape the Server issues: 32 random bytes, base64url. */
 export function isLinkToken(value: unknown): value is string {
