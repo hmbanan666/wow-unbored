@@ -67,11 +67,42 @@ for _, game in ipairs({ 'forever', 'retail' }) do
   local oldTrainer = C_Trainer.GetTrainerType
   C_Trainer.GetTrainerType = function() return 0 end
   assert(not S.Read('trainerSeen', 'window'))
+  function IsTradeskillTrainer() return true end
+  assert(S.Read('trainerSeen', 'window'), 'a profession trainer flag is enough')
+  IsTradeskillTrainer = nil
   C_Trainer.GetTrainerType = oldTrainer
   local oldStep = GetTrainerServiceStepIndex
+  GetTrainerServiceStepIndex = function() return secret end
+  assert(S.Read('trainerSeen', 'window'), 'a secret rank index does not drop the visit')
   GetTrainerServiceStepIndex = function() return nil end
   assert(S.Read('trainerSeen', 'window'), 'trainers without rank training still offer recipes')
   GetTrainerServiceStepIndex = oldStep
+  local oldCost = GetTrainerServiceCost
+  GetTrainerServiceCost = function(i) return 100, i == 2 end
+  npc = 900
+  now = now + 1
+  assert(S.Read('trainerSeen', 'window'))
+  local rankRows = {}
+  for _, row in ipairs(S.Body('trainerSeen').entries) do
+    if row.npcId == 900 then rankRows[#rankRows + 1] = row end
+  end
+  assert(#rankRows == 1 and rankRows[1].spellId == 2330, 'the profession-rank service is not a recipe')
+  GetTrainerServiceCost = oldCost
+  npc = 901
+  now = now + 1
+  function GetTrainerServiceSkillReq() return nil end
+  C_TradeSkillUI = { GetProfessionInfoByRecipeID = function(spell)
+    return spell == 2330 and { professionID = 2940, parentProfessionID = 171 } or nil
+  end }
+  assert(S.Read('trainerSeen', 'window'))
+  local resolved
+  for _, row in ipairs(S.Body('trainerSeen').entries) do
+    if row.npcId == 901 then resolved = row end
+  end
+  assert(resolved and resolved.skillLine == 171 and resolved.spellId == 2330,
+    'a recipe spell resolves to the catalog profession when the skill name is missing')
+  C_TradeSkillUI = nil
+  GetTrainerServiceSkillReq = function() return 'Alchemy', 25, true end
   S.OnEvent('MERCHANT_CLOSED'); assert(not S.Read('merchantSeen', 'window'))
   ns.DB.shareData = false; S.ApplySharing()
   assert(not S.Body('trainerSeen') and not S.Body('merchantSeen'))

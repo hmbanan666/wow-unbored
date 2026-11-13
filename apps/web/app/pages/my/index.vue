@@ -13,13 +13,12 @@ import { SIGN_IN_COPY } from "#shared/sign-in";
 type Me =
   | {
       ok: true;
-      lang: "en" | "ru";
       characters: MyCharacter[];
       plans: MyEntry[];
       wins: MyEntry[];
       completions: MyCompletion[];
     }
-  | { ok: false; lang: "en" | "ru"; closed: boolean; message: string };
+  | { ok: false; closed: boolean; message: string };
 
 const { data, status, refresh } = await useFetch<Me>("/api/me", { server: false });
 const paths = usePaths();
@@ -31,19 +30,15 @@ function activeFor(character: MyCharacter) {
       row.realm === character.realm,
   )?.active;
 }
-const lang = computed(() => data.value?.lang || "en");
-const copy = computed(() => MY_PAGE_COPY[lang.value]);
+const copy = MY_PAGE_COPY;
 const signedOut = computed(() => {
   const page = data.value;
   if (!page || page.ok) return "";
-  return (
-    page.message ||
-    (page.closed ? SIGN_IN_COPY[lang.value].closed : SIGN_IN_COPY[lang.value].missing)
-  );
+  return page.message || (page.closed ? SIGN_IN_COPY.closed : SIGN_IN_COPY.missing);
 });
 
 useSeoMeta({
-  title: () => copy.value.title,
+  title: copy.title,
   robots: "noindex",
 });
 </script>
@@ -54,16 +49,14 @@ useSeoMeta({
       v-if="status === 'pending' || status === 'idle'"
       :level="1"
       :title="copy.title"
-      :text="paths.copy.value.loading"
+      :text="paths.copy.loading"
     />
     <DsEmptyState
       v-else-if="signedOut || !data || !data.ok"
       :level="1"
       :title="copy.title"
-      :text="signedOut || paths.copy.value.failed"
-      ><DsButton v-if="!data" @click="refresh()">{{
-        paths.copy.value.retry
-      }}</DsButton></DsEmptyState
+      :text="signedOut || paths.copy.failed"
+      ><DsButton v-if="!data" @click="refresh()">{{ paths.copy.retry }}</DsButton></DsEmptyState
     >
     <template v-else>
       <DsPageHeader :title="copy.title" />
@@ -76,7 +69,7 @@ useSeoMeta({
           :title="character.name"
         >
           <DsButton :to="characterHref(character)" variant="ghost">{{
-            CHARACTER_COPY[lang].view
+            CHARACTER_COPY.view
           }}</DsButton>
           <DsChipRow>
             <DsChip v-if="character.game === 'forever'">Forever</DsChip>
@@ -89,28 +82,28 @@ useSeoMeta({
               >{{ copy.renown }} {{ faction.level }} · {{ faction.name }}</DsChip
             >
           </DsChipRow>
-          <p v-if="paths.loading.value" role="status">{{ paths.copy.value.loading }}</p>
+          <p v-if="paths.loading.value" role="status">{{ paths.copy.loading }}</p>
           <template v-else-if="paths.message.value">
             <p role="status">{{ paths.message.value }}</p>
             <DsButton v-if="!paths.signedOut.value" @click="paths.refresh">{{
-              paths.copy.value.retry
+              paths.copy.retry
             }}</DsButton>
           </template>
           <template v-else-if="activeFor(character)">
             <DsButton
               :to="catalogHref(activeFor(character)!.kind, activeFor(character)!.slug)!"
               variant="ghost"
-              >{{ paths.copy.value.active }}: {{ activeFor(character)!.title }}</DsButton
+              >{{ paths.copy.active }}: {{ activeFor(character)!.title }}</DsButton
             >
             <DsProgress
               :done="activeFor(character)!.done"
               :total="activeFor(character)!.total"
-              :label="paths.copy.value.required"
+              :label="paths.copy.required"
             />
           </template>
           <template v-else>
-            <p>{{ paths.copy.value.none }}</p>
-            <DsButton to="/paths" variant="ghost">{{ paths.copy.value.browse }}</DsButton>
+            <p>{{ paths.copy.none }}</p>
+            <DsButton to="/paths" variant="ghost">{{ paths.copy.browse }}</DsButton>
           </template>
         </DsCard>
       </DsCardGrid>

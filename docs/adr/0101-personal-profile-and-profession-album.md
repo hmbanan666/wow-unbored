@@ -60,7 +60,7 @@ Goals complete on their own when a sync shows the skill or recipe. "Mark done" i
 
 ## Scope
 
-- The pages are private, noindex, and in English or Russian as in 0073. Amended by [0102](0102-english-only-public-pages-with-personal-overlay.md): English only, and profession pages are public game pages with a personal overlay.
+- The pages are private, noindex, and in English only. Amended by [0102](0102-english-only-public-pages-with-personal-overlay.md): English only, and profession pages are public game pages with a personal overlay.
 - Data comes only from the player's Sections and events, the client tables from wago.tools and player sightings.
 - The Retail page reuses the same layout later.
 - Implementation follows as tickets after the mockup is approved.

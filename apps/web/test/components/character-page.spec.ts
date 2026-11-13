@@ -10,7 +10,6 @@ for (const game of ["retail", "forever"]) {
     vi.stubGlobal("useFetch", async () => ({
       data: ref({
         ok: true,
-        lang: "en",
         character: {
           game,
           realm: "Realm",
@@ -33,9 +32,9 @@ for (const game of ["retail", "forever"]) {
     expect(wrapper.find(`a[href="/my/${game}/Realm/Mira/alchemy"]`).text()).toBe("Open collection");
     expect(wrapper.text()).toContain("112 / 150");
     expect(wrapper.text()).toContain("Known recipes: 4");
-    expect(wrapper.text()).toContain(CHARACTER_COPY.en.catalogEmpty);
+    expect(wrapper.text()).toContain(CHARACTER_COPY.catalogEmpty);
     expect(wrapper.text()).not.toContain("of 0");
-    expect(wrapper.text()).toContain(CHARACTER_COPY.en.open);
+    expect(wrapper.text()).toContain(CHARACTER_COPY.open);
     expect(wrapper.find('a[href="/my"]').exists()).toBe(true);
     expect(vi.mocked(useSeoMeta)).toHaveBeenCalledWith(
       expect.objectContaining({ robots: "noindex" }),
@@ -43,7 +42,7 @@ for (const game of ["retail", "forever"]) {
   });
 }
 
-test("unseen professions have Russian guidance, with no fabricated zero", async () => {
+test("unseen professions explain what to do in English, with no fabricated zero", async () => {
   vi.stubGlobal("useRoute", () => ({ params: { game: "forever", realm: "Realm", name: "Mira" } }));
   vi.stubGlobal("useFetch", async () => ({
     data: ref({
@@ -59,8 +58,9 @@ test("unseen professions have Russian guidance, with no fabricated zero", async 
     defineComponent({ render: () => h(Suspense, null, { default: () => h(CharacterPage) }) }),
   );
   await flushPromises();
-  expect(wrapper.text()).toContain(CHARACTER_COPY.ru.empty);
-  expect(wrapper.text()).toContain(CHARACTER_COPY.ru.open);
+  expect(wrapper.text()).toContain(CHARACTER_COPY.empty);
+  expect(wrapper.text()).toContain(CHARACTER_COPY.open);
+  expect(wrapper.text()).not.toContain("Бори");
   expect(wrapper.text()).not.toContain("0 / 0");
 });
 
@@ -69,7 +69,6 @@ test("catalog recipes render totals, sources, colour text and uncatalogued count
   vi.stubGlobal("useFetch", async () => ({
     data: ref({
       ok: true,
-      lang: "en",
       character: {
         game: "forever",
         realm: "Realm",
@@ -127,7 +126,7 @@ test("catalog recipes render totals, sources, colour text and uncatalogued count
   expect(wrapper.text()).toContain("Elixir of Minor Fortitude");
   expect(wrapper.text()).toContain("Minimum skill: 50");
   expect(wrapper.find(".recipe-band--green").text()).toBe("Green");
-  expect(wrapper.text()).toContain(CHARACTER_COPY.en.unnamed);
+  expect(wrapper.text()).toContain(CHARACTER_COPY.unnamed);
   expect(wrapper.text()).not.toContain("2330");
 });
 
@@ -176,7 +175,7 @@ test("source groups show past stock, places, item-only evidence and tap explanat
       },
     ],
   );
-  const wrapper = mount(ProfessionRecipes, { props: { profession, lang: "en" } });
+  const wrapper = mount(ProfessionRecipes, { props: { profession } });
   expect(wrapper.findAll("h3").map((h) => h.text())).toEqual(SOURCE_GROUPS.map((g) => g.name));
   expect(wrapper.text()).toContain("Elwynn Forest");
   expect(wrapper.text()).toContain("1g 23s 45c");

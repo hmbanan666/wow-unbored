@@ -8,7 +8,6 @@ import {
   type MyCharacter,
   type MyEntry,
 } from "#shared/my-page";
-import type { PageLang } from "#shared/sign-in";
 
 type CharacterRow = {
   game: "retail" | "forever";
@@ -35,7 +34,6 @@ type HistoryRow = {
 export async function readMyPage(
   sql: Sql,
   accountId: string,
-  lang: PageLang,
 ): Promise<{
   characters: MyCharacter[];
   plans: MyEntry[];
@@ -88,8 +86,7 @@ export async function readMyPage(
         });
       continue;
     }
-    const title =
-      row.kind === "win" ? winTitle(row.body, lang) : planTitle(row.body, row.plan_body);
+    const title = row.kind === "win" ? winTitle(row.body) : planTitle(row.body, row.plan_body);
     if (!title) continue;
     const entry = {
       at: Number(row.at),

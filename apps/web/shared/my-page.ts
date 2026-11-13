@@ -1,50 +1,25 @@
 import { catalogHref, isSlug } from "./catalog";
-import type { PageLang } from "./sign-in";
 
 export const MY_PAGE_COPY = {
-  en: {
-    title: "My page",
-    level: "Level",
-    ilvl: "Item level",
-    keystone: "Keystone",
-    renown: "Renown",
-    plans: "Plans",
-    wins: "Wins",
-    completions: "Finished Paths",
-    emptyCompletions: "No finished Paths yet. Pick a Path and Bory will help you along.",
-    emptyCharacters: "Bory hasn't seen your characters yet. Play once, and they'll show up here.",
-    emptyPlans: "No plans yet. Pick one with Bory in the game.",
-    emptyWins: "Nothing from a plan has come home yet.",
-    kinds: {
-      mount: "Mount",
-      ach: "Achievement",
-      toy: "Toy",
-      pet: "Pet",
-      item: "Item",
-      quest: "Quest",
-    },
-  },
-  ru: {
-    title: "Моя страница",
-    level: "Уровень",
-    ilvl: "Уровень предметов",
-    keystone: "Ключ",
-    renown: "Известность",
-    plans: "Планы",
-    wins: "Победы",
-    completions: "Завершённые Пути",
-    emptyCompletions: "Завершённых Путей пока нет. Выбери Путь — Бори поможет пройти его.",
-    emptyCharacters: "Бори ещё не видел твоих персонажей. Поиграй разок, и они появятся здесь.",
-    emptyPlans: "Планов пока нет. Выбери один с Бори в игре.",
-    emptyWins: "Пока ничего из плана не пришло.",
-    kinds: {
-      mount: "Маунт",
-      ach: "Достижение",
-      toy: "Игрушка",
-      pet: "Питомец",
-      item: "Предмет",
-      quest: "Задание",
-    },
+  title: "My page",
+  level: "Level",
+  ilvl: "Item level",
+  keystone: "Keystone",
+  renown: "Renown",
+  plans: "Plans",
+  wins: "Wins",
+  completions: "Finished Paths",
+  emptyCompletions: "No finished Paths yet. Pick a Path and Bory will help you along.",
+  emptyCharacters: "Bory hasn't seen your characters yet. Play once, and they'll show up here.",
+  emptyPlans: "No plans yet. Pick one with Bory in the game.",
+  emptyWins: "Nothing from a plan has come home yet.",
+  kinds: {
+    mount: "Mount",
+    ach: "Achievement",
+    toy: "Toy",
+    pet: "Pet",
+    item: "Item",
+    quest: "Quest",
   },
 } as const;
 
@@ -141,12 +116,12 @@ export function planTitle(body: unknown, planBody: unknown): string {
   return "";
 }
 
-export function winTitle(body: unknown, lang: PageLang): string {
+export function winTitle(body: unknown): string {
   const history = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const title = text(history.planTitle);
   if (title) return title;
   const kind = text(history.kind);
-  const label = MY_PAGE_COPY[lang].kinds[kind as keyof (typeof MY_PAGE_COPY)["en"]["kinds"]];
+  const label = MY_PAGE_COPY.kinds[kind as keyof typeof MY_PAGE_COPY.kinds];
   return label || "";
 }
 

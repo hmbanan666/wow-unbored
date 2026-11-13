@@ -1,9 +1,9 @@
 import type { H3Event } from "h3";
 
-import { browserLang, SESSION_DAYS, SIGN_IN_COPY, type PageLang } from "#shared/sign-in";
+import { SESSION_DAYS, SIGN_IN_COPY } from "#shared/sign-in";
 import { db, type Sql } from "./db";
 
-export type LiveAccount = { accountId: string; lang: PageLang };
+export type LiveAccount = { accountId: string };
 
 /**
  * The sealed session is live only while its row is still open for that Account,
@@ -24,7 +24,6 @@ export async function sessionIsLive(
 }
 
 export async function liveAccount(event: H3Event): Promise<LiveAccount | undefined> {
-  const lang = browserLang(getRequestHeader(event, "accept-language"));
   const session = await getUserSession(event);
   const user = sessionCredentials(session);
   const sql = db();
@@ -33,11 +32,11 @@ export async function liveAccount(event: H3Event): Promise<LiveAccount | undefin
     await clearUserSession(event);
     return undefined;
   }
-  return { accountId: user.accountId, lang };
+  return { accountId: user.accountId };
 }
 
-export function signedOutLine(lang: PageLang, closed: boolean): string {
-  return closed ? SIGN_IN_COPY[lang].closed : SIGN_IN_COPY[lang].missing;
+export function signedOutLine(closed: boolean): string {
+  return closed ? SIGN_IN_COPY.closed : SIGN_IN_COPY.missing;
 }
 
 /** Keep existing sealed cookies working while new ones use server-only session data. */

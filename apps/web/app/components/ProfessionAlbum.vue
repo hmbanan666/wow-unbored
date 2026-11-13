@@ -58,7 +58,7 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
     <DsEmptyState
       v-if="profession.total === null"
       title="More recipes to come"
-      :text="CHARACTER_COPY.en.catalogEmpty"
+      :text="CHARACTER_COPY.catalogEmpty"
     />
     <DsEmptyState
       v-else-if="profession.known === null"

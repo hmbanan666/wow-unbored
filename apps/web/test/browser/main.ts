@@ -35,7 +35,7 @@ Object.assign(globalThis, {
     },
   }),
   useFetch: async () => ({
-    data: vue.ref({ ok: true, lang: "en", character }),
+    data: vue.ref({ ok: true, character }),
     error: vue.ref(null),
     status: vue.ref("success"),
     refresh: () => {},
