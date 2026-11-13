@@ -1538,6 +1538,7 @@ Unnamed current rows have no page even if an old address was reserved. The web r
 gets conditional SELECT on `game.recipe_slugs`; it cannot write. If provisioned after
 the migration, grant it SELECT along with the existing game tables. SQLite has no web
 slug registry; transfer/import into PostgreSQL populates it through the same trigger.
+The transfer treats this table as derived and retains addresses even with `--force`.
 
 The header fetches `/api/me/characters` only after mount. It groups owned characters by
 Game and displays level/class. Selection stores only `game/realm/name` (encoded

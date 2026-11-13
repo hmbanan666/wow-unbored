@@ -68,6 +68,17 @@ test("picker clears overlays for the other game; category filters and known Tail
   await page.goto("/forever/professions/tailoring?overlay=1");
   await expect(page.locator(".recipe-slot.is-known")).toHaveCount(7);
   await expect(page.getByText("112 / 150", { exact: true })).toBeVisible();
+  await mkdir(screenshots, { recursive: true });
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: `${screenshots}/${width}-tailoring-overlay.png`,
+      fullPage: true,
+    });
+  }
   await page
     .getByRole("combobox", { name: "Category", exact: true })
     .selectOption({ label: "Linen" });

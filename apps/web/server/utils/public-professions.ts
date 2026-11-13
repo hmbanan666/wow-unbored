@@ -15,7 +15,7 @@ export async function readPublicProfessions(sql: Sql, game: Game): Promise<Publi
   const rows = await sql<
     {
       body: ProfessionRecipe;
-      slug: string;
+      slug: string | null;
       items: Record<string, string>;
       profession: string | null;
     }[]

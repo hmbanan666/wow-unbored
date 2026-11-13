@@ -56,6 +56,7 @@ useSeoMeta({ title: () => character.value?.name || copy.title, robots: "noindex"
               }}<template v-if="profession.max !== null"> / {{ profession.max }}</template>
             </p>
             <DsButton
+              v-if="profession.total"
               :to="`/${character.game}/professions/${professionSlug(profession)}`"
               variant="secondary"
               >Open collection</DsButton

@@ -15,8 +15,6 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, "x-robots-tag", "noindex, nofollow");
   const notFound = () => {
     setResponseStatus(event, 404);
-    setResponseHeader(event, "content-type", "text/html; charset=utf-8");
-    return '<!doctype html><html lang="en"><head><meta name="robots" content="noindex"><title>Collection not found</title></head><body><h1>Collection not found</h1><p>Open <a href="/my">My page</a> to choose one of your characters.</p></body></html>';
   };
   const character = parseCharacter(parts.slice(1, 4).join("/"));
   const account = await liveAccount(event);
