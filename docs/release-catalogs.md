@@ -48,9 +48,11 @@ a separate download at <https://playunbored.com/install>.
 ## What the next release does
 
 The existing `vX.Y.Z` release process runs `scripts/stage-addon.sh`, then
-`BigWigsMods/packager@v2 -g retail`. Its single addon zip is used for GitHub,
-CurseForge and Wago. The TOC supplies the existing Retail patch versions.
-There are no Classic or Forever uploads, executables or Companion bundles.
+`BigWigsMods/packager@v2` without `-g` (ADR 0100). Its single addon zip is used
+for GitHub, CurseForge and Wago. The TOC supplies the Retail patch versions and
+WoW Forever `16001`; `scripts/check-packaged-toc.sh` checks the packaged TOC
+keeps all of them. There are no Classic uploads, executables or Companion
+bundles in the addon zip.
 `.pkgmeta` excludes the monorepo, tests, documentation and development files;
 `Companion/Plan.lua` inside the addon is Lua, not the desktop Companion.
 `license-output` points at the committed `LICENSE`, preventing a CurseForge ID
@@ -70,7 +72,7 @@ The existing GitHub release token, asset naming, installer jobs and updater feed
 are unchanged. The packager still uses `CHANGELOG.md` for catalog release notes;
 keep its entries readable for players. GitHub's separate release-note job is unchanged.
 
-A Release workflow dry run uses `-d -g retail` and receives no catalog tokens.
+A Release workflow dry run uses `-d` and receives no catalog tokens.
 It publishes nothing even when both projects are configured. Do not push a tag
 just to test setup. Follow the existing release procedure only when an actual
 release is authorized.
@@ -130,7 +132,8 @@ into a separate directory, then run from that checkout:
 
 ```sh
 bash scripts/stage-addon.sh
-bash /path/to/release.sh -d -g retail
+bash /path/to/release.sh -d
+bash scripts/check-packaged-toc.sh
 ```
 
 Compare the archive's member paths and uncompressed bytes against the baseline

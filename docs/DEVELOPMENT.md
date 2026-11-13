@@ -1405,11 +1405,11 @@ checks registration and the `char` Section, then runs SelfCheck. The shared
 The owner's client probe is still required; this does not change public install
 claims or catalog release flavors.
 
-The existing release workflow still passes `-g retail`. The packager accepts the
-shared source TOC but filters its packaged Interface line and upload metadata to
-Retail. A T0 client check therefore needs an archive of this branch's `addon/`
-source; the current release artifact does not advertise Forever. Changing that
-packaging/upload scope waits for T7.
+The release workflow runs the packager without `-g` (ADR 0100), so the one
+release zip keeps the whole source Interface line, Retail and `16001`, and its
+`release.json` lists the `mainline` and `forever` flavors.
+`scripts/check-packaged-toc.sh` fails the release job when a source Interface
+value is missing from the packaged TOC.
 
 ### Character professions (ADR 0095)
 
