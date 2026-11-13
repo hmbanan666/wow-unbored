@@ -19,6 +19,7 @@ import { recipeBand, type ProfessionRecipe, type RecipeBand } from "./profession
 import { isPackedIdSet, unpackIds } from "./packed.ts";
 export type Profession = {
   routes?: { name: string; route: SkillRoute }[];
+  album: AlbumRecipe[];
   skillLine: number;
   aliases: number[];
   difficultyCounts: Record<RecipeDifficulty["label"], number>;
@@ -46,6 +47,11 @@ export type Profession = {
     })[];
   }[];
 };
+export type AlbumRecipe = Profession["missing"][number]["recipes"][number] & {
+  /** null means the profession window has not been read. */
+  known: boolean | null;
+};
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -64,52 +70,80 @@ export function professionViews(
   const byProfession = record(record(recipes).byProfession);
   return normalizedProfessions(professions, game, catalog).map((entry) => {
     const { skillLine, skill, max } = entry;
-    const sets = [skillLine, ...entry.aliases]
-      .map((id) => record(byProfession[String(id)]).learned)
-      .filter(isPackedIdSet);
-    const known = sets.length ? new Set(sets.flatMap(unpackIds)) : null;
+    const tiers =
+      game === "retail"
+        ? professionSkills(professions).filter((p) => p.parentSkillLine === skillLine)
+        : [];
+    const lines = [skillLine, ...entry.aliases, ...tiers.map((p) => p.skillLine)];
+    const learnedByLine = new Map(
+      lines.map((id) => {
+        const packed = record(byProfession[String(id)]).learned;
+        return [id, isPackedIdSet(packed) ? new Set(unpackIds(packed)) : null] as const;
+      }),
+    );
+    const combine = (ids: number[]) => {
+      const sets = ids
+        .map((id) => learnedByLine.get(id))
+        .filter((set): set is Set<number> => set != null);
+      return sets.length ? new Set(sets.flatMap((set) => [...set])) : null;
+    };
+    const known = combine(lines);
+    // GetBaseProfessionInfo keys the addon's all-expansion recipe read by the base id.
+    const baseKnown = combine([skillLine, ...entry.aliases]);
     const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
-    const entries = catalog.filter((recipe) => recipe.skillLine === skillLine);
+    const entries = catalog.filter((recipe) => lines.includes(recipe.skillLine));
     const ids = new Set(entries.map((recipe) => recipe.spellId));
     const missing: Profession["missing"] = [];
-    if (known) {
-      for (const recipe of entries) {
-        if (known.has(recipe.spellId)) continue;
-        const evidence = bySpell.get(recipe.spellId) ?? {
-          spellId: recipe.spellId,
-          sources: [],
-          teachingItems: recipe.teachingItems.map((itemId) => ({ itemId, name: null })),
-        };
-        const id = recipeSourceGroup(evidence);
-        let group = missing.find((group) => group.id === id);
-        if (!group) {
-          group = { ...SOURCE_GROUPS.find((g) => g.id === id)!, recipes: [] };
-          missing.push(group);
-        }
-        const difficulty = recipeDifficulty({
+    const album: AlbumRecipe[] = entries.map((recipe) => {
+      const tier = tiers.find((p) => p.skillLine === recipe.skillLine);
+      const recipeSkill = tier ? tier.skill : skill;
+      const recipeMax = tier ? tier.max : max;
+      const recipeKnown = baseKnown ?? (tier ? (learnedByLine.get(tier.skillLine) ?? null) : known);
+      const evidence = bySpell.get(recipe.spellId) ?? {
+        spellId: recipe.spellId,
+        sources: [],
+        teachingItems: recipe.teachingItems.map((itemId) => ({
+          itemId,
+          name: items.get(itemId) ?? null,
+        })),
+      };
+      return {
+        ...recipe,
+        known: recipeKnown === null ? null : recipeKnown.has(recipe.spellId),
+        band: recipeSkill === null ? null : recipeBand(recipe, recipeSkill),
+        sources: evidence.sources,
+        difficulty: recipeDifficulty({
           recipe,
           sources: evidence.sources,
-          skill,
-          rankMax: max,
+          skill: recipeSkill,
+          rankMax: recipeMax,
           game,
-        });
-        difficultyCounts[difficulty.label]++;
-        group.recipes.push({
-          ...recipe,
-          band: skill === null ? null : recipeBand(recipe, skill),
-          sources: evidence.sources,
-          difficulty,
-          reagents: recipe.reagents.map((r) => ({ ...r, name: items.get(r.itemId) ?? null })),
-          teachingItemNames: evidence.teachingItems.map((t) => {
-            const facts = recipe.teaching?.find((f) => f.itemId === t.itemId);
-            return {
-              ...t,
-              quality: facts?.quality ?? null,
-              bindOnPickup: facts?.bindOnPickup ?? null,
-            };
-          }),
-        });
+        }),
+        reagents: recipe.reagents.map((r) => ({ ...r, name: items.get(r.itemId) ?? null })),
+        teachingItemNames: evidence.teachingItems.map((t) => {
+          const facts = recipe.teaching?.find((f) => f.itemId === t.itemId);
+          return {
+            ...t,
+            quality: facts?.quality ?? null,
+            bindOnPickup: facts?.bindOnPickup ?? null,
+          };
+        }),
+      };
+    });
+    for (const recipe of album) {
+      if (recipe.known !== false) continue;
+      const id = recipeSourceGroup({
+        spellId: recipe.spellId,
+        sources: recipe.sources,
+        teachingItems: recipe.teachingItemNames,
+      });
+      let group = missing.find((group) => group.id === id);
+      if (!group) {
+        group = { ...SOURCE_GROUPS.find((g) => g.id === id)!, recipes: [] };
+        missing.push(group);
       }
+      difficultyCounts[recipe.difficulty.label]++;
+      group.recipes.push(recipe);
     }
     missing.sort(
       (a, b) =>
@@ -127,6 +161,7 @@ export function professionViews(
       skillLine,
       aliases: entry.aliases,
       difficultyCounts,
+      album,
       name: entry.name,
       skill,
       max,
