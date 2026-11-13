@@ -19,17 +19,17 @@ export default defineEventHandler(async (event) => {
   const character = parseCharacter(parts.slice(1, 4).join("/"));
   const account = await liveAccount(event);
   const sql = db();
-  if (!character || !account || !sql || !(await ownsCharacter(sql, account.accountId, character)))
-    return notFound();
+  if (!character || !sql) return notFound();
   const profession = (await readPublicProfessions(sql, character.game)).find(
     (p) => p.slug === parts[4],
   );
   if (!profession) return notFound();
-  setCookie(event, CHARACTER_COOKIE, characterKey(character), {
-    path: "/",
-    sameSite: "lax",
-    maxAge: CHARACTER_COOKIE_AGE,
-    secure: getRequestURL(event).protocol === "https:",
-  });
+  if (account && (await ownsCharacter(sql, account.accountId, character)))
+    setCookie(event, CHARACTER_COOKIE, characterKey(character), {
+      path: "/",
+      sameSite: "lax",
+      maxAge: CHARACTER_COOKIE_AGE,
+      secure: getRequestURL(event).protocol === "https:",
+    });
   return sendRedirect(event, `/${character.game}/professions/${profession.slug}`, 302);
 });
