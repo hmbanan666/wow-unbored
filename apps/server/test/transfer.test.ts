@@ -69,7 +69,7 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
     INSERT INTO game_imports (build, body_json) VALUES ('12.0.1.66337', '{"QuestV2":1}');
     INSERT INTO game_achievements (build, id, name_en, name_ru) VALUES ('12.0.1.66337', 964, 'Going Down?', 'Летим!');
     INSERT INTO game_quest_names (build, id, locale, name, url) VALUES ('12.0.1.66337', 90001, 'enUS', 'An adventure', 'https://us.api.blizzard.com/data/wow/quest/90001?namespace=static-us&locale=en_US');
-    INSERT INTO game_profession_recipes (game, build, skill_line, spell_id, body_json) VALUES ('retail', '12.0.1.66337', 171, 2334, '{"spellId":2334}');
+    INSERT INTO game_profession_recipes (game, build, skill_line, spell_id, body_json) VALUES ('retail', '12.0.1.66337', 171, 2334, '{"spellId":2334,"name":"Elixir of Minor Fortitude"}');
     INSERT INTO game_watch (id, live_build, pending_since, checked_at, last_error) VALUES (1, '12.0.1.66338', ${now}, ${now}, 'import_failed');
     INSERT INTO recipe_sightings (account_id, game, kind, source_key, npc_id, npc_name, limited, first_seen, last_seen) VALUES ('A', 'retail', 'vendor', 'i2555', 123, 'Recipe vendor', 0, ${now}, ${now});
     INSERT INTO game_ids VALUES ('achievement', 6, 1, ${now});
@@ -126,6 +126,12 @@ pg("every table is copied, JSON as jsonb objects, partitions back to the oldest 
       stored.close();
     }
     assert.equal(report.tables.length, 28);
+    assert.equal(
+      (
+        await db.sql`SELECT slug FROM game.recipe_slugs WHERE game = 'retail' AND spell_id = 2334`
+      )[0]?.slug,
+      "elixir-of-minor-fortitude",
+    );
     assert.deepEqual(report.skipped, [
       { table: "profile_snapshots", rows: 0 },
       { table: "profiles", rows: 1 },
