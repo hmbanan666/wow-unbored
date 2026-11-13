@@ -7,7 +7,7 @@ export async function readPickerCharacters(
 ): Promise<PickerCharacter[]> {
   return sql<
     PickerCharacter[]
-  >`SELECT game, realm, name, level, class FROM characters WHERE account_id = ${accountId} ORDER BY game, name, realm`;
+  >`SELECT game, realm, name, level, class FROM characters WHERE account_id = ${accountId} ORDER BY last_seen DESC, game, name, realm`;
 }
 export async function ownsCharacter(
   sql: Sql,

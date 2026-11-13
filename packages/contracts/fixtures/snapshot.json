@@ -36,7 +36,7 @@
       "v": 1,
       "at": 1761829000,
       "src": "login",
-      "hash": "ce65b037ec709e6a1d76ecdfaac5896780e7c3b5323bac8794c6d2af998a4b84",
+      "hash": "9289c8f019a1cf5baad26e8f9648669050898d751eb7a1a3e1dcfb726d05e45d",
       "body": {
         "name": "Mira",
         "realm": "Silvermoon",
@@ -48,6 +48,7 @@
         "raceID": 10,
         "faction": "Horde",
         "level": 80,
+        "levelCap": 90,
         "xp": 0,
         "xpMax": 0,
         "specID": 63,

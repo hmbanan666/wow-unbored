@@ -134,6 +134,5 @@ test("public SSR never fetches a player session or personal Path data", () => {
   const paths = readFileSync(path.join(web, "app/composables/usePaths.ts"), "utf8");
   assert.match(paths, /onMounted\(/);
   assert.equal(paths.includes("useFetch"), false);
-  const my = readFileSync(path.join(web, "app/pages/my/index.vue"), "utf8");
-  assert.match(my, /useFetch<Me>\("\/api\/me",\s*\{ server: false \}\)/);
+  // /my after-mount privacy is exercised through component SSR and production HTTP tests.
 });
