@@ -6,7 +6,7 @@ import { sessionFromRedeem, SIGN_IN_COPY } from "../shared/sign-in.ts";
 
 test("sign-in lines are English and do not follow a browser language", () => {
   assert.equal(SIGN_IN_COPY.here, "This is your page.");
-  assert.equal(SIGN_IN_COPY.missing, "Open My page from the Companion.");
+  assert.equal(SIGN_IN_COPY.missing, "Choose Open my profile in the Companion.");
   assert.equal("ru" in SIGN_IN_COPY, false);
   assert.equal("browserLang" in signIn, false);
 });

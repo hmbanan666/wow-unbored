@@ -1,4 +1,5 @@
 import * as vue from "vue";
+import PhoneSignIn from "../../app/components/PhoneSignIn.vue";
 import ProfessionPage from "../../app/pages/[game]/professions/[slug].vue";
 import RecipePage from "../../app/pages/[game]/recipes/[slug].vue";
 import Nav from "../../app/components/ds/Nav.vue";
@@ -61,6 +62,12 @@ Object.assign(globalThis, {
     };
   },
   $fetch: async (endpoint: string) => {
+    if (endpoint === "/api/me/page-link")
+      return {
+        ok: true,
+        url: `${location.origin}/enter/${"p".repeat(43)}`,
+        expiresAt: Date.now() / 1000 + 600,
+      };
     if (endpoint === "/api/me/characters")
       return { signedIn, characters: signedIn ? characters : [] };
     const slug = endpoint.split("/").pop();
@@ -95,9 +102,16 @@ const app = vue.createApp({
       vue.h(Nav, { links: SITE_NAV }, { character: () => vue.h(Picker) }),
       vue.h(vue.Suspense, null, {
         default: () =>
-          vue.h(route.path.includes("/recipes/") ? RecipePage : ProfessionPage, {
-            key: route.path,
-          }),
+          vue.h(
+            route.path === "/my"
+              ? PhoneSignIn
+              : route.path.includes("/recipes/")
+                ? RecipePage
+                : ProfessionPage,
+            {
+              key: route.path,
+            },
+          ),
       }),
     ]),
 });

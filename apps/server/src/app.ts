@@ -3,7 +3,7 @@ import { recipeTeachingMap } from "./recipe-sources.ts";
 import { MediaStore } from "./media-store.ts";
 import { MediaResolver } from "./media.ts";
 import { mediaName } from "./media-name.ts";
-import { registerWebPaths } from "./web-paths.ts";
+import { registerWebPaths, webSession } from "./web-paths.ts";
 import { ActivePathError, pathCharacterSchema, setActivePathSchema } from "./active-path.ts";
 import { GameImportError, validGameBuild } from "./game-db.ts";
 import { ContentError, ContentStore } from "./content.ts";
@@ -350,6 +350,34 @@ export function createApp(
   });
 
   const redeemLimiter = new RegisterLimiter();
+  const pageLinkLimiter = new RegisterLimiter();
+  for (const path of ["/v1/devices/me/page-link", "/v1/web/page-link", "/v1/page-links/redeem"]) {
+    app.use(path, async (c, next) => {
+      c.header("cache-control", "private, no-store");
+      c.header("referrer-policy", "no-referrer");
+      await next();
+    });
+  }
+  const livePageSession = webSession(store);
+  app.post("/v1/web/page-link", (c) =>
+    livePageSession(c, async (accountId, deviceId) => {
+      if (
+        c.req.header("origin") !== (config.webOrigin || DEFAULT_WEB_ORIGIN) ||
+        (c.req.header("sec-fetch-site") && c.req.header("sec-fetch-site") !== "same-origin")
+      ) {
+        return c.json({ error: "same_origin_required" }, 403);
+      }
+      if (!pageLinkLimiter.allow(deviceId)) return c.json({ error: "too_many_attempts" }, 429);
+      return c.json(
+        await issuePageLink(store.db, {
+          deviceId,
+          accountId,
+          now: Math.floor(Date.now() / 1000),
+          origin: config.webOrigin || DEFAULT_WEB_ORIGIN,
+        }),
+      );
+    }),
+  );
   app.post("/v1/devices/me/page-link", async (c) => {
     const presented = presentedBearer(c.req.header("authorization"));
     if (!presented) return c.json({ error: "Unauthorized" }, 401);
@@ -361,15 +389,31 @@ export function createApp(
     if (device.status !== "approved") {
       return c.json({ error: "This PC is not connected yet." }, 403);
     }
-    const accountId = await accountForDevice(store.db, device.id);
-    if (!accountId) return c.json({ error: "no_characters" }, 409);
-    const link = await issuePageLink(store.db, {
-      deviceId: device.id,
-      accountId,
-      now: Math.floor(Date.now() / 1000),
-      origin: config.webOrigin || DEFAULT_WEB_ORIGIN,
-    });
-    return c.json(link);
+    const body = await c.req.text();
+    let character: unknown;
+    if (body) {
+      try {
+        character = (JSON.parse(body) as { character?: unknown } | null)?.character;
+      } catch {
+        return c.json({ error: "invalid_request" }, 400);
+      }
+    }
+    return (
+      (await store.asDevice(device.id, async () => {
+        const accountId = await accountForDevice(store.db, device.id);
+        if (!accountId) return c.json({ error: "no_characters" }, 409);
+        await store.db.lockKey(`account:${accountId}`);
+        if (!pageLinkLimiter.allow(device.id)) return c.json({ error: "too_many_attempts" }, 429);
+        const link = await issuePageLink(store.db, {
+          deviceId: device.id,
+          character,
+          accountId,
+          now: Math.floor(Date.now() / 1000),
+          origin: config.webOrigin || DEFAULT_WEB_ORIGIN,
+        });
+        return c.json(link);
+      })) ?? c.json({ error: "Unauthorized" }, 401)
+    );
   });
 
   app.post("/v1/page-links/redeem", async (c) => {
@@ -388,7 +432,11 @@ export function createApp(
       const status = result.error === "unknown" ? 404 : 410;
       return c.json({ error: result.error }, status);
     }
-    return c.json({ sessionId: result.sessionId, accountId: result.accountId });
+    return c.json({
+      sessionId: result.sessionId,
+      accountId: result.accountId,
+      ...(result.character ? { character: result.character } : {}),
+    });
   });
 
   app.post("/v1/requests", async (c) => {

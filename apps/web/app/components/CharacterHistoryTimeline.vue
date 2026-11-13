@@ -44,7 +44,7 @@ const href = (types = "", cursor?: { at: number; id: number } | null) => {
       :text="
         selected || cursor
           ? 'Choose All changes to see the rest of your history.'
-          : 'Play a little, then open My page from the Companion after your next session. Your first upload is the starting point.'
+          : 'Play a little, then choose Open my profile in the Companion after your next session. Your first upload is the starting point.'
       "
     />
     <section v-for="group in groups" :key="group.day">

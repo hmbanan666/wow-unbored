@@ -1,9 +1,9 @@
 export const SIGN_IN_COPY = {
-  used: "That link was already used. Open My page from the Companion again.",
-  expired: "That link expired. Open My page from the Companion again.",
+  used: "That link was already used. Choose Open my profile in the Companion again.",
+  expired: "That link expired. Choose Open my profile in the Companion again.",
   failed: "Bory couldn't open your page just now. Try again from the Companion.",
-  closed: "This page was closed. Open My page from the Companion again.",
-  missing: "Open My page from the Companion.",
+  closed: "This page was closed. Choose Open my profile in the Companion again.",
+  missing: "Choose Open my profile in the Companion.",
   here: "This is your page.",
 } as const;
 

@@ -12,7 +12,10 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, "x-robots-tag", "noindex, nofollow");
   const account = await liveAccount(event);
   if (!account)
-    return { ok: false as const, message: "Open My page from the Companion to see your history." };
+    return {
+      ok: false as const,
+      message: "Choose Open my profile in the Companion to see your history.",
+    };
   const game = getRouterParam(event, "game");
   const realm = getRouterParam(event, "realm", { decode: true });
   const name = getRouterParam(event, "name", { decode: true });

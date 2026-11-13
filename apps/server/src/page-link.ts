@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { randomBytes } from "node:crypto";
 
 import { sha256Hex } from "./auth.ts";
@@ -6,6 +8,33 @@ import type { Db } from "./db.ts";
 
 /** A sign-in link works once, for 10 minutes (ADR 0073). */
 export const PAGE_LINK_SECONDS = 10 * 60;
+
+export const pageCharacterSchema = z
+  .object({
+    game: z.enum(["retail", "forever"]),
+    realm: z.string().trim().min(1).max(80),
+    name: z.string().trim().min(1).max(80),
+  })
+  .strict();
+export type PageCharacter = z.infer<typeof pageCharacterSchema>;
+
+async function ownedCharacter(
+  db: Db,
+  account: string,
+  value: unknown,
+): Promise<PageCharacter | undefined> {
+  const parsed = pageCharacterSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const c = parsed.data;
+  const row = await db.get(
+    "SELECT 1 FROM characters WHERE account_id = ? AND game = ? AND realm = ? AND name = ?",
+    account,
+    c.game,
+    c.realm,
+    c.name,
+  );
+  return row ? c : undefined;
+}
 
 const TOKEN = /^[A-Za-z0-9_-]{20,200}$/;
 
@@ -24,8 +53,13 @@ async function ensureSqlite(db: Db): Promise<void> {
     account_id TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
-    used_at INTEGER
+    used_at INTEGER,
+    character TEXT
   )`);
+  const columns = await db.all<{ name: string }>("PRAGMA table_info(web_sign_in_links)");
+  if (!columns.some((column) => column.name === "character")) {
+    await db.run("ALTER TABLE web_sign_in_links ADD COLUMN character TEXT");
+  }
   await db.run(`CREATE TABLE IF NOT EXISTS web_sessions (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
@@ -60,25 +94,27 @@ export async function accountForDevice(db: Db, deviceId: string): Promise<string
 
 export async function issuePageLink(
   db: Db,
-  input: { deviceId: string; accountId: string; now: number; origin: string },
+  input: { deviceId: string; accountId: string; now: number; origin: string; character?: unknown },
 ): Promise<{ url: string; expiresAt: number }> {
   await ensureSqlite(db);
+  const character = await ownedCharacter(db, input.accountId, input.character);
   const token = randomBytes(32).toString("base64url");
   const expiresAt = input.now + PAGE_LINK_SECONDS;
   const { links } = tables(db.pg);
   await db.run(
-    `INSERT INTO ${links} (token_hash, device_id, account_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO ${links} (token_hash, device_id, account_id, created_at, expires_at, character) VALUES (?, ?, ?, ?, ?, ?)`,
     sha256Hex(token),
     input.deviceId,
     input.accountId,
     input.now,
     expiresAt,
+    character ? JSON.stringify(character) : null,
   );
   return { url: `${input.origin}/enter/${token}`, expiresAt };
 }
 
 export type RedeemResult =
-  | { ok: true; sessionId: string; accountId: string; deviceId: string }
+  | { ok: true; sessionId: string; accountId: string; deviceId: string; character?: PageCharacter }
   | { ok: false; error: "unknown" | "used" | "expired" };
 
 /** Marks the link used and opens a session. A second call cannot replay it. */
@@ -88,18 +124,26 @@ export async function redeemPageLink(db: Db, token: string, now: number): Promis
   const hash = sha256Hex(token);
   const { links, sessions } = tables(db.pg);
   return db.tx(async () => {
-    const row = await db.get<{ account_id: string; device_id: string }>(
-      `UPDATE ${links} SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING account_id, device_id`,
+    const owner = await db.get<{ account_id: string; device_id: string }>(
+      `SELECT account_id, device_id FROM ${links} WHERE token_hash = ?`,
+      hash,
+    );
+    if (!owner) return { ok: false as const, error: "unknown" as const };
+    // Match the Device -> Account -> credential lock order used by Forget and webSession.
+    // Recheck the link after these locks: erasure may have removed it while we waited.
+    const device = await db.get<{ status: string }>(
+      `SELECT status FROM devices WHERE id = ?${db.pg ? " FOR SHARE" : ""}`,
+      owner.device_id,
+    );
+    if (device?.status !== "approved") return { ok: false as const, error: "unknown" as const };
+    await db.lockKey(`account:${owner.account_id}`);
+    const row = await db.get<{ account_id: string; device_id: string; character: string | null }>(
+      `UPDATE ${links} SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING account_id, device_id, character`,
       now,
       hash,
       now,
     );
     if (row) {
-      const device = await db.get<{ status: string }>(
-        `SELECT status FROM devices WHERE id = ?`,
-        row.device_id,
-      );
-      if (device?.status !== "approved") return { ok: false as const, error: "unknown" as const };
       const sessionId = randomBytes(18).toString("base64url");
       await db.run(
         `INSERT INTO ${sessions} (id, account_id, device_id, created_at) VALUES (?, ?, ?, ?)`,
@@ -108,7 +152,18 @@ export async function redeemPageLink(db: Db, token: string, now: number): Promis
         row.device_id,
         now,
       );
-      return { ok: true as const, sessionId, accountId: row.account_id, deviceId: row.device_id };
+      const character = await ownedCharacter(
+        db,
+        row.account_id,
+        row.character ? JSON.parse(row.character) : undefined,
+      );
+      return {
+        ok: true as const,
+        sessionId,
+        accountId: row.account_id,
+        deviceId: row.device_id,
+        ...(character ? { character } : {}),
+      };
     }
     const existing = await db.get<{ used_at: number | null; expires_at: number }>(
       `SELECT used_at, expires_at FROM ${links} WHERE token_hash = ?`,

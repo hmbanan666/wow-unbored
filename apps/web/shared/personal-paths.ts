@@ -63,7 +63,8 @@ export const PATH_COPY = {
   loading: "Bory is checking your progress…",
   failed: "Bory couldn't check your Paths just now.",
   retry: "Try again",
-  empty: "Bory hasn't seen your characters yet. Play once, then open My page from the Companion.",
+  empty:
+    "Bory hasn't seen your characters yet. Play once, then choose Open my profile in the Companion.",
   active: "Active Path",
   none: "No active Path yet.",
   pick: "Make this my active Path",

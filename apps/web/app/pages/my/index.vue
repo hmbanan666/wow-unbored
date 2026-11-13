@@ -60,6 +60,7 @@ useSeoMeta({
     >
     <template v-else>
       <DsPageHeader :title="copy.title" />
+      <PhoneSignIn />
       <p v-if="!data.characters.length">{{ copy.emptyCharacters }}</p>
       <DsCardGrid v-else>
         <DsCard

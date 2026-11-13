@@ -78,7 +78,7 @@ export function registerWebPaths(app: Hono, store: Store, origin: string) {
 
 export function webSession(store: Store) {
   const unauthorized = (c: Context) => c.json({ error: "session_closed" }, 401);
-  return async (c: Context, work: (account: string) => Promise<Response>) => {
+  return async (c: Context, work: (account: string, deviceId: string) => Promise<Response>) => {
     if (!store.db.pg) return c.json({ error: "unavailable" }, 503);
     const id = presentedBearer(c.req.header("authorization"));
     if (!id) return unauthorized(c);
@@ -101,7 +101,7 @@ export function webSession(store: Store) {
           Math.floor(Date.now() / 1000) - WEB_SESSION_DAYS * 86400,
         );
         if (!row) return unauthorized(c);
-        return work(row.account_id);
+        return work(row.account_id, session.device_id);
       })) ?? unauthorized(c)
     );
   };

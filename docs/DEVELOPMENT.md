@@ -1589,3 +1589,8 @@ The pure `computeTodayGoals` / `todayGoalComplete` contracts reuse profession pr
 Deploy **Server first** to apply `0033_character_goals.sql` and expose the API, then web. Its conditional grant gives an existing `unbored_web` role SELECT only; installations provisioning that role after migrations must include `GRANT SELECT ON character_goals TO unbored_web` in their read grants. SQLite creates the same table on open. Forget my data explicitly erases it; character deletion cascades. No addon or Companion update, import or version bump is required.
 
 Browser checks now render Today inside the public profession overlay, using Kania-shaped offline fixtures: unread Enchanting 145/150, read Tailoring 112/150 and no sightings. Captures are in `artifacts/public-professions/`; earlier slice-c review copies remain in `docs/review/today-goals/`.
+
+
+### Profile and phone sign-in (P6)
+
+Deploy Server first: startup applies `0035_page_link_character.sql` (nullable text on `web.sign_in_links`) and exposes `/v1/web/page-link`. Then deploy web. No extra grants or backfill are needed; the web role still reads only, and old Companion requests and existing links remain valid. The Companion change ships in the next regular release, with no version bump here. Keep access logs on the proxy configured to omit or redact `/enter/<token>`; the application never logs sign-in request bodies, credentials or returned links. The one-time link responses and `/my` have no-store/no-referrer headers. QR generation stays in the browser with the dependency-free MIT `qrcode-generator` package.
