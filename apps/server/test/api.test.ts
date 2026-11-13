@@ -307,6 +307,7 @@ test("mcp lists the planner tools", async () => {
       "get_recipe_sources",
       "get_skill_route",
       "get_suggestions",
+      "get_today_goals",
       "list_devices",
       "list_errors",
       "list_failed_uploads",

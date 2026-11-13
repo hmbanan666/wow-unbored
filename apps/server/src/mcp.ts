@@ -1,3 +1,4 @@
+import { todayGoals } from "./today-goals.ts";
 import { readProfessionProgress } from "./profession-progress.ts";
 import { CHARACTER_EVENT_TYPES } from "@unbored/contracts/character-history";
 import { readCharacterHistory } from "./character-events.ts";
@@ -188,6 +189,7 @@ const LEASE_TOOLS = new Set([
   "get_character_history",
   "get_skill_route",
   "get_profession_progress",
+  "get_today_goals",
   "find_game_entity",
   "get_quest_line",
   "get_item_sources",
@@ -1001,6 +1003,34 @@ export function createMcpServer(
       return text(
         (await readSkillRoutes(store.db, rows[0]!, input.skillLine, input.target))[0]?.route ??
           null,
+      );
+    },
+  );
+
+  registerTool(
+    "get_today_goals",
+    {
+      title: "Read today's profession goals",
+      description:
+        "Current deterministic Today sets with automatic completion flags for one Character. Creates a set on first view of a UTC day or after completion. Pass realm or account if the name is ambiguous.",
+      inputSchema: {
+        ...whoSchema,
+        game: z.enum(["retail", "forever"]),
+        character: z.string().min(1).max(80),
+        skillLine: z.number().int().positive().max(2147483647).optional(),
+      },
+    },
+    async (input) => {
+      await settle(input.account);
+      const rows = await pickCharacters(input);
+      if (rows.length !== 1) return text({ error: "Choose one Character with realm or account." });
+      const row = rows[0]!;
+      return text(
+        await todayGoals(
+          store.db,
+          { accountId: row.accountId, characterId: row.id, game: row.game },
+          { skillLine: input.skillLine },
+        ),
       );
     },
   );

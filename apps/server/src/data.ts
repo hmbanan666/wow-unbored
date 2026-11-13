@@ -1,3 +1,4 @@
+import { GOALS_SQLITE_SCHEMA, tickAccountGoals } from "./today-goals.ts";
 import {
   EVENTS_SQLITE_SCHEMA,
   EVENT_SECTIONS,
@@ -683,7 +684,9 @@ export class DataStore {
     this.db = db;
     this.log = log;
     if (db instanceof SqliteDb) {
-      db.raw.exec(SQLITE_SCHEMA + SIGHTINGS_SQLITE_SCHEMA + EVENTS_SQLITE_SCHEMA);
+      db.raw.exec(
+        SQLITE_SCHEMA + SIGHTINGS_SQLITE_SCHEMA + EVENTS_SQLITE_SCHEMA + GOALS_SQLITE_SCHEMA,
+      );
       if (
         !db.raw
           .prepare("PRAGMA table_info(characters)")
@@ -1092,6 +1095,7 @@ export class DataStore {
         result.sections[`${section.scope}:${section.name}`] = outcome;
         if (section.unknown) result.unknown.push(section.name);
       }
+      await tickAccountGoals(this.db, account, snapshot.game, now);
       return result;
     });
   }
@@ -1773,6 +1777,10 @@ export class DataStore {
       const errors = await this.db.run(`DELETE FROM addon_errors WHERE account = ?`, id);
       await this.db.run(
         `DELETE FROM character_events WHERE character_id IN (SELECT id FROM characters WHERE account_id = ?)`,
+        id,
+      );
+      await this.db.run(
+        `DELETE FROM character_goals WHERE character_id IN (SELECT id FROM characters WHERE account_id = ?)`,
         id,
       );
       await this.db.run(`DELETE FROM characters WHERE account_id = ?`, id);

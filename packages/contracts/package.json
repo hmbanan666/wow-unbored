@@ -22,7 +22,9 @@
     "./skill-route": "./src/skill-route.ts",
     "./recipe-sources": "./src/recipe-sources.ts",
     "./recipe-difficulty": "./src/recipe-difficulty.ts",
-    "./profession-progress": "./src/profession-progress.ts"
+    "./profession-progress": "./src/profession-progress.ts",
+    "./profession-name": "./src/profession-name.ts",
+    "./today-goals": "./src/today-goals.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

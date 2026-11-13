@@ -5,10 +5,9 @@ import { type Db, fromJson } from "./db.ts";
 import type { CharacterRow } from "./data.ts";
 import { currentRecipes } from "./recipe-sources.ts";
 
-export async function readProfessionProgress(
+export async function readAllProfessionProgress(
   db: Db,
   character: Pick<CharacterRow, "game" | "id">,
-  skillLine: number,
 ) {
   const sections = Object.fromEntries(
     (
@@ -19,7 +18,7 @@ export async function readProfessionProgress(
     ).map((r) => [r.section, fromJson(r.body)]),
   );
   const skills = professionSkills(sections.professions).map((p) => p.skillLine);
-  if (!skills.length) return null;
+  if (!skills.length) return [];
   const catalog = (await currentRecipes(db, character.game)).filter((r) =>
     skills.includes(r.skillLine),
   );
@@ -64,18 +63,28 @@ export async function readProfessionProgress(
     if (typeof name === "string" && name)
       (row.table_name === "UiMap" ? zones : itemNames).set(row.id, name);
   }
+  return professionProgress({
+    game: character.game,
+    professions: sections.professions,
+    recipes: sections.recipes,
+    bags: sections.bags,
+    bank: sections.bank,
+    reagentBank: sections.reagentBank,
+    catalog,
+    sightings,
+    zones,
+    items: itemNames,
+  });
+}
+
+export async function readProfessionProgress(
+  db: Db,
+  character: Pick<CharacterRow, "game" | "id">,
+  skillLine: number,
+) {
   return (
-    professionProgress({
-      game: character.game,
-      professions: sections.professions,
-      recipes: sections.recipes,
-      bags: sections.bags,
-      bank: sections.bank,
-      reagentBank: sections.reagentBank,
-      catalog,
-      sightings,
-      zones,
-      items: itemNames,
-    }).find((p) => p.skillLine === skillLine || p.aliases.includes(skillLine)) ?? null
+    (await readAllProfessionProgress(db, character)).find(
+      (p) => p.skillLine === skillLine || p.aliases.includes(skillLine),
+    ) ?? null
   );
 }

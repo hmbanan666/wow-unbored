@@ -281,6 +281,33 @@ for (const backend of BACKENDS)
           source: "trainer",
           canGetNow: true,
         });
+        const todayResponse = await runtime.app.request("/mcp", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer owner",
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 4,
+            method: "tools/call",
+            params: {
+              name: "get_today_goals",
+              arguments: { game, character: "Hero", skillLine: 197 },
+            },
+          }),
+        });
+        const todayBody = await todayResponse.text();
+        const todayRpc = JSON.parse(
+          todayBody.startsWith("event:") ? todayBody.split("data: ")[1]!.trim() : todayBody,
+        );
+        assert.equal(todayRpc.result.isError, false);
+        const sets = JSON.parse(todayRpc.result.content[0].text);
+        assert.equal(sets.length, 1);
+        assert.equal(sets[0].skillLine, 197);
+        assert.equal(sets[0].goals[0].target.kind, "skill");
+        assert.equal(sets[0].goals[0].completedAt, null);
         assert.equal(progress.routes[0].route.skillLine, 197);
         assert.equal(entry!.route.reagents[0]!.unitCopper, 7);
         const plan = skillRoutePlan(entry!.route, "Tailoring", 1000);

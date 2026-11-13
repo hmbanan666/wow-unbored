@@ -19,34 +19,7 @@ const selectionBody = z
 export function registerWebPaths(app: Hono, store: Store, origin: string) {
   const sessions = new RegisterLimiter();
   const addresses = new RegisterLimiter();
-  const unauthorized = (c: Context) => c.json({ error: "session_closed" }, 401);
-  const live = async (c: Context, work: (account: string) => Promise<Response>) => {
-    if (!store.db.pg) return c.json({ error: "unavailable" }, 503);
-    const id = presentedBearer(c.req.header("authorization"));
-    if (!id) return unauthorized(c);
-    const session = await store.db.get<{ device_id: string; account_id: string }>(
-      "SELECT device_id, account_id FROM web.sessions WHERE id = ?",
-      id,
-    );
-    if (!session) return unauthorized(c);
-    // Same device -> Account lock order as uploads and Forget my data.
-    return (
-      (await store.asDevice(session.device_id, async () => {
-        // Erasure on another Device locks the Account before closing every session.
-        await store.db.lockKey(`account:${session.account_id}`);
-        const row = await store.db.get<{ account_id: string }>(
-          `SELECT account_id FROM web.sessions WHERE id = ? AND device_id = ? AND account_id = ?
-         AND ended_at IS NULL AND created_at > ? FOR SHARE`,
-          id,
-          session.device_id,
-          session.account_id,
-          Math.floor(Date.now() / 1000) - WEB_SESSION_DAYS * 86400,
-        );
-        if (!row) return unauthorized(c);
-        return work(row.account_id);
-      })) ?? unauthorized(c)
-    );
-  };
+  const live = webSession(store);
   app.use("/v1/web/paths/*", async (c, next) => {
     c.header("cache-control", "private, no-store");
     await next();
@@ -101,4 +74,35 @@ export function registerWebPaths(app: Hono, store: Store, origin: string) {
       }
     }),
   );
+}
+
+export function webSession(store: Store) {
+  const unauthorized = (c: Context) => c.json({ error: "session_closed" }, 401);
+  return async (c: Context, work: (account: string) => Promise<Response>) => {
+    if (!store.db.pg) return c.json({ error: "unavailable" }, 503);
+    const id = presentedBearer(c.req.header("authorization"));
+    if (!id) return unauthorized(c);
+    const session = await store.db.get<{ device_id: string; account_id: string }>(
+      "SELECT device_id, account_id FROM web.sessions WHERE id = ?",
+      id,
+    );
+    if (!session) return unauthorized(c);
+    // Same device -> Account lock order as uploads and Forget my data.
+    return (
+      (await store.asDevice(session.device_id, async () => {
+        // Erasure on another Device locks the Account before closing every session.
+        await store.db.lockKey(`account:${session.account_id}`);
+        const row = await store.db.get<{ account_id: string }>(
+          `SELECT account_id FROM web.sessions WHERE id = ? AND device_id = ? AND account_id = ?
+         AND ended_at IS NULL AND created_at > ? FOR SHARE`,
+          id,
+          session.device_id,
+          session.account_id,
+          Math.floor(Date.now() / 1000) - WEB_SESSION_DAYS * 86400,
+        );
+        if (!row) return unauthorized(c);
+        return work(row.account_id);
+      })) ?? unauthorized(c)
+    );
+  };
 }
