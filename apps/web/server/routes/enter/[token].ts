@@ -1,13 +1,12 @@
-import { browserLang, isLinkToken, sessionFromRedeem, SIGN_IN_COPY } from "#shared/sign-in";
+import { isLinkToken, sessionFromRedeem, SIGN_IN_COPY } from "#shared/sign-in";
 
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, "token") || "";
-  const lang = browserLang(getRequestHeader(event, "accept-language"));
   // The token is in the address bar once; never hand it on as a referrer.
   setResponseHeader(event, "referrer-policy", "no-referrer");
   setResponseHeader(event, "cache-control", "no-store");
   if (!isLinkToken(token)) {
-    throw createError({ statusCode: 404, statusMessage: SIGN_IN_COPY[lang].failed });
+    throw createError({ statusCode: 404, statusMessage: SIGN_IN_COPY.failed });
   }
   // The Server limits redeem attempts per player address, not per site container.
   const ip = getRequestIP(event, { xForwardedFor: true }) || "";
@@ -34,7 +33,7 @@ export default defineEventHandler(async (event) => {
   if (!result.ok) {
     throw createError({
       statusCode: status === 410 || status === 404 ? status : 503,
-      statusMessage: SIGN_IN_COPY[lang][result.reason],
+      statusMessage: SIGN_IN_COPY[result.reason],
     });
   }
   await setUserSession(event, {

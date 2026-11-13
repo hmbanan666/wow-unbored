@@ -278,11 +278,11 @@ test("media rows retain personal done and optional goal chips", () => {
         total: 1,
         goals: [{ position: 0, done: true, required: false }],
       },
-      copy: PATH_COPY.en,
+      copy: PATH_COPY,
     },
   });
-  expect(wrapper.text()).toContain(PATH_COPY.en.done);
-  expect(wrapper.text()).toContain(PATH_COPY.en.optional);
+  expect(wrapper.text()).toContain(PATH_COPY.done);
+  expect(wrapper.text()).toContain(PATH_COPY.optional);
 });
 
 test("Forever guide shows its own trail, evidence, badge and Article game without progress or art", () => {

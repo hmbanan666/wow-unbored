@@ -65,7 +65,7 @@ dbTest("My page reads one Account and hides the other", async () => {
         (${at}, 'theirs', 'Grub', 'Area 52', 'plan', 'r2', ${JSON.stringify({ planId: plan!.id })}::jsonb),
         (${at + 2}, 'theirs', 'Grub', 'Area 52', 'win', 'mount:9', ${JSON.stringify({ planTitle: "Not yours", kind: "mount" })}::jsonb)`;
 
-    const mine = await readMyPage(sql, "mine", "en");
+    const mine = await readMyPage(sql, "mine");
     assert.deepEqual(
       mine.characters.map((row) => row.name),
       ["Mira"],
@@ -84,7 +84,7 @@ dbTest("My page reads one Account and hides the other", async () => {
     assert.equal(theirs.includes("Not yours"), false);
     assert.equal("accountId" in mine, false);
 
-    const empty = await readMyPage(sql, "nobody", "ru");
+    const empty = await readMyPage(sql, "nobody");
     assert.deepEqual(empty, { characters: [], plans: [], wins: [], completions: [] });
   } finally {
     await sql.end();

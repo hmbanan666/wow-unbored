@@ -11,7 +11,7 @@ import {
 import { SIGN_IN_COPY } from "#shared/sign-in";
 
 const props = defineProps<{ page?: PublicPage }>();
-const { data, lang, copy, loading, signedOut, message, refresh } = usePaths();
+const { data, copy, loading, signedOut, message, refresh } = usePaths();
 const selected = ref("");
 const busy = ref(false);
 const notice = ref("");
@@ -53,7 +53,7 @@ async function save(next: PathProgress, expectedActive: PathSelection | null) {
   if (!character) return;
   pending.value = null;
   busy.value = true;
-  notice.value = copy.value.saving;
+  notice.value = copy.saving;
   try {
     const result = await $fetch<{ path: PathProgress }>("/api/paths/active", {
       method: "PUT",
@@ -65,20 +65,20 @@ async function save(next: PathProgress, expectedActive: PathSelection | null) {
       },
     });
     character.active = result.path;
-    notice.value = copy.value.saved;
+    notice.value = copy.saved;
   } catch (error) {
     const failure = error as { statusCode?: number; data?: { current?: PathProgress | null } };
     const conflict = selectionConflict(failure);
     if (conflict) {
       character.active = conflict.current;
       pending.value = conflict.current ? { current: conflict.current, next } : null;
-      notice.value = conflict.current ? "" : copy.value.selectionChanged;
+      notice.value = conflict.current ? "" : copy.selectionChanged;
     } else if (failure.statusCode === 401) {
       data.value = null;
       signedOut.value = true;
-      message.value = SIGN_IN_COPY[lang.value].closed;
+      message.value = SIGN_IN_COPY.closed;
       notice.value = "";
-    } else notice.value = failure.statusCode === 429 ? copy.value.limited : copy.value.failed;
+    } else notice.value = failure.statusCode === 429 ? copy.limited : copy.failed;
   } finally {
     busy.value = false;
   }

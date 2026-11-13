@@ -3,25 +3,22 @@ import { CHARACTER_COPY, characterHref, type CharacterPage } from "#shared/chara
 
 import { professionSlug } from "#shared/profession-album";
 
-type Result =
-  | { ok: true; lang: "en" | "ru"; character: CharacterPage }
-  | { ok: false; lang: "en" | "ru"; message: string };
+type Result = { ok: true; character: CharacterPage } | { ok: false; message: string };
 const route = useRoute();
 const endpoint = computed(
   () =>
     `/api/me/characters/${encodeURIComponent(String(route.params.game))}/${encodeURIComponent(String(route.params.realm))}/${encodeURIComponent(String(route.params.name))}`,
 );
 const { data, error, status, refresh } = await useFetch<Result>(endpoint);
-const lang = computed(() => data.value?.lang || "en");
-const copy = computed(() => CHARACTER_COPY[lang.value]);
+const copy = CHARACTER_COPY;
 const character = computed(() => (data.value?.ok ? data.value.character : null));
 if (error.value?.statusCode === 404) {
   throw createError({
     statusCode: 404,
-    message: (error.value.data as { message?: string } | undefined)?.message || copy.value.notFound,
+    message: (error.value.data as { message?: string } | undefined)?.message || copy.notFound,
   });
 }
-useSeoMeta({ title: () => character.value?.name || copy.value.title, robots: "noindex" });
+useSeoMeta({ title: () => character.value?.name || copy.title, robots: "noindex" });
 </script>
 
 <template>
@@ -68,7 +65,7 @@ useSeoMeta({ title: () => character.value?.name || copy.value.title, robots: "no
               :route="entry.route"
               :name="entry.name"
             />
-            <ProfessionRecipes :profession="profession" :lang="lang" />
+            <ProfessionRecipes :profession="profession" />
           </DsCard>
         </DsCardGrid>
       </DsSection>

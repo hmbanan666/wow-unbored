@@ -19,7 +19,7 @@ test("same-named Forever and Retail characters have separate chips and active Pa
     }),
   );
   vi.stubGlobal("useFetch", async () => ({
-    data: ref({ ok: true, lang: "en", characters, plans: [], wins: [], completions: [] }),
+    data: ref({ ok: true, characters, plans: [], wins: [], completions: [] }),
     status: ref("success"),
     refresh: vi.fn(),
   }));
@@ -34,7 +34,7 @@ test("same-named Forever and Retail characters have separate chips and active Pa
         },
       ],
     }),
-    copy: ref(PATH_COPY.en),
+    copy: PATH_COPY,
     loading: ref(false),
     message: ref(""),
     signedOut: ref(false),

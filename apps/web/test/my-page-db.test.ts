@@ -225,7 +225,7 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
       VALUES (1762300001, ${mine}, 'Mine', 'Realm', 'win', '{"planTitle":"My win"}'::jsonb),
              (1762300002, ${theirs}, 'Theirs', 'Realm', 'win', '{"planTitle":"Their win"}'::jsonb)`;
 
-    const page = await readMyPage(sql, mine, "en");
+    const page = await readMyPage(sql, mine);
     assert.deepEqual(
       page.characters.map((row) => row.name),
       ["Mine"],
@@ -240,7 +240,7 @@ dbTest("My page reads one Account, and a session needs its open row and connecte
     await sql`
       INSERT INTO characters (id, game, account_id, name, realm, level, last_seen)
       VALUES ('forever/Realm/Mine', 'forever', ${mine}, 'Mine', 'Realm', 23, 1762300005)`;
-    const both = await readMyPage(sql, mine, "en");
+    const both = await readMyPage(sql, mine);
     assert.deepEqual(
       both.characters.map((row) => [row.name, row.game, row.level]),
       [
@@ -345,7 +345,7 @@ dbTest("My page shows Path completions with safe links, scoped to its Account", 
     await sql`INSERT INTO history (at, account, character_name, realm, kind, body) VALUES
       (1762300001, ${mine}, 'Mine', 'Realm', 'path_completion', ${JSON.stringify(body)}::jsonb),
       (1762300002, ${theirs}, 'Other', 'Realm', 'path_completion', ${JSON.stringify({ ...body, title: "Other completion" })}::jsonb)`;
-    const page = await readMyPage(sql, mine, "ru");
+    const page = await readMyPage(sql, mine);
     assert.deepEqual(page.completions, [
       {
         game: "retail",

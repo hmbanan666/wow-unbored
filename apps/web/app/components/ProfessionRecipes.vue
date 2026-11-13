@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CHARACTER_COPY, type Profession } from "#shared/character-page";
-const props = defineProps<{ profession: Profession; lang: "en" | "ru" }>();
-const copy = computed(() => CHARACTER_COPY[props.lang]);
+defineProps<{ profession: Profession }>();
+const copy = CHARACTER_COPY;
 function money(copper: number): string {
   return `${Math.floor(copper / 10000)}g ${Math.floor(copper / 100) % 100}s ${copper % 100}c`;
 }
