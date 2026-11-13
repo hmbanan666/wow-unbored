@@ -67,3 +67,17 @@ for (const [component, data, slug] of [
     expect(privateFetch).not.toHaveBeenCalled();
   });
 }
+
+test("a quest links to chains where it really is the next step", () => {
+  const quest = mount(QuestDetail, {
+    props: {
+      quest: questFixture,
+      overlay: {
+        ...questOverlayFixture,
+        nextChains: [{ slug: "first-steps", title: "First steps in Elwynn" }],
+      },
+    },
+  });
+  expect(quest.text()).toContain("Next step in First steps in Elwynn");
+  expect(quest.get("a").attributes("href")).toBe("/forever/quests/chains/first-steps");
+});

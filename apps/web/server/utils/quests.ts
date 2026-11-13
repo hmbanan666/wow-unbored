@@ -66,13 +66,23 @@ export async function readQuestOverlay(
     LEFT JOIN sections_latest l ON l.owner_kind = 'char' AND l.owner_id = c.id AND l.section = 'questLog'
     WHERE c.account_id = ${account} AND c.game = ${identity.game} AND c.realm = ${identity.realm} AND c.name = ${identity.name}`;
   if (!character) return null;
+  const chains = await readPublicQuestChains(sql);
   const ids =
     kind === "quests"
-      ? (await readPublicQuests(sql, slug)).filter((q) => q.slug === slug).map((q) => q.questID)
-      : ((await readPublicQuestChains(sql))
-          .find((c) => c.slug === slug)
-          ?.steps.map((s) => s.questID) ?? []);
-  return ids.length
-    ? { character: identity, steps: questProgress(ids, character.done, character.log) }
-    : null;
+      ? (await readPublicQuests(sql, slug)).map((q) => q.questID)
+      : (chains.find((c) => c.slug === slug)?.steps.map((s) => s.questID) ?? []);
+  if (!ids.length) return null;
+  const steps = questProgress(ids, character.done, character.log);
+  if (kind === "quest-chains") return { character: identity, steps };
+  const nextChains = chains
+    .filter((c) =>
+      questProgress(
+        c.steps.map((s) => s.questID),
+        character.done,
+        character.log,
+      ).some((s) => s.questID === ids[0] && s.next),
+    )
+    .map((c) => ({ slug: c.slug, title: c.title }));
+  steps[0]!.next = nextChains.length > 0;
+  return { character: identity, steps, nextChains };
 }

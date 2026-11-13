@@ -7,6 +7,7 @@ export type PublicQuestChain = QuestChain & {
 export type QuestOverlay = {
   character: CharacterIdentity;
   steps: ReturnType<typeof questProgress>;
+  nextChains?: { slug: string; title: string }[];
 };
 export const questTitle = (q: Pick<PublicQuest, "title" | "questID">) =>
   q.title || `Quest ${q.questID}`;

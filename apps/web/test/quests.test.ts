@@ -81,6 +81,12 @@ dbTest(
         { done: true, inLog: false, next: false },
         { done: false, inLog: true, next: true },
       ]);
+      await db.sql`UPDATE sections_latest SET body = '{"ids":["ids1"],"count":0}'::jsonb WHERE section = 'questsDone'`;
+      const later = await readQuestOverlay(db.sql, "owner", identity, "quests", "a-beginning-43");
+      expect(later?.steps[0]?.next).toBe(false);
+      const first = await readQuestOverlay(db.sql, "owner", identity, "quests", "a-beginning");
+      expect(first?.steps[0]?.next).toBe(true);
+      expect(first?.nextChains).toEqual([{ slug: "a-chain", title: "A chain" }]);
       await store.deleteAccountData("owner");
       expect(await readPublicQuests(db.sql)).toEqual([]);
       expect(await readPublicQuestChains(db.sql)).toEqual([]);

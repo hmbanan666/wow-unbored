@@ -9,7 +9,11 @@ defineProps<{ chain: PublicQuestChain; overlay?: QuestOverlay | null }>();
       :eyebrow="`WoW Forever · ${chain.zone} · ${chain.faction}`"
     />
     <p>Follow these quests in order. Every step has been observed in the game.</p>
-    <p v-if="overlay">
+    <p v-if="overlay && overlay.steps.every((s) => s.done === null)">
+      Progress not yet seen. Play this character with data sharing on, then let the Companion bring
+      over your quests.
+    </p>
+    <p v-else-if="overlay">
       {{ overlay.character.name }} · {{ overlay.steps.filter((s) => s.done).length }} of
       {{ chain.steps.length }} done
     </p>

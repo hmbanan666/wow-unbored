@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { questTitle, type PublicQuest, type QuestOverlay } from "#shared/quests";
+import { chainHref, questTitle, type PublicQuest, type QuestOverlay } from "#shared/quests";
 defineProps<{ quest: PublicQuest; overlay?: QuestOverlay | null }>();
 </script>
 <template>
@@ -23,6 +23,10 @@ defineProps<{ quest: PublicQuest; overlay?: QuestOverlay | null }>();
               ? "Not completed yet"
               : "Progress not yet seen"
       }}
+      <p v-for="chain in overlay.nextChains || []" :key="chain.slug">
+        Next step in <NuxtLink :to="chainHref(chain.slug)">{{ chain.title }}</NuxtLink
+        >.
+      </p>
       <p v-if="overlay.steps[0]?.done === null">
         Play this character with data sharing on, then let the Companion bring over your quests.
       </p>
