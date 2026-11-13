@@ -42,6 +42,7 @@ useSeoMeta({ title: () => character.value?.name || copy.title, robots: "noindex"
       <DsPageHeader :title="character.name" :eyebrow="character.realm" />
       <DsButton :to="`${characterHref(character)}/history`">Character history</DsButton>
       <DsChip v-if="character.game === 'forever'">Forever</DsChip>
+      <TodayStrip :character="character" @retry="refresh()" />
       <DsSection :title="copy.professions">
         <DsEmptyState v-if="!character.professions.length" :title="copy.empty" :text="copy.open" />
         <DsCardGrid v-else>

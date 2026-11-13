@@ -424,12 +424,19 @@ for (const backend of BACKENDS) {
         assert.ok(!names.includes(name), name);
       const request = await call("get_request");
       assert.equal(JSON.parse(request.body.result.content[0].text).id, "runner-first");
+      assert.equal(
+        (await call("get_today_goals", { game: "retail", character: "Mira" })).body.result.isError,
+        false,
+      );
       for (const [name, args] of [
         [
           "get_profession_progress",
           { game: "retail", character: "SomeoneElse", realm: "Elsewhere", skillLine: 333 },
         ],
         ["get_profession_progress", { game: "forever", character: "Mira", skillLine: 333 }],
+        ["get_today_goals", { game: "forever", character: "Mira" }],
+        ["get_today_goals", { game: "retail", character: "Mira", account: "another-account" }],
+        ["get_today_goals", { game: "retail", character: "SomeoneElse", realm: "Elsewhere" }],
         [
           "get_profession_progress",
           { game: "retail", character: "Mira", account: "another-account", skillLine: 333 },

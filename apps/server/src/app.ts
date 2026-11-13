@@ -1,3 +1,4 @@
+import { registerWebToday } from "./web-today.ts";
 import { recipeTeachingMap } from "./recipe-sources.ts";
 import { MediaStore } from "./media-store.ts";
 import { MediaResolver } from "./media.ts";
@@ -747,6 +748,7 @@ export function createApp(
     }
   });
 
+  registerWebToday(app, store);
   registerWebPaths(app, store, config.webOrigin || DEFAULT_WEB_ORIGIN);
 
   app.get("/v1/paths/active", async (c) => {

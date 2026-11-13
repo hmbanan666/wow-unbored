@@ -41,6 +41,7 @@ async function fixture(extra?: (db: DatabaseSync) => void): Promise<string> {
     INSERT INTO accounts VALUES ('A', 'Brozin#1', ${now - 99}, ${now}, '{"z":1,"a":[1,2,{"y":null,"b":"ы"}]}');
     INSERT INTO characters (id, account_id, name, realm, class, level, last_seen, saved_at, dropped_json, device_id) VALUES ('c1', 'A', 'Brozin', 'Gordunni', 'MAGE', 80, ${now}, ${now - 5}, NULL, 'd1');
     INSERT INTO character_events (game, character_id, type, key, at, to_value) VALUES ('retail', 'c1', 'level_up', '', ${now}, '80');
+    INSERT INTO character_goals (character_id, skill_line, position, set_id, goal_id, day, created_at, completed_at, goal_body) VALUES ('c1', 333, 0, 'fixture-set', 'fixture-goal', 1, ${now}, NULL, '{"title":"Open Enchanting"}');
     INSERT INTO sections_latest VALUES ('char', 'c1', 'bags', 3, 'h1', ${now}, ${now}, ${now}, 'addon', 0, 42,
       '{"items":[{"id":1,"n":2.5}],"big":1e3}');
     INSERT INTO section_history (id, owner_kind, owner_id, section, at, saved_at, hash, kind, body_json)
@@ -91,7 +92,7 @@ pg("a pre-Game-DB SQLite file still transfers to the current schema", async () =
   const db = await testDatabase();
   try {
     const report = await transfer({ sqlitePath: file, sql: db.sql });
-    assert.equal(report.tables.length, 20);
+    assert.equal(report.tables.length, 21);
     const store = new Store(path.dirname(file), { postgres: db.sql });
     try {
       assert.equal(await store.game.entity("achievement", 964), undefined);
@@ -124,7 +125,7 @@ pg("every table is copied, JSON as jsonb objects, partitions back to the oldest 
     } finally {
       stored.close();
     }
-    assert.equal(report.tables.length, 27);
+    assert.equal(report.tables.length, 28);
     assert.deepEqual(report.skipped, [
       { table: "profile_snapshots", rows: 0 },
       { table: "profiles", rows: 1 },
@@ -270,9 +271,9 @@ pg("the script runs under node as in the Docker image, URL from the environment 
       },
     );
     const dry = await node(["--sqlite", file, "--dry-run"], { DATABASE_URL: db.url });
-    assert.match(dry.stdout, /Dry run ok, rolled back: 27 tables, \d+ rows verified/);
+    assert.match(dry.stdout, /Dry run ok, rolled back: 28 tables, \d+ rows verified/);
     const real = await node([], { DATABASE_URL: db.url, UNBORED_DATA_DIR: path.dirname(file) });
-    assert.match(real.stdout, /Committed: 27 tables/);
+    assert.match(real.stdout, /Committed: 28 tables/);
     await assert.rejects(
       node(["--sqlite", file], { DATABASE_URL: db.url }),
       (error: { code: number; stderr: string }) => {

@@ -73,6 +73,7 @@ test.skipIf(!hasPostgres)(
         "0030_game_dimension.sql",
         "0031_recipe_sightings.sql",
         "0032_character_events.sql",
+        "0033_character_goals.sql",
       ]);
       const game = new GameDb(new PostgresDb(db.sql), directory);
       assert.equal((await game.entity("achievement", 964))?.names.enUS, "Going Down?");

@@ -406,3 +406,40 @@ test.skipIf(!hasPostgres)(
     }
   },
 );
+
+test.skipIf(!hasPostgres)(
+  "Today API creates private sets from a sealed live session and rejects other Accounts and closed sessions",
+  async () => {
+    const { app, store, close } = await setup();
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      await store.putSnapshot(
+        snapshot(
+          {
+            professions: {
+              body: { list: [{ skillLine: 333, name: "Enchanting", skill: 145, max: 150 }] },
+            },
+          },
+          { account },
+        ),
+        "web-device",
+        now,
+      );
+      const get = (name = "Mira", session = "live-session") =>
+        app.request(`/v1/web/today?game=retail&realm=Realm&character=${name}`, {
+          headers: { authorization: `Bearer ${session}` },
+        });
+      const response = await get();
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("cache-control"), "private, no-store");
+      const body = await response.json();
+      assert.equal(body.sets[0].goals[0].title, "Open your Enchanting window once");
+      assert.equal((await get("Other")).status, 404);
+      assert.equal((await get("Mira", "missing")).status, 401);
+      await store.db.run("UPDATE web.sessions SET ended_at = ? WHERE id = 'live-session'", now);
+      assert.equal((await get()).status, 401);
+    } finally {
+      close();
+    }
+  },
+);

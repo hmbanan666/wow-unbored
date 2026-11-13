@@ -33,7 +33,7 @@ export type Profession = {
     id: (typeof SOURCE_GROUPS)[number]["id"];
     name: string;
     explanation: string;
-    recipes: (ProfessionRecipe & {
+    recipes: (Omit<ProfessionRecipe, "reagents"> & {
       difficulty: RecipeDifficulty;
       reagents: { itemId: number; count: number; name: string | null }[];
       band: RecipeBand | null;

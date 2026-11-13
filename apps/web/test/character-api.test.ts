@@ -4,6 +4,7 @@ import { CHARACTER_COPY } from "../shared/character-page";
 import { SIGN_IN_COPY } from "../shared/sign-in";
 
 const session = vi.hoisted(() => ({ live: vi.fn(), prior: vi.fn() }));
+vi.mock("../server/utils/today-api", () => ({ fetchTodaySets: async () => [] }));
 const read = vi.hoisted(() => vi.fn());
 vi.mock("../server/utils/session", () => ({
   liveAccount: session.live,
@@ -18,6 +19,7 @@ afterEach(() => {
 
 async function request(game = "forever") {
   const headers = new Map();
+  vi.stubGlobal("useRuntimeConfig", () => ({ serverUrl: "http://local.test" }));
   vi.stubGlobal("defineEventHandler", (handler: unknown) => handler);
   vi.stubGlobal("getUserSession", session.prior);
   vi.stubGlobal("getRequestHeader", () => "ru-RU,ru;q=0.9,en;q=0.8");
