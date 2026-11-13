@@ -115,3 +115,5 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0098. Deterministic profession skill Plans](0098-profession-skill-plans.md)
 
 - [0099. Private character history](0099-character-history.md)
+
+- [0100. One release zip for Retail and Forever](0100-one-zip-for-retail-and-forever.md)

@@ -96,10 +96,10 @@ jobs:
       # The packager skips each catalog successfully unless both its TOC id
       # and token exist. CF_API_KEY is our secret; CF_API_TOKEN is its env name.
       # Setup and listing copy: docs/release-catalogs.md.
+      # No -g: one zip keeps every Interface value of the TOC, Retail and
+      # Forever 16001. -g retail would rewrite it to Retail only (docs/adr/0100).
       - uses: BigWigsMods/packager@v2
         if: env.PUBLISH == 'true'
-        with:
-          args: -g retail
         env:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
           CF_API_TOKEN: ${{ secrets.CF_API_KEY }}
@@ -109,7 +109,10 @@ jobs:
         if: env.PUBLISH != 'true'
         uses: BigWigsMods/packager@v2
         with:
-          args: -d -g retail
+          args: -d
+
+      - name: The zip loads in Retail and Forever
+        run: bash scripts/check-packaged-toc.sh
 
       - name: Name the zip as the release would
         if: env.PUBLISH != 'true'
