@@ -8,6 +8,7 @@ import postgres from "postgres";
 import { test } from "vite-plus/test";
 
 import { connectPostgres, migrate, migrationFiles } from "../../server/src/postgres.ts";
+import { readPublicProfessions } from "../server/utils/public-professions.ts";
 import { readCharacterPage } from "../server/utils/character-page.ts";
 import { readMyPage } from "../server/utils/account-page.ts";
 import { sessionIsLive } from "../server/utils/session.ts";
@@ -48,6 +49,9 @@ dbTest(
       );
       await sql.unsafe(
         readFileSync(migrationFiles().find((file) => file.version === 33)!.url, "utf8"),
+      );
+      await sql.unsafe(
+        readFileSync(migrationFiles().find((file) => file.version === 34)!.url, "utf8"),
       );
       await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, 'Mine', 1, 2)`;
       await sql`INSERT INTO characters (id, game, account_id, name, realm, level, last_seen)
@@ -93,6 +97,9 @@ dbTest(
       await sql`INSERT INTO character_goals (character_id, skill_line, position, set_id, goal_id, day, created_at, goal_body)
         VALUES ('forever/Realm/Mine', 171, 0, 'fixture-set', 'fixture-goal', 1, 2, '{"title":"Learn a recipe"}')`;
       await sql`SET LOCAL ROLE unbored_web`;
+      const publicCatalog = await readPublicProfessions(sql, "forever");
+      assert.equal(publicCatalog[0]?.album[0]?.slug, "elixir-of-minor-fortitude");
+      assert.equal(publicCatalog[0]?.album[0]?.known, null);
       const goals =
         await sql`SELECT g.goal_body FROM character_goals g JOIN characters c ON c.id = g.character_id
         WHERE c.account_id = ${mine} AND c.game = 'forever' AND c.name = 'Mine' AND c.realm = 'Realm'`;
@@ -201,6 +208,7 @@ dbTest(
         "game.builds",
         "game.rows",
         "game.profession_recipes",
+        "game.recipe_slugs",
         "recipe_sightings",
         "character_events",
         "character_goals",

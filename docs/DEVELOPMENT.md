@@ -1517,44 +1517,65 @@ The private character API and MCP `get_profession_progress(game, character, skil
 
 Forever rows of the same profession name collapse to the id with catalog recipes, retaining other ids in `aliases`, including nested tiers. Learned sets and trainer sightings under those aliases resolve to the canonical profession; MCP accepts either id. Retail keeps its existing profession/tier layout and minimum-skill fallback. A missing client requirement in Forever stays unknown regardless of orange/minSkill. Old unrefreshed teaching links without facts stay `not_seen`, with unknown formula metadata, until import completes.
 
-### Profession album (ADR 0101, slice b)
+### Public professions and recipes (ADRs 0101–0102, P5)
 
-The private `/my/<game>/<realm>/<name>/<profession-slug>` page reuses the owner-checked
-character endpoint and the `/my/**` no-store/noindex/nofollow middleware. Base skill-line
-names supply stable English slugs; an unknown profession returns 404. Character cards
-link with **Open collection** and retain their skill Plans. Hero and journey remain separate follow-ups. Today appears before the album (slice c below).
+`/<game>/professions` lists professions with catalog rows. Their albums live at
+`/<game>/professions/<slug>` and each named recipe at `/<game>/recipes/<slug>`.
+Forever is available when its catalog is imported; Retail uses the same routes only
+when its catalog has rows, otherwise returns 404 and stays out of links and sitemap.
+Pages are English, indexable SSR with canonical addresses, per-page metadata and
+BreadcrumbList. The public projection reads the latest build, English item/map names
+and Account-free aggregate sightings in two SQL queries. It is cached for five minutes
+by game only. A recipe's base difficulty is Source + Reagents, with no Skill points or
+personal reasons. Required skill never comes from Forever's orange threshold.
 
-The shared progress projection now includes `album`: every catalog recipe with nullable
-`known`, thresholds, source observations, difficulty, formula facts and named reagents.
-The ring counts known **catalog** recipes; uncatalogued learned ids remain a separate
-note. `known: null` is an unread profession, distinct from a recorded empty learned set.
-Retail albums include their expansion skill lines and evaluate each recipe against its
-own tier's skill. Learned sets use the addon's base-profession read, or per-tier reads
-when the base read is absent. Routes remain the existing per-tier skill Plans.
+Migration `0034_recipe_slugs.sql` reserves a game/spell address independently of builds.
+The English name becomes kebab-case; an existing address wins a collision and the new
+recipe gets `-<spellId>` (repeated only if that address is also reserved). Migration
+backfill has deterministic build/spell order. An import trigger retains the first
+address through renames, deletion/rebuild of the materialized catalog and later builds.
+Unnamed current rows have no page even if an old address was reserved. The web role
+gets conditional SELECT on `game.recipe_slugs`; it cannot write. If provisioned after
+the migration, grant it SELECT along with the existing game tables. SQLite has no web
+slug registry; transfer/import into PostgreSQL populates it through the same trigger.
 
-Filters use a single `?f=` value: `all` (also absent), `now`, `missing`, `trainer`, `vendor`
-(including limited supply), `tradable`, `bop`, `unseen`, or `zone:<observed zone name>`.
-Source chips use the difficulty calculation's selected source, matching the approved
-mockup. Zones use actual sightings, including known recipes; no sightings means a disabled
-Zone chip and a keyboard/touch explanation. Other query values are preserved. Filters dim
-album slots and constrain the missing list; Show all resets on a filter change. The native
-dialog supports Escape, close, focus return and a mobile bottom sheet. Required skill never
-comes from Forever's orange threshold.
+The header fetches `/api/me/characters` only after mount. It groups owned characters by
+Game and displays level/class. Selection stores only `game/realm/name` (encoded
+segments) in `unbored_character`, Path=/, SameSite=Lax, one year, Secure over HTTPS.
+No selection is read during SSR. With a matching Game, the browser requests
+`/api/me/overlay/professions/<game>/<slug>?character=...` or the corresponding
+`recipes` endpoint. Both validate the live session and Character ownership on every
+request, return 404 for another Account, and send private/no-store and noindex.
+No character cookie, known set, skill or Today data enters a public cache or HTML.
+Switching characters clears the previous result and cancels the in-flight request;
+selecting the other Game shows a hint without requesting an overlay.
 
-Run `pnpm --filter @unbored/web test:browser` after
-`pnpm --filter @unbored/web exec playwright install chromium` (the host needs Chromium's
-shared libraries). The isolated Vite fixture harness renders the actual Vue page/components,
-replacing only routing and API loading. It checks widths 360/390/640/768/1024/1280, 44px tap
-targets, no overflow, dialog focus, URL filters and empty/Retail states, and writes screenshots
-to `artifacts/profession-album/`. These offline fixtures use the approved mockup's recipe
-facts and Kania's skill shape; formula/reagent ids, Tailoring entries and learned sets are
-explicit test data. Production imports no fixture. CI runs Chromium alongside the component,
-owner/API, restricted web-role and production SEO checks.
+`ProfessionAlbum` takes a public base and optional overlay. Public slots are small
+links; category disclosures hold SSR formula/reagent/source facts. Source, zone and
+category filters work without a character. An overlay adds known slots, difficulty,
+the collection ring, Missing / Can get now, easiest-first recipes and Today. An unread
+profession stays unknown, keeps its catalog visible and asks for its in-game window.
+`RecipeDetail` shares the recipe facts between the existing dialog and the single-page
+view; the latter adds thresholds, crafted items and a personal known/missing/unread
+card. Filters use `?f=` including `category:<id>` and preserve other query values.
 
-Deployment: web only; no migration, grants, import or version change. The modified shared
-projection is compiled into web. The Server uses it on its next ordinary build; the page does
-not depend on a Server rollout. The shared files were already included in `apps/web/Dockerfile`;
-all new web files are covered by `COPY apps/web apps/web`.
+Old `/my/<game>/<realm>/<name>/<profession>` addresses check ownership, set the
+selection cookie and 302 to the public album. Character cards and the Today strip link
+to public albums. `/my` and the existing character/history pages remain private.
+
+Verification: `pnpm --filter @unbored/web test:browser` uses the real pages/components
+with fixture API boundaries, covering 360/390/768/1280, keyboard links/picker, filters
+and game switching. Screenshots go to gitignored `artifacts/public-professions/`;
+none are publication assets. The fixture preserves Kania's unread Enchanting 145/150
+and read Tailoring 112/150 shape. `pnpm --filter @unbored/web test:seo` with
+`UNBORED_TEST_DATABASE_URL` tests actual production SSR, signed session cookies,
+byte-identical public HTML, metadata/sitemap, private headers, owner rejection and
+legacy redirects. `UNBORED_WEB_TEST_DATABASE_URL` enables the restricted-role test.
+
+Rollout order: Server migration 0034 first, then web. Existing catalog rows are
+backfilled; no manual import, addon/Companion release or version bump is required.
+All web shared files are included by `COPY apps/web apps/web`; the contracts difficulty
+module is already explicitly copied in `apps/web/Dockerfile`.
 
 ### Today goals (ADR 0101, slice c)
 
@@ -1566,4 +1587,4 @@ The pure `computeTodayGoals` / `todayGoalComplete` contracts reuse profession pr
 
 Deploy **Server first** to apply `0033_character_goals.sql` and expose the API, then web. Its conditional grant gives an existing `unbored_web` role SELECT only; installations provisioning that role after migrations must include `GRANT SELECT ON character_goals TO unbored_web` in their read grants. SQLite creates the same table on open. Forget my data explicitly erases it; character deletion cascades. No addon or Companion update, import or version bump is required.
 
-Browser checks render Kania-shaped offline fixtures: unread Enchanting 145/150, read Tailoring 112/150 and no sightings, plus a separate read Enchanting example to exercise three cards. `pnpm --filter @unbored/web test:browser` writes desktop/mobile captures to `artifacts/today-goals/`. Review copies live in `docs/review/today-goals/`.
+Browser checks now render Today inside the public profession overlay, using Kania-shaped offline fixtures: unread Enchanting 145/150, read Tailoring 112/150 and no sightings. Captures are in `artifacts/public-professions/`; earlier slice-c review copies remain in `docs/review/today-goals/`.

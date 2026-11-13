@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import type { AlbumRecipe, Profession } from "@unbored/contracts/profession-progress";
+import {
+  overlayProfession,
+  recipeHref,
+  type PublicProfession,
+  type ProfessionOverlay,
+} from "#shared/public-professions";
 import { CHARACTER_COPY } from "#shared/character-page";
 import {
   ALBUM_FILTERS,
@@ -10,10 +16,27 @@ import {
   recipeLabel,
   recipeMonogram,
 } from "#shared/profession-album";
-const props = defineProps<{ profession: Profession; filter: string; game: "retail" | "forever" }>();
+const props = defineProps<{
+  profession?: Profession;
+  base?: PublicProfession;
+  overlay?: ProfessionOverlay | null;
+  filter: string;
+  game: "retail" | "forever";
+}>();
+const profession = computed(() =>
+  props.base ? overlayProfession(props.base, props.overlay) : props.profession!,
+);
+const personal = computed(() => !props.base || !!props.overlay);
+const filters = computed(() =>
+  ALBUM_FILTERS.filter((f) => personal.value || !["missing", "now"].includes(f.id)),
+);
+const links = computed(
+  () => new Map(props.base?.album.map((r) => [r.spellId, recipeHref(props.game, r.slug)])),
+);
+
 const emit = defineEmits<{ filter: [value: string] }>();
-const recipes = computed(() => props.profession.album);
-const name = computed(() => professionName(props.profession));
+const recipes = computed(() => profession.value.album);
+const name = computed(() => professionName(profession.value));
 const categories = computed(() => albumCategories(recipes.value));
 const zones = computed(() =>
   [...new Set(recipes.value.flatMap((r) => r.sources.map((s) => s.zone)))].sort((a, b) =>
@@ -23,7 +46,7 @@ const zones = computed(() =>
 const missing = computed(() => easiestMissing(recipes.value, props.filter));
 const showAll = ref(false);
 watch(
-  () => [props.filter, props.profession],
+  () => [props.filter, profession.value],
   () => {
     showAll.value = false;
   },
@@ -38,7 +61,7 @@ const labels = ["easy", "medium", "hard"] as const;
 const rank = computed(() =>
   props.game === "forever"
     ? ({ 75: "Apprentice", 150: "Journeyman", 225: "Expert", 300: "Artisan" }[
-        props.profession.max ?? 0
+        profession.value.max ?? 0
       ] ?? null)
     : null,
 );
@@ -54,26 +77,37 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
 </script>
 <template>
   <div class="profession-album">
-    <!-- Today has its own future section before this component. -->
     <DsEmptyState
       v-if="profession.total === null"
       title="More recipes to come"
       :text="CHARACTER_COPY.catalogEmpty"
     />
     <DsEmptyState
-      v-else-if="profession.known === null"
+      v-else-if="!base && profession.known === null"
       :title="`${name} is waiting for you`"
       :text="`Open your ${name} window in the game once, then this fills in`"
     />
     <template v-else>
-      <div class="album-layout">
-        <section class="album-card summary-card" aria-label="Collection progress">
+      <p v-if="base && !base.album.length" class="album-note">
+        No named recipes have been read for this profession yet. Browse another profession while the
+        catalog fills in.
+      </p>
+      <p v-if="base && overlay && profession.known === null" class="album-note">
+        Open your {{ name }} window in the game once, then this fills in. Your recipes have not been
+        checked yet.
+      </p>
+      <p v-if="base && !overlay" class="album-note">
+        Base difficulty uses sources and reagents. Pick a character to add skill and your known
+        recipes.
+      </p>
+      <div class="album-layout" :class="{ 'public-layout': !personal }">
+        <section v-if="personal" class="album-card summary-card" aria-label="Collection progress">
           <div
             class="collection-ring"
             :style="{ '--progress': `${(known / (profession.total || 1)) * 100}%` }"
           >
             <div>
-              <strong>{{ known }}</strong
+              <strong>{{ profession.known === null ? "?" : known }}</strong
               ><span>of {{ profession.total }} recipes</span>
             </div>
           </div>
@@ -100,7 +134,7 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
             />
             <i class="known" :style="{ flex: known }" />
           </div>
-          <div class="difficulty-legend">
+          <div v-if="profession.known !== null" class="difficulty-legend">
             <span v-for="label in labels" :key="label"
               ><i :class="label" />{{ label }} <b>{{ profession.difficultyCounts[label] }}</b></span
             >
@@ -119,7 +153,7 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
         <section class="album-card collection-card" aria-label="Recipe album">
           <div class="album-filters" role="group" aria-label="Recipe filters">
             <button
-              v-for="option in ALBUM_FILTERS"
+              v-for="option in filters"
               :key="option.id"
               type="button"
               class="filter-chip"
@@ -161,42 +195,110 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
                 </option>
               </select>
             </label>
+            <label class="zone-filter"
+              >Category
+              <select
+                aria-label="Category"
+                :value="filter.startsWith('category:') ? filter : ''"
+                @change="emit('filter', ($event.target as HTMLSelectElement).value || 'all')"
+              >
+                <option value="">All categories</option>
+                <option
+                  v-for="category in categories"
+                  :key="category.id"
+                  :value="`category:${category.id}`"
+                >
+                  {{ category.name }}
+                </option>
+              </select>
+            </label>
           </div>
           <div class="album-categories">
             <section v-for="category in categories" :key="category.id" class="album-category">
               <h2>
                 <span>{{ category.name }}</span
-                ><span>{{ category.known }} / {{ category.recipes.length }}</span>
+                ><span
+                  ><template v-if="personal"
+                    >{{ profession.known === null ? "?" : category.known }} / </template
+                  >{{ category.recipes.length }}</span
+                >
               </h2>
               <div class="recipe-slots">
-                <button
+                <component
+                  :is="base ? 'a' : 'button'"
                   v-for="recipe in category.recipes"
                   :key="recipe.spellId"
-                  type="button"
+                  :type="base ? undefined : 'button'"
+                  :href="links.get(recipe.spellId)"
                   class="recipe-slot"
                   :class="{
                     'is-known': recipe.known,
                     'is-dimmed': !matchesAlbumFilter(recipe, filter),
                   }"
-                  :aria-label="recipeLabel(recipe)"
+                  :aria-label="
+                    personal
+                      ? recipeLabel(recipe)
+                      : `${recipe.name}, base ${recipe.difficulty.label}`
+                  "
                   :title="recipe.name || 'Recipe name unavailable'"
-                  aria-haspopup="dialog"
-                  @click="open(recipe, $event)"
+                  :aria-haspopup="base ? undefined : 'dialog'"
+                  @click="!base && open(recipe, $event)"
                 >
-                  <span v-if="recipe.known">{{ recipeMonogram(recipe.name) }}</span>
+                  <span v-if="recipe.known || !personal">{{ recipeMonogram(recipe.name) }}</span>
                   <i
-                    v-else-if="recipe.known === false"
+                    v-if="recipe.known === false || !personal"
                     :class="['difficulty-dot', recipe.difficulty.label]"
                     aria-hidden="true"
                   />
-                  <span v-else aria-hidden="true">?</span>
-                </button>
+                  <span v-else-if="recipe.known === null" aria-hidden="true">?</span>
+                </component>
               </div>
+              <details v-if="base" class="category-facts">
+                <summary>Recipe facts · {{ category.name }}</summary>
+                <ul>
+                  <li
+                    v-for="recipe in category.recipes.filter((r) => matchesAlbumFilter(r, filter))"
+                    :key="recipe.spellId"
+                  >
+                    <a :href="links.get(recipe.spellId)">{{ recipe.name }}</a>
+                    <p>
+                      Required skill:
+                      {{ recipe.difficulty.requiredSkill ?? "unknown until seen" }} · Base
+                      {{ base.album.find((r) => r.spellId === recipe.spellId)!.difficulty.label }}
+                    </p>
+                    <RecipeFormula
+                      v-if="recipe.teachingItemNames.length"
+                      :items="recipe.teachingItemNames"
+                      binding
+                    />
+                    <p v-else>No formula item</p>
+                    <p>
+                      {{
+                        recipe.reagents
+                          .map((r) => `${r.count}× ${r.name || "Reagent name unavailable"}`)
+                          .join(" · ") || "No reagents listed."
+                      }}
+                    </p>
+                    <p v-for="(source, i) in recipe.sources" :key="i">
+                      {{ source.npcName }} · {{ source.zone
+                      }}<template v-if="source.x !== null && source.y !== null">
+                        ({{ source.x }}, {{ source.y }})</template
+                      >
+                      · {{ source.kind }}<template v-if="source.limited">, limited supply</template
+                      ><template v-if="source.cost !== null"> · {{ source.cost }} copper</template>
+                    </p>
+                  </li>
+                </ul>
+              </details>
             </section>
           </div>
         </section>
       </div>
-      <section class="missing-section" aria-labelledby="missing-title">
+      <section
+        v-if="personal && profession.known !== null"
+        class="missing-section"
+        aria-labelledby="missing-title"
+      >
         <div class="missing-heading">
           <h2 id="missing-title">Missing, easiest first</h2>
           <p aria-live="polite">
@@ -544,5 +646,37 @@ select {
     grid-column: auto;
     text-align: right;
   }
+}
+</style>
+
+<style scoped>
+.public-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.recipe-slot {
+  text-decoration: none;
+}
+.category-facts {
+  margin-top: 1rem;
+  overflow-wrap: anywhere;
+}
+.category-facts summary {
+  min-height: var(--tap);
+  cursor: pointer;
+  color: var(--lamp-gold);
+}
+.category-facts ul {
+  padding: 0;
+  list-style: none;
+}
+.category-facts li {
+  margin-block: 1rem;
+  border-top: 1px solid var(--lamp-line-soft);
+  padding-top: 0.75rem;
+}
+.category-facts p {
+  margin-top: 0.4rem;
+  color: var(--lamp-muted);
+  font-size: var(--text-xs);
 }
 </style>

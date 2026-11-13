@@ -46,6 +46,7 @@ const items = computed(() => props.links);
           >
         </nav>
       </details>
+      <div class="ds-nav__character"><slot name="character" /></div>
     </DsContainer>
   </header>
 </template>
@@ -204,6 +205,23 @@ const items = computed(() => props.links);
 
   .ds-nav__menu {
     display: none;
+  }
+}
+</style>
+
+<style scoped>
+.ds-nav__bar {
+  flex-wrap: wrap;
+}
+.ds-nav__character {
+  flex-basis: 100%;
+  min-width: 0;
+  padding-bottom: 0.5rem;
+}
+@media (min-width: 1280px) {
+  .ds-nav__character {
+    flex-basis: auto;
+    padding-bottom: 0;
   }
 }
 </style>

@@ -9,6 +9,7 @@ import {
 const { data, error, refresh } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog", {
   query: { kind: "guide", game: "forever" },
 });
+const { data: professions } = await useFetch<{ slug: string }[]>("/api/game/forever/professions");
 const hub = computed(() => foreverHub(data.value?.pages ?? []));
 const site = useSiteConfig();
 const absolute = (path: string) => new URL(path, site.url).href;
@@ -39,5 +40,12 @@ useSchemaOrg([
 </script>
 
 <template>
-  <ForeverHub :hub="hub" :unavailable="!!error" @refresh="refresh" />
+  <div>
+    <DsContainer v-if="professions?.length" width="wide"
+      ><DsButton to="/forever/professions" variant="ghost"
+        >Explore profession recipes</DsButton
+      ></DsContainer
+    >
+    <ForeverHub :hub="hub" :unavailable="!!error" @refresh="refresh" />
+  </div>
 </template>

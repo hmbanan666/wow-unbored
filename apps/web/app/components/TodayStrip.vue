@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { CharacterPage } from "#shared/character-page";
-import { characterHref } from "#shared/character-page";
 import { professionSlug } from "#shared/profession-album";
 import { useTodayHints } from "../composables/useTodayHints";
 const props = defineProps<{ character: CharacterPage }>();
@@ -16,7 +15,7 @@ const entries = computed(() =>
           {
             title: goal.title,
             name: set.profession,
-            href: `${characterHref(props.character)}/${professionSlug(profession)}`,
+            href: `/${props.character.game}/professions/${professionSlug(profession)}`,
           },
         ]
       : [];

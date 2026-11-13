@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import type { AlbumRecipe } from "@unbored/contracts/profession-progress";
-defineProps<{ recipe: AlbumRecipe | null }>();
+import type { PublicRecipe, SingleRecipeOverlay, Game } from "#shared/public-professions";
+const props = defineProps<{
+  recipe: AlbumRecipe | PublicRecipe | null;
+  inline?: boolean;
+  game?: Game;
+  overlay?: SingleRecipeOverlay | null;
+}>();
+const crafted = computed(() =>
+  props.recipe && "craftedItemNames" in props.recipe ? props.recipe.craftedItemNames : [],
+);
 const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLDialogElement>();
 const title = useId();
@@ -13,18 +22,25 @@ function closed() {
   emit("close");
   opener?.focus();
 }
+function trapTab(event: KeyboardEvent) {
+  event.preventDefault();
+  dialog.value?.querySelector("button")?.focus();
+}
 defineExpose({ open });
 </script>
 <template>
-  <dialog
+  <component
+    :is="inline ? 'section' : 'dialog'"
     ref="dialog"
     class="recipe-detail"
-    :aria-labelledby="title"
+    :class="{ 'recipe-inline': inline }"
+    :aria-labelledby="inline ? undefined : title"
     @close="closed"
-    @keydown.tab.prevent="dialog?.querySelector('button')?.focus()"
+    @keydown.tab="!inline && trapTab($event)"
   >
     <template v-if="recipe">
       <button
+        v-if="!inline"
         class="close-detail"
         type="button"
         aria-label="Close recipe details"
@@ -33,17 +49,20 @@ defineExpose({ open });
       >
         ×
       </button>
-      <h2 :id="title">{{ recipe.name || "Recipe name unavailable" }}</h2>
+      <h2 v-if="!inline" :id="title">{{ recipe.name || "Recipe name unavailable" }}</h2>
       <p class="detail-meta">{{ recipe.category.name }}</p>
+      <p v-if="!recipe.teachingItemNames.length">No formula item</p>
       <RecipeFormula
         v-if="recipe.teachingItemNames.length"
         :items="recipe.teachingItemNames"
         binding
       />
-      <p v-if="recipe.known === true" class="known-message">
+      <RecipePersonal v-if="inline && overlay" :overlay="overlay" />
+      <h2 v-if="inline">Base difficulty</h2>
+      <p v-if="!inline && recipe.known === true" class="known-message">
         You know this. Grey at {{ recipe.thresholds.grey }}.
       </p>
-      <p v-else-if="recipe.known === null">
+      <p v-else-if="!inline && recipe.known === null">
         Open this profession in the game to check what you know.
       </p>
       <template v-else>
@@ -53,6 +72,27 @@ defineExpose({ open });
         </ul>
       </template>
       <p>Required skill: {{ recipe.difficulty.requiredSkill ?? "unknown until seen" }}</p>
+      <p v-if="crafted.length">
+        Creates: {{ crafted.map((r) => r.name || "Item name unavailable").join(", ") }}
+      </p>
+      <dl v-if="inline" class="thresholds">
+        <div>
+          <dt>Orange</dt>
+          <dd>{{ game === "forever" ? "from required skill" : recipe.thresholds.orange }}</dd>
+        </div>
+        <div>
+          <dt>Yellow</dt>
+          <dd>{{ recipe.thresholds.yellow }}</dd>
+        </div>
+        <div>
+          <dt>Green</dt>
+          <dd>{{ recipe.thresholds.green }}</dd>
+        </div>
+        <div>
+          <dt>Grey</dt>
+          <dd>{{ recipe.thresholds.grey }}</dd>
+        </div>
+      </dl>
       <h3>Reagents</h3>
       <ul v-if="recipe.reagents.length">
         <li v-for="reagent in recipe.reagents" :key="reagent.itemId">
@@ -68,6 +108,7 @@ defineExpose({ open });
             }}<template v-if="source.x !== null && source.y !== null">
               ({{ source.x }}, {{ source.y }})</template
             >
+            <template v-if="source.cost !== null"> · {{ source.cost }} copper</template>
             <span class="detail-meta">
               ·
               {{
@@ -82,8 +123,9 @@ defineExpose({ open });
         </ul>
         <p class="detail-meta">Past sightings, not live availability.</p>
       </template>
+      <p v-else>No trainer or vendor sightings yet.</p>
     </template>
-  </dialog>
+  </component>
 </template>
 <style scoped>
 .recipe-detail {
@@ -152,5 +194,27 @@ ul {
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
   }
+}
+</style>
+
+<style scoped>
+.recipe-inline {
+  position: static;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  margin-block: 1.5rem;
+}
+.thresholds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  margin-top: 1.5rem;
+}
+.thresholds dt {
+  color: var(--lamp-muted);
+}
+.thresholds dd {
+  margin: 0.25rem 0;
 }
 </style>

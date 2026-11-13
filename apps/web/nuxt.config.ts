@@ -40,8 +40,9 @@ export default defineNuxtConfig({
     disallow: ["/download/"],
   },
   routeRules: {
-    "/my": { robots: false },
-    "/my/**": { robots: false },
+    "/api/me/**": { robots: false, headers: { "cache-control": "private, no-store" } },
+    "/my": { robots: false, headers: { "cache-control": "private, no-store" } },
+    "/my/**": { robots: false, headers: { "cache-control": "private, no-store" } },
   },
   /** Content-Signal is not a robots.txt directive validators know; leave it out. */
   aiReady: {
