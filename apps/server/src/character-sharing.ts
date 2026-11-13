@@ -74,7 +74,6 @@ export async function setSharing(
     await db.run(
       `INSERT INTO character_sharing (character_id, account_id, realm_slug, name_slug, enabled, enabled_at, generation) VALUES (?, ?, ?, ?, (?::int = 1), ?, ?)
       ON CONFLICT (character_id) DO UPDATE SET enabled = EXCLUDED.enabled, account_id = EXCLUDED.account_id,
-      history_after = CASE WHEN character_sharing.account_id = EXCLUDED.account_id THEN character_sharing.history_after ELSE EXCLUDED.enabled_at END,
       enabled_at = CASE WHEN character_sharing.account_id = EXCLUDED.account_id AND character_sharing.enabled = EXCLUDED.enabled THEN character_sharing.enabled_at ELSE EXCLUDED.enabled_at END,
       generation = CASE WHEN character_sharing.account_id = EXCLUDED.account_id AND character_sharing.enabled = EXCLUDED.enabled THEN character_sharing.generation ELSE EXCLUDED.generation END`,
       id,

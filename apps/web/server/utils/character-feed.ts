@@ -52,14 +52,15 @@ async function readFeed(
     }[]
   >`
     WITH shared AS (
-      SELECT c.id, c.account_id, c.name, c.realm, s.realm_slug, s.name_slug, s.history_after FROM character_sharing s
-      JOIN characters c ON c.id = s.character_id WHERE s.enabled AND c.account_id = s.account_id AND c.game = 'forever'
+      SELECT c.id, c.account_id, c.name, c.realm, s.realm_slug, s.name_slug, COALESCE(b.event_id, 0) AS after_event FROM character_sharing s
+      JOIN characters c ON c.id = s.character_id LEFT JOIN character_feed_boundaries b ON b.character_id = c.id
+      WHERE s.enabled AND c.account_id = s.account_id AND c.game = 'forever'
       ${identity ? sql`AND s.realm_slug = ${identity.realm} AND s.name_slug = ${identity.name}` : sql``}
     ), events AS (
       SELECT e.*, row_number() OVER (PARTITION BY e.character_id, e.type, e.key ORDER BY e.at, e.id) first_skill,
         row_number() OVER (PARTITION BY e.character_id, e.type, e.at / 86400 ORDER BY e.at, e.id) daily_recipe
       FROM character_events e JOIN shared s ON s.id = e.character_id
-      WHERE e.game = 'forever' AND e.at >= s.history_after AND e.type IN ('level_up', 'skill_step', 'recipe_learned', 'rep_standing')
+      WHERE e.game = 'forever' AND e.id > s.after_event AND e.type IN ('level_up', 'skill_step', 'recipe_learned', 'rep_standing')
     ), named AS (
       SELECT e.*, CASE WHEN e.type = 'recipe_learned' THEN (
         SELECT p.body->>'name' FROM game.profession_recipes p WHERE p.game = 'forever'

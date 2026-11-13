@@ -193,3 +193,26 @@ test.skipIf(!hasPostgres)(
     expect((await readCommunityFeed(database.sql)).posts).toEqual([]);
   },
 );
+
+test.skipIf(!hasPostgres)(
+  "reassignment protects unshared history even after the former owner is forgotten",
+  async () => {
+    const { PostgresDb } = await import("../../server/src/db");
+    const { Store } = await import("../../server/src/store");
+    const { setSharing } = await import("../../server/src/character-sharing");
+    const { fixtureAccount, fixtureOtherAccount } = await import("./public-professions-fixture");
+    const db = new PostgresDb(database.sql);
+    await database.sql`UPDATE characters SET account_id = ${fixtureOtherAccount}`;
+    const store = new Store(import.meta.dirname, { postgres: database.sql });
+    try {
+      await store.deleteAccountData(fixtureAccount);
+    } finally {
+      store.close();
+    }
+    await setSharing(db, fixtureOtherAccount, fixtureCharacter, true);
+    expect((await readCommunityFeed(database.sql)).posts).toEqual([]);
+    const id = `forever/${fixtureCharacter.realm}/${fixtureCharacter.name}`;
+    await database.sql`INSERT INTO character_events (character_id, game, type, key, at, from_value, to_value) VALUES (${id}, 'forever', 'level_up', 'new-owner', 101, '25', '26')`;
+    expect((await readCommunityFeed(database.sql)).posts.map((p) => p.label)).toEqual(["Level 26"]);
+  },
+);

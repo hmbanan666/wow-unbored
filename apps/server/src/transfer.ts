@@ -37,6 +37,7 @@ const POSTGRES_ONLY = new Set([
   "active_paths",
   "character_sharing",
   "character_screenshots",
+  "character_feed_boundaries",
 ]);
 /** Game DB was added after the original cutover; older SQLite files lack it. */
 const GAME_TABLES: Record<string, string> = {
