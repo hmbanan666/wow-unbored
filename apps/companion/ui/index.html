@@ -28,6 +28,24 @@
         <button id="open-my-page" class="big" type="button" data-i18n="UI_MY_PAGE">My page</button>
       </div>
 
+      <details id="feed-sharing">
+        <summary>Share your Forever story</summary>
+        <p>
+          Sharing is off by default. Choose the character for new screenshots from this PC. Only
+          choose your own game images; no edits or third-party images.
+        </p>
+        <button id="feed-load" type="button">Choose a character</button>
+        <select id="feed-character" aria-label="Character for screenshots"></select>
+        <button id="feed-on" type="button" disabled>
+          Share this character and new screenshots
+        </button>
+        <button id="feed-off" type="button" disabled>Turn sharing off</button>
+        <p id="feed-status" role="status">
+          Collection starts after you choose, while sharing is on. Older screenshots stay on your
+          PC. Choose again after restarting the Companion.
+        </p>
+      </details>
+
       <div id="setup" class="actions" hidden>
         <button id="pick" class="big" type="button" data-i18n="UI_CHOOSE_FOLDER">
           Choose folder

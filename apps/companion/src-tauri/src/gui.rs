@@ -56,6 +56,7 @@ struct ProgressView {
 }
 
 struct Model {
+    feed_status: String,
     settings: Settings,
     settings_notice: Option<SettingsRecovery>,
     status: String,
@@ -101,7 +102,15 @@ impl Model {
     }
 }
 
+struct FeedCapture {
+    directory: PathBuf,
+    realm: String,
+    name: String,
+    watch: crate::screenshots::ScreenshotWatch,
+}
+
 struct AppState {
+    feed_capture: Mutex<Option<FeedCapture>>,
     inner: SyncState<Model>,
     /// Kept alive so the SavedVariables watch does not stop.
     watcher: Mutex<Option<RecommendedWatcher>>,
@@ -405,6 +414,7 @@ fn write_plan(settings: &Settings, plan: &mut Plan) -> Result<String, String> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UiState {
+    feed_status: String,
     settings: Settings,
     settings_notice: Option<String>,
     installs: Vec<String>,
@@ -468,6 +478,7 @@ fn snapshot(app: &AppHandle, model: &Model) -> UiState {
     let autostart = refresh_autostart(app);
     let mood = model.mood();
     UiState {
+        feed_status: model.feed_status.clone(),
         settings: model.settings.clone(),
         settings_notice: model
             .settings_notice
@@ -603,6 +614,194 @@ fn request_page_link(url: &str, secret: &str, body: &serde_json::Value) -> Resul
             tr(key)
         }
     })
+}
+
+/// Only locally discovered Forever identities are offered for screenshot attribution.
+#[tauri::command]
+fn feed_characters(app: AppHandle, state: State<AppState>) -> Result<serde_json::Value, Shown> {
+    let session = SyncSession::capture(&state)?;
+    let client = http_client(Duration::from_secs(10))?;
+    let mut choices = Vec::new();
+    for directory in game_paths(&session.settings) {
+        if game_for_dir(&directory) != "forever" {
+            continue;
+        }
+        for file in character_saved_variables(&directory, None) {
+            let payload = page_link_payload(&[file]);
+            let Some(who) = payload.get("character") else {
+                continue;
+            };
+            let realm = who["realm"].as_str().unwrap_or("");
+            let name = who["name"].as_str().unwrap_or("");
+            let response = client
+                .get(join_url(
+                    &effective_url(&session.settings),
+                    "v1/feed/sharing",
+                ))
+                .bearer_auth(&session.device.secret)
+                .query(&[("realm", realm), ("name", name)])
+                .send()
+                .map_err(|_| "Sharing is resting. Try again.".to_string())?;
+            if response.status().is_success() {
+                let value: serde_json::Value = response
+                    .json()
+                    .map_err(|_| "Sharing is resting. Try again.".to_string())?;
+                choices.push(serde_json::json!({ "realm": realm, "name": name, "enabled": value["enabled"] }));
+            }
+        }
+    }
+    let _ = app;
+    Ok(serde_json::json!(choices))
+}
+
+#[tauri::command]
+fn set_feed_sharing(
+    app: AppHandle,
+    state: State<AppState>,
+    realm: String,
+    name: String,
+    enabled: bool,
+) -> Result<UiState, Shown> {
+    let session = SyncSession::capture(&state)?;
+    let directory = game_paths(&session.settings)
+        .into_iter()
+        .find(|directory| {
+            game_for_dir(directory) == "forever"
+                && character_saved_variables(directory, None)
+                    .into_iter()
+                    .any(|file| {
+                        let payload = page_link_payload(&[file]);
+                        payload["character"]["realm"].as_str() == Some(&realm)
+                            && payload["character"]["name"].as_str() == Some(&name)
+                    })
+        })
+        .ok_or_else(|| "Choose a Forever character from this PC.".to_string())?;
+    let response = http_client(Duration::from_secs(10))?
+        .put(join_url(
+            &effective_url(&session.settings),
+            "v1/feed/sharing",
+        ))
+        .bearer_auth(&session.device.secret)
+        .json(&serde_json::json!({ "realm": realm, "name": name, "enabled": enabled }))
+        .send()
+        .map_err(|_| "Could not change sharing. Try again.".to_string())?;
+    if !response.status().is_success() {
+        return Err(
+            "Could not change sharing. Open your character once and try again."
+                .to_string()
+                .into(),
+        );
+    }
+    let value: serde_json::Value = response
+        .json()
+        .map_err(|_| "Could not read sharing settings.".to_string())?;
+    session.apply(&app, |_| {
+        let mut capture = state.feed_capture.lock().unwrap_or_else(|e| e.into_inner());
+        *capture = if enabled {
+            let mut watch = crate::screenshots::ScreenshotWatch::default();
+            watch.scan(
+                &directory.join("Screenshots"),
+                value["generation"].as_str().unwrap_or(""),
+                now_secs(),
+            );
+            Some(FeedCapture {
+                directory,
+                realm,
+                name,
+                watch,
+            })
+        } else {
+            None
+        };
+    })?;
+    session.apply(&app, |model| {
+        model.status = if enabled {
+            "Sharing is on. New screenshots will go to your chosen character."
+        } else {
+            "Sharing is off. Your feed is hidden."
+        }
+        .into();
+        model.feed_status = model.status.clone();
+    })?;
+    let model = state.inner.lock().map_err(|e| e.to_string())?;
+    Ok(snapshot(&app, &model))
+}
+
+fn sync_screenshots(
+    app: &AppHandle,
+    session: &SyncSession,
+    directory: &Path,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut guard = state.feed_capture.lock().map_err(|e| e.to_string())?;
+    let Some(capture) = guard.as_mut().filter(|c| c.directory == directory) else {
+        return Ok(());
+    };
+    let client = http_client(Duration::from_secs(30))?;
+    let base = effective_url(&session.settings);
+    let response = client
+        .get(join_url(&base, "v1/feed/sharing"))
+        .bearer_auth(&session.device.secret)
+        .query(&[("realm", &capture.realm), ("name", &capture.name)])
+        .send();
+    let value: serde_json::Value = match response {
+        Ok(response) if response.status().is_success() => response.json().unwrap_or_default(),
+        _ => serde_json::Value::Null,
+    };
+    if value["enabled"].as_bool() != Some(true) {
+        capture.watch.reset();
+        drop(guard);
+        session.apply(app, |model| {
+            model.feed_status =
+                "Screenshot collection is paused. Check sharing or choose a character again.".into()
+        })?;
+        return Ok(());
+    }
+    let generation = value["generation"].as_str().unwrap_or("");
+    let candidates = capture
+        .watch
+        .scan(&directory.join("Screenshots"), generation, now_secs());
+    let mut failed = false;
+    for (path, at) in candidates {
+        // Never retain image bytes across attempts or a consent change.
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
+        };
+        if bytes.len() > 12 * 1024 * 1024 {
+            continue;
+        }
+        let result = client
+            .post(join_url(&base, "v1/feed/screenshots"))
+            .bearer_auth(&session.device.secret)
+            .query(&[
+                ("realm", capture.realm.as_str()),
+                ("name", capture.name.as_str()),
+                ("generation", generation),
+                ("at", &at.to_string()),
+            ])
+            .header("content-type", "application/octet-stream")
+            .body(bytes)
+            .send();
+        match result {
+            Ok(response) if response.status().is_success() => capture.watch.sent(&path),
+            _ => {
+                capture.watch.reset();
+                failed = true;
+                break;
+            }
+        }
+    }
+    let message = if failed {
+        "Could not share the screenshot. Check sharing or try an upload on your page.".to_string()
+    } else {
+        format!(
+            "Watching for new screenshots for {}. Sharing must stay on.",
+            capture.name
+        )
+    };
+    drop(guard);
+    session.apply(app, |model| model.feed_status = message)?;
+    Ok(())
 }
 
 /// My page: one sign-in link, then the browser (ADR 0073).
@@ -744,9 +943,11 @@ fn forget_my_data(app: AppHandle, state: State<AppState>) -> Result<UiState, Sho
     // unsent pending credential after the player has erased their data.
     device::discard_pending(&settings_path(&app)?.with_file_name("device.json"))?;
     let erased = forget_on_planner(&url, &session.device.secret)?;
+    *state.feed_capture.lock().map_err(|e| e.to_string())? = None;
     session
         .apply(&app, |model| -> Result<(), String> {
             model.invalidate();
+            model.feed_status.clear();
             model.posted.clear();
             model.ready = None;
             model.request_pending = false;
@@ -1410,6 +1611,7 @@ fn sync_game_plans(
     }
     // Game data, a profile or advice that fails must not hold back plans and answers.
     let _ = post_snapshots(app, session, retail, seal);
+    let _ = sync_screenshots(app, session, retail);
     let _ = sync_advice(app, session, retail);
     let _ = sync_suggestions(app, session, retail);
     if game_for_dir(retail) == "retail" {
@@ -1952,7 +2154,9 @@ pub fn run() {
                 &settings_path(app.handle())?.with_file_name("device.json"),
             )?;
             app.manage(AppState {
+                feed_capture: Mutex::new(None),
                 inner: SyncState::new(Model {
+                    feed_status: String::new(),
                     forget_cleanup_pending: settings.forgotten_at.is_some(),
                     settings,
                     settings_notice,
@@ -2042,6 +2246,8 @@ pub fn run() {
             rescan_progress,
             open_privacy,
             open_my_page,
+            feed_characters,
+            set_feed_sharing,
             forget_my_data,
             connect_again
         ])
