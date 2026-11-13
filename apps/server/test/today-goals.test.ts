@@ -70,6 +70,9 @@ for (const backend of BACKENDS)
         (await todayGoals(store.db, owner, { now: day + 86402, create: false }))[0]?.goals[0]
           ?.completedAt,
       ).toBe(day + 86401);
+      const finished = (await todayGoals(store.db, owner, { now: day + 86403 }))[0]!;
+      expect(finished.id).toBe(tomorrow.id);
+      expect(finished.goals[0]!.completedAt).toBe(day + 86401);
       await store.data.deleteAccount("a");
       expect(await store.db.all("SELECT * FROM character_goals")).toEqual([]);
     } finally {

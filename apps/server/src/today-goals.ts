@@ -78,11 +78,13 @@ export async function todayGoals(
       const old = rows.filter((r) => r.skill_line === p.skillLine);
       let set: TodaySet;
       // Tick-only ingest preserves the visible set. A subsequent view rotates an already finished set.
-      if (
+      const goals =
         options.create !== false &&
         (!old.length || old[0]!.day !== day || old.every((r) => r.completed_at !== null))
-      ) {
-        const goals = computeTodayGoals(p, owner.game, seen);
+          ? computeTodayGoals(p, owner.game, seen)
+          : [];
+      // Without a supported replacement, keep the completed cards visible.
+      if (goals.length) {
         await db.run(
           `DELETE FROM character_goals WHERE character_id = ? AND skill_line = ? AND character_id IN (SELECT id FROM characters WHERE account_id = ? AND game = ?)`,
           character.id,
@@ -90,7 +92,6 @@ export async function todayGoals(
           owner.accountId,
           owner.game,
         );
-        if (!goals.length) continue;
         set = {
           id: randomUUID(),
           skillLine: p.skillLine,
