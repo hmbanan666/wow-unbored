@@ -178,3 +178,21 @@ test("Retail uses the addon's base-profession learned set for expansion recipes"
   expect(view!.album.map((r) => r.known)).toEqual([true, false]);
   expect(view!.missing[0]!.recipes[0]!.difficulty.reasons).toContain("Needs 75: you have it");
 });
+
+test("Forever aliases share learned sets without duplicating the canonical catalog", () => {
+  const [view] = professionViews(
+    {
+      list: [
+        { skillLine: 333, name: "Enchanting", skill: 145, max: 150 },
+        { skillLine: 2940, name: "Enchanting", skill: 145, max: 150 },
+      ],
+    },
+    { byProfession: { "2940": { learned: ["ids1", "5q5"] } } },
+    [recipe, { ...recipe, skillLine: 2940 }],
+    [],
+    "forever",
+  );
+  expect(view!.total).toBe(1);
+  expect(view!.album).toHaveLength(1);
+  expect(view!.album[0]!.known).toBe(true);
+});

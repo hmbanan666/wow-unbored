@@ -91,7 +91,8 @@ export function professionViews(
     // GetBaseProfessionInfo keys the addon's all-expansion recipe read by the base id.
     const baseKnown = combine([skillLine, ...entry.aliases]);
     const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
-    const entries = catalog.filter((recipe) => lines.includes(recipe.skillLine));
+    const catalogLines = [skillLine, ...tiers.map((p) => p.skillLine)];
+    const entries = catalog.filter((recipe) => catalogLines.includes(recipe.skillLine));
     const ids = new Set(entries.map((recipe) => recipe.spellId));
     const missing: Profession["missing"] = [];
     const album: AlbumRecipe[] = entries.map((recipe) => {
