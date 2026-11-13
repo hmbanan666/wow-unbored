@@ -322,12 +322,10 @@ mod tests {
             "../../../../packages/contracts/fixtures/quest-sightings.json"
         ))
         .unwrap();
-        for name in ["questSeen"] {
-            assert_eq!(
-                body["sections"][name]["body"],
-                expected["sections"][name]["body"]
-            );
-        }
+        assert_eq!(
+            body["sections"]["questSeen"]["body"],
+            expected["sections"]["questSeen"]["body"]
+        );
         let schema: Value = serde_json::from_str(SNAPSHOT_SCHEMA).unwrap();
         assert!(jsonschema::validator_for(&schema).unwrap().is_valid(&body));
         assert!(build_upload(
