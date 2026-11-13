@@ -10,7 +10,8 @@
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt prepare && nuxt typecheck",
     "test:seo": "nuxt build && cd ../.. && UNBORED_WEB_SEO_TEST=1 vp test apps/web/test/seo-production.test.ts",
-    "test": "cd ../.. && vp test --config apps/web/vite.config.ts"
+    "test": "cd ../.. && vp test --config apps/web/vite.config.ts",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@nuxt/fonts": "^1.2.0",
@@ -24,6 +25,7 @@
     "sharp": "^0.35.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/server-renderer": "^3.5.44",
     "@vue/test-utils": "^2.5.1",

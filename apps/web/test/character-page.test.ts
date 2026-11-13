@@ -38,6 +38,7 @@ test("profession counts come only from its learned packed set, and unseen is not
         aliases: [],
         difficultyCounts: { easy: 0, medium: 0, hard: 0 },
         missing: [],
+        album: [],
       },
       {
         skillLine: 185,
@@ -50,6 +51,7 @@ test("profession counts come only from its learned packed set, and unseen is not
         aliases: [],
         difficultyCounts: { easy: 0, medium: 0, hard: 0 },
         missing: [],
+        album: [],
       },
       {
         skillLine: 164,
@@ -62,6 +64,7 @@ test("profession counts come only from its learned packed set, and unseen is not
         aliases: [],
         difficultyCounts: { easy: 0, medium: 0, hard: 0 },
         missing: [],
+        album: [],
       },
     ],
   );

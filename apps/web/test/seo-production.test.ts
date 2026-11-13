@@ -385,6 +385,8 @@ productionTest("My pages keep private robots headers after the robots module run
     "/my/forever/Realm/Mine",
     "/my/retail/Realm/Mine?from=test",
     "/my/forever/Realm/Mine/history",
+    "/my/forever/Realm/Mine/enchanting?f=missing",
+    "/my/retail/Realm/Mine/tailoring",
     "/my/retail/Realm/Mine/history?types=level_up",
     "/api/me/characters/forever/Realm/Mine/history",
   ]) {

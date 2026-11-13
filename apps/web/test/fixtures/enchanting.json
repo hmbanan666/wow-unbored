@@ -1,0 +1,3441 @@
+[
+  [
+    1263082,
+    "Arcane Forge",
+    "Camping",
+    300,
+    {
+      "name": "Blueprint: Arcane Forge",
+      "quality": "green",
+      "bop": false
+    },
+    300,
+    ["1\u00d7 Maker's Spark", "2\u00d7 Large Brilliant Shard", "4\u00d7 Greater Eternal Essence"]
+  ],
+  [
+    1263056,
+    "Arcane Salvager",
+    "Camping",
+    140,
+    {
+      "name": "Blueprint: Arcane Salvager",
+      "quality": "green",
+      "bop": false
+    },
+    140,
+    ["2\u00d7 Vision Dust", "1\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    430409,
+    "Blackfathom Mana Oil",
+    "Season Of Discovery",
+    120,
+    null,
+    null,
+    ["1\u00d7 Leaded Vial", "1\u00d7 Greater Magic Essence", "5\u00d7 Strange Dust"]
+  ],
+  [
+    25130,
+    "Brilliant Mana Oil",
+    "Wizard Oils",
+    330,
+    {
+      "name": "Formula: Brilliant Mana Oil",
+      "quality": "white",
+      "bop": true
+    },
+    300,
+    ["2\u00d7 Large Brilliant Shard", "3\u00d7 Purple Lotus", "1\u00d7 Imbued Vial"]
+  ],
+  [
+    1248650,
+    "Brilliant Wand",
+    "Wands",
+    360,
+    {
+      "name": "Formula: Brilliant Wand",
+      "quality": "blue",
+      "bop": true
+    },
+    275,
+    [
+      "1\u00d7 Greater Eternal Essence",
+      "3\u00d7 Illusion Dust",
+      "2\u00d7 Large Brilliant Shard",
+      "1\u00d7 Star Wood"
+    ]
+  ],
+  [
+    25129,
+    "Brilliant Wizard Oil",
+    "Wizard Oils",
+    330,
+    {
+      "name": "Formula: Brilliant Wizard Oil",
+      "quality": "white",
+      "bop": true
+    },
+    300,
+    ["2\u00d7 Large Brilliant Shard", "3\u00d7 Firebloom", "1\u00d7 Imbued Vial"]
+  ],
+  [
+    463869,
+    "Conductive Shield Coating",
+    "Season Of Discovery",
+    305,
+    {
+      "name": "Formula: Conductive Shield Coating",
+      "quality": "white",
+      "bop": true
+    },
+    275,
+    ["2\u00d7 Illusion Dust", "1\u00d7 Firebloom", "1\u00d7 Crystal Vial"]
+  ],
+  [
+    1249114,
+    "Dormant Heart of the Mountain",
+    "Curios",
+    325,
+    {
+      "name": "Formula: Dormant Heart of the Mountain",
+      "quality": "blue",
+      "bop": true
+    },
+    265,
+    ["1\u00d7 Blood of the Mountain", "1\u00d7 Essence of Water", "3\u00d7 Small Brilliant Shard"]
+  ],
+  [
+    1248509,
+    "Dreambough Wand",
+    "Wands",
+    275,
+    {
+      "name": "Formula: Dreambough Wand",
+      "quality": "green",
+      "bop": true
+    },
+    215,
+    ["2\u00d7 Lesser Nether Essence", "1\u00d7 Vision Dust", "1\u00d7 Star Wood"]
+  ],
+  [
+    1249064,
+    "Dreamstaff",
+    "Staves",
+    265,
+    {
+      "name": "Formula: Dreamstaff",
+      "quality": "blue",
+      "bop": true
+    },
+    220,
+    [
+      "4\u00d7 Large Radiant Shard",
+      "4\u00d7 Small Radiant Shard",
+      "4\u00d7 Star Wood",
+      "6\u00d7 Greater Nether Essence",
+      "8\u00d7 Dream Dust",
+      "2\u00d7 Cerulean Dye",
+      "4\u00d7 Magenta Dye"
+    ]
+  ],
+  [1245320, "Dust to Motes", "Reagents", 15, null, null, ["1\u00d7 Strange Dust"]],
+  [
+    27837,
+    "Enchant 2H Weapon - Agility",
+    "Two-Handed Weapon Enchants",
+    350,
+    {
+      "name": "Formula: Enchant 2H Weapon - Agility",
+      "quality": "white",
+      "bop": true
+    },
+    290,
+    [
+      "10\u00d7 Large Brilliant Shard",
+      "6\u00d7 Greater Eternal Essence",
+      "14\u00d7 Illusion Dust",
+      "4\u00d7 Essence of Air"
+    ]
+  ],
+  [
+    1231139,
+    "Enchant 2H Weapon - Grand Arcanist",
+    "Season Of Discovery",
+    310,
+    {
+      "name": "Formula: Enchant 2H Weapon - Grand Arcanist",
+      "quality": "blue",
+      "bop": true
+    },
+    280,
+    [
+      "10\u00d7 Large Brilliant Shard",
+      "4\u00d7 Righteous Orb",
+      "4\u00d7 Nexus Crystal",
+      "1\u00d7 Blood of Heroes"
+    ]
+  ],
+  [
+    1232172,
+    "Enchant 2H Weapon - Grand Inquisitor",
+    "Season Of Discovery",
+    310,
+    {
+      "name": "Formula: Enchant 2H Weapon - Grand Inquisitor",
+      "quality": "blue",
+      "bop": true
+    },
+    280,
+    [
+      "10\u00d7 Large Brilliant Shard",
+      "6\u00d7 Righteous Orb",
+      "4\u00d7 Nexus Crystal",
+      "1\u00d7 Blood of Heroes"
+    ]
+  ],
+  [
+    13937,
+    "Enchant 2H Weapon - Greater Impact",
+    "Two-Handed Weapon Enchants",
+    300,
+    null,
+    null,
+    ["1\u00d7 Large Radiant Shard", "1\u00d7 Dream Dust"]
+  ],
+  [
+    13695,
+    "Enchant 2H Weapon - Impact",
+    "Two-Handed Weapon Enchants",
+    260,
+    null,
+    null,
+    ["2\u00d7 Vision Dust", "1\u00d7 Large Glowing Shard"]
+  ],
+  [
+    1248510,
+    "Enchant 2H Weapon - Lesser Agility",
+    "Two-Handed Weapon Enchants",
+    270,
+    {
+      "name": "Formula: Enchant 2H Weapon - Lesser Agility",
+      "quality": "green",
+      "bop": true
+    },
+    210,
+    ["2\u00d7 Vision Dust", "1\u00d7 Large Glowing Shard", "1\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    13529,
+    "Enchant 2H Weapon - Lesser Impact",
+    "Two-Handed Weapon Enchants",
+    210,
+    null,
+    null,
+    ["1\u00d7 Soul Dust", "1\u00d7 Large Glimmering Shard"]
+  ],
+  [
+    7793,
+    "Enchant 2H Weapon - Lesser Intellect",
+    "Two-Handed Weapon Enchants",
+    170,
+    {
+      "name": "Formula: Enchant 2H Weapon - Lesser Intellect",
+      "quality": "white",
+      "bop": false
+    },
+    100,
+    ["4\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    13380,
+    "Enchant 2H Weapon - Lesser Spirit",
+    "Two-Handed Weapon Enchants",
+    175,
+    {
+      "name": "Formula: Enchant 2H Weapon - Lesser Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    110,
+    ["1\u00d7 Lesser Astral Essence", "3\u00d7 Strange Dust"]
+  ],
+  [
+    1248511,
+    "Enchant 2H Weapon - Lesser Strength",
+    "Two-Handed Weapon Enchants",
+    280,
+    {
+      "name": "Formula: Enchant 2H Weapon - Lesser Strength",
+      "quality": "green",
+      "bop": true
+    },
+    220,
+    ["1\u00d7 Vision Dust", "1\u00d7 Large Glowing Shard", "2\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    20036,
+    "Enchant 2H Weapon - Major Intellect",
+    "Two-Handed Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant 2H Weapon - Major Intellect",
+      "quality": "green",
+      "bop": false
+    },
+    300,
+    ["12\u00d7 Greater Eternal Essence", "2\u00d7 Large Brilliant Shard"]
+  ],
+  [
+    20035,
+    "Enchant 2H Weapon - Major Spirit",
+    "Two-Handed Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant 2H Weapon - Major Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    300,
+    ["12\u00d7 Greater Eternal Essence", "2\u00d7 Large Brilliant Shard"]
+  ],
+  [
+    1248636,
+    "Enchant 2H Weapon - Mighty Healing Power",
+    "Two-Handed Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant 2H Weapon - Mighty Healing Power",
+      "quality": "green",
+      "bop": true
+    },
+    300,
+    [
+      "4\u00d7 Fel Crystal",
+      "6\u00d7 Greater Eternal Essence",
+      "4\u00d7 Azerothium Bar",
+      "4\u00d7 Stranglevine",
+      "4\u00d7 Nexus Crystal",
+      "4\u00d7 Torbernite"
+    ]
+  ],
+  [
+    1248607,
+    "Enchant 2H Weapon - Mighty Spell Power",
+    "Two-Handed Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant 2H Weapon - Mighty Spell Power",
+      "quality": "green",
+      "bop": true
+    },
+    300,
+    [
+      "4\u00d7 Fel Crystal",
+      "6\u00d7 Greater Eternal Essence",
+      "4\u00d7 Essence of Earth",
+      "4\u00d7 Essence of Undeath",
+      "4\u00d7 Nexus Crystal",
+      "2\u00d7 Torbernite"
+    ]
+  ],
+  [
+    7745,
+    "Enchant 2H Weapon - Minor Impact",
+    "Two-Handed Weapon Enchants",
+    170,
+    null,
+    null,
+    ["1\u00d7 Strange Dust", "1\u00d7 Small Glimmering Shard"]
+  ],
+  [
+    1219580,
+    "Enchant 2H Weapon - Spellblasting",
+    "Two-Handed Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant 2H Weapon - Spellblasting",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "3\u00d7 Nexus Crystal",
+      "24\u00d7 Illusion Dust",
+      "1\u00d7 Blood of Heroes",
+      "6\u00d7 Purple Lotus"
+    ]
+  ],
+  [
+    1248668,
+    "Enchant 2H Weapon - Strength",
+    "Two-Handed Weapon Enchants",
+    300,
+    {
+      "name": "Formula: Enchant 2H Weapon - Strength",
+      "quality": "green",
+      "bop": true
+    },
+    290,
+    [
+      "8\u00d7 Large Brilliant Shard",
+      "10\u00d7 Greater Eternal Essence",
+      "8\u00d7 Illusion Dust",
+      "4\u00d7 Arcane Crystal"
+    ]
+  ],
+  [
+    20030,
+    "Enchant 2H Weapon - Superior Impact",
+    "Two-Handed Weapon Enchants",
+    355,
+    {
+      "name": "Formula: Enchant 2H Weapon - Superior Impact",
+      "quality": "green",
+      "bop": false
+    },
+    295,
+    ["4\u00d7 Large Brilliant Shard", "10\u00d7 Illusion Dust"]
+  ],
+  [
+    13935,
+    "Enchant Boots - Agility",
+    "Boots Enchants",
+    295,
+    null,
+    null,
+    ["1\u00d7 Greater Nether Essence"]
+  ],
+  [
+    20023,
+    "Enchant Boots - Greater Agility",
+    "Boots Enchants",
+    355,
+    {
+      "name": "Formula: Enchant Boots - Greater Agility",
+      "quality": "green",
+      "bop": false
+    },
+    295,
+    ["8\u00d7 Greater Eternal Essence"]
+  ],
+  [
+    20020,
+    "Enchant Boots - Greater Stamina",
+    "Boots Enchants",
+    320,
+    {
+      "name": "Formula: Enchant Boots - Greater Stamina",
+      "quality": "green",
+      "bop": false
+    },
+    260,
+    ["6\u00d7 Dream Dust"]
+  ],
+  [
+    13637,
+    "Enchant Boots - Lesser Agility",
+    "Boots Enchants",
+    220,
+    null,
+    null,
+    ["1\u00d7 Soul Dust"]
+  ],
+  [
+    13687,
+    "Enchant Boots - Lesser Spirit",
+    "Boots Enchants",
+    250,
+    {
+      "name": "Formula: Enchant Boots - Lesser Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    190,
+    ["2\u00d7 Lesser Mystic Essence"]
+  ],
+  [
+    13644,
+    "Enchant Boots - Lesser Stamina",
+    "Boots Enchants",
+    230,
+    null,
+    null,
+    ["2\u00d7 Soul Dust"]
+  ],
+  [
+    7867,
+    "Enchant Boots - Minor Agility",
+    "Boots Enchants",
+    190,
+    {
+      "name": "Formula: Enchant Boots - Minor Agility",
+      "quality": "green",
+      "bop": false
+    },
+    125,
+    ["3\u00d7 Strange Dust", "1\u00d7 Lesser Astral Essence"]
+  ],
+  [
+    13890,
+    "Enchant Boots - Minor Speed",
+    "Boots Enchants",
+    285,
+    null,
+    null,
+    ["1\u00d7 Small Radiant Shard", "1\u00d7 Aquamarine", "1\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    7863,
+    "Enchant Boots - Minor Stamina",
+    "Boots Enchants",
+    190,
+    {
+      "name": "Formula: Enchant Boots - Minor Stamina",
+      "quality": "green",
+      "bop": false
+    },
+    125,
+    ["4\u00d7 Strange Dust"]
+  ],
+  [
+    1328948,
+    "Enchant Boots - Speed",
+    "Boots Enchants",
+    300,
+    {
+      "name": "Formula: Enchant Boots - Speed",
+      "quality": "green",
+      "bop": false
+    },
+    280,
+    [
+      "2\u00d7 Large Radiant Shard",
+      "8\u00d7 Dream Dust",
+      "2\u00d7 Greater Nether Essence",
+      "1\u00d7 Blue Sapphire"
+    ]
+  ],
+  [
+    20024,
+    "Enchant Boots - Spirit",
+    "Boots Enchants",
+    335,
+    {
+      "name": "Formula: Enchant Boots - Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    275,
+    ["2\u00d7 Greater Eternal Essence", "1\u00d7 Lesser Eternal Essence"]
+  ],
+  [13836, "Enchant Boots - Stamina", "Boots Enchants", 275, null, null, ["2\u00d7 Vision Dust"]],
+  [
+    1217203,
+    "Enchant Bracer - Agility",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "2\u00d7 Nexus Crystal",
+      "10\u00d7 Illusion Dust",
+      "2\u00d7 Greater Eternal Essence",
+      "2\u00d7 Essence of Air"
+    ]
+  ],
+  [
+    1248497,
+    "Enchant Bracer - Agility",
+    "Bracer Enchants",
+    265,
+    {
+      "name": "Formula: Enchant Bracer - Agility",
+      "quality": "green",
+      "bop": true
+    },
+    190,
+    ["1\u00d7 Vision Dust"]
+  ],
+  [
+    13931,
+    "Enchant Bracer - Deflection",
+    "Bracer Enchants",
+    295,
+    {
+      "name": "Formula: Enchant Bracer - Deflection",
+      "quality": "green",
+      "bop": false
+    },
+    235,
+    ["2\u00d7 Lesser Nether Essence", "1\u00d7 Dream Dust"]
+  ],
+  [
+    1248500,
+    "Enchant Bracer - Greater Agility",
+    "Bracer Enchants",
+    300,
+    {
+      "name": "Formula: Enchant Bracer - Greater Agility",
+      "quality": "green",
+      "bop": true
+    },
+    240,
+    ["3\u00d7 Dream Dust", "1\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    20008,
+    "Enchant Bracer - Greater Intellect",
+    "Bracer Enchants",
+    315,
+    {
+      "name": "Formula: Enchant Bracer - Greater Intellect",
+      "quality": "green",
+      "bop": false
+    },
+    255,
+    ["2\u00d7 Lesser Eternal Essence"]
+  ],
+  [
+    1220624,
+    "Enchant Bracer - Greater Spellpower",
+    "Bracer Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Bracer - Greater Spellpower",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "3\u00d7 Greater Eternal Essence",
+      "9\u00d7 Illusion Dust",
+      "12\u00d7 Essence of Undeath",
+      "2\u00d7 Purple Lotus"
+    ]
+  ],
+  [
+    13846,
+    "Enchant Bracer - Greater Spirit",
+    "Bracer Enchants",
+    280,
+    {
+      "name": "Formula: Enchant Bracer - Greater Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    220,
+    ["1\u00d7 Lesser Nether Essence", "1\u00d7 Vision Dust"]
+  ],
+  [
+    13945,
+    "Enchant Bracer - Greater Stamina",
+    "Bracer Enchants",
+    305,
+    {
+      "name": "Formula: Enchant Bracer - Greater Stamina",
+      "quality": "green",
+      "bop": false
+    },
+    245,
+    ["3\u00d7 Dream Dust"]
+  ],
+  [
+    13939,
+    "Enchant Bracer - Greater Strength",
+    "Bracer Enchants",
+    300,
+    null,
+    null,
+    ["1\u00d7 Dream Dust", "2\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    23802,
+    "Enchant Bracer - Healing Power",
+    "Bracer Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Bracer - Healing",
+      "quality": "white",
+      "bop": true
+    },
+    300,
+    [
+      "2\u00d7 Large Brilliant Shard",
+      "20\u00d7 Illusion Dust",
+      "4\u00d7 Greater Eternal Essence",
+      "6\u00d7 Living Essence"
+    ]
+  ],
+  [
+    7418,
+    "Enchant Bracer - Inferior Stamina",
+    "Bracer Enchants",
+    25,
+    null,
+    null,
+    ["1\u00d7 Mote of Magic"]
+  ],
+  [
+    13822,
+    "Enchant Bracer - Intellect",
+    "Bracer Enchants",
+    270,
+    null,
+    null,
+    ["1\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    1248460,
+    "Enchant Bracer - Lesser Agility",
+    "Bracer Enchants",
+    205,
+    {
+      "name": "Formula: Enchant Bracer - Lesser Agility",
+      "quality": "green",
+      "bop": true
+    },
+    140,
+    ["1\u00d7 Lesser Mystic Essence"]
+  ],
+  [
+    13646,
+    "Enchant Bracer - Lesser Deflection",
+    "Bracer Enchants",
+    230,
+    {
+      "name": "Formula: Enchant Bracer - Lesser Deflection",
+      "quality": "green",
+      "bop": true
+    },
+    170,
+    ["1\u00d7 Lesser Mystic Essence", "1\u00d7 Soul Dust"]
+  ],
+  [
+    1248498,
+    "Enchant Bracer - Lesser Healing Power",
+    "Bracer Enchants",
+    265,
+    {
+      "name": "Formula: Enchant Bracer - Lesser Healing Power",
+      "quality": "green",
+      "bop": true
+    },
+    205,
+    ["2\u00d7 Lesser Mystic Essence"]
+  ],
+  [
+    13622,
+    "Enchant Bracer - Lesser Intellect",
+    "Bracer Enchants",
+    215,
+    null,
+    null,
+    ["1\u00d7 Greater Astral Essence"]
+  ],
+  [
+    7859,
+    "Enchant Bracer - Lesser Spirit",
+    "Bracer Enchants",
+    185,
+    {
+      "name": "Formula: Enchant Bracer - Lesser Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    120,
+    ["1\u00d7 Lesser Astral Essence"]
+  ],
+  [
+    13501,
+    "Enchant Bracer - Lesser Stamina",
+    "Bracer Enchants",
+    195,
+    null,
+    null,
+    ["1\u00d7 Soul Dust"]
+  ],
+  [
+    13536,
+    "Enchant Bracer - Lesser Strength",
+    "Bracer Enchants",
+    205,
+    {
+      "name": "Formula: Enchant Bracer - Lesser Strength",
+      "quality": "green",
+      "bop": false
+    },
+    140,
+    ["1\u00d7 Soul Dust"]
+  ],
+  [
+    23801,
+    "Enchant Bracer - Mana Regeneration",
+    "Bracer Enchants",
+    350,
+    {
+      "name": "Formula: Enchant Bracer - Mana Regeneration",
+      "quality": "white",
+      "bop": true
+    },
+    290,
+    ["16\u00d7 Illusion Dust", "4\u00d7 Greater Eternal Essence", "2\u00d7 Essence of Water"]
+  ],
+  [
+    7779,
+    "Enchant Bracer - Minor Agility",
+    "Bracer Enchants",
+    155,
+    null,
+    null,
+    ["1\u00d7 Strange Dust", "2\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    7428,
+    "Enchant Bracer - Minor Deflect",
+    "Bracer Enchants",
+    120,
+    null,
+    null,
+    ["1\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    1248459,
+    "Enchant Bracer - Minor Healing Power",
+    "Bracer Enchants",
+    160,
+    {
+      "name": "Formula: Enchant Bracer - Minor Healing Power",
+      "quality": "green",
+      "bop": true
+    },
+    90,
+    ["2\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    1248458,
+    "Enchant Bracer - Minor Intellect",
+    "Bracer Enchants",
+    150,
+    {
+      "name": "Formula: Enchant Bracer - Minor Intellect",
+      "quality": "green",
+      "bop": true
+    },
+    70,
+    ["1\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    7766,
+    "Enchant Bracer - Minor Spirit",
+    "Bracer Enchants",
+    145,
+    {
+      "name": "Formula: Enchant Bracer - Minor Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    60,
+    ["1\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    7457,
+    "Enchant Bracer - Minor Stamina",
+    "Bracer Enchants",
+    140,
+    null,
+    null,
+    ["2\u00d7 Strange Dust"]
+  ],
+  [
+    7782,
+    "Enchant Bracer - Minor Strength",
+    "Bracer Enchants",
+    155,
+    {
+      "name": "Formula: Enchant Bracer - Minor Strength",
+      "quality": "green",
+      "bop": false
+    },
+    80,
+    ["3\u00d7 Strange Dust"]
+  ],
+  [
+    1217189,
+    "Enchant Bracer - Spell Power",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "2\u00d7 Large Brilliant Shard",
+      "20\u00d7 Illusion Dust",
+      "4\u00d7 Greater Eternal Essence",
+      "2\u00d7 Essence of Water",
+      "2\u00d7 Essence of Fire",
+      "2\u00d7 Essence of Air"
+    ]
+  ],
+  [
+    13642,
+    "Enchant Bracer - Spirit",
+    "Bracer Enchants",
+    225,
+    null,
+    null,
+    ["1\u00d7 Lesser Mystic Essence"]
+  ],
+  [13648, "Enchant Bracer - Stamina", "Bracer Enchants", 230, null, null, ["3\u00d7 Soul Dust"]],
+  [13661, "Enchant Bracer - Strength", "Bracer Enchants", 240, null, null, ["1\u00d7 Vision Dust"]],
+  [
+    1248599,
+    "Enchant Bracer - Superior Agility",
+    "Bracer Enchants",
+    355,
+    {
+      "name": "Formula: Enchant Bracer - Superior Agility",
+      "quality": "green",
+      "bop": true
+    },
+    295,
+    ["3\u00d7 Illusion Dust", "3\u00d7 Greater Eternal Essence", "1\u00d7 Large Brilliant Shard"]
+  ],
+  [
+    1248665,
+    "Enchant Bracer - Superior Deflection",
+    "Bracer Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Bracer - Superior Deflection",
+      "quality": "green",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Large Brilliant Shard"]
+  ],
+  [
+    1248661,
+    "Enchant Bracer - Superior Intellect",
+    "Bracer Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Bracer - Superior Intellect",
+      "quality": "green",
+      "bop": true
+    },
+    300,
+    ["10\u00d7 Greater Eternal Essence"]
+  ],
+  [
+    20009,
+    "Enchant Bracer - Superior Spirit",
+    "Bracer Enchants",
+    330,
+    {
+      "name": "Formula: Enchant Bracer - Superior Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    270,
+    ["2\u00d7 Lesser Eternal Essence", "7\u00d7 Dream Dust"]
+  ],
+  [
+    20011,
+    "Enchant Bracer - Superior Stamina",
+    "Bracer Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Bracer - Superior Stamina",
+      "quality": "green",
+      "bop": false
+    },
+    300,
+    ["15\u00d7 Illusion Dust"]
+  ],
+  [
+    20010,
+    "Enchant Bracer - Superior Strength",
+    "Bracer Enchants",
+    355,
+    {
+      "name": "Formula: Enchant Bracer - Superior Strength",
+      "quality": "green",
+      "bop": false
+    },
+    295,
+    ["6\u00d7 Illusion Dust", "6\u00d7 Greater Eternal Essence"]
+  ],
+  [
+    1249071,
+    "Enchant Chest - Absorption",
+    "Chest Enchants",
+    265,
+    {
+      "name": "Formula: Enchant Chest - Absorption",
+      "quality": "green",
+      "bop": true
+    },
+    220,
+    ["10\u00d7 Dream Dust", "4\u00d7 Greater Nether Essence", "2\u00d7 Large Radiant Shard"]
+  ],
+  [
+    13663,
+    "Enchant Chest - Greater Intellect",
+    "Chest Enchants",
+    245,
+    null,
+    null,
+    ["1\u00d7 Lesser Mystic Essence"]
+  ],
+  [
+    13640,
+    "Enchant Chest - Greater Stamina",
+    "Chest Enchants",
+    220,
+    null,
+    null,
+    ["2\u00d7 Soul Dust"]
+  ],
+  [
+    20025,
+    "Enchant Chest - Greater Stats",
+    "Chest Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Chest - Greater Stats",
+      "quality": "green",
+      "bop": false
+    },
+    300,
+    ["4\u00d7 Large Brilliant Shard", "15\u00d7 Illusion Dust", "10\u00d7 Greater Eternal Essence"]
+  ],
+  [
+    7420,
+    "Enchant Chest - Inferior Stamina",
+    "Chest Enchants",
+    110,
+    null,
+    null,
+    ["1\u00d7 Strange Dust"]
+  ],
+  [
+    13607,
+    "Enchant Chest - Intellect",
+    "Chest Enchants",
+    210,
+    null,
+    null,
+    ["1\u00d7 Greater Astral Essence"]
+  ],
+  [
+    13538,
+    "Enchant Chest - Lesser Absorption",
+    "Chest Enchants",
+    205,
+    null,
+    null,
+    ["1\u00d7 Strange Dust", "1\u00d7 Lesser Astral Essence", "1\u00d7 Large Glimmering Shard"]
+  ],
+  [
+    7776,
+    "Enchant Chest - Lesser Intellect",
+    "Chest Enchants",
+    155,
+    {
+      "name": "Formula: Enchant Chest - Lesser Intellect",
+      "quality": "green",
+      "bop": false
+    },
+    80,
+    ["2\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    7748,
+    "Enchant Chest - Lesser Stamina",
+    "Chest Enchants",
+    145,
+    null,
+    null,
+    ["1\u00d7 Strange Dust", "1\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    13700,
+    "Enchant Chest - Lesser Stats",
+    "Chest Enchants",
+    260,
+    null,
+    null,
+    ["1\u00d7 Greater Mystic Essence", "1\u00d7 Vision Dust", "1\u00d7 Large Glowing Shard"]
+  ],
+  [
+    1213616,
+    "Enchant Chest - Living Stats",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "2\u00d7 Nexus Crystal",
+      "8\u00d7 Illusion Dust",
+      "5\u00d7 Greater Eternal Essence",
+      "10\u00d7 Greater Nature Protection Potion",
+      "2\u00d7 234011",
+      "2\u00d7 234010"
+    ]
+  ],
+  [
+    20028,
+    "Enchant Chest - Major Intellect",
+    "Chest Enchants",
+    350,
+    {
+      "name": "Formula: Enchant Chest - Major Intellect",
+      "quality": "green",
+      "bop": false
+    },
+    290,
+    ["3\u00d7 Greater Eternal Essence", "1\u00d7 Small Brilliant Shard"]
+  ],
+  [
+    20026,
+    "Enchant Chest - Major Stamina",
+    "Chest Enchants",
+    335,
+    {
+      "name": "Formula: Enchant Chest - Major Stamina",
+      "quality": "white",
+      "bop": false
+    },
+    275,
+    ["6\u00d7 Illusion Dust", "1\u00d7 Small Brilliant Shard"]
+  ],
+  [
+    7426,
+    "Enchant Chest - Minor Absorption",
+    "Chest Enchants",
+    130,
+    null,
+    null,
+    ["1\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    7443,
+    "Enchant Chest - Minor Intellect",
+    "Chest Enchants",
+    120,
+    {
+      "name": "Formula: Enchant Chest - Minor Intellect",
+      "quality": "green",
+      "bop": false
+    },
+    20,
+    ["1\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    13626,
+    "Enchant Chest - Minor Stats",
+    "Chest Enchants",
+    215,
+    null,
+    null,
+    ["1\u00d7 Lesser Astral Essence", "1\u00d7 Soul Dust", "1\u00d7 Large Glimmering Shard"]
+  ],
+  [
+    435903,
+    "Enchant Chest - Retricutioner",
+    "Season Of Discovery",
+    240,
+    {
+      "name": "Formula: Enchant Chest - Retricutioner",
+      "quality": "epic",
+      "bop": true
+    },
+    225,
+    ["1\u00d7 Small Radiant Shard", "2\u00d7 Dream Dust"]
+  ],
+  [
+    7857,
+    "Enchant Chest - Stamina",
+    "Chest Enchants",
+    185,
+    null,
+    null,
+    ["2\u00d7 Strange Dust", "1\u00d7 Lesser Astral Essence"]
+  ],
+  [
+    13941,
+    "Enchant Chest - Stats",
+    "Chest Enchants",
+    305,
+    null,
+    null,
+    ["1\u00d7 Large Radiant Shard", "1\u00d7 Dream Dust", "1\u00d7 Greater Nether Essence"]
+  ],
+  [
+    13917,
+    "Enchant Chest - Superior Intellect",
+    "Chest Enchants",
+    290,
+    null,
+    null,
+    ["1\u00d7 Greater Nether Essence"]
+  ],
+  [
+    13858,
+    "Enchant Chest - Superior Stamina",
+    "Chest Enchants",
+    280,
+    null,
+    null,
+    ["3\u00d7 Vision Dust"]
+  ],
+  [
+    1219587,
+    "Enchant Cloak - Agility",
+    "Cloak Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Cloak - Agility",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Greater Eternal Essence", "9\u00d7 Illusion Dust", "1\u00d7 Essence of Fire"]
+  ],
+  [
+    13635,
+    "Enchant Cloak - Defense",
+    "Cloak Enchants",
+    215,
+    null,
+    null,
+    ["1\u00d7 Small Glowing Shard", "1\u00d7 Soul Dust"]
+  ],
+  [
+    25086,
+    "Enchant Cloak - Dodge",
+    "Cloak Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Cloak - Dodge",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Nexus Crystal", "8\u00d7 Large Brilliant Shard", "8\u00d7 Guardian Stone"]
+  ],
+  [
+    13657,
+    "Enchant Cloak - Fire Resistance",
+    "Cloak Enchants",
+    235,
+    null,
+    null,
+    ["1\u00d7 Lesser Mystic Essence", "1\u00d7 Elemental Fire"]
+  ],
+  [
+    13746,
+    "Enchant Cloak - Greater Defense",
+    "Cloak Enchants",
+    265,
+    null,
+    null,
+    ["1\u00d7 Vision Dust"]
+  ],
+  [
+    25081,
+    "Enchant Cloak - Greater Fire Resistance",
+    "Cloak Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Cloak - Greater Fire Resistance",
+      "quality": "white",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Nexus Crystal", "8\u00d7 Large Brilliant Shard", "4\u00d7 Essence of Fire"]
+  ],
+  [
+    25082,
+    "Enchant Cloak - Greater Nature Resistance",
+    "Cloak Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Cloak - Greater Nature Resistance",
+      "quality": "white",
+      "bop": true
+    },
+    300,
+    ["2\u00d7 Nexus Crystal", "8\u00d7 Large Brilliant Shard", "4\u00d7 Living Essence"]
+  ],
+  [
+    20014,
+    "Enchant Cloak - Greater Resistance",
+    "Cloak Enchants",
+    325,
+    {
+      "name": "Formula: Enchant Cloak - Greater Resistance",
+      "quality": "green",
+      "bop": false
+    },
+    265,
+    [
+      "1\u00d7 Lesser Eternal Essence",
+      "1\u00d7 Heart of Fire",
+      "1\u00d7 Core of Earth",
+      "1\u00d7 Globe of Water",
+      "1\u00d7 Breath of Wind",
+      "1\u00d7 Ichor of Undeath"
+    ]
+  ],
+  [
+    13882,
+    "Enchant Cloak - Lesser Agility",
+    "Cloak Enchants",
+    285,
+    {
+      "name": "Formula: Enchant Cloak - Lesser Agility",
+      "quality": "green",
+      "bop": false
+    },
+    225,
+    ["1\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    7861,
+    "Enchant Cloak - Lesser Fire Resistance",
+    "Cloak Enchants",
+    190,
+    null,
+    null,
+    ["1\u00d7 Fire Oil", "1\u00d7 Lesser Astral Essence"]
+  ],
+  [
+    13421,
+    "Enchant Cloak - Lesser Protection",
+    "Cloak Enchants",
+    180,
+    null,
+    null,
+    ["3\u00d7 Strange Dust", "1\u00d7 Small Glimmering Shard"]
+  ],
+  [
+    13522,
+    "Enchant Cloak - Lesser Shadow Resistance",
+    "Cloak Enchants",
+    200,
+    {
+      "name": "Formula: Enchant Cloak - Lesser Shadow Resistance",
+      "quality": "green",
+      "bop": false
+    },
+    135,
+    ["1\u00d7 Lesser Astral Essence", "1\u00d7 Shadow Protection Potion"]
+  ],
+  [
+    13419,
+    "Enchant Cloak - Minor Agility",
+    "Cloak Enchants",
+    175,
+    {
+      "name": "Formula: Enchant Cloak - Minor Agility",
+      "quality": "green",
+      "bop": true
+    },
+    110,
+    ["1\u00d7 Lesser Astral Essence"]
+  ],
+  [
+    7771,
+    "Enchant Cloak - Minor Protection",
+    "Cloak Enchants",
+    150,
+    {
+      "name": "Formula: Imbue Cloak - Protection",
+      "quality": "green",
+      "bop": false
+    },
+    90,
+    ["2\u00d7 Strange Dust"]
+  ],
+  [
+    7454,
+    "Enchant Cloak - Minor Resistance",
+    "Cloak Enchants",
+    135,
+    null,
+    null,
+    ["1\u00d7 Strange Dust", "1\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    13794,
+    "Enchant Cloak - Resistance",
+    "Cloak Enchants",
+    265,
+    null,
+    null,
+    ["1\u00d7 Lesser Nether Essence"]
+  ],
+  [
+    25083,
+    "Enchant Cloak - Stealth",
+    "Cloak Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Cloak - Stealth",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Nexus Crystal", "8\u00d7 Large Brilliant Shard", "2\u00d7 Black Lotus"]
+  ],
+  [
+    25084,
+    "Enchant Cloak - Subtlety",
+    "Cloak Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Cloak - Subtlety",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["4\u00d7 Nexus Crystal", "6\u00d7 Large Brilliant Shard", "2\u00d7 Black Diamond"]
+  ],
+  [
+    20015,
+    "Enchant Cloak - Superior Defense",
+    "Cloak Enchants",
+    345,
+    {
+      "name": "Formula: Enchant Cloak - Superior Defense",
+      "quality": "white",
+      "bop": false
+    },
+    285,
+    ["8\u00d7 Illusion Dust"]
+  ],
+  [
+    17181,
+    "Enchanted Leather",
+    "Reagents",
+    260,
+    null,
+    null,
+    ["1\u00d7 Rugged Leather", "1\u00d7 Lesser Eternal Essence"]
+  ],
+  [
+    1230643,
+    "Enchanted Lute",
+    "Camping",
+    20,
+    null,
+    null,
+    ["1\u00d7 Simple Wood", "1\u00d7 Strange Dust"]
+  ],
+  [
+    1213635,
+    "Enchanted Mushroom",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "2\u00d7 Nexus Crystal",
+      "20\u00d7 Hive Thistle",
+      "3\u00d7 Enchanted Leather",
+      "4\u00d7 234011",
+      "4\u00d7 234010"
+    ]
+  ],
+  [
+    1213628,
+    "Enchanted Prayer Tome",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    ["3\u00d7 Nexus Crystal", "10\u00d7 234008", "2\u00d7 234003", "4\u00d7 Enchanted Leather"]
+  ],
+  [
+    1213610,
+    "Enchanted Repellent",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    ["3\u00d7 234011", "3\u00d7 Hive Thistle", "2\u00d7 Illusion Dust"]
+  ],
+  [
+    1213600,
+    "Enchanted Stopwatch",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "3\u00d7 234003",
+      "6\u00d7 234005",
+      "4\u00d7 Large Brilliant Shard",
+      "3\u00d7 Swiftness Potion"
+    ]
+  ],
+  [
+    17180,
+    "Enchanted Thorium",
+    "Reagents",
+    260,
+    null,
+    null,
+    ["1\u00d7 Thorium Bar", "3\u00d7 Dream Dust"]
+  ],
+  [
+    1213633,
+    "Enchanted Totem",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "3\u00d7 Nexus Crystal",
+      "10\u00d7 Hive Thistle",
+      "2\u00d7 234003",
+      "3\u00d7 Enchanted Leather"
+    ]
+  ],
+  [
+    13868,
+    "Enchant Gloves - Advanced Herbalism",
+    "Glove Enchants",
+    285,
+    {
+      "name": "Formula: Enchant Gloves - Advanced Herbalism",
+      "quality": "green",
+      "bop": false
+    },
+    225,
+    ["2\u00d7 Vision Dust", "1\u00d7 Sungrass"]
+  ],
+  [
+    13841,
+    "Enchant Gloves - Advanced Mining",
+    "Glove Enchants",
+    275,
+    {
+      "name": "Formula: Enchant Gloves - Advanced Mining",
+      "quality": "green",
+      "bop": false
+    },
+    215,
+    ["2\u00d7 Vision Dust", "1\u00d7 Truesilver Bar"]
+  ],
+  [
+    1248528,
+    "Enchant Gloves - Advanced Skinning",
+    "Glove Enchants",
+    310,
+    {
+      "name": "Formula: Enchant Gloves - Advanced Skinning",
+      "quality": "green",
+      "bop": true
+    },
+    250,
+    ["2\u00d7 Dream Dust", "1\u00d7 Cured Rugged Hide"]
+  ],
+  [13815, "Enchant Gloves - Agility", "Glove Enchants", 270, null, null, ["1\u00d7 Vision Dust"]],
+  [
+    1213626,
+    "Enchant Gloves - Arcane Power",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Arcane Power",
+      "quality": "green",
+      "bop": true
+    },
+    300,
+    ["2\u00d7 Nexus Crystal", "5\u00d7 Large Brilliant Shard", "2\u00d7 Skin of Shadow"]
+  ],
+  [
+    25078,
+    "Enchant Gloves - Fire Power",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Fire Power",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["2\u00d7 Nexus Crystal", "10\u00d7 Large Brilliant Shard", "4\u00d7 Essence of Fire"]
+  ],
+  [
+    13620,
+    "Enchant Gloves - Fishing",
+    "Glove Enchants",
+    210,
+    {
+      "name": "Formula: Enchant Gloves - Fishing",
+      "quality": "green",
+      "bop": false
+    },
+    145,
+    ["1\u00d7 Soul Dust", "1\u00d7 Blackmouth Oil"]
+  ],
+  [
+    25074,
+    "Enchant Gloves - Frost Power",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Frost Power",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Nexus Crystal", "10\u00d7 Large Brilliant Shard", "4\u00d7 Essence of Water"]
+  ],
+  [
+    20012,
+    "Enchant Gloves - Greater Agility",
+    "Glove Enchants",
+    330,
+    {
+      "name": "Formula: Enchant Gloves - Greater Agility",
+      "quality": "green",
+      "bop": false
+    },
+    270,
+    ["2\u00d7 Lesser Eternal Essence", "2\u00d7 Illusion Dust"]
+  ],
+  [
+    20013,
+    "Enchant Gloves - Greater Strength",
+    "Glove Enchants",
+    355,
+    {
+      "name": "Formula: Enchant Gloves - Greater Strength",
+      "quality": "green",
+      "bop": false
+    },
+    295,
+    ["4\u00d7 Greater Eternal Essence", "4\u00d7 Illusion Dust"]
+  ],
+  [
+    25079,
+    "Enchant Gloves - Healing Power",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Healing Power",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Nexus Crystal", "8\u00d7 Large Brilliant Shard", "1\u00d7 Righteous Orb"]
+  ],
+  [
+    13617,
+    "Enchant Gloves - Herbalism",
+    "Glove Enchants",
+    210,
+    {
+      "name": "Formula: Enchant Gloves - Herbalism",
+      "quality": "green",
+      "bop": false
+    },
+    145,
+    ["1\u00d7 Soul Dust", "1\u00d7 Kingsblood"]
+  ],
+  [
+    1213622,
+    "Enchant Gloves - Holy Power",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Holy Power",
+      "quality": "green",
+      "bop": true
+    },
+    300,
+    [
+      "2\u00d7 Nexus Crystal",
+      "5\u00d7 Large Brilliant Shard",
+      "5\u00d7 Stratholme Holy Water",
+      "2\u00d7 Frayed Abomination Stitching"
+    ]
+  ],
+  [
+    1294054,
+    "Enchant Gloves - Lotus Claw",
+    "Glove Enchants",
+    300,
+    {
+      "name": "Formula: Enchant Gloves - Lotus Claw",
+      "quality": "green",
+      "bop": true
+    },
+    295,
+    [
+      "1\u00d7 Death Lotus",
+      "2\u00d7 Small Brilliant Shard",
+      "12\u00d7 Illusion Dust",
+      "4\u00d7 Lesser Eternal Essence"
+    ]
+  ],
+  [
+    13612,
+    "Enchant Gloves - Mining",
+    "Glove Enchants",
+    210,
+    {
+      "name": "Formula: Enchant Gloves - Mining",
+      "quality": "green",
+      "bop": false
+    },
+    145,
+    ["1\u00d7 Soul Dust", "1\u00d7 Iron Ore"]
+  ],
+  [
+    13948,
+    "Enchant Gloves - Minor Haste",
+    "Glove Enchants",
+    310,
+    null,
+    null,
+    ["1\u00d7 Large Radiant Shard", "1\u00d7 Wildvine"]
+  ],
+  [
+    1248645,
+    "Enchant Gloves - Natural Power",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Natural Power",
+      "quality": "green",
+      "bop": true
+    },
+    300,
+    ["2\u00d7 Nexus Crystal", "5\u00d7 Large Brilliant Shard", "4\u00d7 Death Lotus"]
+  ],
+  [
+    13947,
+    "Enchant Gloves - Riding Skill",
+    "Glove Enchants",
+    310,
+    {
+      "name": "Formula: Enchant Gloves - Riding Skill",
+      "quality": "green",
+      "bop": false
+    },
+    250,
+    ["1\u00d7 Large Radiant Shard", "2\u00d7 Dream Dust"]
+  ],
+  [
+    25073,
+    "Enchant Gloves - Shadow Power",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Shadow Power",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Nexus Crystal", "10\u00d7 Large Brilliant Shard", "6\u00d7 Essence of Undeath"]
+  ],
+  [
+    13698,
+    "Enchant Gloves - Skinning",
+    "Glove Enchants",
+    260,
+    {
+      "name": "Formula: Enchant Gloves - Skinning",
+      "quality": "green",
+      "bop": false
+    },
+    200,
+    ["1\u00d7 Vision Dust", "1\u00d7 Green Whelp Scale"]
+  ],
+  [
+    13887,
+    "Enchant Gloves - Strength",
+    "Glove Enchants",
+    285,
+    null,
+    null,
+    ["1\u00d7 Lesser Nether Essence", "2\u00d7 Vision Dust"]
+  ],
+  [
+    25080,
+    "Enchant Gloves - Superior Agility",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Superior Agility",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["3\u00d7 Nexus Crystal", "8\u00d7 Large Brilliant Shard", "4\u00d7 Essence of Air"]
+  ],
+  [
+    1248640,
+    "Enchant Gloves - Superior Strength",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Superior Strength",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["4\u00d7 Nexus Crystal", "8\u00d7 Greater Eternal Essence", "4\u00d7 Essence of Earth"]
+  ],
+  [
+    25072,
+    "Enchant Gloves - Threat",
+    "Glove Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Gloves - Threat",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["4\u00d7 Nexus Crystal", "6\u00d7 Large Brilliant Shard", "8\u00d7 Larval Acid"]
+  ],
+  [
+    1249059,
+    "Enchant Necklace - Agility",
+    "Amulet Enchants",
+    265,
+    {
+      "name": "Formula: Enchant Necklace - Agility",
+      "quality": "green",
+      "bop": true
+    },
+    210,
+    [
+      "2\u00d7 Greater Nether Essence",
+      "8\u00d7 Large Radiant Shard",
+      "6\u00d7 Dream Dust",
+      "4\u00d7 Sulfuric Acid",
+      "4\u00d7 Magenta Dye"
+    ]
+  ],
+  [
+    1249060,
+    "Enchant Necklace - Deflection",
+    "Amulet Enchants",
+    265,
+    {
+      "name": "Formula: Enchant Necklace - Deflection",
+      "quality": "green",
+      "bop": true
+    },
+    210,
+    [
+      "8\u00d7 Greater Nether Essence",
+      "2\u00d7 Large Radiant Shard",
+      "2\u00d7 Dream Dust",
+      "4\u00d7 Cerulean Dye",
+      "4\u00d7 Magenta Dye"
+    ]
+  ],
+  [
+    1249058,
+    "Enchant Necklace - Healing Power",
+    "Amulet Enchants",
+    265,
+    {
+      "name": "Formula: Enchant Necklace - Healing Power",
+      "quality": "green",
+      "bop": true
+    },
+    210,
+    [
+      "3\u00d7 Greater Nether Essence",
+      "5\u00d7 Large Radiant Shard",
+      "4\u00d7 Dream Dust",
+      "4\u00d7 Pyrite",
+      "4\u00d7 Rosecap"
+    ]
+  ],
+  [
+    1249057,
+    "Enchant Necklace - Spell Power",
+    "Amulet Enchants",
+    265,
+    {
+      "name": "Formula: Enchant Necklace - Spell Power",
+      "quality": "green",
+      "bop": true
+    },
+    210,
+    [
+      "5\u00d7 Greater Nether Essence",
+      "3\u00d7 Large Radiant Shard",
+      "8\u00d7 Dream Dust",
+      "4\u00d7 Cerulean Dye",
+      "4\u00d7 Magenta Dye"
+    ]
+  ],
+  [
+    1249019,
+    "Enchant Necklace - Strength",
+    "Amulet Enchants",
+    265,
+    {
+      "name": "Formula: Enchant Necklace - Strength",
+      "quality": "green",
+      "bop": true
+    },
+    210,
+    [
+      "4\u00d7 Greater Nether Essence",
+      "4\u00d7 Large Radiant Shard",
+      "10\u00d7 Dream Dust",
+      "4\u00d7 Sulfuric Acid",
+      "4\u00d7 Bauxite"
+    ]
+  ],
+  [
+    1219578,
+    "Enchant Off-Hand - Excellent Spirit",
+    "Off-Hand Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Off Hand - Excellent Spirit",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["2\u00d7 Nexus Crystal", "18\u00d7 Illusion Dust", "2\u00d7 Essence of Water"]
+  ],
+  [
+    1219577,
+    "Enchant Off-Hand - Superior Intellect",
+    "Off-Hand Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Off Hand - Superior Intellect",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["2\u00d7 Nexus Crystal", "18\u00d7 Illusion Dust", "2\u00d7 Essence of Air"]
+  ],
+  [
+    1219579,
+    "Enchant Off-Hand - Wisdom",
+    "Off-Hand Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Off Hand - Wisdom",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "6\u00d7 Large Brilliant Shard",
+      "18\u00d7 Illusion Dust",
+      "1\u00d7 Essence of Air",
+      "1\u00d7 Essence of Water"
+    ]
+  ],
+  [
+    1220623,
+    "Enchant Shield - Critical Strike",
+    "Shield Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Shield - Critical Strike",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["5\u00d7 Large Brilliant Shard", "15\u00d7 Illusion Dust", "1\u00d7 Blood of Heroes"]
+  ],
+  [
+    1219581,
+    "Enchant Shield - Excellent Stamina",
+    "Shield Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Shield - Excellent Stamina",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    ["6\u00d7 Large Brilliant Shard", "18\u00d7 Illusion Dust", "2\u00d7 Essence of Earth"]
+  ],
+  [
+    13933,
+    "Enchant Shield - Frost Resistance",
+    "Shield Enchants",
+    295,
+    {
+      "name": "Formula: Enchant Shield - Frost Resistance",
+      "quality": "green",
+      "bop": false
+    },
+    235,
+    ["1\u00d7 Large Radiant Shard", "1\u00d7 Frost Oil"]
+  ],
+  [
+    13905,
+    "Enchant Shield - Greater Spirit",
+    "Shield Enchants",
+    290,
+    null,
+    null,
+    ["2\u00d7 Lesser Nether Essence", "1\u00d7 Dream Dust"]
+  ],
+  [
+    20017,
+    "Enchant Shield - Greater Stamina",
+    "Shield Enchants",
+    325,
+    {
+      "name": "Formula: Enchant Shield - Greater Stamina",
+      "quality": "white",
+      "bop": true
+    },
+    265,
+    ["6\u00d7 Dream Dust"]
+  ],
+  [
+    463871,
+    "Enchant Shield - Law of Nature",
+    "Season Of Discovery",
+    360,
+    {
+      "name": "Formula: Enchant Shield - Law of Nature",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "4\u00d7 Large Brilliant Shard",
+      "12\u00d7 Greater Eternal Essence",
+      "4\u00d7 Essence of Fire",
+      "4\u00d7 Essence of Water",
+      "1\u00d7 Essence of Earth",
+      "1\u00d7 Righteous Orb"
+    ]
+  ],
+  [
+    13689,
+    "Enchant Shield - Lesser Block",
+    "Shield Enchants",
+    255,
+    {
+      "name": "Formula: Enchant Shield - Lesser Block",
+      "quality": "green",
+      "bop": false
+    },
+    195,
+    ["1\u00d7 Greater Mystic Essence", "1\u00d7 Vision Dust", "1\u00d7 Large Glowing Shard"]
+  ],
+  [
+    13464,
+    "Enchant Shield - Lesser Protection",
+    "Shield Enchants",
+    180,
+    {
+      "name": "Formula: Enchant Shield - Lesser Protection",
+      "quality": "green",
+      "bop": false
+    },
+    115,
+    ["1\u00d7 Strange Dust", "1\u00d7 Small Glimmering Shard"]
+  ],
+  [
+    13485,
+    "Enchant Shield - Lesser Spirit",
+    "Shield Enchants",
+    195,
+    null,
+    null,
+    ["1\u00d7 Lesser Astral Essence", "2\u00d7 Strange Dust"]
+  ],
+  [
+    13631,
+    "Enchant Shield - Lesser Stamina",
+    "Shield Enchants",
+    215,
+    null,
+    null,
+    ["1\u00d7 Lesser Mystic Essence"]
+  ],
+  [
+    13378,
+    "Enchant Shield - Minor Stamina",
+    "Shield Enchants",
+    170,
+    null,
+    null,
+    ["1\u00d7 Lesser Astral Essence", "1\u00d7 Strange Dust"]
+  ],
+  [
+    13659,
+    "Enchant Shield - Spirit",
+    "Shield Enchants",
+    240,
+    null,
+    null,
+    ["1\u00d7 Lesser Mystic Essence", "1\u00d7 Vision Dust"]
+  ],
+  [
+    13817,
+    "Enchant Shield - Stamina",
+    "Shield Enchants",
+    270,
+    {
+      "name": "Formula: Enchant Shield - Stamina",
+      "quality": "green",
+      "bop": false
+    },
+    210,
+    ["2\u00d7 Vision Dust"]
+  ],
+  [
+    20016,
+    "Enchant Shield - Superior Spirit",
+    "Shield Enchants",
+    340,
+    {
+      "name": "Formula: Enchant Shield - Superior Spirit",
+      "quality": "green",
+      "bop": false
+    },
+    280,
+    ["2\u00d7 Greater Eternal Essence", "4\u00d7 Illusion Dust"]
+  ],
+  [
+    23800,
+    "Enchant Weapon - Agility",
+    "Weapon Enchants",
+    350,
+    {
+      "name": "Formula: Enchant Weapon - Agility",
+      "quality": "white",
+      "bop": true
+    },
+    290,
+    [
+      "6\u00d7 Large Brilliant Shard",
+      "6\u00d7 Greater Eternal Essence",
+      "4\u00d7 Illusion Dust",
+      "2\u00d7 Essence of Air"
+    ]
+  ],
+  [
+    20034,
+    "Enchant Weapon - Crusader",
+    "Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Weapon - Crusader",
+      "quality": "green",
+      "bop": false
+    },
+    300,
+    ["4\u00d7 Large Brilliant Shard", "2\u00d7 Righteous Orb"]
+  ],
+  [
+    13915,
+    "Enchant Weapon - Demonslaying",
+    "Weapon Enchants",
+    290,
+    {
+      "name": "Formula: Enchant Weapon - Demonslaying",
+      "quality": "green",
+      "bop": false
+    },
+    230,
+    ["1\u00d7 Small Radiant Shard", "1\u00d7 Dream Dust", "1\u00d7 Potion of Demon Slaying"]
+  ],
+  [
+    435481,
+    "Enchant Weapon - Dismantle",
+    "Season Of Discovery",
+    235,
+    {
+      "name": "Formula: Enchant Weapon - Dismantle",
+      "quality": "epic",
+      "bop": true
+    },
+    225,
+    ["4\u00d7 Lesser Nether Essence", "2\u00d7 Large Fang", "2\u00d7 Small Radiant Shard"]
+  ],
+  [
+    13898,
+    "Enchant Weapon - Fiery Weapon",
+    "Weapon Enchants",
+    325,
+    {
+      "name": "Formula: Enchant Weapon - Fiery Weapon",
+      "quality": "green",
+      "bop": false
+    },
+    265,
+    ["2\u00d7 Small Radiant Shard", "1\u00d7 Essence of Fire"]
+  ],
+  [
+    1231128,
+    "Enchant Weapon - Grand Crusader",
+    "Season Of Discovery",
+    310,
+    {
+      "name": "Formula: Enchant Weapon - Grand Crusader",
+      "quality": "blue",
+      "bop": true
+    },
+    280,
+    [
+      "5\u00d7 Large Brilliant Shard",
+      "2\u00d7 Righteous Orb",
+      "2\u00d7 Nexus Crystal",
+      "1\u00d7 Blood of Heroes"
+    ]
+  ],
+  [
+    1231164,
+    "Enchant Weapon - Grand Sorcerer",
+    "Season Of Discovery",
+    310,
+    {
+      "name": "Formula: Enchant Weapon - Grand Sorcerer",
+      "quality": "blue",
+      "bop": true
+    },
+    280,
+    [
+      "6\u00d7 Large Brilliant Shard",
+      "3\u00d7 Righteous Orb",
+      "2\u00d7 Nexus Crystal",
+      "1\u00d7 Blood of Heroes"
+    ]
+  ],
+  [
+    13943,
+    "Enchant Weapon - Greater Striking",
+    "Weapon Enchants",
+    305,
+    null,
+    null,
+    ["1\u00d7 Large Radiant Shard", "1\u00d7 Greater Nether Essence"]
+  ],
+  [
+    22750,
+    "Enchant Weapon - Healing Power",
+    "Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Weapon - Healing Power",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "4\u00d7 Large Brilliant Shard",
+      "8\u00d7 Greater Eternal Essence",
+      "6\u00d7 Living Essence",
+      "6\u00d7 Essence of Water",
+      "1\u00d7 Righteous Orb"
+    ]
+  ],
+  [
+    20029,
+    "Enchant Weapon - Icy Chill",
+    "Weapon Enchants",
+    345,
+    {
+      "name": "Formula: Enchant Weapon - Icy Chill",
+      "quality": "green",
+      "bop": false
+    },
+    285,
+    [
+      "4\u00d7 Small Brilliant Shard",
+      "1\u00d7 Essence of Water",
+      "1\u00d7 Essence of Air",
+      "1\u00d7 Icecap"
+    ]
+  ],
+  [
+    1248757,
+    "Enchant Weapon - Insight",
+    "Weapon Enchants",
+    180,
+    {
+      "name": "Formula: Enchant Weapon - Insight",
+      "quality": "green",
+      "bop": true
+    },
+    140,
+    [
+      "10\u00d7 Strange Dust",
+      "4\u00d7 Large Glimmering Shard",
+      "4\u00d7 Greater Astral Essence",
+      "4\u00d7 Pyrite",
+      "4\u00d7 Frilled Lichen"
+    ]
+  ],
+  [
+    13653,
+    "Enchant Weapon - Lesser Beastslayer",
+    "Weapon Enchants",
+    235,
+    {
+      "name": "Formula: Enchant Weapon - Lesser Beastslayer",
+      "quality": "green",
+      "bop": false
+    },
+    175,
+    ["1\u00d7 Large Fang", "1\u00d7 Small Glowing Shard"]
+  ],
+  [
+    13655,
+    "Enchant Weapon - Lesser Elemental Slayer",
+    "Weapon Enchants",
+    235,
+    {
+      "name": "Formula: Enchant Weapon - Lesser Elemental Slayer",
+      "quality": "green",
+      "bop": false
+    },
+    175,
+    ["1\u00d7 Elemental Earth", "1\u00d7 Small Glowing Shard"]
+  ],
+  [
+    13503,
+    "Enchant Weapon - Lesser Striking",
+    "Weapon Enchants",
+    205,
+    null,
+    null,
+    ["1\u00d7 Soul Dust", "1\u00d7 Large Glimmering Shard"]
+  ],
+  [
+    20032,
+    "Enchant Weapon - Lifestealing",
+    "Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Weapon - Lifestealing",
+      "quality": "blue",
+      "bop": false
+    },
+    300,
+    ["6\u00d7 Large Brilliant Shard", "6\u00d7 Essence of Undeath", "6\u00d7 Living Essence"]
+  ],
+  [
+    23804,
+    "Enchant Weapon - Mighty Intellect",
+    "Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Weapon - Mighty Intellect",
+      "quality": "white",
+      "bop": true
+    },
+    300,
+    ["15\u00d7 Large Brilliant Shard", "12\u00d7 Greater Eternal Essence", "20\u00d7 Illusion Dust"]
+  ],
+  [
+    23803,
+    "Enchant Weapon - Mighty Spirit",
+    "Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Weapon - Mighty Spirit",
+      "quality": "white",
+      "bop": true
+    },
+    300,
+    ["10\u00d7 Large Brilliant Shard", "8\u00d7 Greater Eternal Essence", "15\u00d7 Illusion Dust"]
+  ],
+  [
+    7786,
+    "Enchant Weapon - Minor Beastslayer",
+    "Weapon Enchants",
+    160,
+    {
+      "name": "Formula: Enchant Weapon - Minor Beastslayer",
+      "quality": "green",
+      "bop": false
+    },
+    90,
+    ["2\u00d7 Strange Dust", "1\u00d7 Greater Magic Essence"]
+  ],
+  [
+    7788,
+    "Enchant Weapon - Minor Striking",
+    "Weapon Enchants",
+    160,
+    null,
+    null,
+    ["1\u00d7 Strange Dust", "1\u00d7 Lesser Magic Essence", "1\u00d7 Small Glimmering Shard"]
+  ],
+  [
+    1248760,
+    "Enchant Weapon - Recovery",
+    "Weapon Enchants",
+    180,
+    {
+      "name": "Formula: Enchant Weapon - Recovery",
+      "quality": "green",
+      "bop": true
+    },
+    140,
+    [
+      "6\u00d7 Soul Dust",
+      "4\u00d7 Large Glimmering Shard",
+      "6\u00d7 Greater Astral Essence",
+      "4\u00d7 Pyrite",
+      "4\u00d7 Silver Ore"
+    ]
+  ],
+  [
+    1248805,
+    "Enchant Weapon - Revelation",
+    "Weapon Enchants",
+    180,
+    {
+      "name": "Formula: Enchant Weapon - Revelation",
+      "quality": "green",
+      "bop": true
+    },
+    140,
+    [
+      "8\u00d7 Soul Dust",
+      "6\u00d7 Large Glimmering Shard",
+      "2\u00d7 Greater Astral Essence",
+      "4\u00d7 Cerulean Dye",
+      "4\u00d7 Sulfuric Acid"
+    ]
+  ],
+  [
+    22749,
+    "Enchant Weapon - Spell Power",
+    "Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Weapon - Spell Power",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "4\u00d7 Large Brilliant Shard",
+      "12\u00d7 Greater Eternal Essence",
+      "4\u00d7 Essence of Fire",
+      "4\u00d7 Essence of Water",
+      "4\u00d7 Essence of Air",
+      "2\u00d7 Golden Pearl"
+    ]
+  ],
+  [
+    23799,
+    "Enchant Weapon - Strength",
+    "Weapon Enchants",
+    350,
+    {
+      "name": "Formula: Enchant Weapon - Strength",
+      "quality": "white",
+      "bop": true
+    },
+    290,
+    [
+      "6\u00d7 Large Brilliant Shard",
+      "6\u00d7 Greater Eternal Essence",
+      "4\u00d7 Illusion Dust",
+      "2\u00d7 Essence of Earth"
+    ]
+  ],
+  [
+    13693,
+    "Enchant Weapon - Striking",
+    "Weapon Enchants",
+    255,
+    null,
+    null,
+    ["1\u00d7 Greater Mystic Essence", "1\u00d7 Large Glowing Shard"]
+  ],
+  [
+    20031,
+    "Enchant Weapon - Superior Striking",
+    "Weapon Enchants",
+    360,
+    {
+      "name": "Formula: Enchant Weapon - Superior Striking",
+      "quality": "green",
+      "bop": false
+    },
+    300,
+    ["2\u00d7 Large Brilliant Shard", "10\u00d7 Greater Eternal Essence"]
+  ],
+  [
+    20033,
+    "Enchant Weapon - Unholy Weapon",
+    "Weapon Enchants",
+    355,
+    {
+      "name": "Formula: Enchant Weapon - Unholy Weapon",
+      "quality": "green",
+      "bop": false
+    },
+    295,
+    ["4\u00d7 Large Brilliant Shard", "4\u00d7 Essence of Undeath"]
+  ],
+  [
+    21931,
+    "Enchant Weapon - Winter's Might",
+    "Weapon Enchants",
+    250,
+    {
+      "name": "Formula: Enchant Weapon - Winter's Might",
+      "quality": "green",
+      "bop": false
+    },
+    190,
+    [
+      "1\u00d7 Greater Mystic Essence",
+      "1\u00d7 Vision Dust",
+      "1\u00d7 Large Glowing Shard",
+      "1\u00d7 Wintersbite"
+    ]
+  ],
+  [
+    1249107,
+    "Frozen Heart of the Mountain",
+    "Curios",
+    325,
+    {
+      "name": "Formula: Frozen Heart of the Mountain",
+      "quality": "blue",
+      "bop": true
+    },
+    265,
+    ["1\u00d7 Blood of the Mountain", "1\u00d7 Essence of Undeath", "3\u00d7 Small Brilliant Shard"]
+  ],
+  [
+    1248703,
+    "Glimmering Staff",
+    "Staves",
+    180,
+    {
+      "name": "Formula: Glimmering Staff",
+      "quality": "blue",
+      "bop": true
+    },
+    140,
+    [
+      "4\u00d7 Large Glimmering Shard",
+      "2\u00d7 Small Glimmering Shard",
+      "4\u00d7 Star Wood",
+      "1\u00d7 Greater Astral Essence",
+      "5\u00d7 Strange Dust",
+      "3\u00d7 Pyrite"
+    ]
+  ],
+  [
+    1248515,
+    "Greater Eternal Wand",
+    "Wands",
+    305,
+    {
+      "name": "Formula: Greater Eternal Wand",
+      "quality": "green",
+      "bop": true
+    },
+    275,
+    ["2\u00d7 Greater Eternal Essence", "1\u00d7 Illusion Dust", "1\u00d7 Star Wood"]
+  ],
+  [
+    14807,
+    "Greater Magic Wand",
+    "Wands",
+    150,
+    null,
+    null,
+    ["1\u00d7 Simple Wood", "2\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    439134,
+    "Greater Mystic Wand",
+    "Season Of Discovery",
+    235,
+    null,
+    null,
+    ["1\u00d7 Star Wood", "1\u00d7 Greater Mystic Essence", "1\u00d7 Vision Dust"]
+  ],
+  [
+    14810,
+    "Greater Mystic Wand",
+    "Wands",
+    235,
+    null,
+    null,
+    ["1\u00d7 Star Wood", "1\u00d7 Lesser Mystic Essence", "1\u00d7 Vision Dust"]
+  ],
+  [
+    1216022,
+    "Idol of Feline Ferocity",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "2\u00d7 Nexus Crystal",
+      "20\u00d7 Hive Thistle",
+      "3\u00d7 Enchanted Leather",
+      "4\u00d7 234011",
+      "4\u00d7 234010"
+    ]
+  ],
+  [
+    1216020,
+    "Idol of Sidereal Wrath",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "2\u00d7 Nexus Crystal",
+      "20\u00d7 Hive Thistle",
+      "3\u00d7 Enchanted Leather",
+      "4\u00d7 234011",
+      "4\u00d7 234010"
+    ]
+  ],
+  [
+    1306524,
+    "Idol of Swiftness",
+    "Relics",
+    325,
+    {
+      "name": "Formula: Idol of Swiftness",
+      "quality": "epic",
+      "bop": true
+    },
+    300,
+    [
+      "1\u00d7 Malleable Essence of Nature",
+      "1\u00d7 Nexus Crystal",
+      "2\u00d7 Greater Eternal Essence",
+      "12\u00d7 Illusion Dust"
+    ]
+  ],
+  [
+    1249128,
+    "Idol of the Dream",
+    "Relics",
+    360,
+    {
+      "name": "Formula: Idol of the Dream",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "2\u00d7 Large Brilliant Shard",
+      "4\u00d7 Greater Eternal Essence",
+      "6\u00d7 Illusion Dust",
+      "8\u00d7 Viridian Dye",
+      "4\u00d7 Magenta Dye",
+      "2\u00d7 Cerulean Dye",
+      "4\u00d7 Star Wood"
+    ]
+  ],
+  [
+    1306525,
+    "Idol of the Ursine Twins",
+    "Relics",
+    325,
+    {
+      "name": "Formula: Idol of the Ursine Twins",
+      "quality": "epic",
+      "bop": true
+    },
+    300,
+    [
+      "1\u00d7 Malleable Essence of Nature",
+      "1\u00d7 Nexus Crystal",
+      "2\u00d7 Greater Eternal Essence",
+      "12\u00d7 Illusion Dust"
+    ]
+  ],
+  [
+    1216024,
+    "Idol of Ursin Power",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "2\u00d7 Nexus Crystal",
+      "20\u00d7 Hive Thistle",
+      "3\u00d7 Enchanted Leather",
+      "4\u00d7 234011",
+      "4\u00d7 234010"
+    ]
+  ],
+  [
+    1248505,
+    "Lesser Eternal Wand",
+    "Wands",
+    305,
+    {
+      "name": "Formula: Lesser Eternal Wand",
+      "quality": "green",
+      "bop": true
+    },
+    245,
+    ["1\u00d7 Lesser Eternal Essence", "1\u00d7 Dream Dust", "1\u00d7 Star Wood"]
+  ],
+  [
+    14293,
+    "Lesser Magic Wand",
+    "Wands",
+    115,
+    null,
+    null,
+    ["1\u00d7 Simple Wood", "1\u00d7 Lesser Magic Essence"]
+  ],
+  [
+    25127,
+    "Lesser Mana Oil",
+    "Wizard Oils",
+    280,
+    {
+      "name": "Formula: Lesser Mana Oil",
+      "quality": "white",
+      "bop": false
+    },
+    250,
+    ["1\u00d7 Dream Dust", "1\u00d7 Purple Lotus", "1\u00d7 Crystal Vial"]
+  ],
+  [
+    14809,
+    "Lesser Mystic Wand",
+    "Wands",
+    215,
+    null,
+    null,
+    ["1\u00d7 Star Wood", "1\u00d7 Lesser Mystic Essence"]
+  ],
+  [
+    25126,
+    "Lesser Wizard Oil",
+    "Wizard Oils",
+    230,
+    {
+      "name": "Formula: Lesser Wizard Oil",
+      "quality": "white",
+      "bop": false
+    },
+    200,
+    ["1\u00d7 Vision Dust", "2\u00d7 Stranglethorn Seed", "1\u00d7 Leaded Vial"]
+  ],
+  [
+    1249152,
+    "Libram of Holy Alacrity",
+    "Relics",
+    360,
+    {
+      "name": "Formula: Libram of Holy Alacrity",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "4\u00d7 Large Brilliant Shard",
+      "3\u00d7 Greater Eternal Essence",
+      "4\u00d7 Illusion Dust",
+      "8\u00d7 Viridian Dye",
+      "4\u00d7 Magenta Dye",
+      "2\u00d7 Cerulean Dye",
+      "4\u00d7 Scroll of Intellect IV"
+    ]
+  ],
+  [
+    1306522,
+    "Libram of Infusion",
+    "Relics",
+    325,
+    {
+      "name": "Formula: Libram of Infusion",
+      "quality": "epic",
+      "bop": true
+    },
+    300,
+    [
+      "1\u00d7 Malleable Essence of Nature",
+      "1\u00d7 Nexus Crystal",
+      "2\u00d7 Greater Eternal Essence",
+      "12\u00d7 Illusion Dust"
+    ]
+  ],
+  [
+    1249006,
+    "Libram of Invocation",
+    "Relics",
+    265,
+    {
+      "name": "Formula: Libram of Invocation",
+      "quality": "blue",
+      "bop": true
+    },
+    210,
+    [
+      "3\u00d7 Large Radiant Shard",
+      "3\u00d7 Greater Nether Essence",
+      "4\u00d7 Dream Dust",
+      "2\u00d7 Magenta Dye",
+      "1\u00d7 Cerulean Dye",
+      "4\u00d7 Scroll of Strength II"
+    ]
+  ],
+  [
+    1216005,
+    "Libram of Righteousness",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    ["3\u00d7 Nexus Crystal", "10\u00d7 234008", "2\u00d7 234003", "4\u00d7 Enchanted Leather"]
+  ],
+  [
+    1216010,
+    "Libram of Sanctity",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    ["3\u00d7 Nexus Crystal", "10\u00d7 234008", "2\u00d7 234003", "4\u00d7 Enchanted Leather"]
+  ],
+  [
+    1216007,
+    "Libram of the Exorcist",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    ["3\u00d7 Nexus Crystal", "10\u00d7 234008", "2\u00d7 234003", "4\u00d7 Enchanted Leather"]
+  ],
+  [
+    1213598,
+    "Lodestone of Retaliation",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "10\u00d7 234007",
+      "5\u00d7 234010",
+      "4\u00d7 Nexus Crystal",
+      "10\u00d7 234003",
+      "10\u00d7 234011"
+    ]
+  ],
+  [
+    471400,
+    "Magnificent Trollshine",
+    "Season Of Discovery",
+    330,
+    {
+      "name": "Formula: Magnificent Trollshine",
+      "quality": "white",
+      "bop": true
+    },
+    300,
+    [
+      "3\u00d7 Flask of Mojo",
+      "3\u00d7 Flask of Big Mojo",
+      "2\u00d7 Large Brilliant Shard",
+      "1\u00d7 Imbued Vial"
+    ]
+  ],
+  [
+    25125,
+    "Minor Mana Oil",
+    "Wizard Oils",
+    180,
+    {
+      "name": "Formula: Minor Mana Oil",
+      "quality": "white",
+      "bop": false
+    },
+    150,
+    ["1\u00d7 Soul Dust", "2\u00d7 Maple Seed", "1\u00d7 Leaded Vial"]
+  ],
+  [
+    25124,
+    "Minor Wizard Oil",
+    "Wizard Oils",
+    65,
+    {
+      "name": "Formula: Minor Wizard Oil",
+      "quality": "white",
+      "bop": false
+    },
+    5,
+    ["1\u00d7 Strange Dust", "1\u00d7 Maple Seed", "1\u00d7 Empty Vial"]
+  ],
+  [
+    1249112,
+    "Molten Heart of the Mountain",
+    "Curios",
+    325,
+    {
+      "name": "Formula: Molten Heart of the Mountain",
+      "quality": "blue",
+      "bop": true
+    },
+    265,
+    ["1\u00d7 Blood of the Mountain", "1\u00d7 Essence of Earth", "3\u00d7 Small Brilliant Shard"]
+  ],
+  [
+    1248752,
+    "Mystic Mushroom",
+    "Relics",
+    180,
+    {
+      "name": "Formula: Mystic Mushroom",
+      "quality": "blue",
+      "bop": true
+    },
+    130,
+    [
+      "1\u00d7 Small Glimmering Shard",
+      "2\u00d7 Greater Magic Essence",
+      "5\u00d7 Strange Dust",
+      "1\u00d7 Red-speckled Mushroom"
+    ]
+  ],
+  [
+    1245321,
+    "Novice's Practice Wand",
+    "Wands",
+    15,
+    null,
+    null,
+    ["1\u00d7 Simple Wood", "1\u00d7 Mote of Magic"]
+  ],
+  [
+    1248745,
+    "Orb of Mystic Insight",
+    "Off-Hands",
+    180,
+    {
+      "name": "Formula: Orb of Mystic Insight",
+      "quality": "blue",
+      "bop": true
+    },
+    140,
+    ["2\u00d7 Small Glimmering Shard", "2\u00d7 Greater Astral Essence", "5\u00d7 Strange Dust"]
+  ],
+  [
+    1248748,
+    "Orb of Souls",
+    "Off-Hands",
+    180,
+    {
+      "name": "Formula: Orb of Souls",
+      "quality": "blue",
+      "bop": true
+    },
+    140,
+    ["2\u00d7 Small Glimmering Shard", "2\u00d7 Greater Astral Essence", "2\u00d7 Soul Dust"]
+  ],
+  [
+    1248755,
+    "Polished Driftwood Icon",
+    "Relics",
+    180,
+    {
+      "name": "Formula: Polished Driftwood Icon",
+      "quality": "blue",
+      "bop": true
+    },
+    130,
+    [
+      "1\u00d7 Large Glimmering Shard",
+      "2\u00d7 Greater Magic Essence",
+      "3\u00d7 Strange Dust",
+      "1\u00d7 Simple Wood"
+    ]
+  ],
+  [
+    1249061,
+    "Radiant Staff",
+    "Staves",
+    265,
+    {
+      "name": "Formula: Radiant Staff",
+      "quality": "blue",
+      "bop": true
+    },
+    220,
+    [
+      "6\u00d7 Large Radiant Shard",
+      "2\u00d7 Small Radiant Shard",
+      "4\u00d7 Star Wood",
+      "4\u00d7 Greater Nether Essence",
+      "6\u00d7 Dream Dust",
+      "2\u00d7 Cerulean Dye",
+      "4\u00d7 Magenta Dye"
+    ]
+  ],
+  [
+    1213603,
+    "Ruby-Encrusted Broach",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "10\u00d7 234007",
+      "5\u00d7 234010",
+      "6\u00d7 Nexus Crystal",
+      "10\u00d7 234003",
+      "10\u00d7 Hive Thistle",
+      "10\u00d7 234011"
+    ]
+  ],
+  [
+    20051,
+    "Runed Arcanite Rod",
+    "Runed Enchanting Rods",
+    350,
+    {
+      "name": "Formula: Runed Arcanite Rod",
+      "quality": "white",
+      "bop": true
+    },
+    290,
+    [
+      "1\u00d7 Arcanite Rod",
+      "1\u00d7 Golden Pearl",
+      "10\u00d7 Illusion Dust",
+      "4\u00d7 Greater Eternal Essence",
+      "4\u00d7 Small Brilliant Shard",
+      "2\u00d7 Large Brilliant Shard"
+    ]
+  ],
+  [
+    7421,
+    "Runed Copper Rod",
+    "Runed Enchanting Rods",
+    10,
+    null,
+    null,
+    ["1\u00d7 Copper Rod", "1\u00d7 Mote of Magic"]
+  ],
+  [
+    13628,
+    "Runed Golden Rod",
+    "Runed Enchanting Rods",
+    215,
+    null,
+    null,
+    [
+      "1\u00d7 Golden Rod",
+      "1\u00d7 Iridescent Pearl",
+      "1\u00d7 Greater Astral Essence",
+      "1\u00d7 Soul Dust"
+    ]
+  ],
+  [
+    7795,
+    "Runed Silver Rod",
+    "Runed Enchanting Rods",
+    170,
+    null,
+    null,
+    [
+      "1\u00d7 Silver Rod",
+      "3\u00d7 Strange Dust",
+      "4\u00d7 Lesser Magic Essence",
+      "1\u00d7 Shadowgem"
+    ]
+  ],
+  [
+    13702,
+    "Runed Truesilver Rod",
+    "Runed Enchanting Rods",
+    260,
+    null,
+    null,
+    [
+      "1\u00d7 Truesilver Rod",
+      "1\u00d7 Black Pearl",
+      "1\u00d7 Greater Mystic Essence",
+      "1\u00d7 Vision Dust"
+    ]
+  ],
+  [
+    448624,
+    "Scroll of Spatial Mending",
+    "Season Of Discovery",
+    160,
+    {
+      "name": "Formula: Scroll of Spatial Mending",
+      "quality": "green",
+      "bop": false
+    },
+    120,
+    ["1\u00d7 Simple Wood", "4\u00d7 Strange Dust"]
+  ],
+  [
+    1213607,
+    "Scroll: Wrath of the Swarm",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    ["1\u00d7 Greater Eternal Essence", "1\u00d7 Runecloth"]
+  ],
+  [
+    463866,
+    "Sigil of Flowing Waters",
+    "Season Of Discovery",
+    320,
+    {
+      "name": "Enchanted Sigil: Flowing Waters",
+      "quality": "epic",
+      "bop": true
+    },
+    290,
+    ["1\u00d7 Illusion Dust"]
+  ],
+  [
+    439156,
+    "Sigil of Innovation",
+    "Season Of Discovery",
+    230,
+    {
+      "name": "Enchanted Sigil: Innovation",
+      "quality": "epic",
+      "bop": true
+    },
+    225,
+    ["5\u00d7 Vision Dust"]
+  ],
+  [
+    446243,
+    "Sigil of Living Dreams",
+    "Season Of Discovery",
+    260,
+    null,
+    null,
+    ["5\u00d7 Dream Dust"]
+  ],
+  [
+    15596,
+    "Smoking Heart of the Mountain",
+    "Curios",
+    325,
+    {
+      "name": "Formula: Smoking Heart of the Mountain",
+      "quality": "green",
+      "bop": false
+    },
+    265,
+    ["1\u00d7 Blood of the Mountain", "1\u00d7 Essence of Fire", "3\u00d7 Small Brilliant Shard"]
+  ],
+  [
+    1248739,
+    "Soulstaff",
+    "Staves",
+    180,
+    {
+      "name": "Formula: Soulstaff",
+      "quality": "blue",
+      "bop": true
+    },
+    140,
+    [
+      "2\u00d7 Large Glimmering Shard",
+      "1\u00d7 Small Glimmering Shard",
+      "4\u00d7 Star Wood",
+      "1\u00d7 Greater Astral Essence",
+      "6\u00d7 Soul Dust",
+      "2\u00d7 Shadowgem"
+    ]
+  ],
+  [
+    1213593,
+    "Speedstone",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "10\u00d7 234006",
+      "10\u00d7 234010",
+      "6\u00d7 Nexus Crystal",
+      "6\u00d7 234004",
+      "20\u00d7 Swiftthistle"
+    ]
+  ],
+  [
+    1306521,
+    "Steadfast Libram",
+    "Relics",
+    325,
+    {
+      "name": "Formula: Steadfast Libram",
+      "quality": "epic",
+      "bop": true
+    },
+    300,
+    [
+      "1\u00d7 Malleable Essence of Nature",
+      "1\u00d7 Nexus Crystal",
+      "2\u00d7 Greater Eternal Essence",
+      "12\u00d7 Illusion Dust"
+    ]
+  ],
+  [
+    1248974,
+    "Talons of Wrath",
+    "Relics",
+    265,
+    {
+      "name": "Formula: Talons of Wrath",
+      "quality": "blue",
+      "bop": true
+    },
+    210,
+    [
+      "2\u00d7 Large Radiant Shard",
+      "4\u00d7 Greater Nether Essence",
+      "6\u00d7 Dream Dust",
+      "2\u00d7 Magenta Dye",
+      "1\u00d7 Cerulean Dye",
+      "1\u00d7 Star Wood"
+    ]
+  ],
+  [
+    1213595,
+    "Tear of the Dreamer",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "10\u00d7 234006",
+      "10\u00d7 234010",
+      "4\u00d7 Nexus Crystal",
+      "10\u00d7 234003",
+      "10\u00d7 Hive Thistle"
+    ]
+  ],
+  [
+    1248754,
+    "Tenets of the Silver Hand",
+    "Relics",
+    180,
+    {
+      "name": "Formula: Tenets of the Silver Hand",
+      "quality": "blue",
+      "bop": true
+    },
+    130,
+    [
+      "1\u00d7 Large Glimmering Shard",
+      "1\u00d7 Greater Magic Essence",
+      "2\u00d7 Strange Dust",
+      "5\u00d7 Scroll of Protection"
+    ]
+  ],
+  [
+    1306520,
+    "Torch of Light",
+    "Wands",
+    325,
+    {
+      "name": "Formula: Torch of Light",
+      "quality": "epic",
+      "bop": true
+    },
+    300,
+    [
+      "2\u00d7 Malleable Essence of Nature",
+      "1\u00d7 Nexus Crystal",
+      "6\u00d7 Large Brilliant Shard",
+      "5\u00d7 Lesser Eternal Essence"
+    ]
+  ],
+  [
+    1249015,
+    "Totem of Ancestral Protection",
+    "Relics",
+    265,
+    {
+      "name": "Formula: Totem of Ancestral Protection",
+      "quality": "blue",
+      "bop": true
+    },
+    210,
+    [
+      "4\u00d7 Large Radiant Shard",
+      "2\u00d7 Greater Nether Essence",
+      "2\u00d7 Dream Dust",
+      "4\u00d7 Sandpaper",
+      "2\u00d7 Sulfuric Acid",
+      "2\u00d7 Star Wood"
+    ]
+  ],
+  [
+    1216018,
+    "Totem of Flowing Magma",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "3\u00d7 Nexus Crystal",
+      "10\u00d7 Hive Thistle",
+      "2\u00d7 234003",
+      "3\u00d7 Enchanted Leather"
+    ]
+  ],
+  [
+    1216014,
+    "Totem of Pyroclastic Thunder",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "3\u00d7 Nexus Crystal",
+      "10\u00d7 Hive Thistle",
+      "2\u00d7 234003",
+      "3\u00d7 Enchanted Leather"
+    ]
+  ],
+  [
+    1249154,
+    "Totem of Thunder",
+    "Relics",
+    360,
+    {
+      "name": "Formula: Totem of Thunder",
+      "quality": "blue",
+      "bop": true
+    },
+    300,
+    [
+      "1\u00d7 Large Brilliant Shard",
+      "8\u00d7 Greater Eternal Essence",
+      "10\u00d7 Illusion Dust",
+      "8\u00d7 Viridian Dye",
+      "4\u00d7 Magenta Dye",
+      "2\u00d7 Cerulean Dye",
+      "4\u00d7 Star Wood"
+    ]
+  ],
+  [
+    1216016,
+    "Totem of Thunderous Strikes",
+    "Season Of Discovery",
+    360,
+    null,
+    null,
+    [
+      "3\u00d7 Nexus Crystal",
+      "10\u00d7 Hive Thistle",
+      "2\u00d7 234003",
+      "3\u00d7 Enchanted Leather"
+    ]
+  ],
+  [
+    1306523,
+    "Totem of Urgency",
+    "Relics",
+    325,
+    {
+      "name": "Formula: Totem of Urgency",
+      "quality": "epic",
+      "bop": true
+    },
+    300,
+    [
+      "1\u00d7 Malleable Essence of Nature",
+      "1\u00d7 Nexus Crystal",
+      "2\u00d7 Greater Eternal Essence",
+      "12\u00d7 Illusion Dust"
+    ]
+  ],
+  [
+    1249069,
+    "Truesilver Conduit",
+    "Off-Hands",
+    265,
+    {
+      "name": "Formula: Truesilver Conduit",
+      "quality": "blue",
+      "bop": true
+    },
+    220,
+    [
+      "3\u00d7 Large Radiant Shard",
+      "1\u00d7 Small Radiant Shard",
+      "2\u00d7 Star Wood",
+      "2\u00d7 Greater Nether Essence",
+      "3\u00d7 Dream Dust",
+      "1\u00d7 Cerulean Dye",
+      "2\u00d7 Magenta Dye"
+    ]
+  ],
+  [
+    1248461,
+    "Twisted Nether Wand",
+    "Wands",
+    245,
+    {
+      "name": "Formula: Twisted Nether Wand",
+      "quality": "green",
+      "bop": true
+    },
+    185,
+    ["1\u00d7 Lesser Nether Essence", "1\u00d7 Dream Dust", "1\u00d7 Star Wood"]
+  ],
+  [
+    1249070,
+    "Twisting Essence Jar",
+    "Off-Hands",
+    265,
+    {
+      "name": "Formula: Twisting Essence Jar",
+      "quality": "blue",
+      "bop": true
+    },
+    220,
+    [
+      "4\u00d7 Truesilver Bar",
+      "12\u00d7 Greater Nether Essence",
+      "12\u00d7 Greater Mystic Essence",
+      "1\u00d7 Cerulean Dye",
+      "2\u00d7 Magenta Dye"
+    ]
+  ],
+  [
+    25128,
+    "Wizard Oil",
+    "Wizard Oils",
+    305,
+    {
+      "name": "Formula: Wizard Oil",
+      "quality": "white",
+      "bop": false
+    },
+    275,
+    ["3\u00d7 Illusion Dust", "2\u00d7 Firebloom", "1\u00d7 Crystal Vial"]
+  ]
+]

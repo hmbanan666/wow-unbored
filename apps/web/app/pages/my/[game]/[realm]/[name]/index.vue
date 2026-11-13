@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { CHARACTER_COPY, characterHref, type CharacterPage } from "#shared/character-page";
 
+import { professionSlug } from "#shared/profession-album";
+
 type Result =
   | { ok: true; lang: "en" | "ru"; character: CharacterPage }
   | { ok: false; lang: "en" | "ru"; message: string };
@@ -55,6 +57,11 @@ useSeoMeta({ title: () => character.value?.name || copy.value.title, robots: "no
               {{ copy.skill }}: {{ profession.skill
               }}<template v-if="profession.max !== null"> / {{ profession.max }}</template>
             </p>
+            <DsButton
+              :to="`${characterHref(character)}/${professionSlug(profession)}`"
+              variant="secondary"
+              >Open collection</DsButton
+            >
             <ProfessionRoute
               v-for="entry in profession.routes || []"
               :key="entry.route.skillLine"
