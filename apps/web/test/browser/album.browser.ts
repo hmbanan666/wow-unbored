@@ -95,3 +95,48 @@ test("Kania empty and unopened Enchanting, known Tailoring, and Retail", async (
   await page.goto(`${path.replace("forever", "retail")}?game=retail`);
   await expect(page.locator(".recipe-slot")).toHaveCount(262);
 });
+
+test("Today fixture cards persist browser hints, link from the character and fit desktop and mobile", async ({
+  page,
+}) => {
+  const todayScreenshots = fileURLToPath(
+    new URL("../../../../artifacts/today-goals/", import.meta.url),
+  );
+  await mkdir(todayScreenshots, { recursive: true });
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 950 });
+    await page.goto(`${path}?state=unopened`);
+    await expect(page.getByRole("heading", { name: "Today in Enchanting" })).toBeVisible();
+    await expect(page.locator(".today-card")).toHaveCount(1);
+    await expect(page.locator(".today-card")).toContainText("Open your Enchanting window once");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: `${todayScreenshots}/${width === 390 ? "mobile" : "desktop"}-unopened.png`,
+      fullPage: true,
+    });
+    await page.goto(path);
+    await expect(page.locator(".today-card")).toHaveCount(3);
+    await page.screenshot({
+      path: `${todayScreenshots}/${width === 390 ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+    });
+  }
+  const first = page.locator(".today-card").first();
+  await first.getByRole("button", { name: "Mark done" }).click();
+  await page.reload();
+  await expect(first.getByRole("button", { name: "Done ✓" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await first.getByRole("button", { name: "Done ✓" }).click();
+  await page.getByRole("link", { name: "Back to Kania" }).click();
+  await expect(page.locator(".today-strip li")).toHaveCount(2);
+  await page.locator(".today-strip a").first().click();
+  await expect(page.getByRole("heading", { name: "Today in Enchanting" })).toBeVisible();
+  await page.goto(`${path}?state=unopened`);
+  await expect(
+    page.locator(".today-card").getByRole("button", { name: "Mark done" }),
+  ).toBeVisible();
+});

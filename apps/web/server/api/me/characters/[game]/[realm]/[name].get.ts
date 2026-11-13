@@ -1,3 +1,4 @@
+import { fetchTodaySets } from "../../../../../utils/today-api";
 import { CHARACTER_COPY } from "#shared/character-page";
 import { browserLang, SIGN_IN_COPY } from "#shared/sign-in";
 import { readCharacterPage } from "../../../../../utils/character-page";
@@ -28,5 +29,10 @@ export default defineEventHandler(async (event) => {
       ? await readCharacterPage(sql, account.accountId, { game, realm, name })
       : null;
   if (!character) throw createError({ statusCode: 404, message: CHARACTER_COPY[lang].notFound });
+  character.today = await fetchTodaySets(
+    useRuntimeConfig().serverUrl || getRequestURL(event).origin,
+    sessionCredentials(prior)?.sessionId,
+    character,
+  );
   return { ok: true as const, lang, character };
 });

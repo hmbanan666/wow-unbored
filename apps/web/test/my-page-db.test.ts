@@ -19,7 +19,7 @@ const mine = "a".repeat(64);
 const theirs = "b".repeat(64);
 
 dbTest(
-  "migrations 0031 and 0032 let the web role read sources and private history without write access",
+  "migrations 0031 through 0033 let the web role read sources and private history without write access",
   async () => {
     const root = postgres(adminUrl!, { max: 1, onnotice: () => {} });
     const name = `unbored_recipe_web_${randomBytes(4).toString("hex")}`;
@@ -45,6 +45,9 @@ dbTest(
       );
       await sql.unsafe(
         readFileSync(migrationFiles().find((file) => file.version === 32)!.url, "utf8"),
+      );
+      await sql.unsafe(
+        readFileSync(migrationFiles().find((file) => file.version === 33)!.url, "utf8"),
       );
       await sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES (${mine}, 'Mine', 1, 2)`;
       await sql`INSERT INTO characters (id, game, account_id, name, realm, level, last_seen)
@@ -87,7 +90,22 @@ dbTest(
         ('forever', '1.60.1.70888', 'ItemSparse', 'enUS', 2321, '{"Display_lang":"Unseen thread","BuyPrice":999}'::jsonb)`;
       await sql`INSERT INTO character_events (game, character_id, type, key, at, from_value, to_value)
         VALUES ('forever', 'forever/Realm/Mine', 'recipe_learned', '2334', 2, NULL, '2334')`;
+      await sql`INSERT INTO character_goals (character_id, skill_line, position, set_id, goal_id, day, created_at, goal_body)
+        VALUES ('forever/Realm/Mine', 171, 0, 'fixture-set', 'fixture-goal', 1, 2, '{"title":"Learn a recipe"}')`;
       await sql`SET LOCAL ROLE unbored_web`;
+      const goals =
+        await sql`SELECT g.goal_body FROM character_goals g JOIN characters c ON c.id = g.character_id
+        WHERE c.account_id = ${mine} AND c.game = 'forever' AND c.name = 'Mine' AND c.realm = 'Realm'`;
+      assert.equal(goals.length, 1);
+      assert.equal(JSON.parse(goals[0]!.goal_body).title, "Learn a recipe");
+      assert.equal(
+        (
+          await sql`SELECT g.goal_body FROM character_goals g JOIN characters c ON c.id = g.character_id
+        WHERE c.account_id = ${theirs} AND c.game = 'forever' AND c.name = 'Mine' AND c.realm = 'Realm'`
+        ).length,
+        0,
+      );
+
       const history = await readHistoryPage(sql, mine, {
         game: "forever",
         realm: "Realm",
@@ -185,6 +203,7 @@ dbTest(
         "game.profession_recipes",
         "recipe_sightings",
         "character_events",
+        "character_goals",
         "accounts",
       ]) {
         const [permissions] = await sql`SELECT

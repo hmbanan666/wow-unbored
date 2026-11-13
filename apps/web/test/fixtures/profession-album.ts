@@ -1,3 +1,4 @@
+import { computeTodayGoals } from "@unbored/contracts/today-goals";
 import { professionViews } from "../../shared/character-page";
 import type { CharacterPage } from "../../shared/character-page";
 import type { ProfessionRecipe } from "@unbored/contracts/profession-catalog";
@@ -85,7 +86,7 @@ export function albumCharacter(
   state: "unopened" | "empty" | "known" = "known",
   game: "forever" | "retail" = "forever",
 ): CharacterPage {
-  return {
+  const character: CharacterPage = {
     game,
     realm: "CAMWOW EU4 Realm 3 PvE",
     name: "Kania",
@@ -138,4 +139,13 @@ export function albumCharacter(
       ],
     })),
   };
+  character.today = character.professions.map((p) => ({
+    id: `fixture-${state}-${game}-${p.skillLine}`,
+    skillLine: p.skillLine,
+    profession: p.name,
+    day: 1,
+    createdAt: 86400,
+    goals: computeTodayGoals(p, game, []).map((g) => ({ ...g, completedAt: null })),
+  }));
+  return character;
 }

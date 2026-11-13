@@ -1522,8 +1522,7 @@ Forever rows of the same profession name collapse to the id with catalog recipes
 The private `/my/<game>/<realm>/<name>/<profession-slug>` page reuses the owner-checked
 character endpoint and the `/my/**` no-store/noindex/nofollow middleware. Base skill-line
 names supply stable English slugs; an unknown profession returns 404. Character cards
-link with **Open collection** and retain their skill Plans. Hero, journey and Today remain
-separate follow-ups, with room for Today before the album.
+link with **Open collection** and retain their skill Plans. Hero and journey remain separate follow-ups. Today appears before the album (slice c below).
 
 The shared progress projection now includes `album`: every catalog recipe with nullable
 `known`, thresholds, source observations, difficulty, formula facts and named reagents.
@@ -1556,3 +1555,15 @@ Deployment: web only; no migration, grants, import or version change. The modifi
 projection is compiled into web. The Server uses it on its next ordinary build; the page does
 not depend on a Server rollout. The shared files were already included in `apps/web/Dockerfile`;
 all new web files are covered by `COPY apps/web apps/web`.
+
+### Today goals (ADR 0101, slice c)
+
+The pure `computeTodayGoals` / `todayGoalComplete` contracts reuse profession progress and the ADR 0098 route. They select at most three goals in skill, easiest missing recipe, coverage/next-unlock order. An unread profession offers the window read first; it cannot label unknown recipes as missing. Craft goals retain the first stretch's expected crafts, bounds and reagent totals. Unknown sources and locations remain unknown.
+
+`character_goals` stores only the current set per character/profession, one row per goal. Each has position, stable kind/target hash, random set id, UTC day, creation/completion times and a frozen JSON goal body. The Server serializes reads, ingest and erasure on the Account lock. Ingest only ticks existing sets; views create on first view, UTC rollover or a previously completed set. Newly ticked rows remain visible in that response. A new observed trainer/vendor visit must belong to the same Account/Game and skill line (or resolve to its recipe); shared sightings never complete coverage. Local browser hints do not affect rotation or authoritative completion.
+
+`GET /v1/web/today?game=...&realm=...&character=...` resolves the Account from the live sealed web session, then checks character ownership. The web character endpoint calls it server-side and returns `today` sets; `null` means temporarily unavailable and renders a retry. `get_today_goals(game, character, skillLine?)` exposes the same sets with `completedAt` flags and the existing optional realm/account disambiguation and lease scope. No browser completion endpoint exists.
+
+Deploy **Server first** to apply `0033_character_goals.sql` and expose the API, then web. Its conditional grant gives an existing `unbored_web` role SELECT only; installations provisioning that role after migrations must include `GRANT SELECT ON character_goals TO unbored_web` in their read grants. SQLite creates the same table on open. Forget my data explicitly erases it; character deletion cascades. No addon or Companion update, import or version bump is required.
+
+Browser checks render Kania-shaped offline fixtures: unread Enchanting 145/150, read Tailoring 112/150 and no sightings, plus a separate read Enchanting example to exercise three cards. `pnpm --filter @unbored/web test:browser` writes desktop/mobile captures to `artifacts/today-goals/`. Review copies live in `docs/review/today-goals/`.

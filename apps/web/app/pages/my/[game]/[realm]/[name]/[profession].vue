@@ -44,7 +44,12 @@ useSeoMeta({
         :eyebrow="`${character.name} · ${character.game === 'forever' ? 'Forever' : 'Retail'}`"
         lead="Your collection, one recipe at a time."
       />
-      <!-- The Today section belongs here in the next ADR 0101 slice. -->
+      <TodayGoals
+        :set="character.today?.find((s) => s.skillLine === profession!.skillLine)"
+        :name="professionName(profession)"
+        :unavailable="character.today === null"
+        @retry="refresh()"
+      />
       <ProfessionAlbum
         :key="profession.skillLine"
         :profession="profession"

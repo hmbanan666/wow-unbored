@@ -1,9 +1,13 @@
+import type { TodaySet } from "@unbored/contracts/today-goals";
 import type { MyCharacter } from "./my-page";
 import type { Profession } from "@unbored/contracts/profession-progress";
 export { professionViews, type Profession } from "@unbored/contracts/profession-progress";
 
 export type CharacterIdentity = Pick<MyCharacter, "game" | "realm" | "name">;
-export type CharacterPage = CharacterIdentity & { professions: Profession[] };
+export type CharacterPage = CharacterIdentity & {
+  professions: Profession[];
+  today?: TodaySet[] | null;
+};
 
 export function characterHref(character: CharacterIdentity): string {
   return `/my/${character.game}/${encodeURIComponent(character.realm)}/${encodeURIComponent(character.name)}`;

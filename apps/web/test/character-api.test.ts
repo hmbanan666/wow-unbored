@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vite-plus/test";
 import type { H3Event } from "h3";
 
 const session = vi.hoisted(() => ({ live: vi.fn(), prior: vi.fn() }));
+vi.mock("../server/utils/today-api", () => ({ fetchTodaySets: async () => [] }));
 const read = vi.hoisted(() => vi.fn());
 vi.mock("../server/utils/session", () => ({
   liveAccount: session.live,
@@ -16,6 +17,7 @@ afterEach(() => {
 
 async function request(game = "forever") {
   const headers = new Map();
+  vi.stubGlobal("useRuntimeConfig", () => ({ serverUrl: "http://local.test" }));
   vi.stubGlobal("defineEventHandler", (handler: unknown) => handler);
   vi.stubGlobal("getUserSession", session.prior);
   vi.stubGlobal("getRequestHeader", () => "en");
