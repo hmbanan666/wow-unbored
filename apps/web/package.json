@@ -19,7 +19,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "@unbored/contracts": "workspace:*",
     "nuxt": "^4.6.4",
-    "nuxt-auth-utils": "^0.6.0",
+    "nuxt-auth-utils": "^0.6.2",
     "postgres": "^3.4.9",
     "qrcode-generator": "^2.0.4",
     "satori": "^0.63.2",
@@ -28,11 +28,11 @@
   "devDependencies": {
     "@playwright/test": "^1.65.0",
     "@vitejs/plugin-vue": "^6.0.10",
-    "@vue/server-renderer": "^3.5.44",
+    "@vue/server-renderer": "^3.5.45",
     "@vue/test-utils": "^2.5.1",
     "happy-dom": "^21.0.4",
     "typescript": "5.9.3",
-    "vue": "^3.5.44",
+    "vue": "^3.5.45",
     "vue-tsc": "^3.3.14"
   }
 }

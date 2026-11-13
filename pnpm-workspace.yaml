@@ -12,4 +12,4 @@ overrides:
   "vue-tsc>typescript": "5.9.3"
 
 catalog:
-  vite-plus: 1.4.0
+  vite-plus: 1.5.1
