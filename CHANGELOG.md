@@ -4,8 +4,14 @@ History only. Each GitHub release shows just its own changes, generated from Con
 
 ## Unreleased
 
-- Fixed: On WoW Forever, the extra Enchanting skill-book row stays tied to Enchanting, and opening a profession trainer saves what it teaches.
-- Исправлено: в WoW Forever дополнительная строка Наложения чар остаётся той же профессией, а визит к учителю профессии сохраняется.
+## 0.15.0
+
+- Enchanting and trainers in Forever: the extra Enchanting skill-book row stays tied to Enchanting, and opening a profession trainer saves what it teaches. The addon also records your level cap, and when you accept or turn in a quest.
+- Public profession and recipe pages on playunbored.com, with difficulty and Today goals that tick themselves. When you are signed in and pick a character, your progress shows on top. The site is English only.
+- Profile home for the picked character: Road to 60, your journey, and what to do next. In the Companion, Open my profile opens it in the browser; a QR code signs you in on your phone.
+- Observed Forever quests have public pages. Your progress appears after you sign in and pick a character. Quest chains are published only when every step has been observed.
+- Character and community feed: share your Forever story and screenshots if you choose to. Sharing is off by default.
+- Новое: в Forever исправлены Наложение чар и визиты к учителям профессий, аддон записывает потолок уровня и взятие/сдачу заданий. На сайте публичные страницы профессий, рецептов и заданий с личным прогрессом поверх них, главная профиля, вход с телефона по QR и кнопка Open my profile в Companion. Лента событий и скриншотов выключена, пока её не включишь.
 
 ## 0.14.0
 
