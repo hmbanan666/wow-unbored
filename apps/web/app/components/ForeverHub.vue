@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-  FOREVER_TITLE as title,
-  FOREVER_DESCRIPTION as description,
-  type foreverHub,
-  publicationDate,
-  displayPublicationDate,
-} from "#shared/forever-hub";
+import { type foreverHub, publicationDate, displayPublicationDate } from "#shared/forever-hub";
 import { FOREVER_DATES } from "#shared/forever-dates";
 
 defineProps<{ hub: ReturnType<typeof foreverHub>; unavailable: boolean }>();
@@ -19,86 +13,83 @@ defineEmits<{ refresh: [] }>();
         { label: 'Home', to: '/' },
         { label: 'WoW Forever', to: '/forever' },
       ]"
-      :title="title"
-      :lead="description"
+      title="WoW Forever field guides"
+      lead="Choose your first character, find a quest or learn a craft."
     />
-    <DsProse class="hub-intro" data-hub-copy>
-      <p>
-        Level 60 is the cap in WoW Forever, a permanent game alongside modern WoW and Classic, set
-        on the original continents after Warcraft III Reforged: Forsaken Kingdom and before Molten
-        Core. Its additions include more than 1,000 quests, the Skyborne race, camping and the
-        Legacy System, with guides below for your first character, class choice and early gold.
-      </p>
-      <p>
-        The Legacy System offers account-wide challenges, perks and rewards, and Blizzard says all
-        character advantages can be unlocked on one character. Start with a character you want to
-        keep playing. You can explore another class later without treating it as a requirement for
-        getting started.
-        <a :href="FOREVER_DATES.entries[1].url">Blizzard's overview of Forever</a> explains the
-        world and its new systems.
-      </p>
-    </DsProse>
     <div v-if="unavailable" class="hub-state" role="status">
       <p>The guides could not be loaded. Try again in a minute.</p>
       <DsButton @click="$emit('refresh')">Try again</DsButton>
     </div>
     <template v-else>
       <DsSection v-if="hub.start.length" title="Start here">
-        <DsProse data-hub-copy>
-          <p>
-            At the first login, choose Enhanced if you want Blizzard's suggested starting settings.
-            Choose Classic if you prefer its traditional presentation, then change individual
-            settings in Game Menu &gt; Options when you need to. Open the beginner guide for the
-            first decisions, or go straight to Enhanced vs Classic for the settings behind that
-            choice.
-          </p>
-        </DsProse>
-        <CatalogGrid :pages="hub.start" empty="" />
-      </DsSection>
-      <DsSection title="Key dates" data-hub-copy>
-        <p class="ds-meta">
-          Sources checked
-          <time :datetime="FOREVER_DATES.checked">{{ FOREVER_DATES.checkedLabel }}</time
-          >.
-        </p>
-        <dl class="hub-dates">
-          <div v-for="date in FOREVER_DATES.entries" :key="date.title">
-            <dt>{{ date.title }}</dt>
-            <dd>
-              <p>{{ date.text }}</p>
-              <a :href="date.url">{{ date.source }}</a>
-            </dd>
-          </div>
-        </dl>
-      </DsSection>
-      <DsSection
-        v-for="group in hub.groups"
-        :key="group.group"
-        :title="group.title"
-        :data-guide-group="group.group"
-      >
-        <DsProse data-hub-copy
-          ><p>{{ group.intro }}</p></DsProse
-        >
-        <CatalogGrid :pages="group.pages" empty="" />
-      </DsSection>
-      <DsSection v-if="hub.ungrouped.length" title="More guides">
-        <CatalogGrid :pages="hub.ungrouped" empty="" />
-      </DsSection>
-      <p v-if="!hub.listed.length" class="hub-state">
-        The first WoW Forever guides are on their way.
-      </p>
-      <DsSection v-if="hub.recent.length" title="Recently updated">
-        <ul class="hub-recent">
-          <li v-for="page in hub.recent" :key="page.slug">
-            <NuxtLink :to="page.href">{{ page.title }}</NuxtLink>
-            <time :datetime="publicationDate(page.updatedAt!)">{{
-              displayPublicationDate(page.updatedAt!)
-            }}</time>
+        <ul class="hub-start">
+          <li v-for="page in hub.start" :key="page.href">
+            <NuxtLink :to="page.href">{{ page.title }} <span aria-hidden="true">→</span></NuxtLink>
           </li>
         </ul>
       </DsSection>
+      <div class="topic-spread">
+        <section v-for="group in hub.groups" :key="group.group" :data-guide-group="group.group">
+          <h2>{{ group.title }}</h2>
+          <ul>
+            <li v-for="page in group.pages" :key="page.href">
+              <NuxtLink :to="page.href">{{ page.title }}</NuxtLink>
+            </li>
+          </ul>
+        </section>
+        <section v-if="hub.ungrouped.length">
+          <h2>More guides</h2>
+          <ul>
+            <li v-for="page in hub.ungrouped" :key="page.href">
+              <NuxtLink :to="page.href">{{ page.title }}</NuxtLink>
+            </li>
+          </ul>
+        </section>
+      </div>
+      <p v-if="!hub.listed.length" class="hub-state">
+        The first WoW Forever guides are on their way.
+      </p>
     </template>
+    <DsSection title="Recipes and quests">
+      <DsCardGrid>
+        <DsCard
+          to="/forever/professions"
+          title="Look up a recipe"
+          text="Browse by profession to find materials and places to learn a craft."
+        />
+        <DsCard
+          to="/forever/quests"
+          title="Find a quest"
+          text="Look up where players picked up a quest or turned it in."
+        />
+      </DsCardGrid>
+    </DsSection>
+    <DsSection v-if="!unavailable && hub.recent.length" title="Recently updated">
+      <ul class="hub-recent">
+        <li v-for="page in hub.recent" :key="page.slug">
+          <NuxtLink :to="page.href">{{ page.title }}</NuxtLink>
+          <time :datetime="publicationDate(page.updatedAt!)">{{
+            displayPublicationDate(page.updatedAt!)
+          }}</time>
+        </li>
+      </ul>
+    </DsSection>
+    <DsSection title="Key dates" data-hub-copy>
+      <p class="ds-meta">
+        Sources checked
+        <time :datetime="FOREVER_DATES.checked">{{ FOREVER_DATES.checkedLabel }}</time
+        >.
+      </p>
+      <dl class="hub-dates">
+        <div v-for="date in FOREVER_DATES.entries" :key="date.title">
+          <dt>{{ date.title }}</dt>
+          <dd>
+            <p>{{ date.text }}</p>
+            <a :href="date.url">{{ date.source }}</a>
+          </dd>
+        </div>
+      </dl>
+    </DsSection>
   </DsPage>
 </template>
 
@@ -110,11 +101,59 @@ defineEmits<{ refresh: [] }>();
   padding: var(--space-5);
   border: 1px solid var(--lamp-line-soft);
 }
-.forever-hub :deep(.ds-section > .ds-prose) {
-  margin-bottom: var(--space-4);
+.hub-start {
+  list-style: none;
+  padding: 0 var(--space-4);
+  background: var(--lamp-surface);
+  border-left: 3px solid var(--lamp-gold-dark);
 }
-.hub-intro {
-  margin-top: var(--space-5);
+.hub-start li + li {
+  border-top: 1px solid var(--lamp-line-soft);
+}
+.hub-start a {
+  min-height: var(--tap);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+  text-decoration: none;
+  color: var(--lamp-text);
+}
+.hub-start a:hover {
+  text-decoration: underline;
+}
+.hub-start span {
+  color: var(--lamp-gold);
+}
+.topic-spread {
+  display: grid;
+  gap: var(--space-6);
+  margin-top: var(--space-7);
+}
+.topic-spread section {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--lamp-line);
+}
+.topic-spread h2 {
+  margin: 0;
+  font: 700 var(--text-2xl)/1.2 var(--font-display);
+}
+.topic-spread ul {
+  padding: 0;
+  list-style: none;
+  margin-top: var(--space-3);
+}
+.topic-spread a {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding-block: var(--space-2);
+}
+@media (min-width: 640px) {
+  .topic-spread {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .hub-dates {
   display: grid;

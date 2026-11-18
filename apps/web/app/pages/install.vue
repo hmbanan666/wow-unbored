@@ -167,7 +167,7 @@ useSchemaOrg([
       <DsProse
         ><p>
           Open the Companion and choose <strong>Open my profile</strong>. Its one-time link signs
-          you in. Then pick a Character in the header to see your recipes on any profession page.
+          you in. Then pick a Character in the footer to see your recipes on any profession page.
         </p></DsProse
       >
     </DsSection>

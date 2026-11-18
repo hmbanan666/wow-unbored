@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { TELEGRAM_URL } from "#shared/catalog";
-/** Site footer: the same links as the header, privacy, source, and the fan-made note. */
 defineProps<{
-  links: readonly { label: string; to: string }[];
   privacy: string;
   source: string;
 }>();
@@ -12,14 +10,17 @@ defineProps<{
   <footer class="ds-footer">
     <DsContainer width="wide">
       <nav class="ds-footer__links" aria-label="Footer">
-        <NuxtLink v-for="link in links" :key="link.to" :to="link.to">{{ link.label }}</NuxtLink>
+        <NuxtLink to="/install">Get Bory</NuxtLink>
+        <NuxtLink to="/my">My page</NuxtLink>
+        <NuxtLink to="/forever/feed">Community feed</NuxtLink>
         <NuxtLink to="/about">About</NuxtLink>
         <a :href="TELEGRAM_URL" rel="noopener">Telegram</a>
         <a :href="source" rel="noopener">Source on GitHub</a>
       </nav>
+      <div id="check-character"><slot /></div>
       <p class="ds-footer__privacy">
         Bory only learns about your own characters.
-        <a :href="privacy" rel="noopener">What he knows</a>
+        <a :href="privacy" rel="noopener">Privacy</a>
       </p>
       <p class="ds-meta">
         World of Warcraft and Blizzard Entertainment are trademarks or registered trademarks of

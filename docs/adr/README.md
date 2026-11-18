@@ -126,6 +126,15 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0104. Forever quest observations and authored chains](0104-forever-quest-observations-and-chains.md)
 
 - [0105. Character and community feeds](0105-character-and-community-feeds.md)
+
+- [0110. Three sections for the field guide](0110-field-guide-sections.md)
+
+- [0111. Account and addon links in the footer](0111-footer-account-and-addon.md)
+
+- [0112. Index quest pages with useful sightings](0112-unmapped-quest-indexing.md)
+
 - [0115. Recipe search answers](0115-recipe-search-answers.md)
+
 - [0116. The short answer in guides](0116-guide-short-answer.md)
+
 - [0117. Named recipes on profession pages](0117-named-profession-recipes.md)

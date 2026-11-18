@@ -148,7 +148,7 @@ const app = vue.createApp({
         { style: "padding: 4px 20px; color: #b8a385; font: 12px system-ui" },
         "Local fixture · synthetic game observations",
       ),
-      vue.h(Nav, { links: SITE_NAV }, { character: () => vue.h(Picker) }),
+      vue.h(Nav, { links: SITE_NAV }),
       vue.h(vue.Suspense, null, {
         default: () =>
           vue.h(
@@ -174,6 +174,7 @@ const app = vue.createApp({
             },
           ),
       }),
+      vue.h("footer", null, [vue.h(Picker)]),
     ]),
 });
 const components = import.meta.glob("../../app/components/**/*.vue", {

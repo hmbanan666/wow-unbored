@@ -159,7 +159,7 @@ test.skipIf(!hasPostgres)(
     await sql.unsafe(migration.slice(migration.indexOf("DO $$")));
     await sql`GRANT SELECT ON characters, character_events TO unbored_web`;
     await sql`GRANT USAGE ON SCHEMA game TO unbored_web`;
-    await sql`GRANT SELECT ON game.builds, game.profession_recipes, game.rows TO unbored_web`;
+    await sql`GRANT SELECT ON game.builds, game.profession_recipes, game.recipe_slugs, game.rows TO unbored_web`;
     await sql.begin(async (tx) => {
       await tx`SET LOCAL ROLE unbored_web`;
       expect((await readCommunityFeed(tx as never)).posts).toEqual([]);
@@ -214,5 +214,37 @@ test.skipIf(!hasPostgres)(
     const id = `forever/${fixtureCharacter.realm}/${fixtureCharacter.name}`;
     await database.sql`INSERT INTO character_events (character_id, game, type, key, at, from_value, to_value) VALUES (${id}, 'forever', 'level_up', 'new-owner', 101, '25', '26')`;
     expect((await readCommunityFeed(database.sql)).posts.map((p) => p.label)).toEqual(["Level 26"]);
+  },
+);
+
+test.skipIf(!hasPostgres)(
+  "a repeated recipe appears once with its published address in both feeds",
+  async () => {
+    const { PostgresDb } = await import("../../server/src/db");
+    const { setSharing } = await import("../../server/src/character-sharing");
+    const { fixtureAccount } = await import("./public-professions-fixture");
+    const state = await setSharing(
+      new PostgresDb(database.sql),
+      fixtureAccount,
+      fixtureCharacter,
+      true,
+    );
+    const id = `forever/${fixtureCharacter.realm}/${fixtureCharacter.name}`;
+    await database.sql`INSERT INTO character_events (character_id, game, type, key, at, to_value) VALUES
+    (${id}, 'forever', 'recipe_learned', '7421', 102, '7421'),
+    (${id}, 'forever', 'recipe_learned', '7421', 103, '7421')`;
+    const parts = state.href.split("/");
+    for (const feed of [
+      await readCommunityFeed(database.sql),
+      await readCharacterFeed(database.sql, parts[3]!, parts[4]!),
+    ]) {
+      expect(feed.posts.filter((p) => p.kind === "recipe")).toMatchObject([
+        {
+          at: 103,
+          label: "Learned Runed Copper Rod",
+          resultHref: "/forever/recipes/runed-copper-rod",
+        },
+      ]);
+    }
   },
 );

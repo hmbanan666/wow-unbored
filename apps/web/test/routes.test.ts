@@ -136,3 +136,35 @@ test("public SSR never fetches a player session or personal Path data", () => {
   assert.equal(paths.includes("useFetch"), false);
   // /my after-mount privacy is exercised through component SSR and production HTTP tests.
 });
+
+// Paths only, from the owner's November 18 Search Console export. Content rows live in Postgres.
+test("every search landing path still matches a public Nuxt page or a permanent redirect", () => {
+  const pages = path.join(web, "app/pages");
+  const routes = files(pages).map((file) => {
+    const pattern =
+      "/" +
+      path
+        .relative(pages, file)
+        .replace(/\.vue$/, "")
+        .replace(/(^|\/)index$/, "")
+        .replaceAll("[game]", "(?:forever|retail)")
+        .replaceAll("[slug]", "[a-z0-9-]+");
+    return new RegExp(`^${pattern}$`);
+  });
+  const config = readFileSync(path.join(web, "nuxt.config.ts"), "utf8");
+  const paths = readFileSync(path.join(web, "test/fixtures/search-landing-paths.txt"), "utf8")
+    .trim()
+    .split("\n");
+  for (const url of paths) {
+    if (url === "/download/") {
+      assert.match(
+        config,
+        /"\/download":\s*\{\s*redirect:\s*\{\s*to: "\/install", statusCode: 301/,
+      );
+    } else
+      assert.ok(
+        routes.some((route) => route.test(url)),
+        url,
+      );
+  }
+});

@@ -1,93 +1,31 @@
 <script setup lang="ts">
-import { pageMessage, PUBLIC_COPY, type CatalogSummary, type PublicPage } from "#shared/catalog";
+import type { CatalogSummary } from "#shared/catalog";
 
-type Payload = PublicPage | { error: string; message: string };
+const title = "Field guides for WoW Forever and Retail";
+const description =
+  "Choose a hunter pet, find a profession recipe or track down the Grand Expedition Yak. Explore field guides for WoW Forever and World of Warcraft Retail.";
+useSeoMeta({ title, description });
+defineOgImage("Unbored", { title, description });
+useSchemaOrg([defineWebPage({ "@type": "CollectionPage", name: title, description })]);
 
-const { data, error } = await useFetch<Payload>("/api/home");
-const page =
-  data.value && "headline" in data.value
-    ? {
-        ...data.value,
-        title: "WoW & WoW Forever guides, Retail addon plans",
-        description:
-          "Read WoW and WoW Forever guides with checked sources. The Unbored Retail addon plans what to play next, with Bory showing one step at a time.",
-      }
-    : null;
-if (!page) {
-  throw createError({
-    statusCode: 503,
-    statusMessage: pageMessage(data.value, error.value, PUBLIC_COPY.unavailable),
-    fatal: true,
-  });
-}
-const { data: catalog } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog");
-const collections = computed(() =>
-  (catalog.value?.pages ?? []).filter((item) => item.kind === "collection"),
-);
-const paths = computed(() => (catalog.value?.pages ?? []).filter((item) => item.kind === "path"));
-const guides = computed(() =>
-  (catalog.value?.pages ?? []).filter((item) => item.kind === "guide" && item.game === "retail"),
-);
-const hasForever = computed(() =>
-  (catalog.value?.pages ?? []).some((item) => item.kind === "guide" && item.game === "forever"),
-);
-
-const steps = [
-  {
-    title: "Install the addon and the Companion.",
-    text: "The Companion is a small Windows app that keeps Bory up to date.",
-  },
-  {
-    title: "Pick an idea in game.",
-    text: 'No typing: tap a chip like "Get a mount" or one of Bory\'s ideas.',
-  },
-  {
-    title: "Follow one step at a time.",
-    text: "Each plan promises one result you can really get tonight, with a pin on the map for every step.",
-  },
+const { data, error, refresh } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog");
+// Editorial order from the November 2026 search report. Only published entries can appear.
+const picks = [
+  "/guides/wow-forever-hunter-pet-guide",
+  "/guides/best-wow-forever-addons",
+  "/guides/wow-forever-cozy-sleeping-bag",
+  "/guides/wow-forever-enchanting-guide",
+  "/guides/wow-forever-warlock-leveling-guide",
+  "/guides/how-to-get-the-grand-expedition-yak",
+  "/collections/wow-hearthstone-toys",
 ];
-
-useSchemaOrg([
-  defineSoftwareApp({
-    name: "Unbored",
-    operatingSystem: "Windows",
-    applicationCategory: "GameApplication",
-    offers: { price: 0, priceCurrency: "USD" },
-    downloadUrl: "https://playunbored.com/download/windows",
-  }),
-]);
+const featured = computed(() => {
+  const published = new Map(data.value?.pages?.map((page) => [page.href, page]));
+  return picks.flatMap((href) => published.get(href) ?? []);
+});
 </script>
-
 <template>
-  <PageView :page="page">
-    <DsSection title="How Bory works">
-      <DsSteps :steps="steps" />
-    </DsSection>
-    <DsSection
-      v-if="guides.length"
-      title="Guides"
-      lead="Short guides, checked against the game's own data."
-      :more="{ label: 'All guides', to: '/guides' }"
-    >
-      <CatalogGrid :pages="guides" empty="" />
-    </DsSection>
-    <DsSection v-if="hasForever">
-      <DsCard
-        to="/forever"
-        title="WoW Forever"
-        text="Explore guides for Blizzard’s separate Classic-based game, with sources and build checks."
-      />
-    </DsSection>
-    <DsSection
-      v-if="collections.length"
-      title="Collections"
-      lead="Short, authored top lists. Every pick says exactly where it comes from."
-      :more="{ label: 'All collections', to: '/collections' }"
-    >
-      <CatalogGrid :pages="collections" empty="" />
-    </DsSection>
-    <DsSection v-if="paths.length" title="Paths" :more="{ label: 'All paths', to: '/paths' }">
-      <CatalogGrid :pages="paths" empty="" />
-    </DsSection>
-  </PageView>
+  <DsPage width="wide">
+    <FieldGuideHome :featured="featured" :unavailable="!!error" @retry="refresh" />
+  </DsPage>
 </template>

@@ -4,6 +4,8 @@ import { createSSRApp, h, ref, Suspense } from "vue";
 import { renderToString } from "@vue/server-renderer";
 import FeedPage from "../../app/pages/[game]/players/[realm]/[name].vue";
 import CommunityPage from "../../app/pages/[game]/feed.vue";
+import PlayerFeed from "../../app/components/PlayerFeed.vue";
+import { characterFeedFixture } from "../fixtures/character-feed";
 import FeedControls from "../../app/components/FeedControls.vue";
 const character = { game: "forever", realm: "Realm", name: "Mira" };
 const selected = "forever/Realm/Mira";
@@ -66,4 +68,23 @@ test("only the owner of the picked feed sees controls, with an explicit upload g
   state.value = { status: "ready", signedIn: false, characters: [], selected: "" };
   await flushPromises();
   expect(controls.text()).toBe("");
+});
+
+test("consecutive moments on the same day share an author and keep separate result links", () => {
+  const author = characterFeedFixture.posts[0]!;
+  const recipe = {
+    ...characterFeedFixture.posts[1]!,
+    at: author.at - 1,
+    resultHref: "/forever/recipes/lesser-stamina",
+  };
+  const wrapper = mount(PlayerFeed, {
+    props: {
+      base: "/forever/feed",
+      community: true,
+      feed: { shared: true, posts: [author, recipe], next: null },
+    },
+  });
+  expect(wrapper.findAll("article")).toHaveLength(1);
+  expect(wrapper.get("article header a").text()).toBe(author.name);
+  expect(wrapper.get(`a[href="${recipe.resultHref}"]`).text()).toBe(recipe.label);
 });

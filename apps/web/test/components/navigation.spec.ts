@@ -12,6 +12,13 @@ test("both menus follow a guide's Game and clear it when leaving the guide", asy
   });
   vi.stubGlobal("useRoute", () => route);
   const nav = mount(Nav, { props: { links: SITE_NAV } });
+  for (const menu of nav.findAll("nav")) {
+    expect(menu.findAll("a").map((a) => [a.text(), a.attributes("href")])).toEqual([
+      ["WoW Forever", "/forever"],
+      ["Professions", "/forever/professions"],
+      ["WoW Retail", "/guides"],
+    ]);
+  }
   const current = () =>
     nav.findAll('a[aria-current="page"]').map((link) => link.attributes("href"));
   expect(current()).toEqual(["/forever", "/forever"]);
@@ -21,5 +28,10 @@ test("both menus follow a guide's Game and clear it when leaving the guide", asy
   route.path = route.fullPath = "/collections/first-mounts";
   route.meta.game = "forever";
   await nextTick();
-  expect(current()).toEqual(["/collections", "/collections"]);
+  expect(current()).toEqual(["/guides", "/guides"]);
+  for (const path of ["/forever/professions/enchanting", "/forever/recipes/enchanted-lute"]) {
+    route.path = route.fullPath = path;
+    await nextTick();
+    expect(current()).toEqual(["/forever/professions", "/forever/professions"]);
+  }
 });

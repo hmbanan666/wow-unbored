@@ -89,7 +89,7 @@ test("picker clears overlays for the other game; category filters and known Tail
   await picker.focus();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Pick a WoW Forever character in the header")).toBeVisible();
+  await expect(page.getByText("Pick a WoW Forever character in the footer")).toBeVisible();
   await expect(page.locator(".collection-ring")).toHaveCount(0);
   await expect(page.locator(".today-card")).toHaveCount(0);
   await picker.selectOption({ label: "Kania · 23 WARLOCK · CAMWOW EU4 Realm 3 PvE" });

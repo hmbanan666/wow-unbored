@@ -1,14 +1,19 @@
 # Site structure
 
-How playunbored.com is organised (ADRs 0072-0074). The site is an authored portal plus the addon, not a game database: there is no page per mount, pet, item, NPC or quest, and none is planned.
+Unbored is an English field guide for players choosing what to do in WoW Forever and Retail. The wordmark links home. The three primary sections are WoW Forever, Professions and WoW Retail. [ADR 0110](adr/0110-field-guide-sections.md)
 
 ## Sections
 
-| URL | What it is | Indexed |
+| URL | What readers find | Indexed |
 | --- | --- | --- |
-| `/` | What Unbored is, how Bory works in three steps, featured Collections and Paths, a WoW Forever link when a guide is published, install | yes |
-| `/guides` | Published Retail Guides, plus one link card to `/forever`: short articles such as "What to do at max level in Midnight" | yes |
-| `/forever` | Published WoW Forever Guides, kept separate from Retail | yes |
+| `/` | The three sections and Most read, an editorial selection from published guide and Collection summaries informed by search demand | yes |
+| `/guides` | WoW Retail guides, Collections and Paths | yes |
+| `/forever` | First steps and published guides grouped by subject, with recipe and quest lookups | yes |
+| `/forever/professions`, `/forever/professions/<slug>`, `/forever/recipes/<slug>` | Profession and recipe reference | yes |
+| `/forever/quests` | Collapsible zone lists, published chains and a separate disclosure for unmapped quests | yes |
+| `/forever/quests/<slug>` | The observed start or turn-in. Empty pages stay public and acquire indexing automatically when useful sightings arrive | with a named NPC, zone or coordinates |
+| `/forever/quests/chains/<slug>` | A published quest chain | yes |
+| `/forever/feed`, `/forever/players/<realm>/<name>` | Opt-in community and character feeds. Only explicitly shared character feeds enter the sitemap | yes |
 | `/guides/<slug>` | One Guide for either Game: headed sections of original text, checked facts, links to the Collections and Paths it points at | yes |
 | `/collections` | Every published Collection: authored top lists such as "Top mounts to get first" | yes |
 | `/collections/<slug>` | One Collection: why the list, then each item with what it is and exactly how to get it | yes |
@@ -18,7 +23,9 @@ How playunbored.com is organised (ADRs 0072-0074). The site is an authored porta
 | `/install` | Bory landing page, live Windows download, manual addon zip, setup, privacy and visible FAQ | yes |
 | `/my` | My page: your Characters, active Paths with progress, Path completion history, Plans and Wins, after signing in from the Companion | no |
 
-Header: Guides, WoW Forever, Collections, Paths, Get Bory, My page. The active header section follows a Guide’s Game: a Forever Guide highlights WoW Forever even at `/guides/<slug>`. Footer: the same links, About, Telegram, privacy ("What Bory knows"), source on GitHub. Every page below the home has breadcrumbs (Home > Collections > Top mounts to get first), mirrored in `BreadcrumbList` structured data.
+Forever guides highlight WoW Forever even at `/guides/<slug>`. Recipes highlight Professions. Collections and Paths highlight WoW Retail. The footer contains Get Bory, My page, sign-in or character selection, About, Telegram, source, privacy and the community feed. [ADR 0111](adr/0111-footer-account-and-addon.md)
+
+Quest pages with no useful location serve HTTP 200 and `noindex, follow`. The sitemap and the zone lists use the same sighting criteria as the detail page. [ADR 0112](adr/0112-unmapped-quest-indexing.md)
 
 ## A list item
 
@@ -26,7 +33,7 @@ Each item of a Collection (and each Path goal) shows: the game name, what it is 
 
 ## Visitor flow
 
-Search result > a Collection or Path page > "Track this in game with Bory" > install, then My page from the Companion > the same page shows your progress (20 / 50) > pick it as your Path, and Bory's next Plans come from its unfinished items.
+Readers can go straight from a search result to a guide, recipe or quest. People who want their progress can pick a character in the footer after signing in. Sharing a character feed is a separate choice and starts off.
 
 ## SEO
 
@@ -36,7 +43,7 @@ Every page is English, including signed-in views. Public pages are server-render
 
 Non-root paths ending with a slash return 301 to the slash-less path, preserving the query string. Canonical guide URLs stay unchanged. HTTP-to-HTTPS redirection belongs to hosting and is not changed here.
 
-The home title names WoW and WoW Forever guides and the Retail addon’s plans, with the brand appended once. Its title/description are set in the home component; the authored home body stays in Postgres. `/about` is a static English page describing sources, build/date checks, review after patches/source changes, no paid placements and Telegram contact, without a personal byline. OG images use the page hero when available, otherwise Bory; Forever images carry a WoW Forever badge.
+Home describes the field guide. Featured links get their title and summary from the published catalog. `/about` is a static English page describing sources, build/date checks, review after patches/source changes, no paid placements and Telegram contact, without a personal byline. OG images use the page hero when available, otherwise Bory; Forever images carry a WoW Forever badge.
 
 ## Content
 
@@ -48,7 +55,7 @@ A Guide is the third kind in `content.paths` (`kind = 'guide'`), authored throug
 
 Retail Guides may have items, inline game references, heroes and figures under the Collection and media rules. Every Retail game fact comes from the Game DB build it was checked against; anything that cannot be checked is left out. A Retail Guide links to at least one Collection, and the Collections it points at link back.
 
-WoW Forever supports Guides only, with own-image heroes and figures imported through `scripts/media.ts add-image`. Items, Retail inline game references, Blizzard heroes (`kind`, `id`) and figure `ref` are rejected. Publishing never queues Blizzard media sync; the page API returns referenced `image:<hash>` entries, and own-image heroes use the same CSS cover fitting as Retail without additional image processing. Facts are checked manually against Forever sources and its own build, never Retail ids. `/forever` lists only published Forever Guides; ADR 0084 groups them by each publication's `group` metadata, with Start here, sourced key dates and five recently updated guides; empty groups stay hidden; `/guides` lists only Retail Guides and links to `/forever`. Forever pages have a WoW Forever badge, no signed-in progress controls and no addon installation prompt.
+WoW Forever supports Guides only, with own-image heroes and figures imported through `scripts/media.ts add-image`. Items, Retail inline game references, Blizzard heroes (`kind`, `id`) and figure `ref` are rejected. Publishing never queues Blizzard media sync; the page API returns referenced `image:<hash>` entries, and own-image heroes use the same CSS cover fitting as Retail without additional image processing. Facts are checked manually against Forever sources and its own build, never Retail ids. `/forever` lists only published Forever Guides; ADR 0084 groups them by each publication's `group` metadata, with Start here, sourced key dates and five recently updated guides; empty groups stay hidden; `/guides` lists only Retail Guides and links to Collections and Paths. Forever Guides identify their Game and lead back to Forever topics.
 
 Every Guide ends with its Game’s hub and up to three other published Guides of that Game, preferring the same group for Forever, then latest publication and slug within each preference. If fewer than three exist, only those are shown; the current Guide and drafts are excluded. This is template navigation, not a rewrite of guide blocks.
 
@@ -58,4 +65,4 @@ Both Games may carry `sources`: up to 20 `{label, url, accessed}` entries (label
 
 Signed-in additions to `/paths`, `/paths/<slug>` and `/collections/<slug>` load after mounting: a Character switcher, progress, and (on detail pages) active Path selection with replacement confirmation. These additions never enter public SSR HTML or shared caches; no new public URLs are introduced.
 
-`/download/windows`, `/download/windows-msi` and `/download/addon` redirect to GitHub release assets on demand (ADR 0085). They are not pages: noindex, excluded from the sitemap and disallowed by robots. `/install` adds SoftwareApplication with the on-domain download address, current version and size, own screenshot and zero-price offer; its FAQPage answers come from the visible FAQ (ADR 0086). No ratings are emitted.
+`/download` permanently redirects to `/install`. `/download/windows`, `/download/windows-msi` and `/download/addon` redirect to GitHub release assets on demand (ADR 0085). They are not pages: noindex, excluded from the sitemap and disallowed by robots. `/install` adds SoftwareApplication with the on-domain download address, current version and size, own screenshot and zero-price offer; its FAQPage answers come from the visible FAQ (ADR 0086). No ratings are emitted.

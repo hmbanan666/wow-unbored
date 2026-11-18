@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { FeedPage } from "#shared/character-feed";
-defineProps<{ feed: FeedPage; community?: boolean; base: string }>();
+import type { FeedPage, FeedPost } from "#shared/character-feed";
+const props = defineProps<{ feed: FeedPage; community?: boolean; base: string }>();
 const date = (at: number) =>
   new Date(at * 1000).toLocaleDateString("en-GB", {
     day: "numeric",
@@ -8,19 +8,28 @@ const date = (at: number) =>
     year: "numeric",
     timeZone: "UTC",
   });
+const groups = computed(() => {
+  const runs: { author: FeedPost; posts: FeedPost[] }[] = [];
+  for (const post of props.feed.posts) {
+    const last = runs.at(-1);
+    if (last && last.author.href === post.href && date(last.author.at) === date(post.at)) {
+      last.posts.push(post);
+    } else {
+      runs.push({ author: post, posts: [post] });
+    }
+  }
+  return runs;
+});
 const marks = { level: "↑", profession: "✦", recipe: "◇", reputation: "☆", screenshot: "◈" };
 </script>
 <template>
   <section class="player-feed" aria-label="Player feed">
     <header class="feed-heading">
-      <p class="eyebrow">
-        WoW Forever ·
-        {{ community ? "From the community" : "One character, many little victories" }}
-      </p>
+      <p v-if="!community" class="eyebrow">WoW Forever</p>
       <h1>
         {{
           community
-            ? "Small moments. Good company."
+            ? "WoW Forever community feed"
             : feed.shared
               ? `${feed.name}’s story`
               : "This character has not shared a feed"
@@ -38,9 +47,6 @@ const marks = { level: "↑", profession: "✦", recipe: "◇", reputation: "☆
       <NuxtLink v-if="!community" class="feed-link" to="/forever/feed"
         >Meet the community <span aria-hidden="true">↗</span></NuxtLink
       >
-      <NuxtLink v-else class="feed-link" to="/my"
-        >Your character and sharing settings <span aria-hidden="true">↗</span></NuxtLink
-      >
     </header>
     <div v-if="feed.shared && !feed.posts.length" class="feed-empty">
       <span aria-hidden="true">✦</span>
@@ -55,50 +61,47 @@ const marks = { level: "↑", profession: "✦", recipe: "◇", reputation: "☆
       <NuxtLink to="/forever">Explore WoW Forever</NuxtLink>
     </div>
     <div class="feed-posts">
-      <article
-        v-for="post in feed.posts"
-        :key="post.id"
-        class="feed-post"
-        :class="{ 'has-photo': post.image }"
-      >
+      <article v-for="{ author, posts } in groups" :key="author.id" class="feed-post">
         <header class="post-author">
-          <span class="post-avatar" aria-hidden="true">{{ post.name.slice(0, 1) }}</span>
+          <span class="post-avatar" aria-hidden="true">✦</span>
           <div>
-            <NuxtLink :to="post.href">{{ post.name }}</NuxtLink>
-            <p>{{ post.realm }}</p>
+            <NuxtLink :to="author.href">{{ author.name }}</NuxtLink>
+            <p>{{ author.realm }}</p>
           </div>
-          <time :datetime="new Date(post.at * 1000).toISOString()"
-            >{{ date(post.at) }}<small>UTC</small></time
+          <time :datetime="new Date(author.at * 1000).toISOString()"
+            >{{ date(author.at) }}<small>UTC</small></time
           >
         </header>
-        <picture v-if="post.image" class="post-photo">
-          <source
-            v-for="format in ['avif', 'webp'] as const"
-            :key="format"
-            :type="`image/${format}`"
-            :srcset="
-              post.image.variants
-                .filter((v) => v.format === format)
-                .map((v) => `/player-media/${post.image!.id}/${v.file} ${v.width}w`)
-                .join(', ')
-            "
-            sizes="(max-width: 720px) 100vw, 680px"
-          />
-          <img
-            :src="`/player-media/${post.image.id}/${post.image.variants.at(-1)?.file}`"
-            :width="post.image.width"
-            :height="post.image.height"
-            :alt="`${post.name}’s screenshot from WoW Forever`"
-            loading="lazy"
-          />
-        </picture>
-        <div class="post-moment">
-          <span class="moment-mark" aria-hidden="true">{{ marks[post.kind] }}</span>
-          <div>
-            <p class="eyebrow">
-              {{ post.kind === "screenshot" ? "From the game" : "A milestone" }}
-            </p>
-            <h2>{{ post.label }}</h2>
+        <div v-for="post in posts" :key="post.id">
+          <picture v-if="post.image" class="post-photo">
+            <source
+              v-for="format in ['avif', 'webp'] as const"
+              :key="format"
+              :type="`image/${format}`"
+              :srcset="
+                post.image.variants
+                  .filter((v) => v.format === format)
+                  .map((v) => `/player-media/${post.image!.id}/${v.file} ${v.width}w`)
+                  .join(', ')
+              "
+              sizes="(max-width: 720px) 100vw, 680px"
+            />
+            <img
+              :src="`/player-media/${post.image.id}/${post.image.variants.at(-1)?.file}`"
+              :width="post.image.width"
+              :height="post.image.height"
+              :alt="`${post.name}’s screenshot from WoW Forever`"
+              loading="lazy"
+            />
+          </picture>
+          <div class="post-moment">
+            <span class="moment-mark" aria-hidden="true">{{ marks[post.kind] }}</span>
+            <div>
+              <h2>
+                <NuxtLink v-if="post.resultHref" :to="post.resultHref">{{ post.label }}</NuxtLink
+                ><template v-else>{{ post.label }}</template>
+              </h2>
+            </div>
           </div>
         </div>
       </article>
@@ -204,10 +207,10 @@ time small {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 30px 24px;
+  padding: var(--space-4) var(--space-5);
 }
-.post-moment .eyebrow {
-  margin: 0 0 5px;
+.feed-post > div + div {
+  border-top: 1px solid var(--lamp-line-soft);
 }
 .post-moment h2 {
   margin: 0;

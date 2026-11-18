@@ -6,11 +6,11 @@ const { data } = await useFetch<{ pages: CatalogSummary[] }>("/api/catalog", {
 });
 const pages = computed(() => data.value?.pages ?? []);
 
-const title = "World of Warcraft guides: what to do and how to get it";
+const title = "WoW Retail guides, Collections and Paths";
 const description =
   "Short World of Warcraft guides written from the game's own data: what to do next, and exactly how to get the mounts and pets worth having.";
 useSeoMeta({ title, description });
-defineOgImage("Unbored", { title: "Guides", description });
+defineOgImage("Unbored", { title, description });
 useSchemaOrg([
   defineWebPage({ "@type": "CollectionPage", name: title, description }),
   defineItemList({
@@ -33,16 +33,19 @@ useSchemaOrg([
         { label: 'Home', to: '/' },
         { label: 'Guides', to: '/guides' },
       ]"
-      title="Guides"
-      lead="Short guides with the facts checked against the game's own data. Each one points at the lists and Paths that take you further."
+      title="WoW Retail field guides"
+      lead="Find your next mount, choose a Collection or work through an expansion at your own pace."
     />
-    <DsSection>
+    <DsCardGrid>
       <DsCard
-        to="/forever"
-        title="WoW Forever"
-        text="Guides for Blizzard’s separate Classic-based game."
+        to="/collections"
+        title="Collections"
+        text="Browse mounts, pets and toys, with a source for each pick."
       />
+      <DsCard to="/paths" title="Paths" text="Pick an expansion and follow its goals in order." />
+    </DsCardGrid>
+    <DsSection title="Retail guides">
+      <CatalogGrid :pages="pages" empty="The first guides are on their way." />
     </DsSection>
-    <CatalogGrid :pages="pages" empty="The first guides are on their way." />
   </DsPage>
 </template>

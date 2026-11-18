@@ -24,7 +24,7 @@ export default defineNuxtConfig({
   site: {
     url: "https://playunbored.com",
     name: "Unbored",
-    description: "Bory gives you one step at a time in World of Warcraft.",
+    description: "Field guides for WoW Forever and World of Warcraft Retail.",
     defaultLocale: "en",
   },
   schemaOrg: {
@@ -40,6 +40,7 @@ export default defineNuxtConfig({
     disallow: ["/download/"],
   },
   routeRules: {
+    "/download": { redirect: { to: "/install", statusCode: 301 } },
     "/forever/feed": { headers: { "cache-control": "no-store" } },
     "/forever/players/**": { headers: { "cache-control": "no-store" } },
     "/player-media/**": { headers: { "cache-control": "no-store" } },
@@ -54,7 +55,7 @@ export default defineNuxtConfig({
   sitemap: {
     cacheMaxAgeSeconds: 0,
     sources: ["/api/__sitemap__/urls"],
-    exclude: ["/my", "/my/**", "/enter/**", "/download/**"],
+    exclude: ["/download", "/my", "/my/**", "/enter/**", "/download/**"],
   },
   nitro: {
     preset: "node-server",
