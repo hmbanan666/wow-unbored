@@ -3,7 +3,7 @@
 Use this checklist when assigning, revising or reviewing an English field guide page.
 
 - Write down the player's question and where it came from. Save the search query, Search Console date range or reader report in the brief. Give a second question its own page only when it needs a different answer.
-- Name the game and the subject in the title. Give the answer in the first two sentences. A reader looking for a purchase should know who sells it, where to go and how much gold to bring before scrolling.
+- Put the answer in the title when it fits, such as the vendor’s name and price for a mount. For a recipe, name the item, profession and game. Give the full answer in the first two sentences. A reader looking for a purchase should know who sells it, where to go and how much gold to bring before scrolling.
 - Give the details that change the player's next action. For a craft, list material names and quantities, the known skill requirement and how to learn it. For a route, put the steps in travel order.
 - Attribute observations. A trainer visit can establish who offered a recipe, where and at what price on that visit. Current stock, drop chances and requirements need their own evidence. Mark gaps beside the affected fact.
 - Use our own screenshots when they show the subject clearly. Describe what the player should recognize. Leave the image out when there is no suitable screenshot.
