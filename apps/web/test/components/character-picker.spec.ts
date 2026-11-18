@@ -24,7 +24,7 @@ for (const count of [0, 1, 3])
     await flushPromises();
     expect(fetch).toHaveBeenCalledWith("/api/me/characters", { cache: "no-store" });
     if (!count) {
-      expect(wrapper.text()).toContain("Open the Companion to bring your characters here");
+      expect(wrapper.text()).toContain("How to connect your character");
       expect(wrapper.find("select").exists()).toBe(false);
     } else {
       expect(wrapper.findAll("option")).toHaveLength(count + 1);

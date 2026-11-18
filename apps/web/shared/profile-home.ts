@@ -18,9 +18,3 @@ export type JourneyStop = {
   kind: "level" | "profession" | "reputation" | "recipe" | "zone";
 };
 export type ProfileHome = CharacterPage & { hero: ProfileHero; journey: JourneyStop[] };
-export const PROFILE_COPY = {
-  title: "My profile",
-  loading: "Bory is checking your character…",
-  failed: "Bory couldn't check your character just now.",
-  fallback: "Open a profession window in the game once",
-};

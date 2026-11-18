@@ -138,3 +138,7 @@ The full v0.6 decision list (D1-D46) is kept in [`docs/decisions-v0.6.md`](../de
 - [0116. The short answer in guides](0116-guide-short-answer.md)
 
 - [0117. Named recipes on profession pages](0117-named-profession-recipes.md)
+
+- [0120. Check my character on public recipes and professions](0120-quiet-character-check.md)
+
+- [0121. My page opens on the selected character's professions](0121-my-page-professions.md)

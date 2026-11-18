@@ -26,6 +26,7 @@ export function useSelectedCharacter() {
   async function refresh() {
     state.value.status = "loading";
     // Clear personal state immediately on refresh/sign-out or a failed session check.
+    state.value.signedIn = false;
     state.value.characters = [];
     state.value.selected = "";
     try {

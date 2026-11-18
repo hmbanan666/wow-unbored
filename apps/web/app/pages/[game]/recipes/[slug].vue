@@ -28,12 +28,35 @@ const {
   data: overlay,
   status,
   otherGame,
+  signedIn,
   refresh,
 } = useProfessionOverlay<SingleRecipeOverlay>(
   "recipes",
   () => game,
   () => slug,
 );
+const fact = computed(() => {
+  const check = overlay.value;
+  if (!check) return;
+  const name = check.character.name;
+  if (check.known === true) return `${name} knows this recipe.`;
+  if (check.known === null) return `${name} hasn’t checked this recipe yet.`;
+  const required = check.difficulty.requiredSkill;
+  const gap = required !== null && check.skill !== null && check.skill < required;
+  return gap
+    ? `${name} hasn’t learned this. Needs ${data.value!.profession.name} ${required}, has ${check.skill}.`
+    : `${name} hasn’t learned this recipe yet.`;
+});
+const action = computed(() => {
+  const { related, guides, profession } = data.value!;
+  const next = related.at(-1);
+  return (
+    (guides[0] && { title: "Read the guide", href: guides[0].href }) ??
+    (next
+      ? { title: next.name, href: recipeHref(game, next.slug) }
+      : { title: `Browse ${profession.name} recipes`, href: professionHref(game, profession.slug) })
+  );
+});
 const { title, description, lead } = recipeCopy(
   data.value.recipe,
   data.value.profession.name,
@@ -59,8 +82,16 @@ useHead({
       :lead="lead"
       :eyebrow="`${gameName(game)} · ${data.profession.name} · ${data.recipe.category.name}`"
     />
-    <OverlayStatus :game="game" :other-game="otherGame" :status="status" @retry="refresh" />
-    <RecipeDetail :recipe="data.recipe" :overlay="overlay" :game="game" inline />
+    <CharacterCheck
+      :game="game"
+      :signed-in="signedIn"
+      :other-game="otherGame"
+      :status="status"
+      :fact="fact"
+      :action="action"
+      @retry="refresh"
+    />
+    <RecipeDetail :recipe="data.recipe" :game="game" />
     <ProfessionGuideLinks :guides="data.guides" />
     <DsSection v-if="data.related.length" title="Nearby recipes by skill">
       <DsActions

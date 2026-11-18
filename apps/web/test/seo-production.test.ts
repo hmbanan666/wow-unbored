@@ -351,7 +351,9 @@ productionTest(
       "Download for Windows",
     );
     expect(document.querySelector('footer a[href="/install"]')?.textContent).toBe("Get Bory");
-    expect(document.body.textContent).toContain("Free · v1.2.3 · 5.12 MB · Windows 10/11 · Retail");
+    expect(document.body.textContent).toContain(
+      "Free · v1.2.3 · 5.12 MB · Windows 10/11 · Retail and WoW Forever",
+    );
     expect(document.body.textContent).toContain("9 November 2026");
     expect(document.body.textContent).toContain("a".repeat(64));
     expect(document.querySelectorAll("h1")).toHaveLength(1);
@@ -483,7 +485,7 @@ productionTest(
       expect(response.status).toBe(200);
       const html = await response.text();
       expect(html).toContain('href="/download/windows"');
-      expect(html).toContain("Free · Windows 10/11 · Retail");
+      expect(html).toContain("Free · Windows 10/11 · Retail and WoW Forever");
       expect(html).toContain("Release details are temporarily unavailable");
       expect(html).not.toContain('"softwareVersion"');
       expect(html).not.toContain("v1.2.3");
@@ -594,6 +596,34 @@ productionTest(
     }
   },
 );
+productionTest(
+  "recipe and profession HTML expose the same small character check across sessions",
+  async () => {
+    const cookie =
+      (await signedCookie()) +
+      "; unbored_character=" +
+      encodeURIComponent(characterKey(fixtureCharacter));
+    for (const path of ["/forever/professions/enchanting", "/forever/recipes/runed-copper-rod"]) {
+      const signed = await fetch(origin + path, { headers: { cookie } });
+      const html = await signed.text();
+      expect(await (await fetch(origin + path)).text()).toBe(html);
+      const doc = await page(path);
+      const check = doc.querySelector('main aside[aria-label="Check my character"]')!;
+      expect(check.querySelector("summary")?.textContent).toBe("Check my character");
+      expect(check.querySelector("details")?.hasAttribute("open")).toBe(false);
+      expect(check.querySelectorAll("p")).toHaveLength(1);
+      expect(
+        doc.querySelector(".collection-ring, .today-card, .missing-section, .directory .known"),
+      ).toBeNull();
+      for (const link of check.querySelectorAll("a")) {
+        const href = link.getAttribute("href")!;
+        const target = await page(href.split("#")[0]!);
+        if (href.includes("#")) expect(target.getElementById(href.split("#")[1]!)).not.toBeNull();
+      }
+    }
+  },
+);
+
 productionTest(
   "public recipe SEO and sitemap include only supported named catalog rows",
   async () => {
@@ -759,6 +789,20 @@ productionTest(
       expect(html).not.toContain("CAMWOW");
       expect(html).not.toContain("18993");
     }
+    const summaryPath =
+      "/api/me/characters/" + characterKey(fixtureCharacter) + "?view=professions";
+    const summary = await fetch(origin + summaryPath, { headers: { cookie } });
+    expect(summary.headers.get("cache-control")).toBe("private, no-store");
+    const { character } = await summary.json();
+    expect(character.name).toBe("Kania");
+    expect(character.professions.length).toBeGreaterThan(0);
+    for (const p of character.professions) {
+      expect(Object.keys(p).sort()).toEqual(["href", "known", "name"]);
+      expect((await fetch(origin + p.href, { headers: { cookie } })).status).toBe(200);
+    }
+    const deniedSummary = await fetch(origin + summaryPath, { headers: { cookie: other } });
+    expect(deniedSummary.status).toBe(404);
+    expect(deniedSummary.headers.get("cache-control")).toBe("private, no-store");
     const path = "/api/me/characters/" + characterKey(fixtureCharacter) + "/profile";
     const response = await fetch(origin + path, { headers: { cookie } });
     expect(response.status).toBe(200);

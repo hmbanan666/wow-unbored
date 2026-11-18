@@ -2,14 +2,14 @@ import type { H3Event } from "h3";
 import { parseCharacter } from "#shared/selected-character";
 import {
   isGame,
+  type PublicRecipe,
   type ProfessionOverlay,
   type SingleRecipeOverlay,
 } from "#shared/public-professions";
 import { db } from "./db";
-import { liveAccount, sessionCredentials } from "./session";
+import { liveAccount } from "./session";
 import { readCharacterPage } from "./character-page";
 import { publicCatalog } from "./public-catalog";
-import { fetchTodaySets } from "./today-api";
 import { recipeDifficulty } from "@unbored/contracts/recipe-difficulty";
 
 export async function readOverlay(
@@ -41,53 +41,26 @@ export async function readOverlay(
   const personal = character.professions.find(
     (p) => p.skillLine === base.skillLine || p.aliases.includes(base.skillLine),
   );
-  const recipes = Object.fromEntries(
-    base.album.map((r) => {
-      const learned = personal?.album.find((v) => v.spellId === r.spellId);
-      return [
-        r.spellId,
-        {
-          known: learned?.known ?? null,
-          difficulty: recipeDifficulty({
-            recipe: r,
-            sources: r.sources,
-            skill: personal?.skill ?? null,
-            rankMax: personal?.max ?? null,
-            game,
-          }),
-        },
-      ];
-    }),
-  );
-  const skill = personal?.skill ?? null,
-    max = personal?.max ?? null;
-  if (kind === "recipes")
-    return {
-      character: identity,
-      skill,
-      max,
-      ...recipes[base.album.find((r) => r.slug === slug)!.spellId]!,
-    };
-  const today = await fetchTodaySets(
-    useRuntimeConfig().serverUrl || getRequestURL(event).origin,
-    sessionCredentials(await getUserSession(event))?.sessionId,
-    identity,
-  );
-  const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
-  for (const r of Object.values(recipes))
-    if (r.known === false) difficultyCounts[r.difficulty.label]++;
+  const learned = new Map(personal?.album.map((recipe) => [recipe.spellId, recipe.known]));
+  const skill = personal?.skill ?? null;
+  const max = personal?.max ?? null;
+  const check = (recipe: PublicRecipe) => ({
+    known: learned.get(recipe.spellId) ?? null,
+    difficulty: recipeDifficulty({ recipe, sources: recipe.sources, skill, rankMax: max, game }),
+  });
+  if (kind === "recipes") {
+    return { character: identity, skill, max, ...check(base.album.find((r) => r.slug === slug)!) };
+  }
+  const recipes = Object.fromEntries(base.album.map((r) => [r.spellId, check(r)]));
   return {
     character: identity,
     skill,
     max,
     recipes,
-    difficultyCounts,
     total: base.album.length,
     known:
       personal?.known === null || !personal
         ? null
         : Object.values(recipes).filter((r) => r.known === true).length,
-    today: today?.find((s) => s.skillLine === personal?.skillLine) ?? null,
-    todayUnavailable: today === null,
   };
 }

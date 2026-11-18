@@ -34,11 +34,13 @@ test("install SSR offers a Windows download, live version, visible FAQ and match
   expect(document.querySelector('a[href="/download/windows"]')?.textContent).toBe(
     "Download for Windows",
   );
-  expect(document.body.textContent).toContain("Free · v1.2.3 · 5.12 MB · Windows 10/11 · Retail");
+  expect(document.body.textContent).toContain(
+    "Free · v1.2.3 · 5.12 MB · Windows 10/11 · Retail and WoW Forever",
+  );
   expect(document.body.textContent).toContain("9 November 2026");
   expect(document.body.textContent).toContain("a".repeat(64));
   expect(document.querySelectorAll(".guide-faq dt")).toHaveLength(8);
-  expect(document.body.textContent).toContain("Not yet, Retail only");
+  expect(document.body.textContent).toContain("WoW Forever supports profession checks.");
   expect(document.body.textContent).not.toContain("arrives with the next Companion update");
   expect(document.body.textContent).not.toContain("—");
   const graph = schema.mock.calls.flatMap((call) => call[0]);
@@ -69,7 +71,7 @@ test("install SSR offers a Windows download, live version, visible FAQ and match
 test("an unavailable release keeps the download and setup advice without invented numbers", async () => {
   const { html, schema } = await render(null);
   expect(html).toContain('href="/download/windows"');
-  expect(html).toContain("Free · Windows 10/11 · Retail");
+  expect(html).toContain("Free · Windows 10/11 · Retail and WoW Forever");
   expect(html).not.toContain("v0.13.0");
   expect(html).toContain("Release details are temporarily unavailable");
   const software = schema.mock.calls.flatMap((call) => call[0]).find((node) => node.downloadUrl);

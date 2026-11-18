@@ -21,7 +21,7 @@ Unbored is an English field guide for players choosing what to do in WoW Forever
 | `/paths/<slug>` | One Path: what it covers, goals by Topic, how to finish each | yes |
 | `/about` | The independent project, guide checks and review policy, corrections, news and code | yes |
 | `/install` | Bory landing page, live Windows download, manual addon zip, setup, privacy and visible FAQ | yes |
-| `/my` | My page: your Characters, active Paths with progress, Path completion history, Plans and Wins, after signing in from the Companion | no |
+| `/my` | My page lets players pick an owned character, open its professions and find private history. Settings holds sign-in help, phone access and optional feed sharing | no |
 
 Forever guides highlight WoW Forever even at `/guides/<slug>`. Recipes highlight Professions. Collections and Paths highlight WoW Retail. The footer contains Get Bory, My page, sign-in or character selection, About, Telegram, source, privacy and the community feed. [ADR 0111](adr/0111-footer-account-and-addon.md)
 
@@ -33,7 +33,9 @@ Each item of a Collection (and each Path goal) shows: the game name, what it is 
 
 ## Visitor flow
 
-Readers can go straight from a search result to a guide, recipe or quest. People who want their progress can pick a character in the footer after signing in. Sharing a character feed is a separate choice and starts off.
+Readers can go straight from a search result to a guide, recipe or quest. On a recipe or profession, **Check my character** opens two lines of setup and sign-in help. After sign-in, a character selected on My page or in the footer adds one fact and a next step. A recipe can show a skill gap. A profession links to a named missing recipe and marks learned recipes in the public list. An unread profession asks the player to open it in game. The check loads after mount and the public HTML is identical for every reader. [ADR 0120](adr/0120-quiet-character-check.md)
+
+My page shows known counts and links for the selected character. If a profession has no published directory, its link opens the profession on that character’s private page. History has its own link. Settings groups phone sign-in, account access and opt-in sharing, which starts off. My page and owner data responses are private, no-store and noindex. [ADR 0121](adr/0121-my-page-professions.md)
 
 ## SEO
 

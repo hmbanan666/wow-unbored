@@ -49,6 +49,7 @@ useSeoMeta({ title: () => character.value?.name || copy.title, robots: "noindex"
           <DsCard
             v-for="profession in character.professions"
             :key="profession.skillLine"
+            :id="`profession-${profession.skillLine}`"
             :title="profession.name"
           >
             <p v-if="profession.skill !== null">

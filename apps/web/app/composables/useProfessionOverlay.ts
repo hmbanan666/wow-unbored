@@ -6,7 +6,7 @@ export function useProfessionOverlay<T>(
   game: () => Game,
   slug: () => string,
 ) {
-  const { selected } = useSelectedCharacter();
+  const { selected, state } = useSelectedCharacter();
   const data = ref<T | null>(null);
   const status = ref<"idle" | "loading" | "ready" | "error">("idle");
   const mounted = ref(false);
@@ -47,5 +47,12 @@ export function useProfessionOverlay<T>(
     generation++;
     controller?.abort();
   });
-  return { data, status, otherGame, selected, refresh };
+  return {
+    data,
+    status,
+    otherGame,
+    selected,
+    signedIn: computed(() => state.value.signedIn),
+    refresh,
+  };
 }

@@ -35,3 +35,7 @@ export const CHARACTER_COPY = {
   view: "View character",
   notFound: "This character isn't on your My page.",
 } as const;
+
+export type CharacterProfessions = CharacterIdentity & {
+  professions: { name: string; known: number | null; href: string }[];
+};

@@ -2,9 +2,8 @@ import { expect, test, vi } from "vite-plus/test";
 import { flushPromises, mount, config } from "@vue/test-utils";
 // Sharing has its own mounted/SSR tests; these tests exercise history/profile loading.
 config.global.stubs.FeedControls = true;
-import { ref, defineComponent, h } from "vue";
-import Picker from "../../app/components/CharacterPicker.vue";
-const mountHome = () => mount(defineComponent({ render: () => h("div", [h(Picker), h(MyPage)]) }));
+import { ref } from "vue";
+const mountHome = () => mount(MyPage);
 import MyPage from "../../app/pages/my/index.vue";
 import { characterKey } from "../../shared/selected-character";
 
@@ -30,60 +29,42 @@ test("My page selects the most recent character after mount and loads its privat
           character: {
             ...kania,
             professions: [],
-            today: [],
-            hero: {
-              className: "Warlock",
-              race: "Troll",
-              faction: "Horde",
-              level: 25,
-              cap: 60,
-              xp: 18993,
-              xpMax: 34000,
-              rested: null,
-              played: null,
-              ilvl: null,
-              money: null,
-            },
-            journey: [],
           },
         },
   );
   vi.stubGlobal("$fetch", fetch);
   const wrapper = mountHome();
   await flushPromises();
-  expect(wrapper.get("h1").text()).toBe("Kania");
-  expect(wrapper.text()).toContain("Road to 60");
+  expect(wrapper.get("h2").text()).toBe("Kania’s professions");
+  expect(wrapper.get("h1").text()).toBe("My page");
   expect(wrapper.text()).toContain("Open a profession window in the game once");
   expect(decodeURIComponent(document.cookie)).toContain(characterKey(kania as never));
-  expect(fetch).toHaveBeenCalledWith(`/api/me/characters/${characterKey(kania as never)}/profile`, {
+  expect(fetch).toHaveBeenCalledWith(`/api/me/characters/${characterKey(kania as never)}`, {
     cache: "no-store",
+    query: { view: "professions" },
   });
 });
 
 import { createSSRApp } from "vue";
 import { renderToString } from "@vue/server-renderer";
 import ProfileHome from "../../app/components/ProfileHome.vue";
-import { kaniaProfile } from "../fixtures/profile-home";
-test("Kania's home shows observed hero facts, dated journey, profession cards and the first open Today step", async () => {
-  const character = kaniaProfile();
+import { summaryFixture } from "../fixtures/profile-home";
+test("professions link to their catalog and distinguish zero from unchecked", () => {
+  const character = {
+    ...kania,
+    game: "forever" as const,
+    professions: [
+      { name: "Enchanting", known: 0, href: "/forever/professions/enchanting" },
+      { name: "Tailoring", known: null, href: "/forever/professions/tailoring" },
+    ],
+  };
   const wrapper = mount(ProfileHome, { props: { character } });
-  await flushPromises();
-  expect(wrapper.text()).toContain("Troll · Warlock · Horde");
-  expect(wrapper.text()).toContain("18,993 / 34,000 XP · 15,007 to next level");
-  expect(wrapper.text()).toContain("6,800 rested XP");
-  expect(wrapper.text()).toContain("2d 6h");
-  expect(wrapper.text()).toContain("24.5");
-  expect(wrapper.text()).toContain("12g 34s 56c");
-  expect(wrapper.text()).toContain("42 known of 262");
-  for (const value of ["145 / 150", "112 / 150", "123 / 150", "45 / 75", "118 / 150"])
-    expect(wrapper.text()).toContain(value);
-  expect(wrapper.findAll("time").at(-1)?.attributes("datetime")).toBe("2026-11-13");
-  expect(wrapper.text()).toContain("Most time in Orgrimmar");
-  expect(wrapper.get(".what-next a").attributes("href")).toBe("/forever/professions/enchanting");
-  expect(wrapper.get(".what-next").text()).toContain(character.today![0]!.goals[0]!.title);
-  character.today = [];
-  await wrapper.setProps({ character: { ...character } });
-  expect(wrapper.get(".what-next").text()).toContain("Open a profession window in the game once");
+  expect(wrapper.get('a[href="/forever/professions/enchanting"]').text()).toContain(
+    "0 recipes known",
+  );
+  expect(wrapper.get('a[href="/forever/professions/tailoring"]').text()).toContain(
+    "Recipes unchecked",
+  );
 });
 test("My page SSR contains no personal data even if a picker state is already populated", async () => {
   vi.stubGlobal("useState", () =>
@@ -115,16 +96,18 @@ for (const saved of ["valid", "foreign", "malformed"])
         ? { signedIn: true, characters: [kania, alt] }
         : {
             ok: true,
-            character: { ...kaniaProfile(), name: url.includes("Alt") ? "Alt" : "Kania" },
+            character: { ...summaryFixture(), name: url.includes("Alt") ? "Alt" : "Kania" },
           },
     );
     vi.stubGlobal("$fetch", fetch);
     const wrapper = mountHome();
     await flushPromises();
-    expect(wrapper.get("h1").text()).toBe(saved === "valid" ? "Alt" : "Kania");
+    expect(wrapper.get("h2").text()).toBe(
+      saved === "valid" ? "Alt’s professions" : "Kania’s professions",
+    );
     await wrapper.get("select").setValue(characterKey(alt as never));
     await flushPromises();
-    expect(wrapper.get("h1").text()).toBe("Alt");
+    expect(wrapper.get("h2").text()).toBe("Alt’s professions");
   });
 
 test("switching clears the previous profile, ignores a late response and recovers from an error", async () => {
@@ -145,13 +128,13 @@ test("switching clears the previous profile, ignores a late response and recover
   await flushPromises();
   await wrapper.get("select").setValue(characterKey(alt as never));
   await flushPromises();
-  requests[1]!.resolve({ ok: true, character: { ...kaniaProfile(), name: "Alt" } });
+  requests[1]!.resolve({ ok: true, character: { ...summaryFixture(), name: "Alt" } });
   await flushPromises();
-  requests[0]!.resolve({ ok: true, character: kaniaProfile() });
+  requests[0]!.resolve({ ok: true, character: summaryFixture() });
   await flushPromises();
-  expect(wrapper.get("h1").text()).toBe("Alt");
+  expect(wrapper.get("h2").text()).toBe("Alt’s professions");
   await wrapper.get("select").setValue(characterKey(kania as never));
-  expect(wrapper.find(".profile-hero").exists()).toBe(false);
+  expect(wrapper.find(".professions").exists()).toBe(false);
   await flushPromises();
   requests[2]!.reject();
   await flushPromises();
@@ -160,29 +143,24 @@ test("switching clears the previous profile, ignores a late response and recover
     .findAll("button")
     .find((b) => b.text() === "Try again")!
     .trigger("click");
-  requests[3]!.resolve({ ok: true, character: kaniaProfile() });
+  requests[3]!.resolve({ ok: true, character: summaryFixture() });
   await flushPromises();
-  expect(wrapper.get("h1").text()).toBe("Kania");
+  expect(wrapper.get("h2").text()).toBe("Kania’s professions");
 });
-test("Retail's client cap and unknown stats are kept distinct from Forever and zero", async () => {
-  const character = kaniaProfile();
-  character.game = "retail";
-  character.hero = {
-    ...character.hero,
-    cap: 90,
-    level: 90,
-    xp: 0,
-    xpMax: 0,
-    rested: null,
-    money: 0,
-    played: null,
-  };
-  const wrapper = mount(ProfileHome, { props: { character } });
-  expect(wrapper.text()).toContain("Road to 90");
-  expect(wrapper.text()).toContain("Level cap reached");
-  expect(wrapper.text()).toContain("0g 0s 0c");
-  expect(wrapper.text()).toContain("Not seen yet");
-  expect(wrapper.text()).not.toContain("rested XP");
-  await wrapper.setProps({ character: { ...character, hero: { ...character.hero, cap: null } } });
-  expect(wrapper.text()).not.toContain("Road to");
+test("My page has one character picker and keeps phone access under Settings", async () => {
+  vi.stubGlobal("useState", () =>
+    ref({
+      status: "ready",
+      signedIn: true,
+      selected: characterKey(kania as never),
+      characters: [kania],
+    }),
+  );
+  vi.stubGlobal("$fetch", async () => ({ ok: true, character: summaryFixture() }));
+  const wrapper = mount(MyPage);
+  await flushPromises();
+  expect(wrapper.findAll("select")).toHaveLength(1);
+  expect(wrapper.get("details > summary").text()).toBe("Settings");
+  expect(wrapper.get("details").text()).toContain("Open on phone");
+  expect(wrapper.find("progress").exists()).toBe(false);
 });

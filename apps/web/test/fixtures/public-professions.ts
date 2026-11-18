@@ -2,8 +2,8 @@ import { albumCharacter } from "./profession-album";
 import { recipeDifficulty } from "@unbored/contracts/recipe-difficulty";
 import { professionSlug } from "../../shared/profession-album";
 import type { PublicProfession, ProfessionOverlay } from "../../shared/public-professions";
-export function publicAlbum(slug = "enchanting") {
-  const character = albumCharacter("unopened");
+export function publicAlbum(slug = "enchanting", state: "known" | "unopened" = "unopened") {
+  const character = albumCharacter(state);
   const p = character.professions.find((p) => professionSlug(p) === slug)!;
   const used = new Set<string>();
   const base: PublicProfession = {
@@ -39,12 +39,9 @@ export function publicAlbum(slug = "enchanting") {
     max: p.max,
     known: p.known,
     total: p.album.length,
-    difficultyCounts: p.difficultyCounts,
     recipes: Object.fromEntries(
       p.album.map((r) => [r.spellId, { known: r.known, difficulty: r.difficulty }]),
     ),
-    today: character.today!.find((s) => s.skillLine === p.skillLine)!,
-    todayUnavailable: false,
   };
   return { base, overlay };
 }

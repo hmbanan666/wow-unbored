@@ -7,8 +7,7 @@ import QuestIndexPage from "../../app/pages/[game]/quests/index.vue";
 import { questFixture, chainFixture, questOverlayFixture } from "../fixtures/quests";
 import * as vue from "vue";
 import MyPage from "../../app/pages/my/index.vue";
-import { kaniaProfile } from "../fixtures/profile-home";
-import PhoneSignIn from "../../app/components/PhoneSignIn.vue";
+import { summaryFixture } from "../fixtures/profile-home";
 import ProfessionPage from "../../app/pages/[game]/professions/[slug].vue";
 import RecipePage from "../../app/pages/[game]/recipes/[slug].vue";
 import Nav from "../../app/components/ds/Nav.vue";
@@ -22,7 +21,7 @@ import "../../app/assets/css/main.css";
 Object.assign(globalThis, vue);
 const query = new URLSearchParams(location.search);
 const signedIn = query.get("overlay") === "1" || query.get("profile") === "1";
-const enchanting = publicAlbum(),
+const enchanting = publicAlbum("enchanting", query.has("learned") ? "known" : "unopened"),
   tailoring = publicAlbum("tailoring");
 const albums = [enchanting, tailoring];
 const c = {
@@ -93,7 +92,12 @@ Object.assign(globalThis, {
     return {
       data: vue.ref(
         endpoint.includes("/recipes/")
-          ? { recipe, profession: owner.base, related: [], guides: [] }
+          ? {
+              recipe,
+              profession: owner.base,
+              related: owner.base.album.filter((r) => r.slug !== slug).slice(0, 1),
+              guides: [],
+            }
           : { ...album.base, guides: [] },
       ),
       error: vue.ref(null),
@@ -110,7 +114,8 @@ Object.assign(globalThis, {
       };
     if (endpoint.includes("/overlay/quests/") || endpoint.includes("/overlay/quest-chains/"))
       return questOverlayFixture;
-    if (endpoint.endsWith("/profile")) return { ok: true, character: kaniaProfile() };
+    if (endpoint.startsWith("/api/me/characters/"))
+      return { ok: true, character: summaryFixture() };
     if (endpoint === "/api/me/page-link")
       return {
         ok: true,
@@ -163,9 +168,7 @@ const app = vue.createApp({
                     : route.path.includes("/quests/")
                       ? QuestPage
                       : route.path === "/my"
-                        ? query.get("profile") === "1"
-                          ? MyPage
-                          : PhoneSignIn
+                        ? MyPage
                         : route.path.includes("/recipes/")
                           ? RecipePage
                           : ProfessionPage,
@@ -174,7 +177,7 @@ const app = vue.createApp({
             },
           ),
       }),
-      vue.h("footer", null, [vue.h(Picker)]),
+      vue.h("footer", { id: "check-character" }, route.path === "/my" ? [] : [vue.h(Picker)]),
     ]),
 });
 const components = import.meta.glob("../../app/components/**/*.vue", {
