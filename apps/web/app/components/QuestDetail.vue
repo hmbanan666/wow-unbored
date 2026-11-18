@@ -1,16 +1,52 @@
 <script setup lang="ts">
-import { chainHref, questTitle, type PublicQuest, type QuestOverlay } from "#shared/quests";
+import {
+  hasPlace,
+  isMappedQuest,
+  chainHref,
+  questTitle,
+  type PublicQuest,
+  type QuestOverlay,
+} from "#shared/quests";
 defineProps<{ quest: PublicQuest; overlay?: QuestOverlay | null }>();
 </script>
 <template>
   <article class="quest-detail">
     <DsPageHeader
       :title="questTitle(quest)"
-      :eyebrow="`WoW Forever · ${quest.level === null ? 'Level not yet seen' : `Level ${quest.level}`}`"
+      :eyebrow="quest.level === null ? 'WoW Forever' : `WoW Forever · Level ${quest.level}`"
     />
-    <p v-if="!quest.title" class="muted">
-      The English title has not been observed yet. Visit this quest with an English client to fill
-      in the details.
+    <div v-if="isMappedQuest(quest)" class="places">
+      <template
+        v-for="[kind, label] in [
+          ['accept', 'Where to accept'],
+          ['turnIn', 'Where to turn in'],
+        ] as const"
+        :key="kind"
+      >
+        <section v-if="quest[kind].some(hasPlace)">
+          <h2>{{ label }}</h2>
+          <ul>
+            <li v-for="(place, index) in quest[kind].filter(hasPlace)" :key="index">
+              <strong v-if="place.npcName">{{ place.npcName }}</strong>
+              <p v-if="place.zone">{{ place.zone }}</p>
+              <span v-if="place.x !== null && place.y !== null" class="coordinates"
+                >{{ place.x.toFixed(1) }}, {{ place.y.toFixed(1) }}</span
+              >
+            </li>
+          </ul>
+        </section>
+      </template>
+    </div>
+    <p v-else class="muted">
+      No location observed yet. A player has recorded this quest, but its start and turn-in are
+      still unmapped.
+    </p>
+    <p v-if="!quest.title" class="muted">The English title has not been observed yet.</p>
+    <p
+      v-if="[...quest.accept, ...quest.turnIn].some((p) => p.x !== null && p.y !== null)"
+      class="muted"
+    >
+      Coordinates mark where the player stood during the visit.
     </p>
     <aside v-if="overlay" class="personal" aria-label="Your quest">
       <strong>{{ overlay.character.name }}</strong> ·
@@ -31,35 +67,6 @@ defineProps<{ quest: PublicQuest; overlay?: QuestOverlay | null }>();
         Play this character with data sharing on, then let the Companion bring over your quests.
       </p>
     </aside>
-    <div class="places">
-      <section
-        v-for="[kind, label] in [
-          ['accept', 'Where to accept'],
-          ['turnIn', 'Where to turn in'],
-        ] as const"
-        :key="kind"
-      >
-        <h2>{{ label }}</h2>
-        <p v-if="!quest[kind].length" class="muted">
-          No location observed yet. Your next visit can help.
-        </p>
-        <ul v-else>
-          <li v-for="(place, index) in quest[kind]" :key="index">
-            <strong>{{ place.npcName || "NPC name not yet seen" }}</strong>
-            <p>
-              {{ place.zone || "Zone not yet seen"
-              }}<template v-if="place.x !== null && place.y !== null">
-                · {{ place.x.toFixed(1) }}, {{ place.y.toFixed(1) }}</template
-              >
-            </p>
-          </li>
-        </ul>
-      </section>
-    </div>
-    <p class="muted">
-      Shared observations, without player identities. Coordinates show where the player stood during
-      the visit.
-    </p>
   </article>
 </template>
 <style scoped>
@@ -79,16 +86,32 @@ section,
   border-radius: var(--radius-md);
   background: var(--lamp-glow);
 }
+.quest-detail :deep(.ds-page-header) {
+  margin-bottom: 0;
+}
+.places section {
+  position: relative;
+  border-left: 3px solid var(--lamp-gold-dark);
+  background: linear-gradient(115deg, var(--lamp-glow), var(--lamp-bg));
+}
+.places strong {
+  font: 700 var(--text-2xl)/1.2 var(--font-display);
+}
 h2 {
-  font-size: var(--text-xl);
-  color: var(--lamp-gold-light);
-  margin-bottom: 1rem;
+  font: 700 var(--text-sm)/1.2 var(--font-ui);
+  color: var(--lamp-gold);
+  margin: 0 0 var(--space-4);
 }
 ul {
   display: grid;
   gap: 1rem;
   list-style: none;
   padding: 0;
+}
+.coordinates {
+  font: 500 var(--text-base)/1.4 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--lamp-gold-light);
 }
 .muted {
   color: var(--lamp-muted);

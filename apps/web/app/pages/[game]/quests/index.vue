@@ -17,6 +17,8 @@ useHead({ link: [{ rel: "canonical", href: `${useSiteConfig().url}/forever/quest
 </script>
 <template>
   <DsPage v-if="data"
-    ><DsBreadcrumbs :trail="questTrail" /><QuestIndex :quests="data.quests" :chains="data.chains"
+    ><DsBreadcrumbs :trail="questTrail" /><QuestIndex
+      :quests="data.quests"
+      :chains="data.chains" /><QuestReading
   /></DsPage>
 </template>

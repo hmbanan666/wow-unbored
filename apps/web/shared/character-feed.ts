@@ -7,6 +7,7 @@ export type FeedPost = {
   href: string;
   kind: "level" | "profession" | "recipe" | "reputation" | "screenshot";
   label: string;
+  resultHref?: string;
   image?: { id: string; width: number; height: number; variants: MediaVariant[] };
 };
 export type FeedPage = {

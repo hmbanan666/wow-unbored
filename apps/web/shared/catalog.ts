@@ -38,14 +38,11 @@ export const PUBLIC_ROUTES = [
   { name: "about", pattern: "/about" },
 ] as const;
 
-/** Header and footer links (docs/site-structure.md). */
+/** Primary sections of the public field guide. */
 export const SITE_NAV = [
-  { label: "Guides", to: "/guides" },
   { label: "WoW Forever", to: "/forever" },
-  { label: "Collections", to: "/collections" },
-  { label: "Paths", to: "/paths" },
-  { label: "Get Bory", to: "/install" },
-  { label: "My page", to: "/my" },
+  { label: "Professions", to: "/forever/professions" },
+  { label: "WoW Retail", to: "/guides" },
 ] as const;
 
 export const RELEASES_URL = "https://github.com/hmbanan666/wow-unbored/releases/latest";

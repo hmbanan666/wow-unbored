@@ -81,3 +81,22 @@ test("a quest links to chains where it really is the next step", () => {
   expect(quest.text()).toContain("Next step in First steps in Elwynn");
   expect(quest.get("a").attributes("href")).toBe("/forever/quests/chains/first-steps");
 });
+
+test("zone lists start collapsed and keep quests without visible sightings in a separate disclosure", () => {
+  const quest = {
+    ...questFixture,
+    title: null,
+    slug: "quest-421",
+    questID: 421,
+    accept: [{ npcId: 1, npcName: null, uiMapID: 4, zone: null, x: null, y: null }],
+    turnIn: [],
+  };
+  const index = mount(QuestIndex, { props: { quests: [questFixture, quest], chains: [] } });
+  const details = index.findAll("details");
+  expect(details.map((d) => d.get("summary").text())).toEqual([
+    "Elwynn Forest (1)",
+    "Show unmapped quests (1)",
+  ]);
+  expect(details.every((d) => d.attributes("open") === undefined)).toBe(true);
+  expect(details[1]!.get("a").attributes("href")).toBe("/forever/quests/quest-421");
+});

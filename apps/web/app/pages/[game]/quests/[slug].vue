@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {
+  isMappedQuest,
+  questDescription,
   questHref,
   questTitle,
   questTrail,
@@ -26,8 +28,15 @@ const {
   () => slug,
 );
 const title = `${questTitle(data.value)} · WoW Forever`;
-const description = `${questTitle(data.value)} in WoW Forever: observed quest givers, turn-in places, zones and coordinates.`;
-useSeoMeta({ title, description, ogTitle: title, ogDescription: description });
+const description = questDescription(data.value);
+if (!isMappedQuest(data.value)) useRobotsRule("noindex, follow");
+useSeoMeta({
+  title,
+  description,
+  ogTitle: title,
+  ogDescription: description,
+  robots: isMappedQuest(data.value) ? undefined : "noindex, follow",
+});
 useHead({ link: [{ rel: "canonical", href: `${useSiteConfig().url}${questHref(slug)}` }] });
 </script>
 <template>
@@ -42,5 +51,6 @@ useHead({ link: [{ rel: "canonical", href: `${useSiteConfig().url}${questHref(sl
     />
     <QuestDetail :quest="data" :overlay="overlay" />
     <DsButton to="/forever/quests" variant="secondary">All Forever quests</DsButton>
+    <QuestReading />
   </DsPage>
 </template>

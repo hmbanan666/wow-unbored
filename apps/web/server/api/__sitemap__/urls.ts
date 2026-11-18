@@ -1,3 +1,4 @@
+import { isMappedQuest } from "#shared/quests";
 import { sharedFeedPaths } from "../../utils/character-feed";
 import { readPublicQuests, readPublicQuestChains } from "../../utils/quests";
 import { listPublished } from "../../utils/content.ts";
@@ -40,7 +41,9 @@ export default defineSitemapEventHandler(async () => {
         }),
       )
     ).flat(),
-    ...(await readPublicQuests(sql)).map((q) => ({ loc: `/forever/quests/${q.slug}` })),
+    ...(await readPublicQuests(sql))
+      .filter(isMappedQuest)
+      .map((q) => ({ loc: `/forever/quests/${q.slug}` })),
     ...(await readPublicQuestChains(sql)).map((c) => ({ loc: `/forever/quests/chains/${c.slug}` })),
     ...pages.map((page) => ({
       loc: page.href,

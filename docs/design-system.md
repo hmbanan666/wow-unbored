@@ -86,7 +86,7 @@ Guide endings reuse `DsSection`, `DsProse` and the section’s hub link for thre
 
 Guide callouts compose `DsCard` with a Note or Early forecast title and plain text. Guide source lists use `DsSection` and `DsProse`; build checks use the page header meta line. The WoW Forever badge uses `DsChip` in `DsChipRow`.
 
-Domain components map data onto these: `PageView` (home, Collection, Path and Guide pages), `CatalogCard` and `CatalogGrid` (index pages), `CollectionItems` (items), `EntryBody` (authored blocks; consecutive links share one button row, the first one primary).
+The home cover uses an original CSS landscape and three section links. Its Most read list shows the titles and descriptions of published entries. Domain components map data onto these: `PageView` (Collection, Path and Guide pages), `CatalogCard` and `CatalogGrid` (index pages), `CollectionItems` (items), `EntryBody` (authored blocks; consecutive links share one button row, the first one primary).
 
 ## Checking a change
 
