@@ -21,7 +21,11 @@ test("a Forever recipe snippet gives its verified skill and materials", () => {
 test("an unobserved learning source cannot turn the catalog minimum into a requirement", () => {
   const { base } = publicAlbum();
   const original = base.album[0]!;
-  for (const name of ["Enchanted Lute", "Fiery Plate Gauntlets of the Hidden Technique"]) {
+  for (const name of [
+    "Enchanted Lute",
+    "Fiery Plate Gauntlets of the Hidden Technique",
+    "Enchanted ".repeat(20) + "Lute",
+  ]) {
     const copy = recipeCopy(
       {
         ...original,

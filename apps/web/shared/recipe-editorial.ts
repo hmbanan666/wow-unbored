@@ -19,7 +19,7 @@ export function learningSource(recipe: AlbumRecipe) {
 }
 
 const shortProfession: Record<string, string> = {
-  Blacksmithing: "Smithing",
+  Blacksmithing: "BS",
   Engineering: "Eng.",
   Leatherworking: "LW",
   Enchanting: "Ench.",
@@ -30,12 +30,20 @@ const shortProfession: Record<string, string> = {
 export function recipeCopy(recipe: PublicRecipe, profession: string, game: Game) {
   const name = recipe.name!;
   const realm = gameName(game);
-  let suffix = ` recipe · ${profession} · ${realm}`;
-  if (name.length + suffix.length > 60) suffix = ` recipe: ${profession}, ${realm}`;
-  if (name.length + suffix.length > 60)
-    suffix = ` recipe | ${shortProfession[profession] ?? profession} | ${realm}`;
-  const titleName =
-    name.length + suffix.length <= 60 ? name : name.slice(0, 59 - suffix.length).trimEnd() + "…";
+  const suffixes = [
+    ` recipe · ${profession} · ${realm}`,
+    ` recipe: ${profession}, ${realm}`,
+    ` recipe (${shortProfession[profession] ?? profession}) ${realm}`,
+  ];
+  const suffix = suffixes.find((value) => name.length + value.length <= 60) ?? suffixes[2]!;
+  const budget = 60 - suffix.length;
+  let titleName = name;
+  if (name.length > budget) {
+    const words = name.split(/\s+/);
+    const last = words.pop()!;
+    while (words.length && words.join(" ").length + last.length + 2 > budget) words.pop();
+    titleName = words.length ? words.join(" ") + "… " + last : name.slice(0, budget - 1) + "…";
+  }
   const skill = recipe.difficulty.requiredSkill;
   const lead =
     skill === null
@@ -46,26 +54,39 @@ export function recipeCopy(recipe: PublicRecipe, profession: string, game: Game)
   const materialCount = `${count} material${count === 1 ? "" : "s"}`;
   const source = recipe.sources[0];
   const formula = recipe.teachingItemNames[0];
-  const materials = count ? `The recipe lists ${materialCount}.` : "No materials are listed.";
+  const compactList =
+    count > 0 && count <= 3 && recipe.reagents.every((r) => r.name)
+      ? new Intl.ListFormat("en").format(recipe.reagents.map((r) => `${r.name} ×${r.count}`))
+      : "";
+  let description =
+    lead.length < 100
+      ? lead
+      : skill === null
+        ? `This ${profession} recipe appears in ${realm}.`
+        : `This ${realm} recipe requires ${profession} ${skill}.`;
   const facts = [
-    source ? `Players saw ${source.kind} ${source.npcName} in ${source.zone}.` : "",
-    material
-      ? count === 1
-        ? `Bring ${material.name} ×${material.count}.`
-        : `Bring ${materialCount}, including ${material.name} ×${material.count}.`
-      : "",
-    materials,
-    formula?.bindOnPickup === true ? "The teaching item binds on pickup." : "",
-    formula?.bindOnPickup === false ? "The teaching item can be traded." : "",
-    !source ? "A trainer or vendor location is still unconfirmed." : "",
-    skill === null ? "The skill requirement is unconfirmed." : "",
-    `It turns grey at skill ${recipe.thresholds.grey}.`,
-    "Compare nearby recipes in the profession list.",
+    [
+      source
+        ? `A player visited ${source.kind} ${source.npcName}${source.zone === "Unknown zone" ? "" : " in " + source.zone}.`
+        : "",
+    ],
+    [
+      compactList ? `Bring ${compactList}.` : "",
+      material ? `Bring ${materialCount}, including ${material.name} ×${material.count}.` : "",
+      count ? `The recipe lists ${materialCount}.` : "No materials are listed.",
+    ],
+    [
+      formula?.bindOnPickup === true ? "The teaching item binds on pickup." : "",
+      formula?.bindOnPickup === false ? "The teaching item can be traded." : "",
+    ],
+    [!source ? "A trainer or vendor location is still unconfirmed." : ""],
+    [skill === null ? "The skill requirement is unconfirmed." : ""],
+    [`It turns grey at skill ${recipe.thresholds.grey}.`],
+    ["Compare nearby recipes in the profession list."],
   ];
-  let description = lead;
-  for (const fact of facts) {
-    if (fact === materials && description.includes("Bring ")) continue;
-    if (fact && description.length + fact.length < 155) description += " " + fact;
+  for (const alternatives of facts) {
+    const fact = alternatives.find((text) => text && description.length + text.length < 155);
+    if (fact) description += " " + fact;
     if (description.length >= 120) break;
   }
   return { title: titleName + suffix, description, lead };
