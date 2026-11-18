@@ -17,6 +17,7 @@ test.skipIf(!hasPostgres)(
       expect(await migrate(db.sql)).toEqual([
         "0036_quest_sightings.sql",
         "0037_character_feeds.sql",
+        "0038_field_guide_answers.sql",
       ]);
       expect(await migrate(db.sql)).toEqual([]);
       await db.sql`INSERT INTO accounts (id, label, first_seen, last_seen) VALUES ('owner', 'Owner', 1, 1)`;

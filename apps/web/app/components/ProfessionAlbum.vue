@@ -96,11 +96,15 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
         Open your {{ name }} window in the game once, then this fills in. Your recipes have not been
         checked yet.
       </p>
-      <p v-if="base && !overlay" class="album-note">
-        Base difficulty uses sources and reagents. Pick a character to add skill and your known
-        recipes.
-      </p>
-      <div class="album-layout" :class="{ 'public-layout': !personal }">
+      <NamedRecipes
+        v-if="base"
+        :recipes="recipes"
+        :links="links"
+        :filter="filter"
+        :personal="personal"
+        @filter="emit('filter', $event)"
+      />
+      <div v-if="personal" class="album-layout" :class="{ 'public-layout': base }">
         <section v-if="personal" class="album-card summary-card" aria-label="Collection progress">
           <div
             class="collection-ring"
@@ -150,7 +154,7 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
             {{ profession.uncatalogued }} more known recipes are not in this collection yet.
           </p>
         </section>
-        <section class="album-card collection-card" aria-label="Recipe album">
+        <section v-if="!base" class="album-card collection-card" aria-label="Recipe album">
           <div class="album-filters" role="group" aria-label="Recipe filters">
             <button
               v-for="option in filters"
@@ -224,12 +228,10 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
                 >
               </h2>
               <div class="recipe-slots">
-                <component
-                  :is="base ? 'a' : 'button'"
+                <button
                   v-for="recipe in category.recipes"
                   :key="recipe.spellId"
-                  :type="base ? undefined : 'button'"
-                  :href="links.get(recipe.spellId)"
+                  type="button"
                   class="recipe-slot"
                   :class="{
                     'is-known': recipe.known,
@@ -241,8 +243,8 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
                       : `${recipe.name}, base ${recipe.difficulty.label}`
                   "
                   :title="recipe.name || 'Recipe name unavailable'"
-                  :aria-haspopup="base ? undefined : 'dialog'"
-                  @click="!base && open(recipe, $event)"
+                  aria-haspopup="dialog"
+                  @click="open(recipe, $event)"
                 >
                   <span v-if="recipe.known || !personal">{{ recipeMonogram(recipe.name) }}</span>
                   <i
@@ -251,45 +253,8 @@ async function open(recipe: AlbumRecipe, event: MouseEvent) {
                     aria-hidden="true"
                   />
                   <span v-else-if="recipe.known === null" aria-hidden="true">?</span>
-                </component>
+                </button>
               </div>
-              <details v-if="base" class="category-facts">
-                <summary>Recipe facts · {{ category.name }}</summary>
-                <ul>
-                  <li
-                    v-for="recipe in category.recipes.filter((r) => matchesAlbumFilter(r, filter))"
-                    :key="recipe.spellId"
-                  >
-                    <a :href="links.get(recipe.spellId)">{{ recipe.name }}</a>
-                    <p>
-                      Required skill:
-                      {{ recipe.difficulty.requiredSkill ?? "unknown until seen" }} · Base
-                      {{ base.album.find((r) => r.spellId === recipe.spellId)!.difficulty.label }}
-                    </p>
-                    <RecipeFormula
-                      v-if="recipe.teachingItemNames.length"
-                      :items="recipe.teachingItemNames"
-                      binding
-                    />
-                    <p v-else>No formula item</p>
-                    <p>
-                      {{
-                        recipe.reagents
-                          .map((r) => `${r.count}× ${r.name || "Reagent name unavailable"}`)
-                          .join(" · ") || "No reagents listed."
-                      }}
-                    </p>
-                    <p v-for="(source, i) in recipe.sources" :key="i">
-                      {{ source.npcName }} · {{ source.zone
-                      }}<template v-if="source.x !== null && source.y !== null">
-                        ({{ source.x }}, {{ source.y }})</template
-                      >
-                      · {{ source.kind }}<template v-if="source.limited">, limited supply</template
-                      ><template v-if="source.cost !== null"> · {{ source.cost }} copper</template>
-                    </p>
-                  </li>
-                </ul>
-              </details>
             </section>
           </div>
         </section>
@@ -655,28 +620,5 @@ select {
 }
 .recipe-slot {
   text-decoration: none;
-}
-.category-facts {
-  margin-top: 1rem;
-  overflow-wrap: anywhere;
-}
-.category-facts summary {
-  min-height: var(--tap);
-  cursor: pointer;
-  color: var(--lamp-gold);
-}
-.category-facts ul {
-  padding: 0;
-  list-style: none;
-}
-.category-facts li {
-  margin-block: 1rem;
-  border-top: 1px solid var(--lamp-line-soft);
-  padding-top: 0.75rem;
-}
-.category-facts p {
-  margin-top: 0.4rem;
-  color: var(--lamp-muted);
-  font-size: var(--text-xs);
 }
 </style>

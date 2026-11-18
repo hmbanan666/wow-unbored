@@ -11,7 +11,11 @@ const icons = computed(() =>
 </script>
 
 <template>
-  <div v-if="art || icons.length" class="ds-game-header" :class="{ 'ds-game-header--hero': art }">
+  <div
+    v-if="art || icons.length"
+    class="ds-game-header"
+    :class="{ 'ds-game-header--hero': art, 'ds-game-header--guide': page.kind === 'guide' && art }"
+  >
     <div
       v-if="art"
       class="ds-game-header__art"
@@ -66,6 +70,20 @@ const icons = computed(() =>
 .ds-game-header__icons {
   display: flex;
   gap: var(--space-2);
+}
+@media (max-width: 767px) {
+  .ds-game-header--guide {
+    grid-template-columns: minmax(0, 1fr) 76px;
+    align-items: center;
+    margin-bottom: var(--space-3);
+  }
+  .ds-game-header--guide .ds-game-header__art {
+    order: 2;
+    aspect-ratio: 1;
+  }
+  .ds-game-header--guide :deep(.ds-page-header) {
+    margin-bottom: 0;
+  }
 }
 @media (min-width: 768px) {
   .ds-game-header--hero {

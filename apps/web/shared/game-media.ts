@@ -10,6 +10,7 @@ import type { CatalogItem, PublicPage } from "./catalog";
 import type { GuideTerm } from "@unbored/contracts/guide";
 
 export type GameText = {
+  href?: string;
   term?: GuideTerm;
   text: string;
   kind?: string;

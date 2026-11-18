@@ -129,3 +129,18 @@ test("new blocks escape every authored field even when passed directly to the re
   expect(wrapper.get(".guide-faq dt").text()).toBe(attack);
   expect(wrapper.get(".guide-faq dd").text()).toBe(attack);
 });
+
+test("guide names link to the published recipe in prose without linking every repetition", () => {
+  const wrapper = mount(EntryBody, {
+    props: {
+      blocks: [
+        { type: "paragraph", text: "Start with an Enchanted Lute. Enchanted Lutes use wood." },
+        { type: "paragraph", text: "Bring the Enchanted Lute to camp." },
+      ],
+      references: { "Enchanted Lute": "/forever/recipes/enchanted-lute" },
+    },
+  });
+  const links = wrapper.findAll('a[href="/forever/recipes/enchanted-lute"]');
+  expect(links).toHaveLength(1);
+  expect(links[0]!.text()).toBe("Enchanted Lute");
+});

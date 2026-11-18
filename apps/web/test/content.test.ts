@@ -157,18 +157,21 @@ dbTest("home, paths and collections are published rows, drafts stay hidden", asy
     assert.equal((await listPublished(sql, "guide", "forever"))[0].game, "forever");
     vi.stubEnv("DATABASE_URL", url.toString());
     vi.stubGlobal("defineEventHandler", (handler: unknown) => handler);
+    vi.stubGlobal("defineCachedFunction", (handler: unknown) => handler);
     vi.stubGlobal("getRouterParam", (_event: unknown, key: string) =>
       key === "kind" ? "guide" : "forever-start",
     );
     const { default: pageApi } = await import("../server/api/catalog/[kind]/[slug].get.ts");
-    assert.deepEqual(await (pageApi as unknown as () => Promise<unknown>)(), illustrated);
+    assert.deepEqual(await (pageApi as unknown as () => Promise<unknown>)(), {
+      ...illustrated,
+      references: {},
+    });
 
     // Even an old body with Retail references must not expose Blizzard media for Forever.
     await sql`UPDATE content.paths SET body = ${JSON.stringify({ ...body, hero, terms, blocks: [...body.blocks, figure] })}::jsonb WHERE slug = 'forever-start'`;
     const ownOnly = await readPublished(sql, "guide", "forever-start");
     assert.deepEqual(ownOnly?.media, illustrated?.media);
     vi.stubGlobal("defineSitemapEventHandler", (handler: unknown) => handler);
-    vi.stubGlobal("defineCachedFunction", (handler: unknown) => handler);
     const { default: sitemap } = await import("../server/api/__sitemap__/urls.ts");
     const locations = (await (sitemap as unknown as () => Promise<{ loc: string }[]>)()).map(
       (entry) => entry.loc,

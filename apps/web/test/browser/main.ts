@@ -92,7 +92,9 @@ Object.assign(globalThis, {
     const owner = albums.find((p) => p.base.album.some((r) => r.slug === slug)) ?? enchanting;
     return {
       data: vue.ref(
-        endpoint.includes("/recipes/") ? { recipe, profession: owner.base } : album.base,
+        endpoint.includes("/recipes/")
+          ? { recipe, profession: owner.base, related: [], guides: [] }
+          : { ...album.base, guides: [] },
       ),
       error: vue.ref(null),
       status: vue.ref("success"),

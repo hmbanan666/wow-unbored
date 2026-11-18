@@ -127,6 +127,7 @@ export type CatalogItem = {
 };
 
 export type PublicPage = {
+  references?: Record<string, string>;
   group?: GuideGroup;
   game: Game;
   terms?: GuideTerm[];
