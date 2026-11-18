@@ -1,41 +1,41 @@
 <script setup lang="ts">
-import type { AlbumRecipe } from "@unbored/contracts/profession-progress";
 import {
-  ALBUM_FILTERS,
-  albumCategories,
-  matchesAlbumFilter,
-  recipeLabel,
-} from "#shared/profession-album";
+  recipeHref,
+  type Game,
+  type ProfessionOverlay,
+  type PublicProfession,
+} from "#shared/public-professions";
+import { ALBUM_FILTERS, albumCategories, matchesAlbumFilter } from "#shared/profession-album";
 import { learningSource, byRecipeSkill } from "#shared/recipe-editorial";
 
 const props = defineProps<{
-  recipes: AlbumRecipe[];
-  links: Map<number, string>;
+  base: PublicProfession;
+  overlay?: ProfessionOverlay | null;
+  game: Game;
   filter: string;
-  personal: boolean;
 }>();
 const emit = defineEmits<{ filter: [value: string] }>();
 const query = ref("");
 const limit = ref(12);
-const categories = computed(() => albumCategories(props.recipes));
+const categories = computed(() => albumCategories(props.base.album));
 const zones = computed(() =>
-  [...new Set(props.recipes.flatMap((r) => r.sources.map((s) => s.zone)))].sort(),
+  [...new Set(props.base.album.flatMap((r) => r.sources.map((s) => s.zone)))].sort(),
 );
 const matches = computed(() =>
-  props.recipes
+  props.base.album
     .filter(
       (r) =>
-        matchesAlbumFilter(r, props.filter) &&
+        matchesAlbumFilter({ ...r, ...props.overlay?.recipes[r.spellId] }, props.filter) &&
         r.name?.toLowerCase().includes(query.value.trim().toLowerCase()),
     )
     .sort(byRecipeSkill),
 );
 const groups = computed(() => albumCategories(matches.value.slice(0, limit.value)));
 const controls = computed(() =>
-  ALBUM_FILTERS.filter((f) => props.personal || !["now", "missing"].includes(f.id)),
+  ALBUM_FILTERS.filter((f) => props.overlay || !["now", "missing"].includes(f.id)),
 );
 watch(
-  () => [query.value, props.filter, props.recipes],
+  () => [query.value, props.filter, props.base.album],
   () => {
     limit.value = 12;
   },
@@ -43,8 +43,15 @@ watch(
 </script>
 <template>
   <section class="directory" aria-label="Named recipes">
+    <p v-if="!base.album.length">No named recipes have been recorded yet.</p>
     <div class="tools">
-      <label>Find a recipe<input type="search" v-model="query" placeholder="Recipe name" /></label>
+      <label
+        >Find a recipe<input
+          id="find-recipe"
+          type="search"
+          v-model="query"
+          placeholder="Recipe name"
+      /></label>
       <label
         >Filter recipes<select
           :value="filter"
@@ -72,7 +79,7 @@ watch(
       <h2>{{ group.name }}</h2>
       <ul>
         <li v-for="r in group.recipes" :key="r.spellId">
-          <a :href="links.get(r.spellId)" :aria-label="personal ? recipeLabel(r) : undefined"
+          <a :href="recipeHref(game, r.slug)"
             ><span>{{ r.name }}</span
             ><small>{{ learningSource(r) }}</small></a
           >
@@ -81,14 +88,14 @@ watch(
               r.difficulty.requiredSkill === null
                 ? "Skill unconfirmed"
                 : "Skill " + r.difficulty.requiredSkill
-            }}<small v-if="personal">{{
-              r.known === true ? "Known" : r.known === false ? "Missing" : "Unchecked"
-            }}</small></span
+            }}<small v-if="overlay?.recipes[r.spellId]?.known" class="known">Known</small></span
           >
         </li>
       </ul>
     </section>
-    <p v-if="!matches.length && recipes.length">Try another recipe name or choose All recipes.</p>
+    <p v-if="!matches.length && base.album.length">
+      Try another recipe name or choose All recipes.
+    </p>
     <DsButton v-if="limit < matches.length" variant="secondary" @click="limit += 12"
       >Show more recipes</DsButton
     >
@@ -162,11 +169,15 @@ li a:hover span {
   text-decoration: underline;
 }
 .skill {
+  align-self: start;
+  padding-block: var(--space-2);
+  min-width: 5ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.skill small {
+.known {
   display: block;
+  color: var(--lamp-gold-light);
 }
 @media (min-width: 640px) {
   .tools {

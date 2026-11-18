@@ -3,12 +3,13 @@ import {
   gameName,
   isGame,
   professionHref,
+  recipeHref,
   professionTrail,
   type PublicProfession,
   type ProfessionOverlay,
 } from "#shared/public-professions";
 import type { GuideLink } from "#shared/guide-references";
-import { albumFilter } from "#shared/profession-album";
+import { albumFilter, easiestMissing } from "#shared/profession-album";
 import { useProfessionOverlay } from "../../../composables/useProfessionOverlay";
 const route = useRoute();
 const router = useRouter();
@@ -27,11 +28,32 @@ const {
   data: overlay,
   status,
   otherGame,
+  signedIn,
   refresh,
 } = useProfessionOverlay<ProfessionOverlay>(
   "professions",
   () => game,
   () => slug,
+);
+const nextRecipe = computed(() => {
+  const personal = overlay.value;
+  if (!personal || !base.value) return;
+  const recipes = base.value.album.map((r) => ({ ...r, ...personal.recipes[r.spellId] }));
+  return easiestMissing(recipes, "all")[0];
+});
+const fact = computed(() => {
+  const check = overlay.value;
+  if (!check) return;
+  if (check.known === null)
+    return `Open ${base.value!.name} in game to check ${check.character.name}’s recipes.`;
+  return `${check.character.name} knows ${check.known} of ${check.total} recipes.`;
+});
+const action = computed(() =>
+  nextRecipe.value
+    ? { title: `Next up: ${nextRecipe.value.name}`, href: recipeHref(game, nextRecipe.value.slug) }
+    : overlay.value?.known != null
+      ? (base.value?.guides[0] ?? { title: "Browse recipes", href: "#find-recipe" })
+      : undefined,
 );
 const filter = computed(() => {
   const value = albumFilter(route.query.f);
@@ -56,20 +78,21 @@ useHead({
     <DsBreadcrumbs :trail="professionTrail(game, base)" />
     <CraftHeader :title="base.name + ' recipes'" :eyebrow="gameName(game)" />
     <ProfessionGuideLinks :guides="base.guides" />
-    <ProfessionAlbum
+    <CharacterCheck
+      :game="game"
+      :signed-in="signedIn"
+      :other-game="otherGame"
+      :status="status"
+      :fact="fact"
+      :action="action"
+      @retry="refresh"
+    />
+    <NamedRecipes
       :base="base"
       :overlay="overlay"
       :game="game"
       :filter="filter"
       @filter="selectFilter"
-    />
-    <OverlayStatus :game="game" :other-game="otherGame" :status="status" @retry="refresh" />
-    <TodayGoals
-      v-if="overlay"
-      :set="overlay.today ?? undefined"
-      :name="base.name"
-      :unavailable="overlay.todayUnavailable"
-      @retry="refresh"
     />
   </DsPage>
 </template>

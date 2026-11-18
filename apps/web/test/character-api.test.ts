@@ -3,6 +3,7 @@ import type { H3Event } from "h3";
 import { CHARACTER_COPY } from "../shared/character-page";
 import { SIGN_IN_COPY } from "../shared/sign-in";
 
+vi.mock("../server/utils/public-catalog", () => ({ publicCatalog: async () => [] }));
 const session = vi.hoisted(() => ({ live: vi.fn(), prior: vi.fn() }));
 vi.mock("../server/utils/today-api", () => ({ fetchTodaySets: async () => [] }));
 const read = vi.hoisted(() => vi.fn());
@@ -18,7 +19,10 @@ afterEach(() => {
 });
 
 async function request(game = "forever") {
+  vi.stubGlobal("getQuery", () => ({}));
   const headers = new Map();
+  const setStatus = vi.fn();
+  vi.stubGlobal("setResponseStatus", setStatus);
   vi.stubGlobal("useRuntimeConfig", () => ({ serverUrl: "http://local.test" }));
   vi.stubGlobal("defineEventHandler", (handler: unknown) => handler);
   vi.stubGlobal("getUserSession", session.prior);
@@ -33,7 +37,7 @@ async function request(game = "forever") {
   vi.stubGlobal("createError", (value: unknown) => value);
   const { default: handler } =
     await import("../server/api/me/characters/[game]/[realm]/[name].get.ts");
-  return { result: handler({} as H3Event), headers };
+  return { result: handler({} as H3Event), headers, setStatus };
 }
 
 test("character endpoint uses the live Account, returns only its character and forbids caching", async () => {
@@ -71,11 +75,13 @@ test("unknown, unowned and invalid-game characters return 404", async () => {
   session.live.mockResolvedValue({ accountId: "mine" });
   read.mockResolvedValue(null);
   for (const game of ["forever", "retail", "other"]) {
-    const { result } = await request(game);
-    await expect(result).rejects.toMatchObject({
-      statusCode: 404,
+    const { result, headers, setStatus } = await request(game);
+    await expect(result).resolves.toMatchObject({
+      ok: false,
       message: CHARACTER_COPY.notFound,
     });
+    expect(setStatus).toHaveBeenCalledWith({}, 404);
+    expect(headers.get("cache-control")).toBe("private, no-store");
   }
   expect(read).toHaveBeenCalledTimes(2);
 });

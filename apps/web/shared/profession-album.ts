@@ -47,11 +47,8 @@ export function matchesAlbumFilter(recipe: AlbumRecipe, filter: string): boolean
           ? source === "not_seen"
           : source === filter;
 }
-export function albumCategories(recipes: AlbumRecipe[]) {
-  const categories = new Map<
-    number,
-    { id: number; name: string; known: number; recipes: AlbumRecipe[] }
-  >();
+export function albumCategories<T extends AlbumRecipe>(recipes: T[]) {
+  const categories = new Map<number, { id: number; name: string; known: number; recipes: T[] }>();
   for (const recipe of recipes) {
     const category = categories.get(recipe.category.id) ?? {
       ...recipe.category,
@@ -69,7 +66,7 @@ export function albumCategories(recipes: AlbumRecipe[]) {
       a.name.localeCompare(b.name, "en"),
   );
 }
-export function easiestMissing(recipes: AlbumRecipe[], filter: string) {
+export function easiestMissing<T extends AlbumRecipe>(recipes: T[], filter: string) {
   return recipes
     .filter((r) => r.known === false && matchesAlbumFilter(r, filter))
     .sort(
@@ -79,17 +76,4 @@ export function easiestMissing(recipes: AlbumRecipe[], filter: string) {
         (a.name ?? "").localeCompare(b.name ?? "", "en") ||
         a.spellId - b.spellId,
     );
-}
-export function recipeLabel(recipe: AlbumRecipe): string {
-  return `${recipe.name || "Recipe name unavailable"}, ${recipe.known === true ? "known" : recipe.known === null ? "not checked yet" : `missing, ${recipe.difficulty.label}`}`;
-}
-export function recipeMonogram(name: string | null): string {
-  return (name ?? "?")
-    .replace(/^Enchant (2H Weapon|Bracer|Chest|Cloak|Boots|Gloves|Shield|Weapon) - /, "")
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 3);
 }

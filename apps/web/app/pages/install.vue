@@ -6,7 +6,7 @@ import { installMedia as plan } from "#shared/install-media";
 
 const title = "Not sure what to do in WoW? Get Bory";
 const description =
-  "Find something to do in WoW Retail. Bory offers ideas, one step at a time and item tips. Get the free addon and Windows Companion, with setup help.";
+  "Check your WoW Forever recipes or get ideas and step-by-step plans in WoW Retail. Install the free Bory addon and Windows Companion.";
 useSeoMeta({ title, description });
 const { data: release } = await useFetch<ReleaseDownloads | null>("/api/downloads");
 const installer = computed(() => release.value?.assets.windows);
@@ -22,7 +22,7 @@ const versionLine = computed(() =>
         ]
       : []),
     "Windows 10/11",
-    "Retail",
+    "Retail and WoW Forever",
   ].join(" · "),
 );
 const features = [
@@ -49,8 +49,8 @@ const steps = [
     text: 'Windows SmartScreen may say "Windows protected your PC" because the installer is not signed. If you choose to continue, click More info, then Run anyway. The Companion finds World of Warcraft and installs the addon.',
   },
   {
-    title: "Start WoW Retail and click Bory.",
-    text: "Find him on the left of your screen and pick an idea. Quick plans and item tips work right away. Your PC needs a one-time OK from the Unbored team before proper plans start.",
+    title: "Open a profession in Forever or click Bory in Retail.",
+    text: "In Forever, open your profession to record learned recipes, then log out with the Companion running. In Retail, find Bory on the left of your screen and pick an idea. Quick plans and item tips work right away. Your PC needs a one-time OK from the Unbored team before proper plans start.",
   },
 ];
 const faq: GuideFaq = {
@@ -62,7 +62,7 @@ const faq: GuideFaq = {
     },
     {
       q: "Does it work in WoW Forever or Classic?",
-      a: "Not yet, Retail only. WoW Forever and Classic are not supported. Follow the Unbored Telegram channel linked below for news.",
+      a: "WoW Forever supports profession checks. The Windows Companion finds the _forever_ folder and installs the addon there. Open your profession in game to record learned recipes. Other Classic editions are not supported.",
     },
     {
       q: "Why does SmartScreen warn me? Is it safe to run?",
@@ -82,7 +82,7 @@ const faq: GuideFaq = {
     },
     {
       q: "How do I uninstall Bory?",
-      a: "Close WoW and quit the Companion. Uninstall Unbored Companion through Windows Settings, then remove the Unbored and Unbored_Plan folders from your Retail Interface/AddOns folder. Uninstalling does not erase data already sent to Unbored. Use Forget my data first if you want that erased too.",
+      a: "Close WoW and quit the Companion. Uninstall Unbored Companion through Windows Settings, then remove the Unbored and Unbored_Plan folders from the Interface/AddOns folder of each game where you installed them. Uninstalling does not erase data already sent to Unbored. Use Forget my data first if you want that erased too.",
     },
     {
       q: "How do I erase my data?",
@@ -124,7 +124,7 @@ useSchemaOrg([
         { label: 'Get Bory', to: '/install' },
       ]"
       title="Not sure what to do in WoW?"
-      lead="Bory gives your Retail character up to four ideas, then a plan with one step at a time and a pin on the map. Pick one and get going."
+      lead="Check which recipes you know in WoW Forever, or pick a plan for your Retail character and follow it one step at a time."
     >
       <DsActions
         ><DsButton :to="WINDOWS_DOWNLOAD" external>Download for Windows</DsButton></DsActions
@@ -153,9 +153,10 @@ useSchemaOrg([
       <DsProse>
         <p>
           <a :href="ADDON_DOWNLOAD">Download the addon zip</a>, close WoW, and extract its folders
-          into:
+          into the folder for your game.
         </p>
-        <p><code>World of Warcraft/_retail_/Interface/AddOns/</code></p>
+        <p>Retail · <code>World of Warcraft/_retail_/Interface/AddOns/</code></p>
+        <p>Forever · <code>World of Warcraft/_forever_/Interface/AddOns/</code></p>
         <p>
           Start Retail and click Bory. Ideas from the calendar and your quest log, quick plans and
           item tips work in the game alone. Proper plans, ideas from your other characters and the
@@ -167,7 +168,7 @@ useSchemaOrg([
       <DsProse
         ><p>
           Open the Companion and choose <strong>Open my profile</strong>. Its one-time link signs
-          you in. Then pick a Character in the footer to see your recipes on any profession page.
+          you in. Pick your character on My page to check your recipes.
         </p></DsProse
       >
     </DsSection>

@@ -44,3 +44,16 @@ export function kaniaProfile(): ProfileHome {
     ],
   };
 }
+
+export function summaryFixture() {
+  const { game, realm, name } = kaniaProfile();
+  return {
+    game,
+    realm,
+    name,
+    professions: [
+      { name: "Enchanting", href: "/forever/professions/enchanting", known: 42 },
+      { name: "Tailoring", href: "/forever/professions/tailoring", known: 7 },
+    ],
+  };
+}

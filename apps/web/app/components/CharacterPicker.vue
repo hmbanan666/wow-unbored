@@ -31,9 +31,7 @@ const id = useId();
           </option>
         </optgroup>
       </select>
-      <NuxtLink v-else to="/install#sign-in"
-        >Open the Companion to bring your characters here</NuxtLink
-      >
+      <NuxtLink v-else to="/install#sign-in">How to connect your character</NuxtLink>
     </template>
     <button v-else-if="state.status === 'error'" type="button" @click="refresh">
       Characters unavailable. Try again
