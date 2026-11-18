@@ -30,6 +30,7 @@ defineProps<{ part: GameText; media?: PageMedia }>();
         :open="open"
     /></template>
   </DsTooltip>
+  <a v-else-if="part.href" :href="part.href">{{ part.text }}</a>
   <template v-else>{{ part.text }}</template>
 </template>
 

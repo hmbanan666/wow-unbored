@@ -10,6 +10,21 @@ const props = defineProps<{
   siblings?: CatalogSummary[];
 }>();
 
+const isGuide = computed(() => props.page?.kind === "guide");
+const opening = computed(() =>
+  isGuide.value && props.page?.blocks[0]?.type === "paragraph" ? props.page.blocks[0] : null,
+);
+const body = computed(() =>
+  opening.value ? props.page!.blocks.slice(1) : (props.page?.blocks ?? []),
+);
+const contents = computed(() =>
+  isGuide.value
+    ? body.value.flatMap((b, i) =>
+        b.type === "heading" ? [{ text: b.text, href: "#section-" + (i + 1) }] : [],
+      )
+    : [],
+);
+
 const section = computed(() =>
   props.page?.game === "forever"
     ? { label: "WoW Forever", to: "/forever", one: "Guide" }
@@ -66,6 +81,7 @@ const meta = computed(() =>
     .join(" · "),
 );
 
+if (isGuide.value) useHead({ titleTemplate: "%s" });
 useSeoMeta({
   title: () => props.page?.title || "Unbored",
   description: () => props.page?.description || "",
@@ -150,7 +166,11 @@ if (props.page && props.page.kind !== "page") {
 
 <template>
   <DsPage
-    :width="page && (page.kind === 'page' || heroArt(page.hero, page.media)) ? 'wide' : 'narrow'"
+    :width="
+      page && (page.kind === 'page' || contents.length >= 3 || heroArt(page.hero, page.media))
+        ? 'wide'
+        : 'narrow'
+    "
   >
     <DsEmptyState
       v-if="!page"
@@ -170,23 +190,59 @@ if (props.page && props.page.kind !== "page") {
       <slot />
     </template>
     <template v-else>
-      <DsChipRow v-if="page.game === 'forever'"><DsChip tone="gold">WoW Forever</DsChip></DsChipRow>
+      <div v-if="isGuide" class="guide-trail">
+        <DsBreadcrumbs :trail="trail" /><DsChip v-if="page.game === 'forever'" tone="gold"
+          >WoW Forever</DsChip
+        >
+      </div>
       <DsGameHeader :page="page">
         <DsPageHeader
-          :trail="trail"
-          :eyebrow="eyebrow"
+          :trail="isGuide ? undefined : trail"
+          :eyebrow="isGuide ? undefined : eyebrow"
           :title="page.headline"
-          :lead="page.description"
-          :meta="meta"
+          :lead="isGuide ? undefined : page.description"
+          :meta="isGuide ? undefined : meta"
         />
       </DsGameHeader>
-      <p v-if="page.asOf?.note" class="ds-meta">{{ page.asOf.note }}</p>
-      <EntryBody
-        :terms="page.terms"
-        :blocks="page.blocks"
-        :media="page.media"
-        :items="page.items"
-      />
+      <div :class="{ 'guide-spread': contents.length >= 3 }">
+        <section v-if="isGuide" class="short-answer" aria-labelledby="short-answer">
+          <h2 id="short-answer">The short answer</h2>
+          <EntryBody
+            v-if="opening"
+            :blocks="[opening]"
+            :terms="page.terms"
+            :references="page.references"
+            :items="page.items"
+            :media="page.media"
+            answer
+          />
+          <p v-else>{{ page.description }}</p>
+        </section>
+        <p v-if="isGuide && meta" class="ds-meta">{{ meta }}</p>
+        <p v-if="page.asOf?.note" class="ds-meta">{{ page.asOf.note }}</p>
+        <details v-if="contents.length >= 3" class="contents">
+          <summary>On this page</summary>
+          <nav aria-label="On this page">
+            <a v-for="section in contents" :key="section.href" :href="section.href">{{
+              section.text
+            }}</a>
+          </nav>
+        </details>
+        <EntryBody
+          :terms="page.terms"
+          :blocks="body"
+          :anchors="isGuide"
+          :references="page.references"
+          :media="page.media"
+          :items="page.items"
+        />
+        <nav v-if="contents.length >= 3" class="margin-contents" aria-label="Guide sections">
+          <h2>On this page</h2>
+          <a v-for="section in contents" :key="section.href" :href="section.href">{{
+            section.text
+          }}</a>
+        </nav>
+      </div>
       <PersonalPaths
         v-if="page.game === 'retail' && (page.kind === 'path' || page.kind === 'collection')"
         :page="page"
@@ -249,3 +305,92 @@ if (props.page && props.page.kind !== "page") {
     </template>
   </DsPage>
 </template>
+
+<style scoped>
+.guide-trail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.guide-trail :deep(ol) {
+  margin: 0;
+}
+.margin-contents {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .guide-spread {
+    display: grid;
+    grid-template-columns: minmax(0, var(--container-narrow)) minmax(12rem, 1fr);
+    column-gap: var(--space-7);
+  }
+  .guide-spread > * {
+    grid-column: 1;
+  }
+  .guide-spread > .contents {
+    display: none;
+  }
+  .margin-contents {
+    display: grid;
+    grid-column: 2;
+    grid-row: 1 / span 5;
+    align-self: start;
+    position: sticky;
+    top: var(--space-4);
+    margin-top: var(--space-3);
+    border-top: 2px solid var(--lamp-gold-dark);
+  }
+  .margin-contents h2 {
+    font: 700 var(--text-sm)/1.3 var(--font-ui);
+    color: var(--lamp-muted);
+    padding-top: var(--space-3);
+  }
+  .margin-contents a {
+    display: block;
+    align-content: center;
+    min-height: var(--tap);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--lamp-line-soft);
+    font: 500 var(--text-base)/1.35 var(--font-ui);
+    text-decoration: none;
+  }
+  .margin-contents a:hover {
+    text-decoration: underline;
+  }
+}
+.short-answer {
+  margin-block: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-inline-start: 3px solid var(--lamp-gold);
+  background: linear-gradient(105deg, var(--lamp-glow), var(--lamp-bg));
+  color: var(--lamp-text);
+  font-size: var(--text-lg);
+  line-height: 1.45;
+  max-width: var(--container-narrow);
+}
+.short-answer h2 {
+  font: 700 var(--text-sm)/1.4 var(--font-ui);
+  color: var(--lamp-gold);
+  margin-bottom: var(--space-2);
+}
+.contents {
+  margin-block: var(--space-4) var(--space-5);
+  border-block: 1px solid var(--lamp-line-soft);
+}
+.contents summary,
+.contents a {
+  min-height: var(--tap);
+  align-content: center;
+}
+.contents summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--lamp-gold-light);
+}
+.contents nav {
+  display: grid;
+  padding-inline: var(--space-4);
+}
+</style>

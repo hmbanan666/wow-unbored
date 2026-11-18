@@ -50,80 +50,92 @@ defineExpose({ open });
         ×
       </button>
       <h2 v-if="!inline" :id="title">{{ recipe.name || "Recipe name unavailable" }}</h2>
-      <p class="detail-meta">{{ recipe.category.name }}</p>
-      <p v-if="!recipe.teachingItemNames.length">No formula item</p>
-      <RecipeFormula
-        v-if="recipe.teachingItemNames.length"
-        :items="recipe.teachingItemNames"
-        binding
-      />
-      <RecipePersonal v-if="inline && overlay" :overlay="overlay" />
-      <h2 v-if="inline">Base difficulty</h2>
-      <p v-if="!inline && recipe.known === true" class="known-message">
-        You know this. Grey at {{ recipe.thresholds.grey }}.
-      </p>
-      <p v-else-if="!inline && recipe.known === null">
-        Open this profession in the game to check what you know.
-      </p>
-      <template v-else>
-        <RecipeDifficultyBadge :label="recipe.difficulty.label" />
-        <ul>
-          <li v-for="reason in recipe.difficulty.reasons" :key="reason">{{ reason }}</li>
-        </ul>
+      <div v-if="inline" class="field-columns">
+        <section class="materials">
+          <h2>Materials</h2>
+          <ul v-if="recipe.reagents.length" class="shopping-list">
+            <li v-for="r in recipe.reagents" :key="r.itemId">
+              <span>{{ r.name || "Unnamed material" }}</span
+              ><strong>× {{ r.count }}</strong>
+            </li>
+          </ul>
+          <p v-else>No materials are listed.</p>
+          <p v-if="crafted.length" class="output">
+            Makes <strong>{{ crafted.map((r) => r.name || "an unnamed item").join(", ") }}</strong>
+          </p>
+        </section>
+        <section class="learning">
+          <h2>Where to learn it</h2>
+          <RecipeFormula
+            v-if="recipe.teachingItemNames.length"
+            :items="recipe.teachingItemNames"
+            binding
+          />
+          <RecipeSources :sources="recipe.sources" />
+        </section>
+      </div>
+      <template v-if="inline">
+        <RecipePersonal v-if="overlay" :overlay="overlay" />
+        <h2>Skill and difficulty</h2>
+        <p>Required skill: {{ recipe.difficulty.requiredSkill ?? "unconfirmed" }}</p>
+        <dl class="thresholds">
+          <div>
+            <dt>Orange</dt>
+            <dd>{{ game === "forever" ? "from required skill" : recipe.thresholds.orange }}</dd>
+          </div>
+          <div>
+            <dt>Yellow</dt>
+            <dd>{{ recipe.thresholds.yellow }}</dd>
+          </div>
+          <div>
+            <dt>Green</dt>
+            <dd>{{ recipe.thresholds.green }}</dd>
+          </div>
+          <div>
+            <dt>Grey</dt>
+            <dd>{{ recipe.thresholds.grey }}</dd>
+          </div>
+        </dl>
+        <details class="base-difficulty">
+          <summary>Base difficulty · {{ recipe.difficulty.label }}</summary>
+          <ul>
+            <li v-for="reason in recipe.difficulty.reasons" :key="reason">{{ reason }}</li>
+          </ul>
+        </details>
       </template>
-      <p>Required skill: {{ recipe.difficulty.requiredSkill ?? "unknown until seen" }}</p>
-      <p v-if="crafted.length">
-        Creates: {{ crafted.map((r) => r.name || "Item name unavailable").join(", ") }}
-      </p>
-      <dl v-if="inline" class="thresholds">
-        <div>
-          <dt>Orange</dt>
-          <dd>{{ game === "forever" ? "from required skill" : recipe.thresholds.orange }}</dd>
-        </div>
-        <div>
-          <dt>Yellow</dt>
-          <dd>{{ recipe.thresholds.yellow }}</dd>
-        </div>
-        <div>
-          <dt>Green</dt>
-          <dd>{{ recipe.thresholds.green }}</dd>
-        </div>
-        <div>
-          <dt>Grey</dt>
-          <dd>{{ recipe.thresholds.grey }}</dd>
-        </div>
-      </dl>
-      <h3>Reagents</h3>
-      <ul v-if="recipe.reagents.length">
-        <li v-for="reagent in recipe.reagents" :key="reagent.itemId">
-          {{ reagent.count }}× {{ reagent.name || "Reagent name unavailable" }}
-        </li>
-      </ul>
-      <p v-else>No reagents listed.</p>
-      <template v-if="recipe.sources.length">
-        <h3>Seen in the game</h3>
-        <ul>
-          <li v-for="(source, index) in recipe.sources" :key="index">
-            {{ source.npcName }} · {{ source.zone
-            }}<template v-if="source.x !== null && source.y !== null">
-              ({{ source.x }}, {{ source.y }})</template
-            >
-            <template v-if="source.cost !== null"> · {{ source.cost }} copper</template>
-            <span class="detail-meta">
-              ·
-              {{
-                source.kind === "trainer"
-                  ? "Trainer"
-                  : source.limited
-                    ? "Vendor, limited supply"
-                    : "Vendor"
-              }}</span
-            >
+      <template v-else>
+        <p class="detail-meta">{{ recipe.category.name }}</p>
+        <p v-if="!recipe.teachingItemNames.length">No formula item</p>
+        <RecipeFormula
+          v-if="recipe.teachingItemNames.length"
+          :items="recipe.teachingItemNames"
+          binding
+        />
+        <p v-if="recipe.known === true" class="known-message">
+          You know this. Grey at {{ recipe.thresholds.grey }}.
+        </p>
+        <p v-else-if="recipe.known === null">
+          Open this profession in the game to check what you know.
+        </p>
+        <template v-else>
+          <RecipeDifficultyBadge :label="recipe.difficulty.label" />
+          <ul>
+            <li v-for="reason in recipe.difficulty.reasons" :key="reason">{{ reason }}</li>
+          </ul>
+        </template>
+        <p>Required skill: {{ recipe.difficulty.requiredSkill ?? "unknown until seen" }}</p>
+        <p v-if="crafted.length">
+          Creates: {{ crafted.map((r) => r.name || "Item name unavailable").join(", ") }}
+        </p>
+        <h3>Reagents</h3>
+        <ul v-if="recipe.reagents.length">
+          <li v-for="reagent in recipe.reagents" :key="reagent.itemId">
+            {{ reagent.count }}× {{ reagent.name || "Reagent name unavailable" }}
           </li>
         </ul>
-        <p class="detail-meta">Past sightings, not live availability.</p>
+        <p v-else>No reagents listed.</p>
+        <RecipeSources :sources="recipe.sources" />
       </template>
-      <p v-else>No trainer or vendor sightings yet.</p>
     </template>
   </component>
 </template>
@@ -203,7 +215,60 @@ ul {
   width: 100%;
   max-width: none;
   max-height: none;
-  margin-block: 1.5rem;
+  margin-block: var(--space-4) var(--space-6);
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: var(--text-base);
+}
+.field-columns {
+  display: grid;
+  gap: var(--space-5);
+  border-block: 1px solid var(--lamp-line);
+  padding-block: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.field-columns h2 {
+  margin-bottom: var(--space-3);
+  padding: 0;
+}
+.shopping-list {
+  padding: 0;
+  list-style: none;
+}
+.shopping-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--lamp-line-soft);
+}
+.shopping-list strong {
+  color: var(--lamp-gold-light);
+  white-space: nowrap;
+}
+.output strong {
+  margin-left: var(--space-1);
+}
+.base-difficulty {
+  margin-top: var(--space-4);
+}
+.base-difficulty summary {
+  min-height: var(--tap);
+  align-content: center;
+  cursor: pointer;
+}
+@media (min-width: 640px) {
+  .field-columns {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-6);
+  }
+  .learning {
+    padding-left: var(--space-5);
+    border-left: 1px solid var(--lamp-line-soft);
+  }
 }
 .thresholds {
   display: flex;

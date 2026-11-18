@@ -7,6 +7,7 @@ import {
   type PublicProfession,
   type ProfessionOverlay,
 } from "#shared/public-professions";
+import type { GuideLink } from "#shared/guide-references";
 import { albumFilter } from "#shared/profession-album";
 import { useProfessionOverlay } from "../../../composables/useProfessionOverlay";
 const route = useRoute();
@@ -14,7 +15,7 @@ const router = useRouter();
 const game = String(route.params.game);
 if (!isGame(game)) throw createError({ statusCode: 404 });
 const slug = String(route.params.slug);
-const { data: base, error } = await useFetch<PublicProfession>(
+const { data: base, error } = await useFetch<PublicProfession & { guides: GuideLink[] }>(
   `/api/game/${game}/professions/${encodeURIComponent(slug)}`,
 );
 if (error.value || !base.value)
@@ -43,7 +44,7 @@ function selectFilter(value: string) {
   return router.push({ query });
 }
 const title = `${base.value.name} recipes · ${gameName(game)}`;
-const description = `Explore ${base.value.name} recipes in ${gameName(game)}: formula requirements, reagents, observed trainers and vendors, and base difficulty. Add your character's progress.`;
+const description = `Find ${base.value.name} recipes in ${gameName(game)} by name, skill or recipe type. Check materials and see where players have found a trainer or vendor.`;
 useSeoMeta({ title, description, ogTitle: title, ogDescription: description });
 defineOgImage("Unbored", { title, description, game });
 useHead({
@@ -53,10 +54,14 @@ useHead({
 <template>
   <DsPage v-if="base" width="wide">
     <DsBreadcrumbs :trail="professionTrail(game, base)" />
-    <DsPageHeader
-      :title="base.name"
-      :eyebrow="gameName(game)"
-      lead="Every recipe, one collection. Pick a character to see your next step."
+    <CraftHeader :title="base.name + ' recipes'" :eyebrow="gameName(game)" />
+    <ProfessionGuideLinks :guides="base.guides" />
+    <ProfessionAlbum
+      :base="base"
+      :overlay="overlay"
+      :game="game"
+      :filter="filter"
+      @filter="selectFilter"
     />
     <OverlayStatus :game="game" :other-game="otherGame" :status="status" @retry="refresh" />
     <TodayGoals
@@ -65,13 +70,6 @@ useHead({
       :name="base.name"
       :unavailable="overlay.todayUnavailable"
       @retry="refresh"
-    />
-    <ProfessionAlbum
-      :base="base"
-      :overlay="overlay"
-      :game="game"
-      :filter="filter"
-      @filter="selectFilter"
     />
   </DsPage>
 </template>

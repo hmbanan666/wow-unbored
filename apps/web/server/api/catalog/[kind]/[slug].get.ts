@@ -1,3 +1,4 @@
+import { professionGuides } from "../../../utils/profession-guides";
 import { isCatalogKind, isSlug, PUBLIC_COPY } from "#shared/catalog";
 import { readPublished } from "../../../utils/content.ts";
 import { db } from "../../../utils/db.ts";
@@ -18,6 +19,10 @@ export default defineEventHandler(async (event) => {
   if (!page) {
     setResponseStatus(event, 404);
     return { error: "not_found" as const, message: PUBLIC_COPY.notPublished };
+  }
+  if (page.kind === "guide" && page.game === "forever") {
+    const { byGuide } = await professionGuides(page.game);
+    return { ...page, references: byGuide[page.slug] ?? {} };
   }
   return page;
 });

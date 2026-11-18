@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { termParts, type GuideTerm } from "@unbored/contracts/guide";
-import { gameText } from "#shared/game-media";
+import { guideLines, referencePattern, type References } from "#shared/guide-references";
+import { gameText, type GameText } from "#shared/game-media";
 import type { PageMedia } from "@unbored/contracts/game-media";
 import type { CatalogItem } from "#shared/catalog";
 import type { Block } from "#shared/blocks";
@@ -10,11 +11,44 @@ const props = defineProps<{
   media?: PageMedia;
   items?: CatalogItem[];
   terms?: GuideTerm[];
+  references?: References;
+  answer?: boolean;
+  anchors?: boolean;
 }>();
 
-function pieces(text: string) {
-  return termParts(text, props.terms ?? [], false).flatMap((part) =>
-    part.term ? [part] : gameText(part.text, props.media, props.items),
+// Link the first plain-text mention of each name; retain the guide's own term tooltips.
+const linkedText = computed(() => {
+  const pattern = referencePattern(Object.keys(props.references ?? {}));
+  const linked = new Map<string, GameText[]>();
+  if (!pattern) return linked;
+  const seen = new Set<string>();
+  for (const line of props.blocks.flatMap(guideLines)) {
+    if (linked.has(line)) continue;
+    const parts = termParts(line, props.terms ?? [], false).flatMap((part): GameText[] => {
+      if (part.term) return [part];
+      const pieces: GameText[] = [];
+      let offset = 0;
+      for (const match of part.text.matchAll(pattern)) {
+        if (seen.has(match[0])) continue;
+        seen.add(match[0]);
+        pieces.push(
+          { text: part.text.slice(offset, match.index) },
+          { text: match[0], href: props.references![match[0]] },
+        );
+        offset = match.index + match[0].length;
+      }
+      return [...pieces, { text: part.text.slice(offset) }];
+    });
+    linked.set(line, parts);
+  }
+  return linked;
+});
+function pieces(text: string): GameText[] {
+  return (
+    linkedText.value.get(text) ??
+    termParts(text, props.terms ?? [], false).flatMap((part) =>
+      part.term ? [part] : gameText(part.text, props.media, props.items),
+    )
   );
 }
 
@@ -103,7 +137,12 @@ const parts = computed(() => {
           </template>
         </dl>
       </section>
-      <h2 v-else-if="part.block.type === 'heading'">{{ part.block.text }}</h2>
+      <h2
+        v-else-if="part.block.type === 'heading'"
+        :id="anchors ? 'section-' + (blocks.indexOf(part.block) + 1) : undefined"
+      >
+        {{ part.block.text }}
+      </h2>
       <p v-else-if="part.block.type === 'paragraph'">
         <DsGameRef
           v-for="(piece, n) in pieces(part.block.text)"
@@ -118,13 +157,16 @@ const parts = computed(() => {
         </li>
       </ul>
     </template>
-    <section v-if="terms?.length" aria-label="Game terms" class="guide-terms">
+    <section v-if="terms?.length && !answer" aria-label="Game terms" class="guide-terms">
       <h2>Game terms in this guide</h2>
       <dl>
         <template v-for="term in terms" :key="term.key">
           <dt :id="`guide-term-${term.key}`" tabindex="-1">{{ term.name }}</dt>
           <dd>
             {{ term.text }}
+            <a v-if="references?.[term.name]" :href="references[term.name]"
+              >Look up {{ term.name }}</a
+            >
             <a :href="term.source" target="_blank" rel="nofollow noopener noreferrer"
               >Source for {{ term.name }}</a
             >

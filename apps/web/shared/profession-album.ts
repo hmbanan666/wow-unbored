@@ -24,6 +24,7 @@ export function albumFilter(query: unknown): string {
   return typeof query === "string" &&
     (ALBUM_FILTERS.some((f) => f.id === query) ||
       query.startsWith("zone:") ||
+      query.startsWith("npc:") ||
       query.startsWith("category:"))
     ? query
     : "all";
@@ -32,6 +33,7 @@ export function matchesAlbumFilter(recipe: AlbumRecipe, filter: string): boolean
   if (filter === "all") return true;
   if (filter.startsWith("zone:")) return recipe.sources.some((s) => s.zone === filter.slice(5));
   if (filter.startsWith("category:")) return String(recipe.category.id) === filter.slice(9);
+  if (filter.startsWith("npc:")) return recipe.sources.some((s) => s.npcName === filter.slice(4));
   if (filter === "missing") return recipe.known === false;
   if (filter === "now") return recipe.known === false && recipe.difficulty.canGetNow;
   const source = recipe.difficulty.source;

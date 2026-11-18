@@ -886,3 +886,22 @@ productionTest("private sharing failures remain no-store and noindex", async () 
     expect(body).not.toContain("Kania");
   }
 });
+
+productionTest(
+  "the recipe sitemap preserves the full set of reserved, published recipe paths",
+  async () => {
+    const expected = await database.sql<{ slug: string }[]>`
+    SELECT DISTINCT s.slug FROM game.recipe_slugs s
+    JOIN game.profession_recipes r USING (game, spell_id)
+    JOIN game.builds b USING (game, build)
+    WHERE r.game = 'forever' AND b.build_number = (SELECT max(build_number) FROM game.builds WHERE game = 'forever')
+      AND trim(r.body->>'name') <> '' ORDER BY s.slug`;
+    const xml = await (await fetch(origin + "/sitemap.xml")).text();
+    const actual = [
+      ...xml.matchAll(/<loc>https:\/\/playunbored\.com\/forever\/recipes\/([^<]+)<\/loc>/g),
+    ]
+      .map((m) => m[1])
+      .sort();
+    expect(actual).toEqual(expected.map((row) => row.slug).sort());
+  },
+);

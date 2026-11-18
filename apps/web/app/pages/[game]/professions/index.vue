@@ -18,7 +18,7 @@ if (error.value || !data.value)
     message: "Profession catalog unavailable.",
   });
 const title = `${gameName(game)} professions`;
-const description = `Browse ${gameName(game)} profession recipes, formula facts, reagents and observed sources. Pick your character to see what you know and what comes next.`;
+const description = `Browse ${gameName(game)} profession recipes, formula facts, reagents and observed sources. Look up a craft by name and see which materials to bring.`;
 useSeoMeta({ title, description, ogTitle: title, ogDescription: description });
 defineOgImage("Unbored", { title, description, game });
 useHead({ link: [{ rel: "canonical", href: `${useSiteConfig().url}/${game}/professions` }] });
@@ -26,7 +26,10 @@ useHead({ link: [{ rel: "canonical", href: `${useSiteConfig().url}/${game}/profe
 <template>
   <DsPage width="wide">
     <DsBreadcrumbs :trail="professionTrail(game)" />
-    <DsPageHeader :title="title" lead="Every recipe is a little possibility. Find your next one." />
+    <DsPageHeader
+      :title="title"
+      lead="Choose a profession to find a recipe, check its materials or look for a trainer."
+    />
     <DsCardGrid
       ><DsCard v-for="p in data" :key="p.slug" :title="p.name">
         <p>{{ p.total }} named recipes</p>

@@ -101,26 +101,30 @@ test("filtering dims album slots, filters the list, and resets Show all", async 
   expect(wrapper.findAll(".missing-recipe")).toHaveLength(12);
 });
 
-test("public album has all named recipes and base filters without personal state; overlay retains unread slots", async () => {
+test("public recipes are named, searchable and progressively disclosed", async () => {
   const { publicAlbum } = await import("../fixtures/public-professions");
-  const { base, overlay } = publicAlbum("enchanting");
+  const { base, overlay } = publicAlbum();
   const wrapper = mount(Album, { props: { base, filter: "all", game: "forever" } });
-  expect(wrapper.findAll(".recipe-slot")).toHaveLength(262);
-  expect(wrapper.find(".collection-ring").exists()).toBe(false);
-  expect(wrapper.text()).toContain("Base difficulty");
-  expect(wrapper.findAll("button").some((b) => b.text() === "Missing")).toBe(false);
-  expect(wrapper.find('a[href="/forever/recipes/runed-copper-rod"]').exists()).toBe(true);
+  expect(wrapper.findAll(".directory li a")).toHaveLength(12);
+  await wrapper.get(".directory button").trigger("click");
+  expect(wrapper.findAll(".directory li a")).toHaveLength(24);
+  await wrapper.get('input[type="search"]').setValue("runed copper rod");
+  expect(wrapper.findAll(".directory li a")).toHaveLength(1);
+  expect(wrapper.get(".directory li a").attributes("href")).toBe(
+    "/forever/recipes/runed-copper-rod",
+  );
+  await wrapper.setProps({ filter: "trainer" });
+  expect(wrapper.findAll(".directory li a")).toHaveLength(0);
   await wrapper.setProps({ overlay });
   expect(wrapper.text()).toContain("Open your Enchanting window");
-  expect(wrapper.findAll(".recipe-slot")).toHaveLength(262);
-  expect(wrapper.findAll(".recipe-slot.is-known")).toHaveLength(0);
 });
 
-test("Tailoring overlay fills known slots and shows skill and easiest missing recipes", async () => {
+test("Tailoring retains known status and missing recipes alongside the directory", async () => {
   const { publicAlbum } = await import("../fixtures/public-professions");
   const { base, overlay } = publicAlbum("tailoring");
   const wrapper = mount(Album, { props: { base, overlay, filter: "all", game: "forever" } });
-  expect(wrapper.findAll(".recipe-slot.is-known")).toHaveLength(7);
+  await wrapper.setProps({ filter: "category:100" });
+  expect(wrapper.findAll('.directory a[aria-label$=", known"]')).toHaveLength(7);
   expect(wrapper.text()).toContain("112 / 150");
   expect(wrapper.text()).toContain("Missing, easiest first");
 });
