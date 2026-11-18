@@ -1541,7 +1541,7 @@ the migration, grant it SELECT along with the existing game tables. SQLite has n
 slug registry; transfer/import into PostgreSQL populates it through the same trigger.
 The transfer treats this table as derived and retains addresses even with `--force`.
 
-The header fetches `/api/me/characters` only after mount. It groups owned characters by
+The character picker fetches `/api/me/characters` only after mount. It groups owned characters by
 Game and displays level/class. Selection stores only `game/realm/name` (encoded
 segments) in `unbored_character`, Path=/, SameSite=Lax, one year, Secure over HTTPS.
 No selection is read during SSR. With a matching Game, the browser requests
@@ -1552,14 +1552,12 @@ No character cookie, known set, skill or Today data enters a public cache or HTM
 Switching characters clears the previous result and cancels the in-flight request;
 selecting the other Game shows a hint without requesting an overlay.
 
-`ProfessionAlbum` takes a public base and optional overlay. Public slots are small
-links; category disclosures hold SSR formula/reagent/source facts. Source, zone and
-category filters work without a character. An overlay adds known slots, difficulty,
-the collection ring, Missing / Can get now, easiest-first recipes and Today. An unread
-profession stays unknown, keeps its catalog visible and asks for its in-game window.
-`RecipeDetail` shares the recipe facts between the existing dialog and the single-page
-view; the latter adds thresholds, crafted items and a personal known/missing/unread
-card. Filters use `?f=` including `category:<id>` and preserve other query values.
+`NamedRecipes` renders the public, searchable directory. After mount, an owned
+selection adds a Known marker beside learned recipes. `CharacterCheck` displays
+the count and one named next recipe, or a prompt to open an unread profession in
+game. On a recipe, it shows learned, unlearned or unchecked and one reading link.
+Filters use `?f=` including `category:<id>` and preserve other query values.
+See [ADR 0120](adr/0120-quiet-character-check.md).
 
 Old `/my/<game>/<realm>/<name>/<profession>` addresses check ownership, set the
 selection cookie and 302 to the public album. Character cards and the Today strip link
@@ -1589,20 +1587,24 @@ The pure `computeTodayGoals` / `todayGoalComplete` contracts reuse profession pr
 
 Deploy **Server first** to apply `0033_character_goals.sql` and expose the API, then web. Its conditional grant gives an existing `unbored_web` role SELECT only; installations provisioning that role after migrations must include `GRANT SELECT ON character_goals TO unbored_web` in their read grants. SQLite creates the same table on open. Forget my data explicitly erases it; character deletion cascades. No addon or Companion update, import or version bump is required.
 
-Browser checks now render Today inside the public profession overlay, using Kania-shaped offline fixtures: unread Enchanting 145/150, read Tailoring 112/150 and no sightings. Captures are in `artifacts/public-professions/`; earlier slice-c review copies remain in `docs/review/today-goals/`.
+Today remains available through the private character detail API. Public profession checks read the profession overlay independently of Today.
 
 
 ### Profile and phone sign-in (P6)
 
 Deploy Server first: startup applies `0035_page_link_character.sql` (nullable text on `web.sign_in_links`) and exposes `/v1/web/page-link`. Then deploy web. No extra grants or backfill are needed; the web role still reads only, and old Companion requests and existing links remain valid. The Companion change ships in the next regular release, with no version bump here. Keep access logs on the proxy configured to omit or redact `/enter/<token>`; the application never logs sign-in request bodies, credentials or returned links. The one-time link responses and `/my` have no-store/no-referrer headers. QR generation stays in the browser with the dependency-free MIT `qrcode-generator` package.
 
-### Profile home (ADR 0101, P7)
+### My page and the private character profile
 
-`/my` is the private, noindex, no-store profile home. It selects the owned cookie character, falling back to the most recently seen character. `GET /api/me/characters/:game/:realm/:name/profile` returns hero facts, profession summaries, Today and dated journey stops after mount; ownership is checked for every personal read. It reuses existing Sections, `character_events`, catalog reads and the sealed-session Today service. No migration or new grant is needed. Public profession HTML remains independent of the selection.
+My page selects the owned cookie character, falling back to the most recently seen character.
+After mount it requests `GET /api/me/characters/:game/:realm/:name?view=professions` for
+profession names, known counts and links. History, phone sign-in and sharing remain
+owner-scoped. The private `/profile` API retains its hero, Today and journey data for
+existing callers. [ADR 0121](adr/0121-my-page-professions.md)
 
 The `char` Section gains optional `levelCap`: Forever supplies 60, Retail reads `GetMaxPlayerLevel` through the existing safe call and number guards. No new read moment is introduced. Existing snapshots remain valid; old Retail data shows Level/XP until this value arrives with the next addon release and sync. `played.total` is seconds, `char.money` is copper, and session zone stops use observed map minutes only. See ADR 0101 for UTC-day grouping and missing-data rules.
 
-Run `pnpm --filter @unbored/web test:browser` for profile widths 360/390/768/1280; captures go to ignored `artifacts/profile-home/`. CI attaches these PNGs as `profile-home-screenshots` for 30 days. Database profile tests use `UNBORED_TEST_DATABASE_URL`; production SSR/privacy/redirect checks are in the opt-in `test:seo` suite. Local Linux toolchains on this workspace can be enabled with `source .tools/issue100-env.sh` and `source artifacts/check-env.sh` if those untracked files are present (the second supplies Chromium libraries); otherwise install the prerequisites above. No live services are needed.
+Run `pnpm --filter @unbored/web test:browser` for profile widths 360/390/768/1366; captures go to ignored `artifacts/profile-home/`. CI attaches these PNGs as `profile-home-screenshots` for 30 days. Database profile tests use `UNBORED_TEST_DATABASE_URL`; production SSR/privacy/redirect checks are in the opt-in `test:seo` suite. Local Linux toolchains on this workspace can be enabled with `source .tools/issue100-env.sh` and `source artifacts/check-env.sh` if those untracked files are present (the second supplies Chromium libraries); otherwise install the prerequisites above. No live services are needed.
 
 
 ## Forever quests and authored chains

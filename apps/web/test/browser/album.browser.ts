@@ -77,7 +77,20 @@ test("public album and recipe pages fit mobile and desktop, with anonymous and p
 test("picker clears overlays for the other game; category filters and known Tailoring stay accessible", async ({
   page,
 }) => {
-  await page.goto("/forever/professions/tailoring?overlay=1");
+  for (const width of [390, 1366]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/forever/professions/tailoring");
+    const names = page.locator(".directory li a");
+    await expect(names).toHaveCount(12);
+    const before = await names.evaluateAll((links) =>
+      links.map((link) => link.getBoundingClientRect().y),
+    );
+    await page.goto("/forever/professions/tailoring?overlay=1");
+    await expect(page.locator(".character-check > p")).toContainText("Kania knows 7 of 16");
+    expect(
+      await names.evaluateAll((links) => links.map((link) => link.getBoundingClientRect().y)),
+    ).toEqual(before);
+  }
   await page.getByRole("button", { name: "Show more recipes" }).click();
   await expect(page.locator(".directory .known")).toHaveCount(7);
   const line = page.locator(".character-check > p");

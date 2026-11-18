@@ -37,7 +37,7 @@ defineEmits<{ retry: [] }>();
 
 <style scoped>
 .character-check {
-  min-height: 2.8em;
+  min-height: max(2.8em, var(--tap));
   margin-block: var(--space-2);
   color: var(--lamp-muted);
   font: 500 var(--text-sm)/1.4 var(--font-ui);
@@ -55,12 +55,15 @@ a {
 summary {
   cursor: pointer;
   width: fit-content;
+  min-height: var(--tap);
+  align-content: center;
 }
 button {
   background: none;
   border: 0;
   padding: 0;
   font: inherit;
+  min-height: var(--tap);
   cursor: pointer;
   text-decoration: underline;
 }

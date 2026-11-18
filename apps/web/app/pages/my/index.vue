@@ -81,36 +81,6 @@ useSeoMeta({ title: "My page", robots: "noindex, nofollow" });
     <p v-else>
       Choose <strong>Open my profile</strong> in the Companion to see your characters here.
     </p>
-    <details class="settings" id="settings">
-      <summary>Settings</summary>
-      <p>
-        <NuxtLink to="/install#sign-in">How to sign in</NuxtLink> ·
-        <NuxtLink to="/install">Install Bory</NuxtLink>
-      </p>
-      <template v-if="mounted && picker.state.value.signedIn">
-        <PhoneSignIn />
-        <FeedControls />
-      </template>
-    </details>
+    <CharacterSettings :signed-in="mounted && picker.state.value.signedIn" />
   </DsPage>
 </template>
-<style scoped>
-.settings {
-  margin-top: var(--space-6);
-  padding-block: var(--space-3);
-  border-top: 1px solid var(--lamp-line-soft);
-}
-summary,
-button {
-  cursor: pointer;
-}
-summary {
-  color: var(--lamp-muted);
-  min-height: var(--tap);
-  align-content: center;
-  font-family: var(--font-ui);
-}
-.settings p {
-  margin-block: var(--space-3);
-}
-</style>

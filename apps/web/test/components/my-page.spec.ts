@@ -29,21 +29,6 @@ test("My page selects the most recent character after mount and loads its privat
           character: {
             ...kania,
             professions: [],
-            today: [],
-            hero: {
-              className: "Warlock",
-              race: "Troll",
-              faction: "Horde",
-              level: 25,
-              cap: 60,
-              xp: 18993,
-              xpMax: 34000,
-              rested: null,
-              played: null,
-              ilvl: null,
-              money: null,
-            },
-            journey: [],
           },
         },
   );
