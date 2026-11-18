@@ -2,6 +2,8 @@
 
 This is the canonical entry point for guide work. The published text is in Postgres, not a directory of articles. Skills guide the human/editorial work; they are not invoked by the web request handler or a background publisher.
 
+Apply the [field guide content standard](content-standard.md) to each public page.
+
 ## Pick the workflow
 
 - Commission a new guide or create a replacement draft: [guide-write](../.agents/skills/guide-write/SKILL.md), including its brief and evidence ledger.
@@ -106,7 +108,7 @@ pnpm content:check
 python3 scripts/audit-guides.py --base-url http://127.0.0.1:3301 --expect-terms
 ```
 
-The default content check combines migrations 0023, 0024 and 0026–0028, keeping the later revision of each slug, then validates all seventeen guides together, including internal destinations and unique titles/descriptions. Pass one JSON file to validate a draft, or ordered SQL file arguments to validate another migration bundle. These are delivery checks, not the source of future article revisions. The audit uses public `curl` GETs only, discovers all published Forever slugs from the catalog, and compares authored FAQs, visible questions/answers and FAQPage JSON-LD word for word. It also checks that every authored table appears in server HTML. It checks HTTP 200, sitemap inclusion, robots directives, one H1/title/description, correct production canonicals, useful SSR body, internal next steps, Article Game, Forever breadcrumbs, readable definitions and the absence of visible JSON-LD or unrendered term syntax. Override `--canonical-origin` only if the preview intentionally uses another canonical origin.
+The default content check combines migrations 0023, 0024 and 0026–0028 and 0038, keeping the later revision of each slug, then validates the reviewed Forever guides and the Retail yak guide together, including internal destinations and unique titles/descriptions. Pass one JSON file to validate a draft, or ordered SQL file arguments to validate another migration bundle. These are delivery checks, not the source of future article revisions. The audit uses public `curl` GETs only, discovers all published Forever slugs from the catalog, and compares authored FAQs, visible questions/answers and FAQPage JSON-LD word for word. It also checks that every authored table appears in server HTML. It checks HTTP 200, sitemap inclusion, robots directives, one H1/title/description, correct production canonicals, useful SSR body, internal next steps, Article Game, Forever breadcrumbs, readable definitions and the absence of visible JSON-LD or unrendered term syntax. Override `--canonical-origin` only if the preview intentionally uses another canonical origin.
 
 After deployment, a coordinator can repeat against `https://playunbored.com`. Before deployment, audit an isolated preview with all migrations applied. Older deployments may fail the new hub checks; omitting `--expect-terms` only disables the guide-definition check. These checks assess technical eligibility, not crawling, indexing decisions, search demand, competitors or rankings. Read the article and inspect mobile layout separately; the script is not an editorial score.
 
@@ -175,3 +177,9 @@ The Server delivers the migration; its runtime, API and schema are unchanged. Th
 Deploy the updated **web first**, then start the **Server containing 0028** with its ordinary migration runner. Schema 0025 and the main terms/table/FAQ/group renderer must already be present. No manual production SQL is needed. Repeat `scripts/audit-guides.py --expect-terms` after rollout. This task performs no deployment. Recheck the class pages on November 10 against Blizzard's announced pet/Affliction tuning; do not mark planned changes live without confirmation.
 
 If a guard fails, preserve owner work and prepare a reviewed adaptation. Rollback requires a follow-up content migration retiring the two new publications and republishing the retained tier-list version 2 documents as new versions with their groups. Preserve history and migration records; do not delete the marker or replay an edited migration.
+
+## Field guide answers in migration 0038
+
+Migration 0038 revises the published English addon, hunter pet, Affliction, Enchanting and Retail vendor yak guides in place. It checks the reviewed version before writing and skips absent pages. A draft or changed publication aborts the transaction. Replaying the migration preserves later versions. To roll back an editorial change, publish the retained prior edition as a new version. See the [question and evidence ledger](audits/2026-11-18-profession-and-guide-answers.md).
+
+To check recipe addresses after a template change, save the baseline and preview sitemap XML files and run `python3 scripts/check-recipe-sitemap.py before.xml after.xml`.
