@@ -1,4 +1,5 @@
-import { professionName } from "@unbored/contracts/profession-name";
+import { professionHref, recipeHref } from "#shared/public-professions";
+import { professionName, professionSlug } from "#shared/profession-album";
 import { feedHref, type FeedPage, type FeedPost } from "#shared/character-feed";
 import type { Sql } from "./db";
 const stub = (): FeedPage => ({ shared: false, posts: [], next: null });
@@ -61,29 +62,47 @@ async function readFeed(
         row_number() OVER (PARTITION BY e.character_id, e.type, e.at / 86400 ORDER BY e.at, e.id) daily_recipe
       FROM character_events e JOIN shared s ON s.id = e.character_id
       WHERE e.game = 'forever' AND e.id > s.after_event AND e.type IN ('level_up', 'skill_step', 'recipe_learned', 'rep_standing')
+    ), latest AS (
+      SELECT build FROM game.builds WHERE game = 'forever' ORDER BY build_number DESC LIMIT 1
     ), named AS (
-      SELECT e.*, CASE WHEN e.type = 'recipe_learned' THEN (
-        SELECT p.body->>'name' FROM game.profession_recipes p WHERE p.game = 'forever'
-          AND p.build = (SELECT build FROM game.builds WHERE game = 'forever' ORDER BY build_number DESC LIMIT 1)
-          AND p.spell_id::text = e.to_value ORDER BY p.skill_line LIMIT 1
-      ) WHEN e.type = 'rep_standing' THEN (
-        SELECT r.body->>'Name_lang' FROM game.rows r WHERE r.game = 'forever'
-          AND r.build = (SELECT build FROM game.builds WHERE game = 'forever' ORDER BY build_number DESC LIMIT 1)
-          AND r.table_name = 'Faction' AND r.locale = 'enUS' AND r.id::text = e.key LIMIT 1
-      ) END AS title FROM events e
+      SELECT e.*, recipe.slug AS recipe_slug, CASE
+        WHEN e.type = 'recipe_learned' THEN recipe.name
+        WHEN e.type = 'rep_standing' THEN (
+          SELECT r.body->>'Name_lang' FROM game.rows r JOIN latest USING (build)
+          WHERE r.game = 'forever' AND r.table_name = 'Faction' AND r.locale = 'enUS' AND r.id::text = e.key LIMIT 1
+        ) END AS title,
+        CASE WHEN e.type = 'skill_step' AND EXISTS (
+          SELECT 1 FROM game.profession_recipes p JOIN latest USING (build)
+          WHERE p.game = 'forever' AND p.skill_line::text = e.key
+        ) THEN COALESCE((
+          SELECT r.body->>'DisplayName_lang' FROM game.rows r JOIN latest USING (build)
+          WHERE r.game = 'forever' AND r.table_name = 'SkillLine' AND r.locale = 'enUS' AND r.id::text = e.key
+        ), 'Profession') END AS profession
+      FROM events e LEFT JOIN LATERAL (
+        SELECT p.body->>'name' AS name, s.slug FROM game.profession_recipes p JOIN latest USING (build)
+        LEFT JOIN game.recipe_slugs s ON s.game = p.game AND s.spell_id = p.spell_id
+        WHERE e.type = 'recipe_learned' AND p.game = 'forever' AND p.spell_id::text = e.to_value
+          AND trim(p.body->>'name') <> '' ORDER BY p.skill_line LIMIT 1
+      ) recipe ON true
     ), posts AS (
-      SELECT 'e' || e.id AS id, e.character_id, e.at, e.type, e.key, e.to_value, e.title, NULL::jsonb image
+      SELECT 'e' || e.id AS id, e.character_id, e.at, e.type, e.key, e.to_value, e.title,
+        e.recipe_slug, e.profession, NULL::jsonb image
       FROM named e WHERE (e.type = 'level_up' AND (e.from_value IS NULL OR e.to_value::numeric > e.from_value::numeric))
         OR (e.type = 'skill_step' AND e.first_skill = 1)
         OR (e.type = 'rep_standing' AND e.from_value IS NOT NULL AND e.to_value::numeric > e.from_value::numeric)
         OR (e.type = 'recipe_learned' AND e.daily_recipe <= 3 AND e.title IS NOT NULL)
       UNION ALL
-      SELECT 's' || p.id, p.character_id, p.at, 'screenshot', '', '', '',
+      SELECT 's' || p.id, p.character_id, p.at, 'screenshot', '', '', '', NULL, NULL,
         jsonb_build_object('id', p.id, 'width', p.width, 'height', p.height, 'variants', p.variants)
       FROM character_screenshots p JOIN shared s ON s.id = p.character_id AND s.account_id = p.account_id
+    ), consecutive AS (
+      SELECT p.*, lag(ARRAY[p.type, p.key, p.to_value]) OVER
+        (PARTITION BY character_id ORDER BY at DESC, id DESC) AS newer
+      FROM posts p
     ), page AS (
-      SELECT p.*, s.name, s.realm, s.realm_slug, s.name_slug FROM posts p JOIN shared s ON s.id = p.character_id
-      ${before ? sql`WHERE (p.at, p.id) < (${before.at}, ${before.id})` : sql``}
+      SELECT p.*, s.name, s.realm, s.realm_slug, s.name_slug FROM consecutive p JOIN shared s ON s.id = p.character_id
+      WHERE (p.type = 'screenshot' OR p.newer IS DISTINCT FROM ARRAY[p.type, p.key, p.to_value])
+      ${before ? sql`AND (p.at, p.id) < (${before.at}, ${before.id})` : sql``}
       ORDER BY p.at DESC, p.id DESC LIMIT 25
     ) SELECT s.name, s.realm, s.realm_slug, s.name_slug,
       COALESCE((SELECT jsonb_agg(row_to_json(p) ORDER BY p.at DESC, p.id DESC) FROM page p), '[]'::jsonb) posts
@@ -97,6 +116,8 @@ async function readFeed(
     key: string;
     to_value: string;
     title: string | null;
+    recipe_slug: string | null;
+    profession: string | null;
     name: string;
     realm: string;
     realm_slug: string;
@@ -116,11 +137,12 @@ async function readFeed(
             : p.type === "rep_standing"
               ? "reputation"
               : "screenshot";
+    const profession = { skillLine: Number(p.key), name: p.profession ?? "Profession" };
     const label =
       kind === "level"
         ? `Level ${value}`
         : kind === "profession"
-          ? `${professionName({ skillLine: Number(p.key), name: "Profession" }) ?? "Profession"} · first recorded skill ${value}`
+          ? `${professionName(profession)} · first recorded skill ${value}`
           : kind === "recipe"
             ? `Learned ${p.title}`
             : kind === "reputation"
@@ -134,6 +156,10 @@ async function readFeed(
       href: feedHref(p.realm_slug, p.name_slug),
       kind,
       label,
+      ...(p.recipe_slug ? { resultHref: recipeHref("forever", p.recipe_slug) } : {}),
+      ...(p.profession
+        ? { resultHref: professionHref("forever", professionSlug(profession)) }
+        : {}),
       ...(p.image ? { image: p.image } : {}),
     };
   });

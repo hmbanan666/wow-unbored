@@ -4,10 +4,8 @@ import { PRIVACY_URL, REPO_URL, SITE_NAV } from "#shared/catalog";
 
 <template>
   <div class="site">
-    <DsNav :links="SITE_NAV"
-      ><template #character><CharacterPicker /></template
-    ></DsNav>
+    <DsNav :links="SITE_NAV" />
     <NuxtPage />
-    <DsFooter :links="SITE_NAV" :privacy="PRIVACY_URL" :source="REPO_URL" />
+    <DsFooter :privacy="PRIVACY_URL" :source="REPO_URL"><CharacterPicker /></DsFooter>
   </div>
 </template>

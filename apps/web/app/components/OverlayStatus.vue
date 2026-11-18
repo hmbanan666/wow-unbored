@@ -8,7 +8,7 @@ defineEmits<{ retry: [] }>();
 </script>
 <template>
   <p v-if="otherGame" class="overlay-status">
-    Pick a {{ gameName(game) }} character in the header to see your {{ subject }} here.
+    Pick a {{ gameName(game) }} character in the footer to see your {{ subject }} here.
   </p>
   <p v-else-if="status === 'loading'" class="overlay-status" role="status">
     Bory is checking your {{ subject }}…

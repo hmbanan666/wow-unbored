@@ -32,6 +32,6 @@ useSeoMeta({
         <DsButton to="/collections" variant="secondary">Collections</DsButton>
       </DsEmptyState>
     </DsPage>
-    <DsFooter :links="SITE_NAV" :privacy="PRIVACY_URL" :source="REPO_URL" />
+    <DsFooter :privacy="PRIVACY_URL" :source="REPO_URL" />
   </div>
 </template>

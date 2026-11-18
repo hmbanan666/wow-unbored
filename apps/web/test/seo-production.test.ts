@@ -34,6 +34,7 @@ beforeAll(async () => {
     VALUES ('char', ${profileId}, 'char', 1, 'profile-fixture', 1, 10,
       '{"class":"Warlock","classFile":"WARLOCK","race":"Troll","raceFile":"Troll","faction":"Horde","level":25,"xp":18993,"xpMax":34000}'::jsonb)`;
   await database.sql`INSERT INTO quest_sightings (account_id, game, quest_id, kind, title, level, npc_id, npc_name, ui_map_id, x, y, first_seen, last_seen) VALUES (${fixtureAccount}, 'forever', 42, 'accept', 'A Beginning', 5, 123, 'Marshal', 37, 48.2, 42.1, 1, 1)`;
+  await database.sql`INSERT INTO quest_sightings (account_id, game, quest_id, kind, first_seen, last_seen) VALUES (${fixtureAccount}, 'forever', 96661, 'completed', 1, 1)`;
   await database.sql`INSERT INTO game.quest_chains (game, slug, body) VALUES ('forever', 'first-steps', '{"slug":"first-steps","title":"First steps","faction":"Both","zone":"Elwynn Forest","status":"published","steps":[{"questID":42,"title":"A Beginning"}]}'::jsonb)`;
   await database.sql`INSERT INTO sections_latest (owner_kind, owner_id, section, v, hash, updated_at, bytes, body) VALUES ('char', ${profileId}, 'questsDone', 1, 'quests-fixture', 1, 10, '{"ids":["ids1","16"],"count":1}'::jsonb)`;
   mediaDir = await mkdtemp(fileURLToPath(new URL("./.seo-media-", import.meta.url)));
@@ -110,8 +111,8 @@ afterAll(async () => {
   if (mediaDir) await rm(mediaDir, { recursive: true, force: true });
 });
 
-async function page(path: string) {
-  const response = await fetch(origin + path);
+async function page(path: string, received?: Response) {
+  const response = received ?? (await fetch(origin + path));
   expect(response.status).toBe(200);
   const window = new Window({
     settings: {
@@ -221,8 +222,7 @@ productionTest(
     const home = await page("/");
     expect(home.title.length).toBeLessThanOrEqual(60);
     expect(home.title.match(/Unbored/g)).toHaveLength(1);
-    expect(home.title).toContain("WoW Forever guides");
-    expect(home.title).toContain("Retail addon plans");
+    expect(home.title).toContain("Field guides for WoW Forever and Retail");
     const description = home.querySelector('meta[name="description"]')!.getAttribute("content")!;
     expect(description.length).toBeGreaterThanOrEqual(120);
     expect(description.length).toBeLessThanOrEqual(155);
@@ -236,7 +236,7 @@ productionTest(
     expect(sitemap.status).toBe(200);
     expect(await sitemap.text()).toContain("https://playunbored.com/about");
     for (const [path, type] of [
-      ["/", "SoftwareApplication"],
+      ["/", "CollectionPage"],
       ["/install", "SoftwareApplication"],
       ["/collections/first-mounts", "ItemList"],
     ]) {
@@ -350,7 +350,7 @@ productionTest(
     expect(document.querySelector('main a[href="/download/windows"]')?.textContent).toBe(
       "Download for Windows",
     );
-    expect(document.querySelector('header a[href="/install"]')?.textContent).toBe("Get Bory");
+    expect(document.querySelector('footer a[href="/install"]')?.textContent).toBe("Get Bory");
     expect(document.body.textContent).toContain("Free · v1.2.3 · 5.12 MB · Windows 10/11 · Retail");
     expect(document.body.textContent).toContain("9 November 2026");
     expect(document.body.textContent).toContain("a".repeat(64));
@@ -886,3 +886,36 @@ productionTest("private sharing failures remain no-store and noindex", async () 
     expect(body).not.toContain("Kania");
   }
 });
+
+productionTest(
+  "unmapped quest stays public and every sitemap location serves indexable HTML",
+  async () => {
+    const thin = "/forever/quests/quest-96661";
+    const response = await fetch(origin + thin);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-robots-tag")).toContain("noindex, follow");
+    expect(
+      (await page(thin)).querySelector('meta[name="robots"]')?.getAttribute("content"),
+    ).toContain("noindex, follow");
+    const xml = await (await fetch(origin + "/sitemap.xml")).text();
+    const paths = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]!).pathname);
+    expect(paths).toContain("/forever/quests/a-beginning");
+    expect(paths).not.toContain(thin);
+    for (const path of paths) {
+      const res = await fetch(origin + path, { redirect: "manual" });
+      expect(res.status, path).toBe(200);
+      expect(res.headers.get("x-robots-tag") ?? "", path).not.toContain("noindex");
+      const doc = await page(path, res);
+      expect(
+        doc.querySelector('meta[name="robots"]')?.getAttribute("content") ?? "",
+        path,
+      ).not.toContain("noindex");
+    }
+    const start = await fetch(origin + "/download/", { redirect: "manual" });
+    expect(start.status).toBe(301);
+    const resolved = await fetch(origin + "/download/");
+    expect(new URL(resolved.url).pathname).toBe("/install");
+    expect(resolved.status).toBe(200);
+  },
+  30_000,
+);

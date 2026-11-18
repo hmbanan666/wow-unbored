@@ -492,11 +492,11 @@
 
 ### WoW Forever на сайте (ADR 0079)
 
-- `/forever` показывает только опубликованные гайды WoW Forever, `/guides` — только Retail и одну карточку перехода в WoW Forever. На главной этот переход появляется после первой публикации Forever.
+- `/forever` показывает только опубликованные гайды WoW Forever, `/guides` — гайды Retail и ссылки на Collections и Paths. На главной открыть статью из Most read и проверить, что её название совпадает с заголовком в каталоге.
 - У гайда Forever адрес остаётся `/guides/<slug>`, видны значок WoW Forever и хлебные крошки Home > WoW Forever > название. В исходном HTML проверить такой же BreadcrumbList и Article.about с названием World of Warcraft: Forever; у Retail — World of Warcraft.
 - Вверху гайда видны дата и билд проверки: `Checked against build 1.60.1.x on 5 Nov 2026`. Внизу Sources с датами вида `· Accessed 5 Nov 2026`, без длинного тире. Ссылки открываются в новой вкладке; предупреждение Early forecast читается без наведения.
 - После входа на гайде Forever нет прогресса, выбора Пути и предложения установить аддон. Собственные изображения в hero и figure загружаются из `/media/`; hero заполняет рамку через CSS cover, как у Retail. При отсутствии изображений нет пустых рамок. Изображения и ссылки Blizzard не принимаются; публикация не запускает их загрузку.
-- В шапке и подвале есть WoW Forever. На 360/390/640/768/1024/1280 px нет горизонтальной прокрутки; мобильное Menu открывается и закрывается при переходе. `/forever` и опубликованные гайды обоих игр есть в sitemap, черновиков там нет.
+- В шапке три ссылки: WoW Forever, Professions и WoW Retail. В подвале доступны My page, вход, Get Bory и общая лента. На 360/390/640/768/1024/1280 px нет горизонтальной прокрутки; мобильное Menu открывается и закрывается при переходе. `/forever` и опубликованные гайды обоих игр есть в sitemap, черновиков там нет.
 
 
 ## Сайт: пояснения в гайдах Forever
@@ -510,7 +510,7 @@
 
 ### Основа SEO сайта (ADR 0082)
 
-- На `/guides/<slug>` для WoW Forever в шапке выделен WoW Forever, для Retail выделен Guides. Проверить прямое открытие и переходы между играми, затем в Collections и обратно; на телефоне проверить Menu.
+- На `/guides/<slug>` для WoW Forever в шапке выделен WoW Forever, для Retail выделен WoW Retail. Проверить прямое открытие и переходы между играми, затем в Collections и обратно; на телефоне проверить Menu.
 - В конце гайда видны ссылка на раздел и три других опубликованных гайда той же игры (или все доступные, если их меньше). Ссылки открываются, текущий гайд не повторяется.
 - About и Telegram доступны из подвала. `/about` читается на ширине 360 px без горизонтальной прокрутки.
 - Адрес со слешем в конце перенаправляет 301 на тот же адрес без слеша, параметры сохраняются. Корень `/` не перенаправляется.
@@ -525,7 +525,7 @@
 
 ## Страница установки и скачивания (0085, 0086)
 
-- [ ] На `/install` при ширине 360 px нет горизонтальной прокрутки. Кнопка Download for Windows видна до прокрутки, в меню написано Get Bory.
+- [ ] На `/install` при ширине 360 px нет горизонтальной прокрутки. Кнопка Download for Windows видна до прокрутки, в подвале ссылка Get Bory ведёт на эту страницу.
 - [ ] Кнопка ведёт через `/download/windows` на текущий `*_x64-setup.exe`, ссылки zip и MSI дают соответствующие файлы, неизвестный вид скачивания отвечает 404. После загрузки страницы и перехода с другой страницы кнопка работает одинаково.
 - [ ] Версия, размер, дата и SHA-256 совпадают с текущим релизом. При недоступном GitHub кнопки ведут на страницу релиза, старые числа не показываются. Медленный ответ не задерживает страницу больше трёх секунд.
 - [ ] Скриншот плана в Танаане показан целиком, без обрезки и пустых мест для будущих снимков.
@@ -628,7 +628,7 @@
 ### Публичные профессии и рецепты (ADR 0102, P5)
 
 - Без входа открой `/forever/professions/enchanting`: видны все именованные рецепты, **Base difficulty**, категории, факты формул/реагентов и только наблюдавшиеся источники. Нет кольца прогресса, Today, Missing или Can get now. Рецепт открывается отдельной страницей; проверь breadcrumbs, пороги и обратную ссылку. Orange — **from required skill**, неизвестное требование — **unknown until seen**.
-- Войди через **My page** в Companion, затем выбери Kania в **Character** в шапке. Enchanting показывает 145/150; до чтения окна рецепты неизвестны, каталог остаётся видимым и Today просит открыть окно. Tailoring показывает 112/150 и изученные рецепты. Смена персонажа не оставляет прежний Today или известные ячейки; другая игра даёт подсказку без личных данных.
+- Войди через **My page** в Companion, затем выбери Kania в **Character** в подвале. Enchanting показывает 145/150; до чтения окна рецепты неизвестны, каталог остаётся видимым и Today просит открыть окно. Tailoring показывает 112/150 и изученные рецепты. Смена персонажа не оставляет прежний Today или известные ячейки; другая игра даёт подсказку без личных данных.
 - Проверь Missing, Can get now, источники, Category, Zone, Back и обновление страницы. Выбор персонажа сохраняется; без наблюдений Zone отключён и объясняется по нажатию `?`. Для недостающего рецепта видны причины и следующий шаг, для известного — **Kania knows this**.
 - Старая личная ссылка Enchanting выбирает только принадлежащего тебе персонажа и перенаправляет на публичную страницу. Проверь клавиатуру и 360/390/768/1280 без горизонтальной прокрутки. Retail без каталога не показывается и возвращает 404. В исходном HTML публичной страницы нет Kania/навыка/Today; личные API — private/no-store, noindex, чужой персонаж — 404.
 
@@ -678,3 +678,9 @@
 - Turn sharing on again, then use Forget my data. All events, consent and screenshots/variants disappear. Previously downloaded copies outside the service cannot be recalled.
 - In the next Companion build, choose “Share your Forever story”, explicitly choose the screenshot character, and enable sharing. Take a fresh game screenshot; after two normal checks it appears on that character's feed. Existing screenshots never upload. Turn sharing off on the site; new screenshots stay on the PC. Turn it back on: screenshots from the disabled interval never appear. Restart the Companion: collection requires a new explicit character choice. Switching characters in game never silently changes the chosen destination.
 - Check 390px and desktop widths: no horizontal overflow, readable dates, working keyboard controls, and a useful empty state. Review captures are CI artifacts, not repository images.
+
+
+### Справочник заданий и общая лента
+
+- На телефоне открыть зону на странице `/forever/quests`, перейти к заданию и сверить место начала или сдачи. Незанесённые на карту задания открываются по прежним ссылкам из Show unmapped quests.
+- Перейти из общей ленты по названию изученного рецепта. Имя персонажа ведёт в его ленту, название рецепта — к материалам и источникам.

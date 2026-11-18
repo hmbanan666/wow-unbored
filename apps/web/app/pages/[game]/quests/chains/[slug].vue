@@ -36,5 +36,6 @@ useHead({ link: [{ rel: "canonical", href: `${useSiteConfig().url}${chainHref(sl
     />
     <QuestChainDetail :chain="data" :overlay="overlay" />
     <DsButton to="/forever/quests" variant="secondary">All Forever quests</DsButton>
+    <QuestReading />
   </DsPage>
 </template>

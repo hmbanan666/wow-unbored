@@ -6,6 +6,9 @@ const menu = ref<HTMLDetailsElement | null>(null);
 
 function current(to: string): boolean {
   if (route.path.startsWith("/guides/") && route.meta.game === "forever") return to === "/forever";
+  if (/^\/(forever|retail)\/(professions|recipes)(\/|$)/.test(route.path))
+    return to === "/forever/professions";
+  if (/^\/(collections|paths)(\/|$)/.test(route.path)) return to === "/guides";
   return route.path === to || route.path.startsWith(`${to}/`);
 }
 
@@ -15,7 +18,6 @@ watch(
     if (menu.value) menu.value.open = false;
   },
 );
-const items = computed(() => props.links);
 </script>
 
 <template>
@@ -24,7 +26,7 @@ const items = computed(() => props.links);
       <NuxtLink class="ds-nav__wordmark" to="/">Unbored</NuxtLink>
       <nav class="ds-nav__links" aria-label="Main">
         <NuxtLink
-          v-for="link in items"
+          v-for="link in props.links"
           :key="link.to"
           :to="link.to"
           :aria-current="current(link.to) ? 'page' : undefined"
@@ -38,7 +40,7 @@ const items = computed(() => props.links);
         </summary>
         <nav class="ds-nav__panel" aria-label="Main">
           <NuxtLink
-            v-for="link in items"
+            v-for="link in props.links"
             :key="link.to"
             :to="link.to"
             :aria-current="current(link.to) ? 'page' : undefined"
@@ -46,7 +48,6 @@ const items = computed(() => props.links);
           >
         </nav>
       </details>
-      <div class="ds-nav__character"><slot name="character" /></div>
     </DsContainer>
   </header>
 </template>
@@ -205,23 +206,6 @@ const items = computed(() => props.links);
 
   .ds-nav__menu {
     display: none;
-  }
-}
-</style>
-
-<style scoped>
-.ds-nav__bar {
-  flex-wrap: wrap;
-}
-.ds-nav__character {
-  flex-basis: 100%;
-  min-width: 0;
-  padding-bottom: 0.5rem;
-}
-@media (min-width: 1280px) {
-  .ds-nav__character {
-    flex-basis: auto;
-    padding-bottom: 0;
   }
 }
 </style>

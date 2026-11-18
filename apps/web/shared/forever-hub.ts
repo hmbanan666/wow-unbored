@@ -5,47 +5,15 @@ export const FOREVER_TITLE = "WoW Forever Guides: Classes, Systems and Gold";
 export const FOREVER_DESCRIPTION =
   "Find your first steps in WoW Forever, choose a leveling or solo class, learn camping and Legacy talents, and get started with professions and gold.";
 
-export const FOREVER_TOPICS: Record<GuideGroup, { title: string; intro: string }> = {
-  "first-steps": {
-    title: "First steps",
-    intro:
-      "For questing without constant opposing-player attacks, choose Normal. Choose PvP if you want that danger while travelling. Roleplay and Roleplay PvP also ask you to follow naming and behaviour rules. Check the FAQ for access and release dates. The beginner guide covers rulesets and your first character, so start there before looking for a leveling route.",
-  },
-  systems: {
-    title: "Systems",
-    intro:
-      "Planning an evening of questing? Open camping for the campsite setup, the Cozy Sleeping Bag for its quest route, or Legacy talents for the points you want to spend. Choose the activity you can finish from your current position. If a sleeping-bag step needs a long journey, save that route for an evening when you want to travel.",
-  },
-  classes: {
-    title: "Classes",
-    intro:
-      "Picking a class starts with how you expect to play. Use the leveling comparison when your main question is the journey to 60. Use the solo comparison when you want to handle quests on your own. For your next questing session, the Warlock guide explains early Affliction choices and resource habits. The Hunter pet guide covers choosing, feeding and training a companion, including what to check when it loses an enemy’s attention.",
-  },
-  "professions-gold": {
-    title: "Professions and gold",
-    intro:
-      "Making gold starts with deciding what to keep, use or sell. Open early gold before spending your starting money, choose a profession pair for your class, or check Merchant's Favor for crate bundles and faction hand-ins. Enchanting covers that profession's materials and crafts. Check the quantities for the action you choose, then look at the prices available to your character before buying supplies. Leave expensive experiments until you can afford the materials.",
-  },
-  "dungeons-raids": {
-    title: "Dungeons and raids",
-    intro:
-      "Check the raid opening date, group sizes and Onyxia entry requirements before arranging your first run. The raids guide separates confirmed preparation from details Blizzard has not announced.",
-  },
-  "mounts-riding": {
-    title: "Mounts and riding",
-    intro:
-      "Choose the mount you want to work toward and check its riding requirements before setting out.",
-  },
-  addons: {
-    title: "Addons",
-    intro:
-      "Choose quest, bag or auction help from checked Forever releases. Follow the installation steps for your client, then use the missing-addon checks if the game does not list it.",
-  },
-  comparisons: {
-    title: "Comparisons",
-    intro:
-      "Choosing between Forever and Classic Era? Compare the quests, character choices and progression systems first. If you have already chosen Forever, the Classic and Enhanced preset guide covers its presentation settings.",
-  },
+const topicTitles: Record<GuideGroup, string> = {
+  "first-steps": "First steps",
+  systems: "Systems",
+  classes: "Classes",
+  "professions-gold": "Professions and gold",
+  "dungeons-raids": "Dungeons and raids",
+  "mounts-riding": "Mounts and riding",
+  addons: "Addons",
+  comparisons: "Game comparisons",
 };
 
 export const FOREVER_START_SLUGS = [
@@ -59,20 +27,15 @@ export function foreverHub(pages: CatalogSummary[]) {
   const start = FOREVER_START_SLUGS.flatMap((slug) => guides.filter((page) => page.slug === slug));
   const groups = GUIDE_GROUPS.map((group) => ({
     group,
-    ...FOREVER_TOPICS[group],
-    pages: guides.filter((page) => page.group === group),
+    title: topicTitles[group],
+    pages: guides.filter((page) => page.group === group && !start.includes(page)),
   })).filter((group) => group.pages.length);
-  const ungrouped = guides.filter((page) => !page.group);
+  const ungrouped = guides.filter((page) => !page.group && !start.includes(page));
   const recent = [...guides]
     .filter((page) => page.updatedAt !== null)
     .sort((a, b) => b.updatedAt! - a.updatedAt! || a.slug.localeCompare(b.slug))
     .slice(0, 5);
-  // A guide linked in two rows occurs once in the index, at its first visible position.
-  const listed = [
-    ...new Map(
-      [...start, ...groups.flatMap((g) => g.pages), ...ungrouped].map((page) => [page.slug, page]),
-    ).values(),
-  ];
+  const listed = [...start, ...groups.flatMap((g) => g.pages), ...ungrouped];
   return { start, groups, ungrouped, recent, listed };
 }
 
