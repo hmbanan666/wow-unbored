@@ -78,6 +78,7 @@ test.skipIf(!hasPostgres)(
         "0035_page_link_character.sql",
         "0036_quest_sightings.sql",
         "0037_character_feeds.sql",
+        "0038_field_guide_answers.sql",
       ]);
       const game = new GameDb(new PostgresDb(db.sql), directory);
       assert.equal((await game.entity("achievement", 964))?.names.enUS, "Going Down?");
