@@ -1,4 +1,4 @@
--- Reviewed English publications. Preserve the current row's item data, hero and build.
+-- Reviewed English publications. Preserve the current row's item data and build.
 LOCK TABLE content.paths IN SHARE ROW EXCLUSIVE MODE;
 DO $migration$
 DECLARE
@@ -1139,14 +1139,9 @@ BEGIN
   },
   {
     "game": "retail",
-    "hero": {
-      "kind": "mount",
-      "id": 460,
-      "alt": "Grand Expedition Yak, a World of Warcraft mount"
-    },
     "kind": "guide",
     "slug": "how-to-get-the-grand-expedition-yak",
-    "title": "Grand Expedition Yak: Vendor and 120,000 Gold Price",
+    "title": "Grand Expedition Yak: Uncle Bigpocket, 120,000 Gold",
     "description": "Buy the Grand Expedition Yak from Uncle Bigpocket in Kun-Lai Summit for 120,000 gold. Compare his cheaper riding yaks before making the trip to Pandaria.",
     "blocks": [
       {
@@ -1267,7 +1262,12 @@ BEGIN
         "href": "/collections/top-mounts-to-get-first"
       }
     ],
-    "hash": "892a7f212a9b37cc73d4db88384a94c85d81f2903a102e9adfb64c9161a2505c"
+    "previousHero": {
+      "kind": "mount",
+      "id": 460,
+      "alt": "Grand Expedition Yak, a World of Warcraft mount"
+    },
+    "hash": "036521e6a434e56fe6b6ecf12b5b4dc5ed0ca3754e12188984792a42d611306a"
   }
 ]
 $guides$::jsonb)
@@ -1282,6 +1282,7 @@ $guides$::jsonb)
         OR current_page.title <> guide->>'previousTitle'
         OR current_page.description <> guide->>'previousDescription'
         OR (guide ? 'previousHash' AND current_page.body->>'hash' IS DISTINCT FROM guide->>'previousHash')
+        OR (guide ? 'previousHero' AND current_page.body->'hero' IS DISTINCT FROM guide->'previousHero')
         OR (guide ? 'previousBlocks' AND current_page.body->'blocks' IS DISTINCT FROM guide->'previousBlocks')
         OR EXISTS (SELECT 1 FROM content.paths WHERE kind = 'guide' AND locale = 'en'
           AND slug = guide->>'slug' AND status = 'draft') THEN
@@ -1292,7 +1293,8 @@ $guides$::jsonb)
       guide_group, body, updated_at, published_at)
     VALUES (current_page.game, 'guide', current_page.slug, 'en', guide->>'title', guide->>'description',
       current_page.version + 1, 'published', current_page.guide_group,
-      current_page.body || jsonb_build_object('blocks', guide->'blocks', 'asOf', guide->'asOf',
+      (CASE WHEN guide ? 'previousHero' THEN current_page.body - 'hero' ELSE current_page.body END)
+      || jsonb_build_object('blocks', guide->'blocks', 'asOf', guide->'asOf',
         'sources', guide->'sources', 'hash', guide->>'hash', 'editorialRevision', revision), stamp, stamp);
   END LOOP;
 END $migration$;
